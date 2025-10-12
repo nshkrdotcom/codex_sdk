@@ -4,7 +4,7 @@
 
 # Codex SDK for Elixir
 
-[![CI](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/elixir.yaml/badge.svg)](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/elixir.yaml)
+[![CI](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml)
 [![Elixir](https://img.shields.io/badge/elixir-1.18.3-purple.svg)](https://elixir-lang.org)
 [![OTP](https://img.shields.io/badge/otp-27.3.3-blue.svg)](https://www.erlang.org)
 [![Hex.pm](https://img.shields.io/hexpm/v/codex_sdk.svg)](https://hex.pm/packages/codex_sdk)
