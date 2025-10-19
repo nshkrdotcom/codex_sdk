@@ -3,18 +3,39 @@ defmodule Codex.Files do
   Attachment staging helpers mirroring the Python SDK file APIs.
   """
 
+  alias Codex.Files.Registry
   alias Codex.Thread.Options, as: ThreadOptions
 
-  @manifest_table :codex_files_manifest
   @default_staging_dir Path.join(System.tmp_dir!(), "codex_files")
+  @default_ttl_ms 86_400_000
 
   defmodule Attachment do
     @moduledoc """
     Represents a staged file attachment.
     """
 
-    @enforce_keys [:id, :name, :path, :checksum, :size, :persist]
-    defstruct [:id, :name, :path, :checksum, :size, :persist]
+    @enforce_keys [
+      :id,
+      :name,
+      :path,
+      :checksum,
+      :size,
+      :persist,
+      :inserted_at,
+      :ttl_ms
+    ]
+    defstruct [
+      :id,
+      :name,
+      :path,
+      :checksum,
+      :size,
+      :persist,
+      :inserted_at,
+      :ttl_ms
+    ]
+
+    @type ttl :: :infinity | non_neg_integer()
 
     @type t :: %__MODULE__{
             id: String.t(),
@@ -22,7 +43,9 @@ defmodule Codex.Files do
             path: Path.t(),
             checksum: String.t(),
             size: non_neg_integer(),
-            persist: boolean()
+            persist: boolean(),
+            inserted_at: DateTime.t(),
+            ttl_ms: ttl()
           }
   end
 
@@ -34,40 +57,37 @@ defmodule Codex.Files do
 
   @doc """
   Stages a file for future attachment invocation.
+
+  Options:
+
+    * `:name` - override the attachment name (defaults to the basename of `path`)
+    * `:persist` - keep file around indefinitely (default: `false`)
+    * `:ttl_ms` - custom time-to-live for ephemeral attachments. Accepts `:infinity` or a
+      non-negative integer in milliseconds. Defaults to `Application.get_env/3` lookups of
+      `:attachment_ttl_ms` and falls back to 24 hours.
   """
   @spec stage(Path.t(), keyword()) :: {:ok, Attachment.t()} | {:error, term()}
   def stage(path, opts \\ []) when is_binary(path) do
-    with :ok <- ensure_staging_dir(),
-         :ok <- ensure_manifest(),
-         {:ok, data} <- File.read(path),
-         {:ok, stat} <- File.stat(path) do
-      checksum = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-      persist = Keyword.get(opts, :persist, false)
+    persist = Keyword.get(opts, :persist, false)
+
+    with {:ok, _pid} <- Registry.ensure_started(),
+         :ok <- ensure_staging_dir(),
+         {:ok, stat} <- File.stat(path),
+         {:ok, checksum} <- checksum(path),
+         {:ok, ttl_ms} <- resolve_ttl(opts, persist) do
       name = Keyword.get(opts, :name, Path.basename(path))
 
-      case :ets.lookup(@manifest_table, checksum) do
-        [{^checksum, %{persist: existing_persist} = attachment}] ->
-          updated = %{attachment | persist: existing_persist || persist}
-          :ets.insert(@manifest_table, {checksum, updated})
-          {:ok, updated}
+      stage_opts = %{
+        checksum: checksum,
+        name: name,
+        persist: persist,
+        ttl_ms: ttl_ms,
+        size: stat.size,
+        source_path: path,
+        destination_path: attachment_path(checksum, name)
+      }
 
-        [] ->
-          dest_path = attachment_path(checksum, name)
-          File.mkdir_p!(Path.dirname(dest_path))
-          File.cp!(path, dest_path)
-
-          attachment = %Attachment{
-            id: checksum,
-            name: name,
-            path: dest_path,
-            checksum: checksum,
-            size: stat.size,
-            persist: persist
-          }
-
-          :ets.insert(@manifest_table, {checksum, attachment})
-          {:ok, attachment}
-      end
+      Registry.stage(stage_opts)
     end
   end
 
@@ -76,44 +96,46 @@ defmodule Codex.Files do
   """
   @spec list_staged() :: [Attachment.t()]
   def list_staged do
-    ensure_manifest()
-
-    :ets.tab2list(@manifest_table)
-    |> Enum.map(fn {_checksum, attachment} -> attachment end)
+    case Registry.ensure_started() do
+      {:ok, _pid} -> Registry.list()
+      {:error, _reason} -> []
+    end
   end
 
   @doc """
   Removes staged files that are not marked as persistent.
   """
-  @spec cleanup!() :: :ok
-  def cleanup! do
-    ensure_manifest()
-
-    for {checksum, attachment} <- :ets.tab2list(@manifest_table) do
-      if attachment.persist do
-        :ok
-      else
-        File.rm_rf(attachment.path)
-        :ets.delete(@manifest_table, checksum)
-      end
+  @spec force_cleanup() :: :ok
+  def force_cleanup do
+    with {:ok, _pid} <- Registry.ensure_started() do
+      Registry.force_cleanup()
     end
-
-    :ok
   end
+
+  @doc """
+  Deprecated alias retained for backwards compatibility.
+  """
+  @spec cleanup!() :: :ok
+  def cleanup!, do: force_cleanup()
 
   @doc """
   Resets the staging directory and manifest.
   """
   @spec reset!() :: :ok
   def reset! do
-    case :ets.whereis(@manifest_table) do
-      :undefined -> :ok
-      _ -> :ets.delete(@manifest_table)
+    with {:ok, _pid} <- Registry.ensure_started() do
+      Registry.reset(staging_dir())
     end
+  end
 
-    File.rm_rf(staging_dir())
-    ensure_manifest()
-    :ok
+  @doc """
+  Returns high-level staging metrics including counts and total bytes.
+  """
+  @spec metrics() :: map()
+  def metrics do
+    with {:ok, _pid} <- Registry.ensure_started() do
+      Registry.metrics()
+    end
   end
 
   @doc """
@@ -129,19 +151,33 @@ defmodule Codex.Files do
     %{opts | attachments: updated}
   end
 
-  defp ensure_manifest do
-    case :ets.whereis(@manifest_table) do
-      :undefined ->
-        :ets.new(@manifest_table, [:named_table, :set, :public, read_concurrency: true])
-        :ok
-
-      _ ->
-        :ok
+  defp checksum(path) do
+    with {:ok, data} <- File.read(path) do
+      {:ok, :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)}
     end
   end
 
+  defp resolve_ttl(_opts, true), do: {:ok, :infinity}
+
+  defp resolve_ttl(opts, false) do
+    case Keyword.get(opts, :ttl_ms, default_ttl()) do
+      :infinity ->
+        {:ok, :infinity}
+
+      ttl when is_integer(ttl) and ttl >= 0 ->
+        {:ok, ttl}
+
+      invalid ->
+        {:error, {:invalid_ttl, invalid}}
+    end
+  end
+
+  defp default_ttl do
+    Application.get_env(:codex_sdk, :attachment_ttl_ms, @default_ttl_ms)
+  end
+
   defp ensure_staging_dir do
-    staging_dir() |> File.mkdir_p()
+    File.mkdir_p(staging_dir())
   end
 
   defp attachment_path(checksum, name) do

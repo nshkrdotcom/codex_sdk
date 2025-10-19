@@ -27,9 +27,9 @@
 - Provide `Codex.Files.temporary/1` helper returning RAII-style struct with cleanup on drop.
 
 ### Current Status
-- `Codex.Files.stage/2` stages attachments into a checksum-keyed directory and deduplicates repeated content.
+- `Codex.Files.stage/2` stages attachments into a checksum-keyed directory, records TTL metadata, and deduplicates repeated content while refreshing expiry windows.
 - `Codex.Files.attach/2` propagates staged files onto thread options; `Codex.Exec` forwards attachments to the binary via CLI flags.
-- Cleanup API differentiates between ephemeral and persistent attachments.
+- `Codex.Files.Registry` runs a periodic cleanup loop honoring TTLs, exposes `force_cleanup/0` for manual sweeps, publishes telemetry, and reports disk usage via `Codex.Files.metrics/0`.
 
 ## TDD Entry Points
 1. Write failing unit test verifying duplicate file returns cached descriptor.

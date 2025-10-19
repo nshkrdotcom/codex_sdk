@@ -36,6 +36,22 @@ Implement automatic pruning and metadata auditing for staged attachments created
 4. Telemetry events `[:codex, :attachment, :staged]`, `:cleaned`.
 5. Update tests to use new API and metrics.
 
+## Implementation Notes (2025-10-17)
+- Introduced `Codex.Files.Registry` GenServer that owns the ETS table `:codex_files_manifest`, schedules periodic sweeps using `:attachment_cleanup_interval_ms`, and exposes synchronous calls for staging, metrics, cleanup, and reset.
+- `Codex.Files.stage/2` now records `inserted_at` timestamps (UTC, millisecond precision) and persisted TTL metadata on every staging call. Staging the same checksum refreshes `inserted_at`, upgrades `persist?`, and stretches TTL windows rather than shortening them.
+- New `Codex.Files.force_cleanup/0` prunes only expired, non-persistent attachments. A legacy `cleanup!/0` alias forwards to the new API to preserve backwards compatibility.
+- `Codex.Files.metrics/0` aggregates totals into `%{total_count, total_bytes, persistent_count, persistent_bytes, expirable_count, expirable_bytes}` for downstream dashboards.
+
+## Telemetry Reference
+- `[:codex, :attachment, :staged]`
+  - Measurements: `%{size_bytes: non_neg_integer()}`
+  - Metadata: `%{checksum: String.t(), name: String.t(), persist?: boolean(), ttl_ms: attachment_ttl(), cached?: boolean()}`
+- `[:codex, :attachment, :cleaned]`
+  - Measurements: `%{count: non_neg_integer(), bytes: non_neg_integer()}`
+  - Metadata: `%{checksum: String.t(), name: String.t(), ttl_ms: attachment_ttl()}`
+
+`attachment_ttl()` resolves to a non-negative integer (ms) or `:infinity`. Manual cleanups emit one `:cleaned` event per attachment removed; periodic sweeps reuse the same contract.
+
 ## Verification
 - Unit tests for TTL logic (immediate expiration, infinity).
 - Integration test staging -> cleanup triggered via forced call.

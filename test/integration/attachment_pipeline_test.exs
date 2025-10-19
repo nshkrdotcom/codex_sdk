@@ -8,8 +8,13 @@ defmodule Codex.Integration.AttachmentPipelineTest do
   @moduletag :integration
 
   setup do
+    Application.put_env(:codex_sdk, :attachment_ttl_ms, 50)
     Files.reset!()
-    on_exit(fn -> Files.reset!() end)
+
+    on_exit(fn ->
+      Files.reset!()
+      Application.delete_env(:codex_sdk, :attachment_ttl_ms)
+    end)
   end
 
   test "staged attachments are forwarded to codex executable" do
@@ -40,6 +45,20 @@ defmodule Codex.Integration.AttachmentPipelineTest do
     assert String.contains?(args, "--attachment")
     assert String.contains?(args, attachment.path)
     assert String.contains?(args, attachment.checksum)
+  end
+
+  test "force_cleanup removes expired attachments" do
+    source = tmp_file!("cleanup.txt", "expire me")
+
+    {:ok, attachment} = Files.stage(source, ttl_ms: 10)
+    assert File.exists?(attachment.path)
+
+    Process.sleep(30)
+
+    :ok = Files.force_cleanup()
+
+    refute File.exists?(attachment.path)
+    assert Enum.empty?(Files.list_staged())
   end
 
   defp tmp_file!(name, contents) do
