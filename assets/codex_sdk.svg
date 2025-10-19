@@ -1,49 +1,145 @@
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Hexagon background -->
   <defs>
-    <linearGradient id="hexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6B21A8;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#A855F7;stop-opacity:1" />
+    <linearGradient id="hexGradient" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#080817"/>
+      <stop offset="55%" stop-color="#27134a"/>
+      <stop offset="100%" stop-color="#0d0b27"/>
     </linearGradient>
-    <linearGradient id="codeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#10B981;stop-opacity:1" />
+
+    <linearGradient id="hexEdge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#55ffe0"/>
+      <stop offset="50%" stop-color="#6f8cff"/>
+      <stop offset="100%" stop-color="#9f3fff"/>
     </linearGradient>
+
+    <radialGradient id="innerGlow" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#8e75ff" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#4c28b7" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#060413" stop-opacity="0.2"/>
+    </radialGradient>
+
+    <linearGradient id="cStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5ef4ff"/>
+      <stop offset="50%" stop-color="#58ffe3"/>
+      <stop offset="100%" stop-color="#ad6eff"/>
+    </linearGradient>
+
+    <linearGradient id="xStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffbb6e"/>
+      <stop offset="50%" stop-color="#f978ff"/>
+      <stop offset="100%" stop-color="#64f4ff"/>
+    </linearGradient>
+
+    <radialGradient id="corePulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fafaff" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#8b7eff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#1e1040" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="beamGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60fff2" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#60fff2" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#c88cff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#c88cff" stop-opacity="0"/>
+    </linearGradient>
+
+    <pattern id="circuitPattern" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(12)">
+      <path d="M 0 18 L 18 0" stroke="#47d4ff" stroke-width="0.9" stroke-opacity="0.12"/>
+      <path d="M 9 0 L 9 18" stroke="#47d4ff" stroke-width="0.6" stroke-opacity="0.1"/>
+      <circle cx="9" cy="9" r="2.2" fill="#47d4ff" fill-opacity="0.18"/>
+    </pattern>
+
+    <linearGradient id="shineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <clipPath id="hexClip">
+      <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"/>
+    </clipPath>
+
+    <filter id="hexShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="15" stdDeviation="12" flood-color="#120922" flood-opacity="0.8"/>
+    </filter>
+
+    <filter id="sparkBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
   </defs>
 
-  <!-- Hexagon shape (Elixir style) -->
-  <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
-        fill="url(#hexGradient)"
-        stroke="#4C1D95"
-        stroke-width="3"/>
-
-  <!-- Code bracket symbols representing Codex -->
-  <g transform="translate(100, 100)">
-    <!-- Left bracket -->
-    <path d="M -35 -40 L -45 -40 L -55 -30 L -55 30 L -45 40 L -35 40"
-          fill="none"
-          stroke="#FFFFFF"
-          stroke-width="5"
-          stroke-linecap="round"
+  <g filter="url(#hexShadow)">
+    <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
+          fill="url(#hexGradient)"
+          stroke="url(#hexEdge)"
+          stroke-width="4"
           stroke-linejoin="round"/>
-
-    <!-- Right bracket -->
-    <path d="M 35 -40 L 45 -40 L 55 -30 L 55 30 L 45 40 L 35 40"
-          fill="none"
-          stroke="#FFFFFF"
-          stroke-width="5"
-          stroke-linecap="round"
-          stroke-linejoin="round"/>
-
-    <!-- Center code lines with gradient -->
-    <line x1="-25" y1="-25" x2="15" y2="-25" stroke="url(#codeGradient)" stroke-width="4" stroke-linecap="round"/>
-    <line x1="-20" y1="-10" x2="20" y2="-10" stroke="url(#codeGradient)" stroke-width="4" stroke-linecap="round"/>
-    <line x1="-25" y1="5" x2="10" y2="5" stroke="url(#codeGradient)" stroke-width="4" stroke-linecap="round"/>
-    <line x1="-20" y1="20" x2="25" y2="20" stroke="url(#codeGradient)" stroke-width="4" stroke-linecap="round"/>
   </g>
 
-  <!-- Small Elixir drop accent in corner -->
-  <path d="M 150 60 Q 145 50 150 40 Q 155 50 150 60 Z"
-        fill="#A855F7"
-        opacity="0.6"/>
+  <g clip-path="url(#hexClip)">
+    <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
+          fill="url(#innerGlow)"/>
+
+    <rect x="25" y="30" width="150" height="120" fill="url(#circuitPattern)" opacity="0.18"/>
+
+    <g opacity="0.35">
+      <path d="M 36 120 Q 75 85 120 110 T 180 95"
+            fill="none"
+            stroke="url(#beamGradient)"
+            stroke-width="10"
+            stroke-linecap="round"/>
+      <path d="M 30 88 Q 80 55 135 75 T 190 60"
+            fill="none"
+            stroke="url(#beamGradient)"
+            stroke-width="8"
+            stroke-linecap="round"/>
+    </g>
+
+    <g transform="translate(100, 100)">
+      <path d="M 34 -38 Q -44 -42 -52 0 Q -44 44 32 42"
+            fill="none"
+            stroke="url(#cStroke)"
+            stroke-width="9"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+      <path d="M -15 -42 L 42 20"
+            fill="none"
+            stroke="url(#xStroke)"
+            stroke-width="7"
+            stroke-linecap="round"/>
+
+      <path d="M -8 38 L 46 -8"
+            fill="none"
+            stroke="url(#xStroke)"
+            stroke-width="7"
+            stroke-linecap="round"/>
+
+      <path d="M 18 -6 L 47 0 L 18 16"
+            fill="none"
+            stroke="url(#cStroke)"
+            stroke-width="7"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+      <circle cx="0" cy="0" r="28" fill="url(#corePulse)"/>
+    </g>
+
+    <g opacity="0.5">
+      <path d="M 54 64 Q 100 40 146 64" stroke="#6efdff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <path d="M 58 138 Q 100 160 142 136" stroke="#b278ff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.5"/>
+    </g>
+
+    <g filter="url(#sparkBlur)" opacity="0.75">
+      <circle cx="58" cy="86" r="4.7" fill="#7afcff" opacity="0.9"/>
+      <circle cx="142" cy="124" r="3.8" fill="#f0a6ff" opacity="0.85"/>
+      <circle cx="118" cy="70" r="2.9" fill="#63ffcc" opacity="0.75"/>
+    </g>
+
+    <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
+          fill="none"
+          stroke="url(#shineGradient)"
+          stroke-width="8"
+          opacity="0.45"/>
+  </g>
 </svg>
