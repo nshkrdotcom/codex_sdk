@@ -48,11 +48,25 @@ npm install -g @openai/codex
 brew install codex
 ```
 
-For authentication, sign in with your ChatGPT account:
+The SDK does not vendor `codex-rs`; it shells out to the `codex` executable on your system. Path
+resolution follows this order:
+
+1. `codex_path_override` supplied in `Codex.Options.new/1`
+2. `CODEX_PATH` environment variable
+3. `System.find_executable("codex")`
+
+Make sure the binary at the resolved location is executable and kept up to date.
+
+For authentication, sign in with your ChatGPT account (this stores credentials for the CLI):
 
 ```bash
 codex
 # Select "Sign in with ChatGPT"
+
+Alternatively, set `CODEX_API_KEY` (or `OPENAI_API_KEY`) before starting your BEAM node and the SDK
+will forward it to the spawned CLI process. If neither an API key nor an authenticated CLI session
+is available, Codex executions will fail with upstream authentication errors—the SDK does not
+perform additional login flows.
 ```
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
