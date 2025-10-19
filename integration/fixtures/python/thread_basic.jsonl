@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_abc123","metadata":{"labels":{"topic":"demo"},"created_at":"2024-07-18T12:00:00Z"}}
+{"type":"turn.started","turn_id":"turn_def456","thread_id":"thread_abc123"}
+{"type":"item.input_text.delta","item":{"id":"item_1","type":"input_text","role":"user","content":"Hello Codex"}}
+{"type":"item.agent_message.delta","item":{"id":"item_2","type":"agent_message","role":"assistant","content":{"type":"text","text":"Hello from Python Codex!"}}}
+{"type":"turn.completed","turn_id":"turn_def456","thread_id":"thread_abc123","final_response":{"type":"text","text":"Hello from Python Codex!"},"usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":9,"total_tokens":21}}

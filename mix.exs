@@ -41,7 +41,7 @@ defmodule CodexSdk.MixProject do
       {:telemetry, "~> 1.3"},
 
       # Testing
-      {:supertester, "~> 0.2.0", only: :test},
+      {:supertester, "~> 0.2.1", only: :test},
       {:mox, "~> 1.0", only: :test},
 
       # Development and documentation
@@ -92,12 +92,11 @@ defmodule CodexSdk.MixProject do
       groups_for_modules: [
         "Core API": [Codex, Codex.Thread],
         Execution: [Codex.Exec],
-        "Types & Events": [
-          Codex.Events,
-          Codex.Items,
-          Codex.Options
-        ],
-        Utilities: [Codex.OutputSchemaFile]
+        Types: [
+          Codex.Options,
+          Codex.Thread.Options,
+          Codex.Turn.Result
+        ]
       ]
     ]
   end

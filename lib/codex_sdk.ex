@@ -1,18 +1,10 @@
 defmodule CodexSdk do
   @moduledoc """
-  Documentation for `CodexSdk`.
+  Backwards-compatible entry module for the Codex SDK.
+
+  Prefer using the `Codex` module directly.
   """
 
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> CodexSdk.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
+  defdelegate start_thread(opts \\ %{}, thread_opts \\ %{}), to: Codex
+  defdelegate resume_thread(thread_id, opts \\ %{}, thread_opts \\ %{}), to: Codex
 end
