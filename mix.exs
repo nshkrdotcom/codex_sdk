@@ -23,6 +23,12 @@ defmodule CodexSdk.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
+      ],
+      dialyzer: [
+        plt_add_apps: [:mix],
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        flags: [:error_handling, :underspecs],
+        ignore_warnings: ".dialyzer_ignore.exs"
       ]
     ]
   end
@@ -95,7 +101,7 @@ defmodule CodexSdk.MixProject do
         "Core API": [Codex, Codex.Thread],
         Execution: [Codex.Exec, Codex.Telemetry],
         Files: [Codex.Files],
-        Approvals: [Codex.Approvals, Codex.Approvals.StaticPolicy],
+        Approvals: [Codex.Approvals, Codex.Approvals.Hook, Codex.Approvals.StaticPolicy],
         Tooling: [
           Codex.Tool,
           Codex.Tools,

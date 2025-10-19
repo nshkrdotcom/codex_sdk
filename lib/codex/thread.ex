@@ -341,7 +341,11 @@ defmodule Codex.Thread do
   defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event) do
     context = build_tool_context(thread, event)
 
-    case Approvals.review_tool(thread.thread_opts.approval_policy, event, context) do
+    # Prefer approval_hook over approval_policy
+    policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
+    timeout = thread.thread_opts.approval_timeout_ms || 30_000
+
+    case Approvals.review_tool(policy_or_hook, event, context, timeout: timeout) do
       :allow ->
         case Tools.invoke(event.tool_name, event.arguments, context) do
           {:ok, output} ->

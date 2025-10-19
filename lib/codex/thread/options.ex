@@ -8,6 +8,8 @@ defmodule Codex.Thread.Options do
             labels: %{},
             auto_run: false,
             approval_policy: nil,
+            approval_hook: nil,
+            approval_timeout_ms: 30_000,
             sandbox: :default,
             attachments: []
 
@@ -16,6 +18,8 @@ defmodule Codex.Thread.Options do
           labels: map(),
           auto_run: boolean(),
           approval_policy: module() | nil,
+          approval_hook: module() | nil,
+          approval_timeout_ms: pos_integer(),
           sandbox: :default | :strict | :permissive,
           attachments: [map()] | []
         }
@@ -32,6 +36,11 @@ defmodule Codex.Thread.Options do
     labels = Map.get(attrs, :labels, Map.get(attrs, "labels", %{}))
     auto_run = Map.get(attrs, :auto_run, Map.get(attrs, "auto_run", false))
     approval_policy = Map.get(attrs, :approval_policy, Map.get(attrs, "approval_policy"))
+    approval_hook = Map.get(attrs, :approval_hook, Map.get(attrs, "approval_hook"))
+
+    approval_timeout_ms =
+      Map.get(attrs, :approval_timeout_ms, Map.get(attrs, "approval_timeout_ms", 30_000))
+
     sandbox = Map.get(attrs, :sandbox, Map.get(attrs, "sandbox", :default))
     attachments = Map.get(attrs, :attachments, Map.get(attrs, "attachments", []))
 
@@ -40,13 +49,18 @@ defmodule Codex.Thread.Options do
          {:ok, attachments} <- ensure_list(attachments, :attachments),
          true <-
            sandbox in [:default, :strict, :permissive] or {:error, {:invalid_sandbox, sandbox}},
-         true <- is_boolean(auto_run) or {:error, {:invalid_auto_run, auto_run}} do
+         true <- is_boolean(auto_run) or {:error, {:invalid_auto_run, auto_run}},
+         true <-
+           (is_integer(approval_timeout_ms) and approval_timeout_ms > 0) or
+             {:error, {:invalid_timeout, approval_timeout_ms}} do
       {:ok,
        %__MODULE__{
          metadata: metadata,
          labels: labels,
          auto_run: auto_run,
          approval_policy: approval_policy,
+         approval_hook: approval_hook,
+         approval_timeout_ms: approval_timeout_ms,
          sandbox: sandbox,
          attachments: attachments
        }}
