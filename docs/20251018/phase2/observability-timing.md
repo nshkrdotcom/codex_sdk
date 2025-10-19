@@ -15,19 +15,19 @@ Augment the telemetry stack with execution timing, error classification, and opt
 - Persist metrics locally.
 
 ## Architecture
-1. `Codex.Telemetry.emit/3` wraps duration conversions—accept `System.monotonic_time/1` input.
-2. `Codex.Exec` already tracks start time; extend to include `originator` metadata and error classification (`transport`, `approval_denied`, etc.).
-3. Add `Codex.Telemetry.exporter/0` that reads env (`CODEX_OTLP_ENDPOINT`, `CODEX_OTLP_HEADERS`) and configures `opentelemetry_exporter` if present.
-4. Provide runbook with commands for tailing telemetry and cleaning erlexec state.
+1. `Codex.Telemetry.emit/3` wraps duration conversions — it accepts `System.monotonic_time/1` input and normalises payloads with `:duration_ms`.
+2. Thread, tool, and approval emitters surface `originator: :sdk`, span tokens, and stop timestamps to support OpenTelemetry spans.
+3. `Codex.Telemetry.configure/1` restarts the OTEL apps with a simple processor when OTLP is enabled (via `CODEX_OTLP_ENABLE=1`), reading `CODEX_OTLP_ENDPOINT` and optional `CODEX_OTLP_HEADERS`, defaulting to `otel_exporter_pid` during tests.
+4. Provide runbook with commands for enabling exporters, tailing telemetry, and cleaning erlexec state.
 
 ## Implementation Steps
-1. Update telemetry events to include `:duration_ms` keys (convert from native).
-2. Introduce `Codex.Telemetry.configure/1` called during application start to optionally set exporter.
-3. Add new event types for attachment cleanup and tool metrics (ties into other feature docs).
-4. Document how to enable exporter in README/ops doc.
+1. Add `:duration_ms` (and stop-system timestamps) across thread, tool, and approval events.
+2. Introduce `Codex.Telemetry.configure/1` that restarts OTEL with a configured exporter and attaches span handlers.
+3. Attach OpenTelemetry spans to thread lifecycle events via telemetry handlers and `otel_exporter_pid` for tests.
+4. Document how to enable the exporter and verify spans in the runbook/ops docs.
 
 ## Risks
-- Optional OTLP dependency should be runtime-only; guard with `Code.ensure_loaded?`.
+- Optional OTLP dependency should be runtime-only; guard runtime starts and tolerate `:tls_certificate_check` being absent.
 - Ensure exporter init errors fail gracefully (log warning, continue).
 
 ## Verification

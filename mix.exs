@@ -35,6 +35,7 @@ defmodule CodexSdk.MixProject do
 
   def application do
     [
+      mod: {Codex.Application, []},
       extra_applications: [:logger, :crypto, :erlexec]
     ]
   end
@@ -46,6 +47,8 @@ defmodule CodexSdk.MixProject do
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.3"},
       {:erlexec, "~> 2.0"},
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_exporter, "~> 1.6"},
 
       # Testing
       {:supertester, "~> 0.2.1", only: :test},
@@ -125,7 +128,7 @@ defmodule CodexSdk.MixProject do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib mix.exs README.md docs LICENSE assets),
+      files: ~w(lib config mix.exs README.md docs LICENSE assets),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

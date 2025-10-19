@@ -6,6 +6,8 @@ defmodule Codex.Events do
   convert structs back into protocol maps for encoding.
   """
 
+  alias Codex.Items
+
   defmodule ThreadStarted do
     @moduledoc """
     Event emitted when a thread is first created.
@@ -68,7 +70,7 @@ defmodule Codex.Events do
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
             turn_id: String.t() | nil,
-            final_response: map() | nil,
+            final_response: Items.AgentMessage.t() | map() | nil,
             usage: map() | nil,
             status: String.t() | nil
           }
@@ -106,10 +108,36 @@ defmodule Codex.Events do
     """
 
     @enforce_keys [:item]
-    defstruct item: %{}
+    defstruct item: nil
 
     @type t :: %__MODULE__{
-            item: map()
+            item: Items.t()
+          }
+  end
+
+  defmodule ItemStarted do
+    @moduledoc """
+    Event emitted when an item begins processing.
+    """
+
+    @enforce_keys [:item]
+    defstruct item: nil
+
+    @type t :: %__MODULE__{
+            item: Items.t()
+          }
+  end
+
+  defmodule ItemUpdated do
+    @moduledoc """
+    Event emitted when an in-progress item receives an update.
+    """
+
+    @enforce_keys [:item]
+    defstruct item: nil
+
+    @type t :: %__MODULE__{
+            item: Items.t()
           }
   end
 
@@ -193,6 +221,8 @@ defmodule Codex.Events do
     ToolCallCompleted,
     ToolCallRequested,
     ItemCompleted,
+    ItemStarted,
+    ItemUpdated,
     Error,
     TurnFailed
   }
@@ -205,6 +235,8 @@ defmodule Codex.Events do
           | ItemAgentMessageDelta.t()
           | ItemInputTextDelta.t()
           | ItemCompleted.t()
+          | ItemStarted.t()
+          | ItemUpdated.t()
           | Error.t()
           | TurnFailed.t()
           | ToolCallRequested.t()
@@ -262,7 +294,19 @@ defmodule Codex.Events do
 
   def parse!(%{"type" => "item.completed"} = map) do
     %ItemCompleted{
-      item: Map.fetch!(map, "item")
+      item: map |> Map.fetch!("item") |> Items.parse!()
+    }
+  end
+
+  def parse!(%{"type" => "item.started"} = map) do
+    %ItemStarted{
+      item: map |> Map.fetch!("item") |> Items.parse!()
+    }
+  end
+
+  def parse!(%{"type" => "item.updated"} = map) do
+    %ItemUpdated{
+      item: map |> Map.fetch!("item") |> Items.parse!()
     }
   end
 
@@ -344,7 +388,7 @@ defmodule Codex.Events do
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id
     }
-    |> put_optional("final_response", event.final_response)
+    |> put_optional("final_response", encode_final_response(event.final_response))
     |> put_optional("usage", event.usage)
     |> put_optional("status", event.status)
   end
@@ -366,7 +410,21 @@ defmodule Codex.Events do
   def to_map(%ItemCompleted{} = event) do
     %{
       "type" => "item.completed",
-      "item" => event.item
+      "item" => Items.to_map(event.item)
+    }
+  end
+
+  def to_map(%ItemStarted{} = event) do
+    %{
+      "type" => "item.started",
+      "item" => Items.to_map(event.item)
+    }
+  end
+
+  def to_map(%ItemUpdated{} = event) do
+    %{
+      "type" => "item.updated",
+      "item" => Items.to_map(event.item)
     }
   end
 
@@ -409,4 +467,11 @@ defmodule Codex.Events do
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)
+
+  defp encode_final_response(%Items.AgentMessage{text: text}) when is_binary(text) do
+    %{"type" => "text", "text" => text}
+  end
+
+  defp encode_final_response(%Items.AgentMessage{}), do: %{"type" => "text"}
+  defp encode_final_response(other), do: other
 end

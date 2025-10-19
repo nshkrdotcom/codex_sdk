@@ -18,7 +18,10 @@ defmodule Codex.Exec do
           optional(:thread) => Codex.Thread.t(),
           optional(:turn_opts) => map(),
           optional(:continuation_token) => String.t(),
-          optional(:attachments) => [Attachment.t()]
+          optional(:attachments) => [Attachment.t()],
+          optional(:output_schema_path) => String.t(),
+          optional(:tool_outputs) => [map()],
+          optional(:tool_failures) => [map()]
         }
 
   @doc """
@@ -194,7 +197,36 @@ defmodule Codex.Exec do
       |> Map.get(:attachments, [])
       |> Enum.flat_map(&attachment_cli_args/1)
 
-    base ++ model_args ++ thread_args ++ continuation_args ++ attachment_args
+    schema_args =
+      case exec_opts do
+        %{output_schema_path: path} when is_binary(path) and path != "" ->
+          ["--output-schema", path]
+
+        _ ->
+          []
+      end
+
+    # Forward pending tool responses so codex exec can replay them when resuming
+    # a continuation. The CLI accepts repeated --tool-output/--tool-failure flags
+    # with JSON bodies (mirrors Python/TypeScript SDK behaviour).
+    tool_output_args =
+      exec_opts
+      |> Map.get(:tool_outputs, [])
+      |> Enum.flat_map(&tool_payload_args("--tool-output", &1, [:call_id, :output]))
+
+    tool_failure_args =
+      exec_opts
+      |> Map.get(:tool_failures, [])
+      |> Enum.flat_map(&tool_payload_args("--tool-failure", &1, [:call_id, :reason]))
+
+    base ++
+      model_args ++
+      thread_args ++
+      continuation_args ++
+      attachment_args ++
+      schema_args ++
+      tool_output_args ++
+      tool_failure_args
   end
 
   defp attachment_cli_args(%Attachment{} = attachment) do
@@ -277,4 +309,65 @@ defmodule Codex.Exec do
   rescue
     _ -> raw_status
   end
+
+  defp tool_payload_args(_flag, payload, _keys) when payload in [nil, %{}], do: []
+
+  defp tool_payload_args(flag, payload, required_keys) when is_map(payload) do
+    normalized = normalize_tool_payload(payload)
+    payload_map = Map.take(normalized, required_keys)
+
+    if Enum.all?(required_keys, &Map.has_key?(payload_map, &1)) do
+      encoded =
+        normalized
+        |> Map.take(required_keys)
+        |> stringify_keys()
+        |> Jason.encode!()
+
+      [flag, encoded]
+    else
+      []
+    end
+  end
+
+  defp tool_payload_args(_flag, _payload, _keys), do: []
+
+  defp normalize_tool_payload(%_struct{} = struct) do
+    struct
+    |> Map.from_struct()
+    |> Map.delete(:__struct__)
+    |> normalize_tool_payload()
+  end
+
+  defp normalize_tool_payload(map) when is_map(map) do
+    Map.new(map, fn {key, value} ->
+      {key, normalize_tool_value(value)}
+    end)
+  end
+
+  defp normalize_tool_payload(other), do: other
+
+  defp normalize_tool_value(%_struct{} = value),
+    do: value |> Map.from_struct() |> normalize_tool_payload()
+
+  defp normalize_tool_value(map) when is_map(map), do: normalize_tool_payload(map)
+
+  defp normalize_tool_value(list) when is_list(list), do: Enum.map(list, &normalize_tool_value/1)
+
+  defp normalize_tool_value(value), do: value
+
+  defp stringify_keys(%_struct{} = struct), do: stringify_keys(Map.from_struct(struct))
+
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn {key, value} ->
+      {stringify_key(key), stringify_keys(value)}
+    end)
+  end
+
+  defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
+
+  defp stringify_keys(value), do: value
+
+  defp stringify_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp stringify_key(key) when is_binary(key), do: key
+  defp stringify_key(key), do: to_string(key)
 end

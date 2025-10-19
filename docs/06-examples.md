@@ -1,6 +1,6 @@
 # Examples and Usage Patterns
 
-This document provides comprehensive examples demonstrating common use cases and patterns for the Elixir Codex SDK.
+This document provides comprehensive examples demonstrating common use cases and patterns for the Elixir Codex SDK. Runnable counterparts live under `/examples`; each script can be executed with `mix run examples/<name>.exs ...`.
 
 ## Table of Contents
 
@@ -33,13 +33,19 @@ defmodule BasicExample do
     {:ok, result} = Codex.Thread.run(thread, "What is a GenServer in Elixir?")
 
     # Print the response
-    IO.puts(result.final_response)
+    case result.final_response do
+      %Codex.Items.AgentMessage{text: text} ->
+        IO.puts(text)
+
+      _ ->
+        IO.puts("The turn did not produce a final response.")
+    end
 
     # Check token usage
     IO.puts("\nTokens used:")
-    IO.puts("  Input: #{result.usage.input_tokens}")
-    IO.puts("  Output: #{result.usage.output_tokens}")
-    IO.puts("  Total: #{result.usage.input_tokens + result.usage.output_tokens}")
+    IO.puts("  Input: #{result.usage["input_tokens"]}")
+    IO.puts("  Output: #{result.usage["output_tokens"]}")
+    IO.puts("  Total: #{result.usage["total_tokens"]}")
   end
 end
 ```
@@ -58,25 +64,35 @@ defmodule ItemsExample do
       "Explain how Elixir processes work, and give me a simple example"
     )
 
-    # Iterate through all items
-    Enum.each(result.items, fn item ->
-      case item do
-        %Codex.Items.AgentMessage{text: text} ->
+    # Iterate through completed items in the event stream
+    Enum.each(result.events, fn
+      %Codex.Events.ItemCompleted{item: %Codex.Items.AgentMessage{text: text}} ->
           IO.puts("\n[Agent Message]")
           IO.puts(text)
 
-        %Codex.Items.Reasoning{text: text} ->
+      %Codex.Events.ItemCompleted{item: %Codex.Items.Reasoning{text: text}} ->
           IO.puts("\n[Reasoning]")
           IO.puts(text)
 
-        %Codex.Items.CommandExecution{command: cmd, exit_code: code} ->
+      %Codex.Events.ItemCompleted{
+        item: %Codex.Items.CommandExecution{command: cmd, exit_code: code, status: status}
+      } ->
           IO.puts("\n[Command Execution]")
           IO.puts("Command: #{cmd}")
-          IO.puts("Exit Code: #{code}")
+          IO.puts("Exit Code: #{inspect(code)} (#{status})")
 
-        _ ->
-          IO.puts("\n[Other Item: #{item.type}]")
-      end
+      %Codex.Events.ItemCompleted{item: %Codex.Items.FileChange{changes: changes}} ->
+        IO.puts("\n[File Changes]")
+        Enum.each(changes, fn %{path: path, kind: kind} ->
+          IO.puts("  #{kind}: #{path}")
+        end)
+
+      %Codex.Events.ItemCompleted{item: other} ->
+        IO.puts("\n[Other Item]")
+        IO.inspect(other, label: "item")
+
+      _ ->
+        :ok
     end)
   end
 end
@@ -236,8 +252,7 @@ defmodule StructuredOutputExample do
       turn_opts
     )
 
-    # Parse JSON response
-    case Jason.decode(result.final_response) do
+    case Codex.Turn.Result.json(result) do
       {:ok, data} ->
         IO.puts("Overall Score: #{data["overall_score"]}/100")
 
@@ -256,11 +271,15 @@ defmodule StructuredOutputExample do
         end)
 
       {:error, _} ->
-        IO.puts("Failed to parse JSON response")
+        IO.puts("Failed to parse structured response")
     end
   end
 end
 ```
+
+`result.final_response.parsed` contains the decoded payload whenever the response matches
+the requested schema. `Codex.Turn.Result.json/1` returns the same data alongside helpful
+error metadata.
 
 ### Using with TypedStruct
 
@@ -307,15 +326,14 @@ defmodule MyApp.CodeAnalysis do
     }
   end
 
-  def from_json(json_string) do
-    with {:ok, data} <- Jason.decode(json_string),
-         issues <- parse_issues(data["issues"]) do
-      {:ok, %__MODULE__{
-        overall_score: data["overall_score"],
-        issues: issues,
-        suggestions: data["suggestions"] || []
-      }}
-    end
+  def from_map(%{} = data) do
+    issues = parse_issues(data["issues"])
+
+    {:ok, %__MODULE__{
+      overall_score: data["overall_score"],
+      issues: issues,
+      suggestions: data["suggestions"] || []
+    }}
   end
 
   defp parse_issues(issues) when is_list(issues) do
@@ -335,8 +353,14 @@ end
 turn_opts = %Codex.Turn.Options{output_schema: MyApp.CodeAnalysis.schema()}
 {:ok, result} = Codex.Thread.run(thread, "Analyze code", turn_opts)
 
-{:ok, analysis} = MyApp.CodeAnalysis.from_json(result.final_response)
-IO.puts("Score: #{analysis.overall_score}")
+case {result.final_response, Codex.Turn.Result.json(result)} do
+  {%Codex.Items.AgentMessage{parsed: parsed}, {:ok, parsed}} ->
+    {:ok, analysis} = MyApp.CodeAnalysis.from_map(parsed)
+    IO.puts("Score: #{analysis.overall_score}")
+
+  {_, {:error, reason}} ->
+    IO.inspect(reason, label: "structured output error")
+end
 ```
 
 ---
@@ -358,7 +382,7 @@ defmodule ConversationExample do
       "I have a bug in my GenServer. It crashes when I send it a {:stop, reason} message."
     )
 
-    IO.puts("Agent: #{result1.final_response}")
+    IO.puts("Agent: #{render(result1.final_response)}")
 
     # Turn 2: Ask follow-up (agent remembers previous context)
     {:ok, result2} = Codex.Thread.run(
@@ -366,7 +390,7 @@ defmodule ConversationExample do
       "Can you show me an example of how to handle that message correctly?"
     )
 
-    IO.puts("\nAgent: #{result2.final_response}")
+    IO.puts("\nAgent: #{render(result2.final_response)}")
 
     # Turn 3: More specific
     {:ok, result3} = Codex.Thread.run(
@@ -374,11 +398,14 @@ defmodule ConversationExample do
       "What if I want to perform cleanup before stopping?"
     )
 
-    IO.puts("\nAgent: #{result3.final_response}")
+    IO.puts("\nAgent: #{render(result3.final_response)}")
 
     # Save thread_id for later
     IO.puts("\nThread ID: #{thread.thread_id}")
   end
+
+  defp render(%Codex.Items.AgentMessage{text: text}), do: text
+  defp render(_), do: "(no response produced)"
 end
 ```
 
@@ -398,7 +425,7 @@ defmodule ResumeExample do
       "Can you remind me what we were discussing?"
     )
 
-    IO.puts(result.final_response)
+    IO.puts(render(result.final_response))
   end
 
   def save_and_resume do
@@ -406,7 +433,7 @@ defmodule ResumeExample do
     {:ok, thread} = Codex.start_thread()
 
     {:ok, result1} = Codex.Thread.run(thread, "Remember the number 42")
-    IO.puts(result1.final_response)
+    IO.puts(render(result1.final_response))
 
     # Save thread_id (e.g., to database, file, etc.)
     thread_id = thread.thread_id
@@ -417,8 +444,11 @@ defmodule ResumeExample do
     {:ok, resumed_thread} = Codex.resume_thread(saved_id)
 
     {:ok, result2} = Codex.Thread.run(resumed_thread, "What number should I remember?")
-    IO.puts("\nAfter resuming: #{result2.final_response}")
+    IO.puts("\nAfter resuming: #{render(result2.final_response)}")
   end
+
+  defp render(%Codex.Items.AgentMessage{text: text}), do: text
+  defp render(_), do: "(no response produced)"
 end
 ```
 
@@ -819,8 +849,14 @@ defmodule ConcurrentExample do
     results = Task.await_many(tasks, 60_000)
 
     Enum.each(results, fn {file, result} ->
+      preview =
+        case result.final_response do
+          %Codex.Items.AgentMessage{text: text} -> String.slice(text, 0..200)
+          _ -> "(no response produced)"
+        end
+
       IO.puts("\n#{file}:")
-      IO.puts(String.slice(result.final_response, 0..200))
+      IO.puts(preview)
     end)
   end
 
@@ -830,7 +866,11 @@ defmodule ConcurrentExample do
       Task.async(fn ->
         {:ok, thread} = Codex.start_thread()
         {:ok, result} = Codex.Thread.run(thread, "Process #{item}")
-        result.final_response
+
+        case result.final_response do
+          %Codex.Items.AgentMessage{text: text} -> text
+          _ -> ""
+        end
       end)
     end)
 
@@ -847,8 +887,14 @@ defmodule ConcurrentExample do
 
     {:ok, result} = Codex.Thread.run(thread, summary_prompt)
 
-    IO.puts("Summary:")
-    IO.puts(result.final_response)
+    case result.final_response do
+      %Codex.Items.AgentMessage{text: text} ->
+        IO.puts("Summary:")
+        IO.puts(text)
+
+      _ ->
+        IO.puts("Summary not available")
+    end
   end
 end
 ```
@@ -874,7 +920,7 @@ defmodule CollaborationExample do
       """
       Review this code for security issues:
 
-      Analysis: #{analysis.final_response}
+      Analysis: #{analysis.final_response.text}
       """
     )
 
@@ -885,7 +931,7 @@ defmodule CollaborationExample do
       """
       Review this code for performance issues:
 
-      Analysis: #{analysis.final_response}
+      Analysis: #{analysis.final_response.text}
       """
     )
 
@@ -896,16 +942,52 @@ defmodule CollaborationExample do
     Synthesize these reviews into actionable recommendations:
 
     Security Review:
-    #{security_review.final_response}
+    #{security_review.final_response.text}
 
     Performance Review:
-    #{perf_review.final_response}
+    #{perf_review.final_response.text}
     """
 
     {:ok, final} = Codex.Thread.run(synthesizer, synthesis_prompt)
 
-    IO.puts("Final Recommendations:")
-    IO.puts(final.final_response)
+    case final.final_response do
+      %Codex.Items.AgentMessage{text: text} ->
+        IO.puts("Final Recommendations:")
+        IO.puts(text)
+
+      _ ->
+        IO.puts("No recommendations produced.")
+    end
+  end
+end
+```
+
+### Tool Output Bridging and Auto-Run
+
+Tool outputs captured during an auto-run attempt are automatically replayed to the
+`codex exec` CLI on the next continuation, keeping codex-rs aligned with the Elixir tool
+registry.
+
+```elixir
+defmodule ToolBridgingExample do
+  def run_with_registered_tool do
+    defmodule MathTool do
+      use Codex.Tool, name: "math_tool", description: "adds two numbers"
+
+      @impl true
+      def invoke(%{"x" => x, "y" => y}, _context), do: {:ok, %{"sum" => x + y}}
+    end
+
+    {:ok, _handle} = Codex.Tools.register(MathTool)
+
+    {:ok, thread} =
+      Codex.start_thread(approval_policy: Codex.Approvals.StaticPolicy.allow())
+
+    {:ok, result} =
+      Codex.Thread.run_auto(thread, "Ask the math tool to add 4 and 5", max_attempts: 2)
+
+    IO.inspect(result.raw[:tool_outputs], label: "tool outputs sent to codex exec")
+    IO.inspect(result.thread.pending_tool_outputs, label: "pending outputs after turn")
   end
 end
 ```
@@ -925,16 +1007,16 @@ defmodule StatefulStreamingExample do
         %Codex.Events.ThreadStarted{thread_id: id} ->
           %{state | thread_id: id}
 
-        %Codex.Events.ItemCompleted{item: %{type: :command_execution} = cmd} ->
+        %Codex.Events.ItemCompleted{item: %Codex.Items.CommandExecution{} = cmd} ->
           %{state | commands: [cmd | state.commands]}
 
-        %Codex.Events.ItemCompleted{item: %{type: :file_change} = file} ->
+        %Codex.Events.ItemCompleted{item: %Codex.Items.FileChange{} = file} ->
           %{state | files: [file | state.files]}
 
-        %Codex.Events.ItemCompleted{item: %{type: :agent_message, text: text}} ->
+        %Codex.Events.ItemCompleted{item: %Codex.Items.AgentMessage{text: text}} ->
           %{state | messages: [text | state.messages]}
 
-        %Codex.Events.TurnCompleted{usage: usage} ->
+        %Codex.Events.TurnCompleted{usage: usage} when is_map(usage) ->
           %{state | usage: usage}
 
         _ ->

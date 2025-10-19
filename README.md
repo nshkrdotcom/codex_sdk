@@ -147,6 +147,30 @@ schema = %{
 IO.inspect(data["issues"])
 ```
 
+### Runnable Examples
+
+The repository ships with standalone scripts under `examples/` that you can execute via `mix run`:
+
+```bash
+# Basic blocking turn and item traversal
+mix run examples/basic_usage.exs
+
+# Streaming patterns (real-time, progressive, stateful)
+mix run examples/streaming.exs progressive
+
+# Structured output decoding and struct mapping
+mix run examples/structured_output.exs struct
+
+# Conversation/resume workflow helpers
+mix run examples/conversation_and_resume.exs save-resume
+
+# Concurrency + collaboration demos
+mix run examples/concurrency_and_collaboration.exs parallel lib/codex/thread.ex lib/codex/exec.ex
+
+# Auto-run tool bridging (forwards outputs/failures to codex exec)
+mix run examples/tool_bridging_auto_run.exs
+```
+
 ### Resuming Threads
 
 Threads are persisted in `~/.codex/sessions`. Resume previous conversations:
@@ -185,6 +209,24 @@ turn_options = %Codex.Turn.Options{
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 ```
+
+### Telemetry & OTLP Exporting
+
+OpenTelemetry exporting is disabled by default. To ship traces/metrics to a collector, set
+`CODEX_OTLP_ENABLE=1` along with the endpoint (and optional headers) before starting your
+application:
+
+```bash
+export CODEX_OTLP_ENABLE=1
+export CODEX_OTLP_ENDPOINT="https://otel.example.com:4318"
+export CODEX_OTLP_HEADERS="authorization=Bearer abc123"
+
+mix run examples/basic_usage.exs
+```
+
+When the flag is not set (default), the SDK runs without booting the OTLP exporter—avoiding
+`tls_certificate_check` warnings on systems without the helper installed. See
+`docs/observability-runbook.md` for advanced setup instructions.
 
 ## Architecture
 

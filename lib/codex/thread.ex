@@ -7,7 +7,9 @@ defmodule Codex.Thread do
   alias Codex.Approvals
   alias Codex.Error
   alias Codex.Events
+  alias Codex.Items
   alias Codex.Options
+  alias Codex.OutputSchemaFile
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Tools
   alias Codex.Telemetry
@@ -20,7 +22,9 @@ defmodule Codex.Thread do
             metadata: %{},
             labels: %{},
             continuation_token: nil,
-            usage: %{}
+            usage: %{},
+            pending_tool_outputs: [],
+            pending_tool_failures: []
 
   @type t :: %__MODULE__{
           thread_id: String.t() | nil,
@@ -29,7 +33,9 @@ defmodule Codex.Thread do
           metadata: map(),
           labels: map(),
           continuation_token: String.t() | nil,
-          usage: map()
+          usage: map(),
+          pending_tool_outputs: [map()],
+          pending_tool_failures: [map()]
         }
 
   @doc false
@@ -45,7 +51,9 @@ defmodule Codex.Thread do
           metadata: %{},
           labels: %{},
           continuation_token: nil,
-          usage: %{}
+          usage: %{},
+          pending_tool_outputs: [],
+          pending_tool_failures: []
         ],
         extra
       )
@@ -58,33 +66,51 @@ defmodule Codex.Thread do
   @spec run(t(), String.t(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
   def run(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
-    meta = %{thread_id: thread.thread_id, input: input}
+    span_token = make_ref()
+
+    meta = %{
+      thread_id: thread.thread_id,
+      input: input,
+      originator: :sdk,
+      span_token: span_token
+    }
+
     Telemetry.emit([:codex, :thread, :start], %{system_time: System.system_time()}, meta)
     started_monotonic = System.monotonic_time()
 
-    with {:ok, exec_opts} <- build_exec_options(thread, turn_opts) do
-      case Codex.Exec.run(input, exec_opts) do
-        {:ok, exec_result} ->
-          duration = System.monotonic_time() - started_monotonic
+    with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
+      structured_output? = Map.get(exec_meta, :structured_output?, false)
 
-          Telemetry.emit(
-            [:codex, :thread, :stop],
-            %{duration: duration},
-            Map.put(meta, :result, :ok)
-          )
+      try do
+        case Codex.Exec.run(input, exec_opts) do
+          {:ok, exec_result} ->
+            duration = System.monotonic_time() - started_monotonic
 
-          {:ok, finalize_turn(thread, exec_result)}
+            Telemetry.emit(
+              [:codex, :thread, :stop],
+              %{duration: duration, system_time: System.system_time()},
+              Map.put(meta, :result, :ok)
+            )
 
-        {:error, reason} ->
-          duration = System.monotonic_time() - started_monotonic
+            exec_result = Map.put(exec_result, :structured_output?, structured_output?)
 
-          Telemetry.emit(
-            [:codex, :thread, :exception],
-            %{duration: duration},
-            Map.put(meta, :reason, reason)
-          )
+            {:ok, finalize_turn(thread, exec_result, exec_meta)}
 
-          {:error, reason}
+          {:error, reason} ->
+            duration = System.monotonic_time() - started_monotonic
+
+            Telemetry.emit(
+              [:codex, :thread, :exception],
+              %{duration: duration, system_time: System.system_time()},
+              meta
+              |> Map.put(:reason, reason)
+              |> Map.put(:result, :error)
+            )
+
+            {:error, reason}
+        end
+      after
+        cleanup.()
       end
     end
   end
@@ -97,9 +123,25 @@ defmodule Codex.Thread do
   @spec run_streamed(t(), String.t(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
   def run_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
-    with {:ok, exec_opts} <- build_exec_options(thread, turn_opts),
-         {:ok, stream} <- Codex.Exec.run_stream(input, exec_opts) do
-      {:ok, stream}
+    with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
+      structured_output? = Map.get(exec_meta, :structured_output?, false)
+
+      case Codex.Exec.run_stream(input, exec_opts) do
+        {:ok, stream} ->
+          wrapped =
+            Stream.transform(
+              stream,
+              fn -> :ok end,
+              fn event, acc -> {[maybe_decode_stream_event(event, structured_output?)], acc} end,
+              fn _ -> cleanup.() end
+            )
+
+          {:ok, wrapped}
+
+        {:error, reason} ->
+          cleanup.()
+          {:error, reason}
+      end
     end
   end
 
@@ -132,7 +174,7 @@ defmodule Codex.Thread do
        ) do
     case run(thread, input, turn_opts) do
       {:ok, %Result{} = result} ->
-        with {:ok, processed} <- handle_tool_requests(result) do
+        with {:ok, processed} <- handle_tool_requests(result, attempt) do
           merged_events = acc_events ++ processed.events
           merged_usage = merge_usage(acc_usage, processed.usage)
 
@@ -182,26 +224,39 @@ defmodule Codex.Thread do
   end
 
   defp build_exec_options(thread, turn_opts) do
-    {:ok,
-     Map.merge(
-       %{
-         codex_opts: thread.codex_opts,
-         thread: thread,
-         turn_opts: Map.new(turn_opts),
-         continuation_token: thread.continuation_token,
-         attachments: thread.thread_opts.attachments
-       },
-       %{}
-     )}
+    turn_opts_map = Map.new(turn_opts)
+    schema = Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
+
+    with {:ok, schema_path, cleanup} <- OutputSchemaFile.create(schema) do
+      filtered_turn_opts =
+        turn_opts_map
+        |> Map.delete(:output_schema)
+        |> Map.delete("output_schema")
+
+      exec_opts =
+        %{
+          codex_opts: thread.codex_opts,
+          thread: thread,
+          turn_opts: filtered_turn_opts,
+          continuation_token: thread.continuation_token,
+          attachments: thread.thread_opts.attachments,
+          tool_outputs: thread.pending_tool_outputs,
+          tool_failures: thread.pending_tool_failures
+        }
+        |> maybe_put(:output_schema_path, schema_path)
+
+      {:ok, exec_opts, cleanup, %{structured_output?: not is_nil(schema)}}
+    end
   end
 
-  defp finalize_turn(thread, %{events: events} = exec_result) do
-    {updated_thread, final_response, usage} = fold_events(thread, events)
+  defp finalize_turn(thread, %{events: events} = exec_result, opts) do
+    {updated_thread, final_response, usage} = fold_events(thread, events, opts)
 
-    updated_thread = %{
+    updated_thread =
       updated_thread
-      | usage: usage || thread.usage
-    }
+      |> Map.put(:usage, usage || thread.usage)
+      |> Map.put(:pending_tool_outputs, [])
+      |> Map.put(:pending_tool_failures, [])
 
     %Result{
       thread: updated_thread,
@@ -213,7 +268,9 @@ defmodule Codex.Thread do
     }
   end
 
-  defp fold_events(thread, events) do
+  defp fold_events(thread, events, opts) do
+    structured? = Map.get(opts, :structured_output?, false)
+
     Enum.reduce(events, {thread, nil, thread.usage, thread.continuation_token}, fn event,
                                                                                    {acc_thread,
                                                                                     response,
@@ -243,10 +300,10 @@ defmodule Codex.Thread do
           new_response =
             case item do
               %{"content" => %{"type" => "text", "text" => text}} ->
-                %{"type" => "text", "text" => text}
+                decode_agent_message(Map.get(item, "id"), text, structured?)
 
               %{"text" => text} when is_binary(text) ->
-                %{"type" => "text", "text" => text}
+                decode_agent_message(Map.get(item, "id"), text, structured?)
 
               _ ->
                 response
@@ -254,21 +311,20 @@ defmodule Codex.Thread do
 
           {acc_thread, new_response || response, usage, continuation}
 
-        %Events.ItemCompleted{item: item} ->
-          new_response =
-            case item do
-              %{"type" => "agent_message", "text" => text} ->
-                %{"type" => "text", "text" => text}
+        %Events.ItemCompleted{item: %Items.AgentMessage{text: text} = item} ->
+          decoded_item = maybe_decode_agent_item(item, text, structured?)
+          {acc_thread, decoded_item, usage, continuation}
 
-              _ ->
-                response
-            end
-
-          {acc_thread, new_response || response, usage, continuation}
+        %Events.ItemCompleted{} ->
+          {acc_thread, response, usage, continuation}
 
         %Events.TurnCompleted{} = completed ->
           new_usage = completed.usage || usage
-          new_response = completed.final_response || response
+
+          new_response =
+            completed.final_response
+            |> decode_final_response(structured?)
+            |> Kernel.||(response)
 
           new_continuation =
             if new_response do
@@ -310,16 +366,76 @@ defmodule Codex.Thread do
     end)
   end
 
+  defp decode_final_response(nil, _structured?), do: nil
+  defp decode_final_response(%Items.AgentMessage{} = item, _structured?), do: item
+
+  defp decode_final_response(%{"type" => "text", "text" => text}, structured?)
+       when is_binary(text) do
+    decode_agent_message(nil, text, structured?)
+  end
+
+  defp decode_final_response(%{type: "text", text: text}, structured?) when is_binary(text) do
+    decode_agent_message(nil, text, structured?)
+  end
+
+  defp decode_final_response(_other, _structured?), do: nil
+
+  defp decode_agent_message(id, text, structured?) do
+    maybe_parse_structured(id, text, structured?)
+  end
+
+  defp maybe_decode_agent_item(%Items.AgentMessage{id: id} = item, text, structured?) do
+    case maybe_parse_structured(id, text, structured?) do
+      %Items.AgentMessage{} = decoded -> decoded
+      _ -> item
+    end
+  end
+
+  defp maybe_parse_structured(id, text, true) when is_binary(text) do
+    with {:ok, decoded} <- Jason.decode(text) do
+      %Items.AgentMessage{id: id, text: text, parsed: decoded}
+    else
+      _ -> %Items.AgentMessage{id: id, text: text}
+    end
+  end
+
+  defp maybe_parse_structured(id, text, _structured?) when is_binary(text) do
+    %Items.AgentMessage{id: id, text: text}
+  end
+
+  defp maybe_parse_structured(_id, _text, _structured?), do: nil
+
+  defp maybe_decode_stream_event(
+         %Events.ItemCompleted{item: %Items.AgentMessage{text: text} = item} = event,
+         structured?
+       ) do
+    decoded = maybe_decode_agent_item(item, text, structured?)
+    %Events.ItemCompleted{event | item: decoded}
+  end
+
+  defp maybe_decode_stream_event(
+         %Events.TurnCompleted{final_response: response} = event,
+         structured?
+       ) do
+    decoded = decode_final_response(response, structured?) || response
+    %Events.TurnCompleted{event | final_response: decoded}
+  end
+
+  defp maybe_decode_stream_event(event, _structured?), do: event
+
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp handle_tool_requests(%Result{} = result) do
+  defp handle_tool_requests(%Result{} = result, attempt) do
     tool_events = Enum.filter(result.events, &match?(%Events.ToolCallRequested{}, &1))
 
     Enum.reduce_while(tool_events, {:ok, result}, fn event, {:ok, acc_result} ->
-      case maybe_invoke_tool(acc_result.thread, event) do
+      case maybe_invoke_tool(acc_result.thread, event, attempt) do
         {:ok, output} ->
           outputs = Map.get(acc_result.raw, :tool_outputs, [])
+
+          pending_outputs =
+            acc_result.thread.pending_tool_outputs ++ [%{call_id: event.call_id, output: output}]
 
           updated_raw =
             Map.put(
@@ -328,7 +444,30 @@ defmodule Codex.Thread do
               outputs ++ [%{call_id: event.call_id, output: output}]
             )
 
-          {:cont, {:ok, %Result{acc_result | raw: updated_raw}}}
+          updated_thread =
+            Map.put(acc_result.thread, :pending_tool_outputs, pending_outputs)
+
+          updated_result = %Result{acc_result | raw: updated_raw, thread: updated_thread}
+
+          {:cont, {:ok, updated_result}}
+
+        {:failure, reason} ->
+          failures =
+            Map.get(acc_result.raw, :tool_failures, []) ++
+              [%{call_id: event.call_id, reason: normalize_tool_failure(reason)}]
+
+          pending_failures =
+            acc_result.thread.pending_tool_failures ++
+              [%{call_id: event.call_id, reason: normalize_tool_failure(reason)}]
+
+          updated_raw = Map.put(acc_result.raw, :tool_failures, failures)
+
+          updated_thread =
+            Map.put(acc_result.thread, :pending_tool_failures, pending_failures)
+
+          updated_result = %Result{acc_result | raw: updated_raw, thread: updated_thread}
+
+          {:cont, {:ok, updated_result}}
 
         {:error, reason} ->
           {:halt, {:error, reason}}
@@ -336,10 +475,10 @@ defmodule Codex.Thread do
     end)
   end
 
-  defp handle_tool_requests(result), do: {:ok, result}
+  defp handle_tool_requests(result, _attempt), do: {:ok, result}
 
-  defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event) do
-    context = build_tool_context(thread, event)
+  defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt) do
+    context = build_tool_context(thread, event, attempt)
 
     # Prefer approval_hook over approval_policy
     policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
@@ -352,7 +491,7 @@ defmodule Codex.Thread do
             {:ok, output}
 
           {:error, reason} ->
-            {:error,
+            {:failure,
              Error.new(:tool_failure, "tool #{event.tool_name} failed", %{
                tool: event.tool_name,
                reason: reason
@@ -364,7 +503,7 @@ defmodule Codex.Thread do
     end
   end
 
-  defp build_tool_context(thread, event) do
+  defp build_tool_context(thread, event, attempt) do
     metadata = thread.thread_opts.metadata || %{}
 
     tool_context =
@@ -374,7 +513,21 @@ defmodule Codex.Thread do
       thread: thread,
       metadata: metadata,
       context: tool_context,
-      event: event
+      event: event,
+      attempt: attempt,
+      retry?: attempt > 1
     }
   end
+
+  defp normalize_tool_failure(%Codex.Error{} = error) do
+    %{
+      message: error.message,
+      kind: error.kind,
+      details: error.details || %{}
+    }
+  end
+
+  defp normalize_tool_failure(value) when is_map(value), do: value
+  defp normalize_tool_failure(value) when is_binary(value), do: %{message: value}
+  defp normalize_tool_failure(value), do: %{message: inspect(value)}
 end

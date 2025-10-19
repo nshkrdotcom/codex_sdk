@@ -332,6 +332,34 @@ Context includes the current thread struct, event metadata, and any custom entri
 
 Removes a registered tool. Typically used in tests or when dynamically unloading capabilities.
 
+### `metrics/0`
+
+Returns an in-memory snapshot of invocation counters per tool.
+
+```elixir
+@spec metrics() :: %{optional(String.t()) => %{success: non_neg_integer(), failure: non_neg_integer(), last_latency_ms: non_neg_integer(), total_latency_ms: non_neg_integer(), last_error: term() | nil}}
+```
+
+Useful for integration tests or lightweight observability without relying on external telemetry backends.
+
+### `reset_metrics/0`
+
+Clears all accumulated metrics.
+
+```elixir
+@spec reset_metrics() :: :ok
+```
+
+Intended primarily for test setup/teardown routines.
+
+### Telemetry
+
+Every invocation emits `:telemetry` events using the following namespaces:
+
+- `[:codex, :tool, :start]` — dispatched prior to executing a tool, with metadata including `:tool`, `:call_id`, `:attempt`, and `:retry?`
+- `[:codex, :tool, :success]` — emitted on success with the same metadata plus the returned `:output`; measurements include `:duration` in native units
+- `[:codex, :tool, :failure]` — emitted on failures with the same measurements and an `:error` entry describing the failure
+
 ---
 
 ## Codex.Files
@@ -622,7 +650,8 @@ Text or JSON response from the agent.
 @type t() :: %Codex.Items.AgentMessage{
   id: String.t(),
   type: :agent_message,
-  text: String.t()
+  text: String.t(),
+  parsed: map() | list() | nil
 }
 ```
 
@@ -630,13 +659,15 @@ Text or JSON response from the agent.
 - `id`: Unique item identifier
 - `type`: Always `:agent_message`
 - `text`: Response text (natural language or JSON when using output schema)
+- `parsed`: Decoded payload when an output schema is supplied (otherwise `nil`)
 
 **Example**:
 ```elixir
 %Codex.Items.AgentMessage{
   id: "msg_abc123",
   type: :agent_message,
-  text: "GenServers are process abstractions in Elixir..."
+  text: "GenServers are process abstractions in Elixir...",
+  parsed: nil
 }
 ```
 
@@ -989,16 +1020,26 @@ Result of a completed turn (from `run/3`).
 **Type**:
 ```elixir
 @type t() :: %Codex.Turn.Result{
-  items: [Codex.Items.t()],
-  final_response: String.t(),
-  usage: Codex.Events.Usage.t() | nil
+  thread: Codex.Thread.t(),
+  events: [Codex.Events.t()],
+  final_response: Codex.Items.AgentMessage.t() | map() | nil,
+  usage: map() | nil,
+  raw: map(),
+  attempts: non_neg_integer()
 }
 ```
 
 **Fields**:
-- `items`: All items produced during the turn
-- `final_response`: Final agent message text (last `AgentMessage` item)
+- `thread`: Updated thread struct containing continuation & metadata
+- `events`: Events emitted during the turn
+- `final_response`: Last agent message (typed struct with optional `parsed` payload)
 - `usage`: Token usage statistics (nil if turn failed before completion)
+- `raw`: Underlying exec metadata (`events`, CLI flags, etc.)
+- `attempts`: Number of attempts performed (useful for auto-run)
+
+**Helpers**:
+
+- `Codex.Turn.Result.json/1` — returns `{:ok, map()}` when structured output was decoded, or an error tuple (`{:error, :not_structured}` / `{:error, {:invalid_json, reason}}`).
 
 ---
 

@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_structured","metadata":{"labels":{"topic":"structured"}}}
+{"type":"turn.started","turn_id":"turn_structured","thread_id":"thread_structured"}
+{"type":"item.started","item":{"id":"agent_item","type":"agent_message","text":"{\"status\":\"ok\",\"count\":2}"}}
+{"type":"item.completed","item":{"id":"agent_item","type":"agent_message","text":"{\"status\":\"ok\",\"count\":2}"}}
+{"type":"turn.completed","turn_id":"turn_structured","thread_id":"thread_structured","final_response":{"type":"text","text":"{\"status\":\"ok\",\"count\":2}"},"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"total_tokens":15}}

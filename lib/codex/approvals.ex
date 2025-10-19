@@ -131,7 +131,8 @@ defmodule Codex.Approvals do
       %{system_time: System.system_time()},
       %{
         tool: tool_name,
-        call_id: call_id
+        call_id: call_id,
+        originator: :sdk
       }
     )
   end
@@ -142,8 +143,11 @@ defmodule Codex.Approvals do
 
     Telemetry.emit(
       [:codex, :approval, :approved],
-      %{duration: duration},
-      %{tool: tool_name}
+      %{duration: duration, system_time: System.system_time()},
+      %{
+        tool: tool_name,
+        originator: :sdk
+      }
     )
   end
 
@@ -153,10 +157,11 @@ defmodule Codex.Approvals do
 
     Telemetry.emit(
       [:codex, :approval, :denied],
-      %{duration: duration},
+      %{duration: duration, system_time: System.system_time()},
       %{
         tool: tool_name,
-        reason: reason
+        reason: reason,
+        originator: :sdk
       }
     )
   end
@@ -167,8 +172,11 @@ defmodule Codex.Approvals do
 
     Telemetry.emit(
       [:codex, :approval, :timeout],
-      %{duration: duration},
-      %{tool: tool_name}
+      %{duration: duration, system_time: System.system_time()},
+      %{
+        tool: tool_name,
+        originator: :sdk
+      }
     )
   end
 
