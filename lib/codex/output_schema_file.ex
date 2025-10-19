@@ -1,5 +1,8 @@
 defmodule Codex.OutputSchemaFile do
-  @moduledoc false
+  @moduledoc """
+  Persists structured output schemas to temporary JSON files so they can be passed to the
+  Codex CLI. Returns the generated path alongside a cleanup function for RAII-style usage.
+  """
 
   @schema_prefix "codex_output_schema"
 
@@ -26,6 +29,7 @@ defmodule Codex.OutputSchemaFile do
     error -> {:error, error}
   end
 
+  @doc false
   defp cleanup_file(path) do
     File.rm(path)
     :ok

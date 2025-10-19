@@ -28,7 +28,10 @@ defmodule Codex.Items do
           | Error.t()
 
   defmodule AgentMessage do
-    @moduledoc false
+    @moduledoc """
+    Assistant-authored message item emitted by the Codex runtime, with optional parsed
+    payloads for structured output experiments.
+    """
 
     @enforce_keys [:text]
     defstruct id: nil, type: :agent_message, text: nil, parsed: nil
@@ -42,7 +45,9 @@ defmodule Codex.Items do
   end
 
   defmodule Reasoning do
-    @moduledoc false
+    @moduledoc """
+    Intermediate reasoning trace shared as part of tool or agent transparency.
+    """
 
     @enforce_keys [:text]
     defstruct id: nil, type: :reasoning, text: nil
@@ -55,7 +60,10 @@ defmodule Codex.Items do
   end
 
   defmodule CommandExecution do
-    @moduledoc false
+    @moduledoc """
+    Captures an execution request made by the agent, including aggregated output and
+    status metadata.
+    """
 
     @enforce_keys [:command]
     defstruct id: nil,
@@ -78,7 +86,10 @@ defmodule Codex.Items do
   end
 
   defmodule FileChange do
-    @moduledoc false
+    @moduledoc """
+    Represents a file diff emitted by the agent, including per-path change metadata and
+    completion status.
+    """
 
     @enforce_keys [:changes, :status]
     defstruct id: nil,
@@ -100,7 +111,9 @@ defmodule Codex.Items do
   end
 
   defmodule McpToolCall do
-    @moduledoc false
+    @moduledoc """
+    Metadata describing a tool invocation routed through an MCP server.
+    """
 
     @enforce_keys [:server, :tool]
     defstruct id: nil,
@@ -121,7 +134,9 @@ defmodule Codex.Items do
   end
 
   defmodule WebSearch do
-    @moduledoc false
+    @moduledoc """
+    Records a web search request issued by the agent, preserving the original query.
+    """
 
     @enforce_keys [:query]
     defstruct id: nil, type: :web_search, query: nil
@@ -134,7 +149,9 @@ defmodule Codex.Items do
   end
 
   defmodule TodoList do
-    @moduledoc false
+    @moduledoc """
+    Structured checklist shared by the agent to track outstanding follow-up items.
+    """
 
     @enforce_keys [:items]
     defstruct id: nil, type: :todo_list, items: []
@@ -149,7 +166,9 @@ defmodule Codex.Items do
   end
 
   defmodule Error do
-    @moduledoc false
+    @moduledoc """
+    Normalised error record describing failures surfaced during a turn.
+    """
 
     @enforce_keys [:message]
     defstruct id: nil, type: :error, message: nil
@@ -394,23 +413,25 @@ defmodule Codex.Items do
   defp get(map, key), do: get(map, key, nil)
 
   defp get(map, key, default) when is_atom(key) do
-    Map.get(map, key) || Map.get(map, Atom.to_string(key)) || default
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> get(map, Atom.to_string(key), default)
+    end
   end
 
   defp get(map, key, default) when is_binary(key) do
-    Map.get(map, key) || fetch_atom_key(map, key) || default
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> fetch_atom_key(map, key, default)
+    end
   end
 
-  defp get(map, key, default) do
-    Map.get(map, key, default)
-  end
-
-  defp fetch_atom_key(map, key) do
+  defp fetch_atom_key(map, key, default) do
     key
     |> String.to_existing_atom()
-    |> then(&Map.get(map, &1))
+    |> then(&Map.get(map, &1, default))
   rescue
-    ArgumentError -> nil
+    ArgumentError -> default
   end
 
   defp maybe_put(map, _key, nil), do: map

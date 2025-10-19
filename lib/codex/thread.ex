@@ -520,10 +520,16 @@ defmodule Codex.Thread do
   end
 
   defp normalize_tool_failure(%Codex.Error{} = error) do
+    details =
+      case error.details do
+        value when is_map(value) -> value
+        _ -> %{}
+      end
+
     %{
       message: error.message,
       kind: error.kind,
-      details: error.details || %{}
+      details: details
     }
   end
 

@@ -419,8 +419,8 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 - **Testing & Quality**: [docs/04-testing-strategy.md](docs/04-testing-strategy.md), [docs/08-tdd-implementation-guide.md](docs/08-tdd-implementation-guide.md), and [docs/observability-runbook.md](docs/observability-runbook.md)
 - **API & Examples**: [docs/05-api-reference.md](docs/05-api-reference.md), [docs/06-examples.md](docs/06-examples.md), and [docs/fixtures.md](docs/fixtures.md)
 - **Python Parity**: [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md) and [docs/python-parity-checklist.md](docs/python-parity-checklist.md)
-- **Design Dossiers**: All files under [docs/design/](docs/design) cover attachments, error handling, telemetry, sandbox approvals, and more
-- **Phase Notes**: Iteration notes and prompts under [docs/20251018/](docs/20251018) track ongoing parity milestones
+- **Design Dossiers**: All files under `docs/design/` cover attachments, error handling, telemetry, sandbox approvals, and more
+- **Phase Notes**: Iteration notes and prompts under `docs/20251018/` track ongoing parity milestones
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
 
 ## Project Status
@@ -440,7 +440,7 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 ### What's Next
 
 - Python parity tracking and contract validation (see [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md))
-- Phase notes for additional tooling integrations under [docs/20251018/](docs/20251018)
+- Phase notes for additional tooling integrations under `docs/20251018/`
 - Feedback-driven enhancements surfaced via GitHub Issues
 
 ## Contributing

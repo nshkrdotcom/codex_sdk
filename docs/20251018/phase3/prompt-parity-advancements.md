@@ -32,7 +32,7 @@ Work through each focus area sequentially, following red/green/refactor for ever
 
 2. **Rich Event Structs**
    - *Red*: expand `Codex.EventsTest` (and any integration tests) to expect typed structs for command execution, file change, MCP tool call, web search, and todo list events. Cover both parse and round-trip serialization.
-   - *Green*: implement the structs and parser updates in `Codex.Events`, update `Codex.Thread.fold_events/2` to incorporate new metadata, and ensure the turn result reflects richer data.
+   - *Green*: implement the structs and parser updates in `Codex.Events`, update the turn-event reducer in `Codex.Thread` (planned as {@literal Codex.Thread.fold_events/2}) to incorporate new metadata, and ensure the turn result reflects richer data.
    - *Refactor*: consolidate shared helpers, keep the struct definitions organized, and update docs or doctests as needed.
 
 3. **Structured Response Decoding**

@@ -421,7 +421,7 @@ defmodule Codex.Telemetry do
 
   defp maybe_set_status(span_ctx, :exception, metadata) do
     reason = Map.get(metadata, :reason)
-    Span.set_status(span_ctx, {:error, format_status_reason(reason)})
+    Span.set_status(span_ctx, OpenTelemetry.status(:error, format_status_reason(reason)))
   end
 
   defp maybe_set_status(_span_ctx, _status, _metadata), do: :ok

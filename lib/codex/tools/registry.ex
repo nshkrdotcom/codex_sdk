@@ -1,5 +1,8 @@
 defmodule Codex.Tools.Registry do
-  @moduledoc false
+  @moduledoc """
+  ETS-backed registry that stores Codex tool definitions, tracks invocation telemetry,
+  and provides lookup/invoke helpers used by the auto-run pipeline.
+  """
 
   alias Codex.Telemetry
   alias Codex.Tools
@@ -7,7 +10,10 @@ defmodule Codex.Tools.Registry do
 
   @table :codex_tools_registry
 
-  @doc false
+  @doc """
+  Registers a tool by name, storing the implementing module and metadata in ETS.
+  Returns a `Codex.Tools.Handle` for later deregistration.
+  """
   def register(%{name: name, module: module, metadata: metadata}) do
     ensure_table()
 
@@ -21,14 +27,18 @@ defmodule Codex.Tools.Registry do
     end
   end
 
-  @doc false
+  @doc """
+  Removes the supplied tool handle from the registry.
+  """
   def deregister(%Handle{name: name}) do
     ensure_table()
     :ets.delete(@table, name)
     :ok
   end
 
-  @doc false
+  @doc """
+  Looks up a tool by name and returns its metadata and module.
+  """
   def lookup(name) when is_binary(name) do
     ensure_table()
 
@@ -41,7 +51,10 @@ defmodule Codex.Tools.Registry do
     end
   end
 
-  @doc false
+  @doc """
+  Invokes a registered tool by name, normalising arguments and emitting telemetry around
+  the attempt. Returns the tool's response or an error tuple.
+  """
   def invoke(name, args, context) when is_binary(name) do
     with {:ok, %{module: module, metadata: metadata} = info} <- lookup(name) do
       normalized_args = Map.new(args)
@@ -112,7 +125,9 @@ defmodule Codex.Tools.Registry do
     end
   end
 
-  @doc false
+  @doc """
+  Clears the registry, deleting the underlying ETS table.
+  """
   def reset! do
     case :ets.whereis(@table) do
       :undefined -> :ok

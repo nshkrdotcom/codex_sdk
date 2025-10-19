@@ -84,6 +84,7 @@ defmodule CodexSdk.MixProject do
     extras =
       [
         "README.md",
+        "LICENSE",
         "CHANGELOG.md",
         "docs/01.md",
         "docs/02-architecture.md",
@@ -123,7 +124,8 @@ defmodule CodexSdk.MixProject do
           "docs/08-tdd-implementation-guide.md",
           "docs/fixtures.md",
           "docs/observability-runbook.md",
-          "docs/python-parity-checklist.md"
+          "docs/python-parity-checklist.md",
+          "LICENSE"
         ],
         Design: design_docs,
         "Implementation Phases": phase_docs,

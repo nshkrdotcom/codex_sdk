@@ -1,5 +1,8 @@
 defmodule Codex.Files.Registry do
-  @moduledoc false
+  @moduledoc """
+  GenServer-backed manifest that tracks staged file attachments, deduplicates by checksum,
+  and prunes expired entries on a schedule. This powers the public `Codex.Files` helpers.
+  """
 
   use GenServer
 
@@ -18,6 +21,9 @@ defmodule Codex.Files.Registry do
           required(:destination_path) => Path.t()
         }
 
+  @doc """
+  Ensures the registry is running, starting it under the current process when necessary.
+  """
   @spec ensure_started() :: {:ok, pid()} | {:error, term()}
   def ensure_started do
     case Process.whereis(@registry) do
@@ -33,26 +39,42 @@ defmodule Codex.Files.Registry do
     end
   end
 
+  @doc """
+  Inserts or refreshes a staged attachment using the supplied options, returning the
+  canonical `Attachment` struct stored in ETS.
+  """
   @spec stage(stage_opts()) :: {:ok, Attachment.t()} | {:error, term()}
   def stage(opts) when is_map(opts) do
     GenServer.call(@registry, {:stage, opts})
   end
 
+  @doc """
+  Lists all staged attachments currently tracked in the manifest.
+  """
   @spec list() :: [Attachment.t()]
   def list do
     GenServer.call(@registry, :list)
   end
 
+  @doc """
+  Aggregates counts, sizes, and TTL information for staged attachments.
+  """
   @spec metrics() :: map()
   def metrics do
     GenServer.call(@registry, :metrics)
   end
 
+  @doc """
+  Triggers an immediate cleanup pass to remove expired attachments.
+  """
   @spec force_cleanup() :: :ok
   def force_cleanup do
     GenServer.call(@registry, :force_cleanup)
   end
 
+  @doc """
+  Clears the manifest and deletes staged files within the provided staging directory.
+  """
   @spec reset(Path.t()) :: :ok
   def reset(staging_dir) do
     GenServer.call(@registry, {:reset, staging_dir})

@@ -9,7 +9,7 @@
 ### Subagent Astra (API Strategist)
 - Define error structs: `Codex.Error`, `Codex.TransportError`, `Codex.ValidationError`, `Codex.ApprovalError`, etc.
 - Implement `Exception.message/1` to align with Python error strings for parity.
-- Offer helper `Codex.Error.normalize/1` converting raw tuples or exceptions into structured errors.
+- Offer helper {@literal Codex.Error.normalize/1} converting raw tuples or exceptions into structured errors.
 
 ### Subagent Borealis (Concurrency Specialist)
 - Ensure Exec layer traps exits and converts port crashes into structured errors with context (exit status, stderr tail).

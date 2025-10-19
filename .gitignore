@@ -24,3 +24,6 @@ codex_sdk-*.tar
 
 # Cloned codex repository
 /codex/
+
+# Dialyzer PLTs
+/priv/plts/

@@ -7,7 +7,7 @@
 
 ## Subagent Perspectives
 ### Subagent Astra (API Strategist)
-- Introduce `Codex.Approvals` behaviour with callbacks: `c:review_command/2`, `c:review_tool/2`, `c:review_file/2`.
+- Introduce `Codex.Approvals.Hook` behaviour with callbacks: `prepare/2`, `review_tool/3`, `review_command/3`, `review_file/3`, plus optional `await/2`.
 - Expose helper `Codex.Approvals.StaticPolicy` for simple allow/deny modes and `Codex.Approvals.Queue` for manual moderation.
 - Allow thread-level overrides via `Codex.Thread.Options`.
 

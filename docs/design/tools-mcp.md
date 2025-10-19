@@ -22,7 +22,7 @@
 - Define contract tests verifying Python vs Elixir tool invocation sequences using golden logs.
 
 ## Implementation Tasks
-- Implement behaviour `Codex.Tool` specifying `c:invoke/2`, metadata spec, and optional structured schema.
+- Implement behaviour `Codex.Tool` specifying an `invoke/2` callback, metadata spec, and optional structured schema.
 - Create `Codex.MCP.Client` handling handshake, capability negotiation, and message dispatch.
 - Provide auto-run support by wiring tool invocations into turn loop with approval checks.
 

@@ -18,9 +18,9 @@ Introduce a pluggable approval layer that lets SDK consumers route sandbox/tool 
 
 ## Architecture
 1. Define `Codex.Approvals.Hook` behaviour:
-   - `c:prepare/2` (called before invocation, may mutate metadata).
-   - `c:review_tool/3`, `c:review_command/3`, `c:review_file/3`.
-   - Optional `c:await/2` for async channels (returns `{:ok, decision}`).
+   - `prepare/2` (called before invocation, may mutate metadata).
+   - `review_tool/3`, `review_command/3`, `review_file/3`.
+   - Optional `await/2` for async channels (returns `{:ok, decision}`).
 2. Extend `Codex.Approvals` dispatcher:
    - If hook returns `{:async, ref}`, store ref in ETS and await via `await/2` with timeout from thread options.
    - Maintain backwards-compatible path for `StaticPolicy`.
@@ -33,13 +33,13 @@ Introduce a pluggable approval layer that lets SDK consumers route sandbox/tool 
 1. `Codex.Thread.run_auto/3` receives `tool.call.required`.
 2. `Codex.Approvals.review_tool/3` delegates to configured hook.
 3. For async, hook returns `{:async, ref, payload}`; `Codex.Approvals` emits telemetry and waits.
-4. Hook side-channel (user code) calls `Codex.Approvals.reply(ref, decision)`.
+4. Hook side-channel (user code) calls planned helper {@literal Codex.Approvals.reply/2}.
 5. Decision resumes auto-run loop.
 
 ## API Changes
 - `Codex.Thread.Options` gains `:approval_hook` and `:approval_timeout`.
 - New `Codex.Approvals.Hook` module with behaviour & default implementation.
-- Public `Codex.Approvals.reply/2`.
+- Public {@literal Codex.Approvals.reply/2}.
 
 ## Risks
 - Async wait could leak ETS entries; enforce timeouts & cleanup.
@@ -70,7 +70,7 @@ Introduce a pluggable approval layer that lets SDK consumers route sandbox/tool 
 - ✅ `examples/approval_hook_example.exs` - Usage examples
 
 ### Key Design Decisions
-1. **Auto-await**: When a hook returns `{:async, ref}` and implements `c:await/2`, the dispatcher automatically calls `await` rather than returning the async tuple. This simplifies the integration.
+1. **Auto-await**: When a hook returns `{:async, ref}` and implements `await/2`, the dispatcher automatically calls `await` rather than returning the async tuple. This simplifies the integration.
 2. **Backwards compatibility**: `approval_policy` (StaticPolicy) is still supported. `approval_hook` takes precedence if both are set.
 3. **Telemetry**: All approval lifecycle events emit telemetry for observability.
 4. **Timeout handling**: Async hooks that timeout are converted to `{:deny, "approval timeout"}` automatically.

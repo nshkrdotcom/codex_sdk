@@ -9,7 +9,7 @@
 ### Subagent Astra (API Strategist)
 - Maintain simple API signatures: `run(thread, input, opts \\ [])` returning `{:ok, TurnResult.t()} | {:error, term()}`.
 - For streaming, return cold `Enumerable` that yields typed event structs; integrate with Elixir `Stream` API.
-- Expose auto-run via `Codex.Thread.run_auto/4` with optional callbacks mirroring Python's `on_event`.
+- Expose auto-run via `Codex.Thread.run_auto/3` with optional callbacks mirroring Python's `on_event`.
 
 ### Subagent Borealis (Concurrency Specialist)
 - Ensure each turn starts a dedicated `Codex.Exec` process supervised under a dynamic supervisor.

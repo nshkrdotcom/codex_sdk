@@ -19,7 +19,7 @@
    - Version pin lives in `config/native.exs` and is echoed in `mix.exs` metadata (`@codex_rs_commit`).
 2. **Mix Native Wrapper**
    - Introduce `Mix.Tasks.Codex.Install` that bootstraps Rust toolchain checks, applies any `patches/codex-rs/*.patch`, and runs `cargo build --release`.
-   - Built binaries land in `priv/codex/<platform>/codex`; path recorded in `Codex.Options.default_codex_path/0`.
+   - Built binaries land in `priv/codex/<platform>/codex`; path recorded in {@literal Codex.Options.default_codex_path/0}.
    - Cache build artifacts in `_build/native/<platform>` to keep CI fast.
 3. **Prebuilt Artifact Fallback**
    - Optional opt-in flag `mix codex.install --prebuilt` downloads signed archives from upstream release buckets.

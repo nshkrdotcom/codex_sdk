@@ -5,7 +5,7 @@ This document enumerates the outstanding module work required to achieve full pa
 ## Core Event Domain (`Codex.Events`)
 - **Tasks**
   - Generate dedicated struct modules for every event type emitted by codex-rs (thread, turn, item deltas, sandbox decisions, tool calls, attachments, telemetry).
-  - Implement `Codex.Events.parse!/1` and `Codex.Events.serialize/1` with exhaustive pattern matching.
+  - Implement {@literal Codex.Events.parse!/1} and {@literal Codex.Events.serialize/1} with exhaustive pattern matching.
   - Ensure enumerated atom types (`:thread_started`, `:turn_completed`, etc.) remain in sync with Python enums.
 - **Tests**
   - Table-driven fixtures using `integration/fixtures/python/*.jsonl`.

@@ -7,7 +7,7 @@
 
 ## Subagent Perspectives
 ### Subagent Astra (API Strategist)
-- Provide APIs: `Codex.Files.stage/2`, `Codex.Files.upload/2`, `Codex.Files.attach/3` returning attachment tokens.
+- Provide APIs: `Codex.Files.stage/2`, {@literal Codex.Files.upload/2}, `Codex.Files.attach/2` returning attachment tokens.
 - Ensure Elixir structs mirror Python file descriptors (`id`, `name`, `size`, `content_type`, `checksum`).
 - Add convenience wrappers for streaming binary data vs. file paths.
 
@@ -24,7 +24,7 @@
 ## Implementation Tasks
 - Build staging directory under `_build/codex_files` with configurable location.
 - Implement dedup index using ETS or persistent term keyed by checksum.
-- Provide `Codex.Files.temporary/1` helper returning RAII-style struct with cleanup on drop.
+- Provide {@literal Codex.Files.temporary/1} helper returning RAII-style struct with cleanup on drop.
 
 ### Current Status
 - `Codex.Files.stage/2` stages attachments into a checksum-keyed directory, records TTL metadata, and deduplicates repeated content while refreshing expiry windows.
