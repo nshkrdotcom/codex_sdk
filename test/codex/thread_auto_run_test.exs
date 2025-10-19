@@ -1,11 +1,11 @@
 defmodule Codex.ThreadAutoRunTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.TestSupport.FixtureScripts
   alias Codex.ApprovalError
   alias Codex.Approvals.StaticPolicy
-  alias Codex.{Options, Thread, Tools}
+  alias Codex.{Items, Options, Thread, Tools}
 
   defmodule MathTool do
     use Codex.Tool, name: "math_tool", description: "adds provided numbers"
@@ -19,10 +19,19 @@ defmodule Codex.ThreadAutoRunTest do
     end
   end
 
+  defmodule FlakyTool do
+    use Codex.Tool, name: "flaky_tool", description: "fails once before success"
+
+    @impl true
+    def invoke(_args, %{retry?: false}), do: {:error, :transient_failure}
+    def invoke(_args, _context), do: {:ok, %{"status" => "ok"}}
+  end
+
   setup do
     {:ok, thread_opts} = ThreadOptions.new(%{})
 
     Tools.reset!()
+    Tools.reset_metrics()
 
     {:ok, thread_opts: thread_opts}
   end
@@ -51,7 +60,7 @@ defmodule Codex.ThreadAutoRunTest do
       assert {:ok, result} =
                Thread.run_auto(thread, "Hello Codex", max_attempts: 3, backoff: fn _ -> :ok end)
 
-      assert result.final_response == %{"type" => "text", "text" => "All operations succeeded"}
+      assert %Items.AgentMessage{text: "All operations succeeded"} = result.final_response
       assert result.thread.continuation_token == nil
 
       assert result.thread.usage == %{
@@ -167,6 +176,53 @@ defmodule Codex.ThreadAutoRunTest do
 
       assert {:error, %ApprovalError{tool: "math_tool", reason: "blocked"}} =
                Thread.run_auto(thread, "Blocked", max_attempts: 1, backoff: fn _ -> :ok end)
+    end
+  end
+
+  describe "tool auto-run metrics" do
+    setup %{thread_opts: thread_opts} do
+      Tools.reset_metrics()
+      {:ok, _} = Tools.register(FlakyTool, name: "flaky_tool")
+
+      allow_opts =
+        thread_opts
+        |> Map.put(:approval_policy, StaticPolicy.allow())
+
+      {:ok, thread_opts: allow_opts}
+    end
+
+    test "retry updates failure then success metrics", %{thread_opts: thread_opts} do
+      {script_path, state_file} =
+        FixtureScripts.sequential_fixtures([
+          "thread_tool_retry_step1.jsonl",
+          "thread_tool_retry_step2.jsonl",
+          "thread_tool_retry_step3.jsonl"
+        ])
+
+      on_exit(fn ->
+        File.rm_rf(script_path)
+        File.rm_rf(state_file)
+      end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:ok, result} =
+               Thread.run_auto(thread, "Retry please", max_attempts: 5, backoff: fn _ -> :ok end)
+
+      assert %Items.AgentMessage{text: "Retried successfully"} = result.final_response
+      assert result.attempts == 3
+
+      metrics = Tools.metrics()
+      assert metrics["flaky_tool"].failure == 1
+      assert metrics["flaky_tool"].success == 1
+      assert metrics["flaky_tool"].last_error == nil
+      assert metrics["flaky_tool"].total_latency_ms >= metrics["flaky_tool"].last_latency_ms
     end
   end
 end

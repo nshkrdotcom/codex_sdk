@@ -191,10 +191,8 @@ defmodule Codex.ApprovalsTest do
           [:codex, :approval, :denied],
           [:codex, :approval, :timeout]
         ],
-        fn event_name, measurements, metadata, _config ->
-          send(self(), {:telemetry, event_name, measurements, metadata})
-        end,
-        nil
+        &__MODULE__.forward_approval_event/4,
+        self()
       )
 
       on_exit(fn ->
@@ -214,10 +212,12 @@ defmodule Codex.ApprovalsTest do
       assert is_integer(measurements.system_time)
       assert metadata.tool == "test_tool"
       assert metadata.call_id == "call_1"
+      assert metadata.originator == :sdk
 
       assert_receive {:telemetry, [:codex, :approval, :approved], measurements, metadata}
-      assert is_integer(measurements.duration)
+      assert is_integer(measurements.duration_ms)
       assert metadata.tool == "test_tool"
+      assert metadata.originator == :sdk
     end
 
     test "emits requested and denied events for sync deny" do
@@ -228,8 +228,9 @@ defmodule Codex.ApprovalsTest do
 
       assert_receive {:telemetry, [:codex, :approval, :requested], _measurements, _metadata}
       assert_receive {:telemetry, [:codex, :approval, :denied], measurements, metadata}
-      assert is_integer(measurements.duration)
+      assert is_integer(measurements.duration_ms)
       assert metadata.reason == "blocked by policy"
+      assert metadata.originator == :sdk
     end
 
     test "emits timeout event for async timeout" do
@@ -241,11 +242,17 @@ defmodule Codex.ApprovalsTest do
         Approvals.review_tool(AsyncTimeoutHook, event, context, timeout: 50)
 
       # Check for telemetry events
-      assert_receive {:telemetry, [:codex, :approval, :requested], _measurements, _metadata}
+      assert_receive {:telemetry, [:codex, :approval, :requested], _measurements, metadata}
+      assert metadata.originator == :sdk
       assert_receive {:telemetry, [:codex, :approval, :timeout], measurements, metadata}
-      assert is_integer(measurements.duration)
+      assert is_integer(measurements.duration_ms)
       assert metadata.tool == "test_tool"
+      assert metadata.originator == :sdk
     end
+  end
+
+  def forward_approval_event(event_name, measurements, metadata, pid) do
+    send(pid, {:telemetry, event_name, measurements, metadata})
   end
 
   describe "backwards compatibility" do

@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_retry_123","metadata":{"labels":{"topic":"retry"},"created_at":"2024-07-18T12:20:00Z"}}
+{"type":"turn.started","turn_id":"turn_retry_attempt1","thread_id":"thread_retry_123"}
+{"type":"tool.call.required","thread_id":"thread_retry_123","turn_id":"turn_retry_attempt1","call_id":"retry_call_1","tool_name":"flaky_tool","arguments":{"value":1},"requires_approval":false}
+{"type":"turn.continuation","thread_id":"thread_retry_123","turn_id":"turn_retry_attempt1","continuation_token":"cont-retry","retryable":true,"reason":"tool_call"}
+{"type":"turn.completed","turn_id":"turn_retry_attempt1","thread_id":"thread_retry_123","status":"pending","usage":{"input_tokens":8,"cached_input_tokens":0,"output_tokens":0,"total_tokens":8}}

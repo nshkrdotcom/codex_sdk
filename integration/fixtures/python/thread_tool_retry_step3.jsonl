@@ -1,0 +1,4 @@
+{"type":"turn.started","turn_id":"turn_retry_attempt3","thread_id":"thread_retry_123"}
+{"type":"tool.call.completed","thread_id":"thread_retry_123","turn_id":"turn_retry_attempt3","call_id":"retry_call_2","tool_name":"flaky_tool","output":{"status":"ok"}}
+{"type":"item.agent_message.delta","item":{"id":"item_retry_msg","type":"agent_message","role":"assistant","content":{"type":"text","text":"Retried successfully"}}}
+{"type":"turn.completed","turn_id":"turn_retry_attempt3","thread_id":"thread_retry_123","final_response":{"type":"text","text":"Retried successfully"},"usage":{"input_tokens":4,"cached_input_tokens":0,"output_tokens":8,"total_tokens":12}}

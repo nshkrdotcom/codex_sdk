@@ -3,7 +3,7 @@ defmodule Codex.Integration.TurnResumptionTest do
 
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.TestSupport.FixtureScripts
-  alias Codex.{Options, Thread}
+  alias Codex.{Items, Options, Thread}
 
   @moduletag :integration
 
@@ -38,6 +38,6 @@ defmodule Codex.Integration.TurnResumptionTest do
 
     assert resumed.thread.thread_id == "thread_auto_123"
     assert resumed.thread.continuation_token == nil
-    assert resumed.final_response == %{"type" => "text", "text" => "All operations succeeded"}
+    assert %Items.AgentMessage{text: "All operations succeeded"} = resumed.final_response
   end
 end

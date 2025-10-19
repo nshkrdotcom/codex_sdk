@@ -1,0 +1,4 @@
+{"type":"turn.started","turn_id":"turn_retry_attempt2","thread_id":"thread_retry_123"}
+{"type":"tool.call.required","thread_id":"thread_retry_123","turn_id":"turn_retry_attempt2","call_id":"retry_call_2","tool_name":"flaky_tool","arguments":{"value":2},"requires_approval":false}
+{"type":"turn.continuation","thread_id":"thread_retry_123","turn_id":"turn_retry_attempt2","continuation_token":"cont-retry","retryable":true,"reason":"tool_call"}
+{"type":"turn.completed","turn_id":"turn_retry_attempt2","thread_id":"thread_retry_123","status":"pending","usage":{"input_tokens":6,"cached_input_tokens":0,"output_tokens":0,"total_tokens":6}}
