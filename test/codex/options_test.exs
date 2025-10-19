@@ -17,8 +17,10 @@ defmodule Codex.OptionsTest do
       assert opts.telemetry_prefix == [:codex, :test]
     end
 
-    test "requires API key" do
-      assert {:error, :missing_api_key} = Options.new(%{})
+    test "allows API key to be omitted" do
+      assert {:ok, opts} = Options.new(%{})
+      assert opts.api_key == nil
+      assert opts.model == nil
     end
   end
 end

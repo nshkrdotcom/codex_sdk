@@ -29,7 +29,7 @@ defmodule CodexSdk.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :crypto]
+      extra_applications: [:logger, :crypto, :erlexec]
     ]
   end
 
@@ -39,10 +39,12 @@ defmodule CodexSdk.MixProject do
       {:jason, "~> 1.4"},
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.3"},
+      {:erlexec, "~> 2.0"},
 
       # Testing
       {:supertester, "~> 0.2.1", only: :test},
       {:mox, "~> 1.0", only: :test},
+      {:stream_data, "~> 1.0", only: :test},
 
       # Development and documentation
       {:ex_doc, "~> 0.38.2", only: :dev, runtime: false},
@@ -91,7 +93,19 @@ defmodule CodexSdk.MixProject do
       ],
       groups_for_modules: [
         "Core API": [Codex, Codex.Thread],
-        Execution: [Codex.Exec],
+        Execution: [Codex.Exec, Codex.Telemetry],
+        Files: [Codex.Files],
+        Approvals: [Codex.Approvals, Codex.Approvals.StaticPolicy],
+        Tooling: [
+          Codex.Tool,
+          Codex.Tools,
+          Codex.MCP.Client
+        ],
+        Errors: [
+          Codex.Error,
+          Codex.TransportError,
+          Codex.ApprovalError
+        ],
         Types: [
           Codex.Options,
           Codex.Thread.Options,

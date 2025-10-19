@@ -26,6 +26,10 @@
 - Map sandbox options to codex-rs CLI flags and ensure they are idempotent.
 - Emit telemetry events (`[:codex, :approval, ...]`) for monitoring dashboards.
 
+### Current Status
+- `Codex.Approvals.StaticPolicy` ships with `allow/0` and `deny/1` helpers used by tests and the default auto-run pipeline.
+- Tool invocations now consult the configured policy and halt auto-run with a tagged error when denied.
+
 ## TDD Entry Points
 1. Red test where approval module denies command and turn returns specific error tuple.
 2. Add test verifying sandbox flag translation from thread options to codex-rs command line.

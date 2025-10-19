@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread_auto_123","metadata":{"labels":{"topic":"auto-run"}, "created_at":"2024-07-18T12:05:00Z"}}
+{"type":"turn.started","turn_id":"turn_auto_attempt_pending","thread_id":"thread_auto_123"}
+{"type":"turn.continuation","thread_id":"thread_auto_123","turn_id":"turn_auto_attempt_pending","continuation_token":"cont-auto-run","retryable":true,"reason":"tool_pending"}
+{"type":"turn.completed","turn_id":"turn_auto_attempt_pending","thread_id":"thread_auto_123","status":"pending","usage":{"input_tokens":8,"cached_input_tokens":0,"output_tokens":0,"total_tokens":8}}

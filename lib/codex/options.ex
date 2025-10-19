@@ -9,17 +9,21 @@ defmodule Codex.Options do
 
   @default_base_url "https://api.openai.com/v1"
 
-  @enforce_keys [:api_key]
+  @default_model System.get_env("CODEX_MODEL") || System.get_env("CODEX_MODEL_DEFAULT")
+
+  @enforce_keys []
   defstruct api_key: nil,
             base_url: @default_base_url,
             codex_path_override: nil,
-            telemetry_prefix: [:codex]
+            telemetry_prefix: [:codex],
+            model: @default_model
 
   @type t :: %__MODULE__{
-          api_key: String.t(),
+          api_key: String.t() | nil,
           base_url: String.t(),
           codex_path_override: String.t() | nil,
-          telemetry_prefix: [atom()]
+          telemetry_prefix: [atom()],
+          model: String.t()
         }
 
   @doc """
@@ -35,13 +39,15 @@ defmodule Codex.Options do
     with {:ok, api_key} <- fetch_api_key(attrs),
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
-         {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs) do
+         {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
+         {:ok, model} <- fetch_model(attrs) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
          base_url: base_url,
          codex_path_override: override,
-         telemetry_prefix: telemetry_prefix
+         telemetry_prefix: telemetry_prefix,
+         model: model
        }}
     end
   end
@@ -80,8 +86,8 @@ defmodule Codex.Options do
 
   defp fetch_api_key(attrs) do
     case pick(attrs, [:api_key, "api_key"], System.get_env("CODEX_API_KEY")) do
-      nil -> {:error, :missing_api_key}
-      "" -> {:error, :missing_api_key}
+      nil -> {:ok, nil}
+      "" -> {:ok, nil}
       key -> {:ok, key}
     end
   end
@@ -139,4 +145,14 @@ defmodule Codex.Options do
   end
 
   defp pick(_attrs, [], default), do: default
+
+  defp fetch_model(attrs) do
+    default = System.get_env("CODEX_MODEL") || @default_model
+
+    case pick(attrs, [:model, "model"], default) do
+      nil -> {:ok, nil}
+      "" -> {:ok, nil}
+      model -> {:ok, model}
+    end
+  end
 end

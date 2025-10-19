@@ -26,6 +26,11 @@
 - Create `Codex.MCP.Client` handling handshake, capability negotiation, and message dispatch.
 - Provide auto-run support by wiring tool invocations into turn loop with approval checks.
 
+### Current Status
+- Elixir registry mirrors Python decorators via `Codex.Tool` macro and the ETS-backed `Codex.Tools` module.
+- Auto-run loop invokes registered tools, merges outputs, and respects approval policies.
+- `Codex.MCP.Client.handshake/2` exchanges handshake messages and captures capabilities for registry seeding.
+
 ## TDD Entry Points
 1. Start with failing test registering tool module and invoking via mock codex event.
 2. Add MCP handshake integration test using script that emits handshake events.

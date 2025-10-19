@@ -7,6 +7,13 @@ Milestone 0 focuses on capturing golden event streams from the Python Codex SDK
 - Store fixtures under `integration/fixtures/python` with stable filenames and metadata.
 - Regenerate fixtures as the Python SDK evolves, keeping a clear audit trail.
 
+## Current Fixtures
+- `thread_basic.jsonl` – Baseline single-turn conversation fixture used by parity tests.
+- `thread_auto_run_step1.jsonl` / `thread_auto_run_step2.jsonl` – Continuation-aware auto-run scenario exercised by the Elixir auto-run loop tests.
+- `thread_auto_run_pending.jsonl` – Pending continuation fixture validating max-attempt guardrails.
+- `thread_tool_auto_step1.jsonl` / `thread_tool_auto_step2.jsonl` – Tool invocation scenario with continuation/resumption.
+- `thread_tool_auto_pending.jsonl` – Tool-approval denial transcript used to assert policy handling.
+
 ## Harvesting Workflow
 1. **Clone Python SDK**  
    Check out the `openai-agents-python` repository next to this project (or set `CODEX_PYTHON_SDK_PATH`).

@@ -26,6 +26,11 @@
 - Implement dedup index using ETS or persistent term keyed by checksum.
 - Provide `Codex.Files.temporary/1` helper returning RAII-style struct with cleanup on drop.
 
+### Current Status
+- `Codex.Files.stage/2` stages attachments into a checksum-keyed directory and deduplicates repeated content.
+- `Codex.Files.attach/2` propagates staged files onto thread options; `Codex.Exec` forwards attachments to the binary via CLI flags.
+- Cleanup API differentiates between ephemeral and persistent attachments.
+
 ## TDD Entry Points
 1. Write failing unit test verifying duplicate file returns cached descriptor.
 2. Add integration test for staged attachment participating in turn execution.

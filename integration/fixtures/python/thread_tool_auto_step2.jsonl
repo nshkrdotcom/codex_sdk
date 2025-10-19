@@ -1,0 +1,4 @@
+{"type":"turn.started","turn_id":"turn_tool_attempt2","thread_id":"thread_tool_123"}
+{"type":"tool.call.completed","thread_id":"thread_tool_123","turn_id":"turn_tool_attempt2","call_id":"tool_call_1","tool_name":"math_tool","output":{"sum":9}}
+{"type":"item.agent_message.delta","item":{"id":"item_tool_msg","type":"agent_message","role":"assistant","content":{"type":"text","text":"The sum is 9"}}}
+{"type":"turn.completed","turn_id":"turn_tool_attempt2","thread_id":"thread_tool_123","final_response":{"type":"text","text":"The sum is 9"},"usage":{"input_tokens":6,"cached_input_tokens":0,"output_tokens":12,"total_tokens":18}}

@@ -26,6 +26,11 @@
 - Instrument Exec GenServer to capture stderr buffer and include truncated output in errors.
 - Update turn pipeline to return `{:error, Codex.Error.t()}` consistently; document tuple shapes.
 
+### Current Status
+- Transport exits now surface `%Codex.TransportError{}` with exit status metadata.
+- Approval denials return `%Codex.ApprovalError{}` consumed by the auto-run loop.
+- Base `Codex.Error` struct provides structured error shape for future expansion.
+
 ## TDD Entry Points
 1. Start with failing test expecting `Codex.TransportError` when fake binary exits non-zero.
 2. Add test for structured validation failure returning Python-equivalent message.

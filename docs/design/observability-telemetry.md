@@ -26,6 +26,10 @@
 - Integrate telemetry calls into thread lifecycle, turn execution, tool invocation, and approvals.
 - Provide configuration for structured logging (JSON vs plain text).
 
+### Current Status
+- Thread lifecycle emits start/stop/exception telemetry with duration measurements.
+- Default logger handler attaches via `Codex.Telemetry.attach_default_logger/1` and mirrors Python output.
+
 ## TDD Entry Points
 1. Red test capturing telemetry for `start_thread` and asserting metadata fields.
 2. Add streaming run test verifying event count and ordering.

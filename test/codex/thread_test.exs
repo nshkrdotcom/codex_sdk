@@ -2,11 +2,16 @@ defmodule Codex.ThreadTest do
   use ExUnit.Case, async: true
 
   alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.Events
   alias Codex.{Options, Thread}
+  alias Codex.TestSupport.FixtureScripts
 
   describe "run/3" do
     test "returns turn result and updates thread metadata" do
-      codex_path = fixture_script_path("thread_basic.jsonl")
+      codex_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
 
       {:ok, codex_opts} =
         Options.new(%{
@@ -35,7 +40,10 @@ defmodule Codex.ThreadTest do
 
   describe "run_streamed/3" do
     test "lazy stream yields events" do
-      codex_path = fixture_script_path("thread_basic.jsonl")
+      codex_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
 
       {:ok, codex_opts} =
         Options.new(%{
@@ -51,22 +59,7 @@ defmodule Codex.ThreadTest do
       assert is_function(stream, 2)
       events = Enum.to_list(stream)
       assert length(events) == 5
-      assert Enum.any?(events, &(&1["type"] == "turn.completed"))
+      assert Enum.any?(events, &match?(%Events.TurnCompleted{}, &1))
     end
-  end
-
-  defp fixture_script_path(fixture_name) do
-    path = Path.join([File.cwd!(), "integration", "fixtures", "python", fixture_name])
-
-    script = """
-    #!/usr/bin/env bash
-    cat "#{path}"
-    """
-
-    tmp_path = Path.join(System.tmp_dir!(), "mock_codex_#{System.unique_integer([:positive])}")
-    File.write!(tmp_path, script)
-    File.chmod!(tmp_path, 0o755)
-    on_exit(fn -> File.rm_rf(tmp_path) end)
-    tmp_path
   end
 end

@@ -288,11 +288,12 @@ See the `examples/` directory for comprehensive demonstrations:
 - **`multi_turn.exs`** - Extended conversations with context
 - **`file_operations.exs`** - Watching file changes and commands
 - **`error_handling.exs`** - Robust error recovery patterns
+- **`live_cli_demo.exs`** - Calls the authenticated Codex CLI (requires `CODEX_API_KEY`)
 
 Run examples with:
 
 ```bash
-mix run examples/basic.exs
+mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
 
 ## Documentation
@@ -357,4 +358,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">Made with ❤️ and Elixir</p>
-

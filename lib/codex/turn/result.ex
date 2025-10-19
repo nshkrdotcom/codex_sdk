@@ -3,6 +3,7 @@ defmodule Codex.Turn.Result do
   Result struct returned from turn execution.
   """
 
+  alias Codex.Events
   alias Codex.Thread
 
   @enforce_keys [:thread, :events]
@@ -10,13 +11,15 @@ defmodule Codex.Turn.Result do
             events: [],
             final_response: nil,
             usage: nil,
-            raw: %{}
+            raw: %{},
+            attempts: 1
 
   @type t :: %__MODULE__{
           thread: Thread.t(),
-          events: [map()],
+          events: [Events.t()],
           final_response: map() | nil,
           usage: map() | nil,
-          raw: map()
+          raw: map(),
+          attempts: non_neg_integer()
         }
 end

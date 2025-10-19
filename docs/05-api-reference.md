@@ -244,9 +244,138 @@ commands = stream
 
 ---
 
+#### `run_auto/3`
+
+Executes an auto-run loop, retrying turn execution while the Codex engine exposes a continuation token.
+
+**Signature**:
+```elixir
+@spec run_auto(t(), String.t(), keyword()) ::
+  {:ok, Codex.Turn.Result.t()} | {:error, term()}
+```
+
+**Parameters**:
+- `thread`: Thread struct from `Codex.start_thread/2`
+- `input`: Prompt or instruction for the agent
+- `opts` (keyword):
+  - `:max_attempts` (default: `3`) — maximum auto-run attempts
+  - `:backoff` (default: exponential backoff) — unary function invoked before each retry
+  - `:turn_opts` (default: `%{}`) — forwarded to each `run/3` attempt
+
+**Returns**:
+- `{:ok, result}`: Completed turn with aggregated events, usage, and `attempts` count
+- `{:error, {:max_attempts_reached, max, context}}`: Continuation persisted after exhausting attempts
+- `{:error, reason}`: Underlying execution failure
+
+**Examples**:
+```elixir
+{:ok, thread} = Codex.start_thread()
+
+# Automatically resolve continuation tokens until completion
+{:ok, result} = Codex.Thread.run_auto(thread, "Generate release notes")
+
+result.attempts
+# => 2
+
+result.thread.usage
+# => %{"input_tokens" => 42, "output_tokens" => 35, ...}
+
+# Custom retry policy (no sleep) with explicit max attempts
+opts = [max_attempts: 5, backoff: fn _ -> :ok end]
+case Codex.Thread.run_auto(thread, "Execute plan", opts) do
+  {:ok, result} -> IO.inspect(result.final_response)
+  {:error, {:max_attempts_reached, _, %{continuation: token}}} ->
+    Logger.warn("manual follow-up required: #{token}")
+end
+```
+
+**Behavior**:
+- Invokes `run/3` sequentially while continuation tokens are present
+- Applies backoff between attempts; default uses exponential sleep
+- Aggregates usage metrics and events across attempts
+- Returns updated thread with continuation token cleared on success
+
+---
+
 ## Codex.Exec
 
 GenServer that manages the `codex-rs` process lifecycle. This module is typically used internally by `Codex.Thread`, but can be used directly for advanced use cases.
+
+---
+
+## Codex.Tools
+
+The tool registry keeps parity with Python's decorator-based tooling API. Tools can be registered dynamically and invoked automatically during auto-run cycles when the agent requests an external capability.
+
+### `register/2`
+
+Registers a tool module that implements `Codex.Tool`.
+
+```elixir
+@spec register(module(), keyword()) :: {:ok, Codex.Tools.Handle.t()} | {:error, term()}
+```
+
+- `:name` — identifier used by Codex events (defaults to module metadata or underscored module name)
+- `:description`, `:schema` — optional metadata merged with tool-provided metadata
+
+### `invoke/3`
+
+Invokes a registered tool with decoded arguments and contextual data.
+
+```elixir
+@spec invoke(String.t(), map(), map()) :: {:ok, map()} | {:error, term()}
+```
+
+Context includes the current thread struct, event metadata, and any custom entries stored under `Thread.Options.metadata` (mirroring Python's tool context).
+
+### `deregister/1`
+
+Removes a registered tool. Typically used in tests or when dynamically unloading capabilities.
+
+---
+
+## Codex.Files
+
+Staging and attachment helpers that keep file workflows deterministic.
+
+- `stage/2` — copies a source file into the staging directory, returning `%Codex.Files.Attachment{}` with checksum, size, and persistence metadata.
+- `attach/2` — appends a staged attachment to `Codex.Thread.Options`, deduplicating by checksum.
+- `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files during tests.
+
+Attachments are forwarded to the codex executable via CLI flags (`--attachment`, `--attachment-name`, `--attachment-checksum`), making the workflow match Python's file pipeline.
+
+---
+
+## Codex.Approvals.StaticPolicy
+
+Provides a lightweight approval policy used to gate tool invocations or sandbox-sensitive operations.
+
+- `allow/1` — always approves (`StaticPolicy.allow(reason: "optional")`).
+- `deny/1` — always denies with a custom reason, used in tests to emulate blocked flows.
+- `review_tool/3` — invoked by `Codex.Thread.run_auto/3` to determine whether a requested tool may execute.
+
+---
+
+## Codex.MCP.Client
+
+Thin client for performing capability handshake with MCP-compatible servers.
+
+- `handshake/2` — sends a handshake request (`{"type": "handshake"}`) and records advertised capabilities.
+- `capabilities/1` — returns the negotiated capability list used to seed the tool registry.
+
+---
+
+## Codex.Telemetry
+
+Helper module for emitting telemetry and wiring default logging.
+
+- `emit/3` — dispatches telemetry events (`:telemetry.execute`).
+- `attach_default_logger/1` — logs thread start/stop/exception events with configurable log level.
+
+## Error Types
+
+- `Codex.TransportError` — returned when the codex executable exits non-zero. Includes `exit_status` and optional `stderr` snippet.
+- `Codex.ApprovalError` — returned when an approval policy denies a tool invocation, exposing `tool` and `reason` fields.
 
 ### Functions
 

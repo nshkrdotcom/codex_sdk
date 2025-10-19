@@ -41,6 +41,9 @@ This document details the outstanding test coverage, automation, and CI pipeline
 3. **Cross-Platform**
    - Matrix for Ubuntu/macOS to validate binary handling and file permissions.
 
+### Current Automation
+- `mix codex.parity` and `mix codex.verify` tasks ship with the repo to streamline CI and local pre-flight checks.
+
 ## Test Tooling Backlog
 - Build fake codex binary generator (configurable event scripts) for integration tests.
 - Add telemetry capture helper to simplify event assertions.
