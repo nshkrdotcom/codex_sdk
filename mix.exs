@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -71,6 +71,35 @@ defmodule CodexSdk.MixProject do
   end
 
   defp docs do
+    design_docs =
+      "docs/design/*.md"
+      |> Path.wildcard()
+      |> Enum.sort()
+
+    phase_docs =
+      "docs/20251018/**/*.md"
+      |> Path.wildcard()
+      |> Enum.sort()
+
+    extras =
+      [
+        "README.md",
+        "CHANGELOG.md",
+        "docs/01.md",
+        "docs/02-architecture.md",
+        "docs/03-implementation-plan.md",
+        "docs/04-testing-strategy.md",
+        "docs/05-api-reference.md",
+        "docs/06-examples.md",
+        "docs/07-python-parity-plan.md",
+        "docs/08-tdd-implementation-guide.md",
+        "docs/fixtures.md",
+        "docs/observability-runbook.md",
+        "docs/python-parity-checklist.md"
+      ]
+      |> Enum.concat(design_docs)
+      |> Enum.concat(phase_docs)
+
     [
       main: "readme",
       name: "Codex SDK",
@@ -79,46 +108,66 @@ defmodule CodexSdk.MixProject do
       homepage_url: @source_url,
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
-      extras: [
-        "README.md",
-        "docs/01.md",
-        "docs/02-architecture.md",
-        "docs/03-implementation-plan.md",
-        "docs/04-testing-strategy.md",
-        "docs/05-api-reference.md",
-        "docs/06-examples.md"
-      ],
+      extras: extras,
       groups_for_extras: [
         Introduction: ["README.md", "docs/01.md"],
-        Design: [
+        "Getting Started": [
           "docs/02-architecture.md",
-          "docs/03-implementation-plan.md"
-        ],
-        Development: [
+          "docs/03-implementation-plan.md",
           "docs/04-testing-strategy.md",
-          "docs/05-api-reference.md",
-          "docs/06-examples.md"
-        ]
+          "docs/05-api-reference.md"
+        ],
+        Reference: [
+          "docs/06-examples.md",
+          "docs/07-python-parity-plan.md",
+          "docs/08-tdd-implementation-guide.md",
+          "docs/fixtures.md",
+          "docs/observability-runbook.md",
+          "docs/python-parity-checklist.md"
+        ],
+        Design: design_docs,
+        "Implementation Phases": phase_docs,
+        Changelog: ["CHANGELOG.md"]
       ],
       groups_for_modules: [
-        "Core API": [Codex, Codex.Thread],
-        Execution: [Codex.Exec, Codex.Telemetry],
-        Files: [Codex.Files],
-        Approvals: [Codex.Approvals, Codex.Approvals.Hook, Codex.Approvals.StaticPolicy],
+        "Public API": [
+          Codex,
+          Codex.Thread,
+          Codex.Thread.Options,
+          Codex.Options,
+          Codex.Turn.Result
+        ],
+        Execution: [
+          Codex.Exec,
+          Codex.Events,
+          Codex.Items,
+          Codex.Telemetry
+        ],
+        Files: [
+          Codex.Files,
+          Codex.Files.Registry,
+          Codex.OutputSchemaFile
+        ],
+        Approvals: [
+          Codex.Approvals,
+          Codex.Approvals.Registry,
+          Codex.Approvals.Hook,
+          Codex.Approvals.StaticPolicy,
+          Codex.ApprovalError
+        ],
         Tooling: [
           Codex.Tool,
           Codex.Tools,
+          Codex.Tools.Registry,
           Codex.MCP.Client
         ],
         Errors: [
           Codex.Error,
-          Codex.TransportError,
-          Codex.ApprovalError
+          Codex.TransportError
         ],
-        Types: [
-          Codex.Options,
-          Codex.Thread.Options,
-          Codex.Turn.Result
+        Tasks: [
+          Mix.Tasks.Codex.Parity,
+          Mix.Tasks.Codex.Verify
         ]
       ]
     ]
@@ -128,7 +177,7 @@ defmodule CodexSdk.MixProject do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib config mix.exs README.md docs LICENSE assets),
+      files: ~w(lib config mix.exs README.md CHANGELOG.md docs LICENSE assets examples),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

@@ -15,15 +15,14 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 ## Features
 
-- **Complete Codex Integration**: Full-featured wrapper around the `codex-rs` CLI
-- **Streaming & Non-Streaming**: Support for both real-time event streaming and buffered responses
-- **Type Safety**: Comprehensive structs for all events, items, and options
-- **OTP Native**: Built on GenServer for robust process management
-- **Structured Output**: JSON schema support with automatic temporary file handling
-- **Thread Management**: Create new conversations or resume existing sessions
-- **Battle-Tested**: Comprehensive test suite using Supertester for deterministic OTP testing
-- **Production Ready**: Robust error handling, supervision, and telemetry integration
-- **Working Directory Controls**: Flexible sandbox modes and path management
+- **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
+- **Streaming & Structured Output**: Real-time events plus first-class JSON schema handling for deterministic parsing.
+- **File & Attachment Pipeline**: Secure temp file registry, change events, and fixture harvesting helpers.
+- **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
+- **Tooling & MCP Integration**: Built-in registry for Codex tool manifests and MCP client helpers.
+- **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, and usage stats.
+- **Deterministic Testing**: Supertester-powered OTP test suite, contract fixtures, and live CLI validation.
+- **Developer Experience**: Mix tasks for parity verification, rich docs, runnable examples, and CI-friendly checks.
 
 ## Installation
 
@@ -32,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.1.0"}
+    {:codex_sdk, "~> 0.2.0"}
   ]
 end
 ```
@@ -186,29 +185,90 @@ thread_id = "thread_abc123"
 
 ```elixir
 # Codex-level options
-codex_options = %Codex.Options{
-  codex_path_override: "/custom/path/to/codex",
-  base_url: "https://api.openai.com",
-  api_key: System.get_env("OPENAI_API_KEY")
-}
+{:ok, codex_options} =
+  Codex.Options.new(
+    api_key: System.fetch_env!("CODEX_API_KEY"),
+    codex_path_override: "/custom/path/to/codex",
+    telemetry_prefix: [:codex, :sdk],
+    model: "o1"
+  )
 
 # Thread-level options
-thread_options = %Codex.Thread.Options{
-  model: "o1",
-  sandbox_mode: true,
-  working_directory: "/path/to/project",
-  skip_git_repo_check: false
-}
+{:ok, thread_options} =
+  Codex.Thread.Options.new(
+    metadata: %{project: "codex_sdk"},
+    labels: %{environment: "dev"},
+    auto_run: true,
+    sandbox: :strict,
+    approval_timeout_ms: 45_000
+  )
 
 {:ok, thread} = Codex.start_thread(codex_options, thread_options)
 
 # Turn-level options
-turn_options = %Codex.Turn.Options{
-  output_schema: my_json_schema
-}
+turn_options = %{output_schema: my_json_schema}
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 ```
+
+### Approval Hooks
+
+Codex ships with approval policies and hooks so you can review potentially destructive actions
+before the agent executes them. Policies are provided per-thread:
+
+```elixir
+policy = Codex.Approvals.StaticPolicy.deny(reason: "manual review required")
+
+{:ok, thread_opts} =
+  Codex.Thread.Options.new(
+    sandbox: :strict,
+    approval_policy: policy,
+    approval_timeout_ms: 60_000
+  )
+
+{:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
+```
+
+To integrate with external workflow tools, implement the `Codex.Approvals.Hook` behaviour and
+set it as the `approval_hook`:
+
+```elixir
+defmodule MyApp.ApprovalHook do
+  @behaviour Codex.Approvals.Hook
+
+  def review_tool(event, context, _opts) do
+    # Route to Slack/Jira/etc. and await a decision
+    if MyApp.RiskEngine.requires_manual_review?(event, context) do
+      {:deny, "pending review"}
+    else
+      :allow
+    end
+  end
+end
+
+{:ok, thread_opts} = Codex.Thread.Options.new(approval_hook: MyApp.ApprovalHook)
+{:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
+```
+
+Hooks can be synchronous or async (see `Codex.Approvals.Hook` for callback semantics), and all
+decisions emit telemetry so you can audit approvals externally.
+
+### File Attachments & Registries
+
+Stage attachments once and reuse them across turns or threads with the built-in registry:
+
+```elixir
+{:ok, attachment} = Codex.Files.stage("reports/summary.md", ttl_ms: :infinity)
+
+thread_opts =
+  %Codex.Thread.Options{}
+  |> Codex.Files.attach(attachment)
+
+{:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
+```
+
+Query `Codex.Files.metrics/0` for staging stats, force cleanup with `Codex.Files.force_cleanup/0`,
+and leverage `scripts/harvest_python_fixtures.py` to import parity fixtures from the Python SDK.
 
 ### Telemetry & OTLP Exporting
 
@@ -301,72 +361,87 @@ The SDK provides structured events for all Codex operations:
 
 The SDK uses [Supertester](https://hex.pm/packages/supertester) for robust, deterministic OTP testing:
 
+### Test & Quality Commands
+
 ```bash
-# Run all tests
 mix test
-
-# Run with coverage
 mix test --cover
-
-# Run integration tests (requires codex CLI)
 CODEX_TEST_LIVE=true mix test --include integration
+mix codex.verify
+mix codex.verify --dry-run
+mix codex.parity
+MIX_ENV=test mix credo --strict
+mix format --check-formatted
+MIX_ENV=dev mix dialyzer
 ```
+
+`mix codex.verify` orchestrates compile/format/test checks (pass `--dry-run` to preview), while
+`mix codex.parity` reports harvested Python fixtures—refresh them via
+`scripts/harvest_python_fixtures.py`.
 
 ### Test Features
 
 - **Zero `Process.sleep`**: All tests use proper OTP synchronization
 - **Fully Async**: All tests run with `async: true`
 - **Mock Support**: Tests work with mocked `codex-rs` output
-- **Live Testing**: Optional integration tests with real CLI
+- **Live Testing**: Optional integration tests with real CLI (`CODEX_TEST_LIVE=true`)
 - **Chaos Engineering**: Resilience testing for process crashes
 - **Performance Assertions**: SLA verification and leak detection
+- **Parity Fixtures**: Python fixture harvesting via `scripts/harvest_python_fixtures.py`
 
 ## Examples
 
 See the `examples/` directory for comprehensive demonstrations:
 
-- **`basic.exs`** - Simple conversation and streaming
-- **`structured_output.exs`** - JSON schema usage
-- **`multi_turn.exs`** - Extended conversations with context
-- **`file_operations.exs`** - Watching file changes and commands
-- **`error_handling.exs`** - Robust error recovery patterns
-- **`live_cli_demo.exs`** - Calls the authenticated Codex CLI (requires `CODEX_API_KEY`)
+- **`basic_usage.exs`** - First turn, follow-ups, and result inspection
+- **`streaming.exs`** - Real-time turn streaming (progressive and stateful modes)
+- **`structured_output.exs`** - JSON schema enforcement and decoding helpers
+- **`conversation_and_resume.exs`** - Persisting, resuming, and replaying conversations
+- **`concurrency_and_collaboration.exs`** - Multi-turn concurrency patterns
+- **`approval_hook_example.exs`** - Custom approval hook wiring and telemetry inspection
+- **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
+- **`live_cli_demo.exs`** - Live CLI walkthrough (requires `CODEX_TEST_LIVE=true` and CLI auth)
 
 Run examples with:
 
 ```bash
-mix run examples/live_cli_demo.exs "What is the capital of France?"
+mix run examples/basic_usage.exs
+
+# Live CLI example (requires authenticated codex CLI)
+CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
 
 ## Documentation
 
-Comprehensive documentation is available:
+HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
-- **[API Reference](https://hexdocs.pm/codex_sdk)** - Complete module and function docs
-- **[Architecture Guide](docs/02-architecture.md)** - System design and components
-- **[Implementation Plan](docs/03-implementation-plan.md)** - Development roadmap
-- **[Testing Strategy](docs/04-testing-strategy.md)** - TDD approach and patterns
-- **[API Reference Doc](docs/05-api-reference.md)** - Detailed API specifications
-- **[Examples Guide](docs/06-examples.md)** - Usage patterns and recipes
+- **Guides**: [docs/01.md](docs/01.md) (intro), [docs/02-architecture.md](docs/02-architecture.md), and [docs/03-implementation-plan.md](docs/03-implementation-plan.md)
+- **Testing & Quality**: [docs/04-testing-strategy.md](docs/04-testing-strategy.md), [docs/08-tdd-implementation-guide.md](docs/08-tdd-implementation-guide.md), and [docs/observability-runbook.md](docs/observability-runbook.md)
+- **API & Examples**: [docs/05-api-reference.md](docs/05-api-reference.md), [docs/06-examples.md](docs/06-examples.md), and [docs/fixtures.md](docs/fixtures.md)
+- **Python Parity**: [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md) and [docs/python-parity-checklist.md](docs/python-parity-checklist.md)
+- **Design Dossiers**: All files under [docs/design/](docs/design) cover attachments, error handling, telemetry, sandbox approvals, and more
+- **Phase Notes**: Iteration notes and prompts under [docs/20251018/](docs/20251018) track ongoing parity milestones
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
 
 ## Project Status
 
-**Current Version**: 0.1.0 (In Development)
+**Current Version**: 0.2.0 (Feature-complete Codex interface)
 
-### MVP Roadmap
+### v0.2.0 Highlights
 
-- [x] Project setup and structure
-- [x] Documentation and design
-- [ ] Core module implementation
-- [ ] Event and item type definitions
-- [ ] Exec GenServer with Port management
-- [ ] Thread management and turn execution
-- [ ] Streaming support
-- [ ] Test suite with Supertester
-- [ ] Examples and documentation
-- [ ] CI/CD pipeline
+- Core thread lifecycle with streaming, resumption, and structured output decoding
+- Comprehensive event and item structs mirroring Codex's JSON protocol
+- GenServer-based `Codex.Exec` process supervision with resilient Port management
+- Approval policies/hooks, tool registry, and sandbox-aware error handling
+- File staging registry, parity fixtures, and runnable examples for every workflow
+- Observability instrumentation with OTLP export gating and approval telemetry
+- Mix tasks (`mix codex.verify`, `mix codex.parity`) plus Supertester-powered contract suite
 
-See [docs/03-implementation-plan.md](docs/03-implementation-plan.md) for detailed progress.
+### What's Next
+
+- Python parity tracking and contract validation (see [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md))
+- Phase notes for additional tooling integrations under [docs/20251018/](docs/20251018)
+- Feedback-driven enhancements surfaced via GitHub Issues
 
 ## Contributing
 
