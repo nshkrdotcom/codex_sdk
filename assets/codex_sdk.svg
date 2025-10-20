@@ -18,6 +18,24 @@
       <stop offset="100%" stop-color="#060413" stop-opacity="0.2"/>
     </radialGradient>
 
+    <radialGradient id="backgroundVignette" cx="50%" cy="50%" r="78%">
+      <stop offset="0%" stop-color="#140c35" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#09041c" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#05020f" stop-opacity="0.9"/>
+    </radialGradient>
+
+    <linearGradient id="innerRingStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7bfff4" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#76a2ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ffb4ff" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <radialGradient id="bokehFill" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.75"/>
+      <stop offset="55%" stop-color="#9fe8ff" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
     <linearGradient id="cStroke" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#5ef4ff"/>
       <stop offset="50%" stop-color="#58ffe3"/>
@@ -65,6 +83,10 @@
 
     <filter id="sparkBlur" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="3"/>
+    </filter>
+
+    <filter id="bokehBlur" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="6"/>
     </filter>
 
     <radialGradient id="sigilHalo" cx="50%" cy="50%" r="68%">
@@ -184,6 +206,9 @@
     <circle cx="100" cy="90" r="110" fill="url(#chromatic)" filter="url(#ultraGlow)"/>
   </g>
 
+  <!-- Subtle vignette to pull focus toward the core -->
+  <rect width="200" height="200" fill="url(#backgroundVignette)" opacity="0.72"/>
+
   <!-- Main hexagon with enhanced shadow -->
   <g filter="url(#hexShadow)">
     <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
@@ -217,10 +242,20 @@
             stroke-linecap="round"/>
     </g>
 
+    <path d="M 100 26 L 158 58 L 158 122 L 100 154 L 42 122 L 42 58 Z"
+          fill="none"
+          stroke="url(#innerRingStroke)"
+          stroke-width="1.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          opacity="0.45"/>
+
     <g transform="translate(100, 100)">
       <g filter="url(#sigilGlow)" opacity="0.75">
         <circle cx="0" cy="0" r="44" fill="url(#sigilHalo)"/>
       </g>
+
+      <circle cx="0" cy="0" r="52" fill="none" stroke="url(#innerRingStroke)" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.65"/>
 
       <circle cx="0" cy="0" r="46" fill="none" stroke="url(#orbitStroke)" stroke-width="2.2" stroke-dasharray="12 7" stroke-linecap="round" opacity="0.95"/>
 
@@ -264,6 +299,10 @@
         <path d="M -18 6 C -6 10 6 10 18 6" fill="none" stroke="url(#arcStroke)" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="4 5"/>
       </g>
 
+      <circle cx="0" cy="0" r="34" fill="url(#bokehFill)" opacity="0.3"/>
+      <circle cx="0" cy="0" r="24" fill="none" stroke="url(#innerRingStroke)" stroke-width="0.8" stroke-opacity="0.55"/>
+      <circle cx="0" cy="0" r="16" fill="#ffffff" opacity="0.16"/>
+
       <!-- C letter with 3D depth -->
       <g filter="url(#depth3D)">
         <path d="M 34 -38 Q -44 -42 -52 0 Q -44 44 32 42"
@@ -273,6 +312,12 @@
               stroke-linecap="round"
               stroke-linejoin="round"/>
       </g>
+      <path d="M 28 -34 Q -36 -36 -42 0 Q -36 36 28 34"
+            fill="none"
+            stroke="#f5ffff"
+            stroke-width="2"
+            stroke-linecap="round"
+            opacity="0.32"/>
 
       <!-- X letter with 3D depth -->
       <g filter="url(#depth3D)">
@@ -288,6 +333,18 @@
               stroke-width="7"
               stroke-linecap="round"/>
       </g>
+      <path d="M -10 -36 L 36 18"
+            fill="none"
+            stroke="#fff2ff"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            opacity="0.3"/>
+      <path d="M -4 34 L 40 -6"
+            fill="none"
+            stroke="#fff2ff"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            opacity="0.28"/>
 
       <!-- Arrow with metallic sheen -->
       <g filter="url(#emboss)">
@@ -314,20 +371,27 @@
       <path d="M 58 138 Q 100 160 142 136" stroke="#b278ff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.5"/>
     </g>
 
+    <!-- Floating bokeh highlights for added depth -->
+    <g filter="url(#bokehBlur)" opacity="0.35">
+      <circle cx="68" cy="78" r="10" fill="url(#bokehFill)"/>
+      <circle cx="134" cy="118" r="8.5" fill="url(#bokehFill)" opacity="0.8"/>
+      <circle cx="108" cy="60" r="7" fill="url(#bokehFill)" opacity="0.6"/>
+    </g>
+
     <!-- Enhanced sparkles with layered glow -->
     <g filter="url(#sparkBlur)" opacity="0.75">
-      <circle cx="58" cy="86" r="4.7" fill="#7afcff" opacity="0.9"/>
-      <circle cx="142" cy="124" r="3.8" fill="#f0a6ff" opacity="0.85"/>
-      <circle cx="118" cy="70" r="2.9" fill="#63ffcc" opacity="0.75"/>
+      <circle cx="62" cy="86" r="4.4" fill="#7afcff" opacity="0.9"/>
+      <circle cx="146" cy="128" r="3.6" fill="#f0a6ff" opacity="0.85"/>
+      <circle cx="112" cy="70" r="2.8" fill="#63ffcc" opacity="0.75"/>
     </g>
 
     <!-- Additional floating sparkles -->
     <g filter="url(#ultraGlow)" opacity="0.5">
-      <circle cx="45" cy="55" r="2.2" fill="#a8f0ff"/>
-      <circle cx="155" cy="65" r="1.8" fill="#ffa8ff"/>
-      <circle cx="68" cy="145" r="2.5" fill="#a8fff0"/>
-      <circle cx="132" cy="155" r="2.0" fill="#fff0a8"/>
-      <circle cx="100" cy="35" r="1.5" fill="#f0a8ff"/>
+      <circle cx="48" cy="54" r="2.4" fill="#a8f0ff"/>
+      <circle cx="156" cy="68" r="1.9" fill="#ffa8ff"/>
+      <circle cx="70" cy="146" r="2.7" fill="#a8fff0"/>
+      <circle cx="132" cy="154" r="2.1" fill="#fff0a8"/>
+      <circle cx="100" cy="36" r="1.6" fill="#f0a8ff"/>
     </g>
 
     <!-- Light rays from center -->
