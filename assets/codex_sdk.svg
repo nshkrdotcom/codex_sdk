@@ -116,8 +116,75 @@
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+
+    <!-- NEW FANCY EFFECTS -->
+    <filter id="depth3D" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur1"/>
+      <feOffset in="blur1" dx="0" dy="8" result="offsetBlur"/>
+      <feFlood flood-color="#2a0f63" flood-opacity="0.6" result="color"/>
+      <feComposite in="color" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="ultraGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="blur2"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur3"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur3"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="emboss" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1" result="blur"/>
+      <feOffset in="blur" dx="-2" dy="-2" result="offsetBlurPos"/>
+      <feOffset in="blur" dx="2" dy="2" result="offsetBlurNeg"/>
+      <feFlood flood-color="#ffffff" flood-opacity="0.3" result="lightColor"/>
+      <feFlood flood-color="#000000" flood-opacity="0.4" result="darkColor"/>
+      <feComposite in="lightColor" in2="offsetBlurPos" operator="in" result="lightShadow"/>
+      <feComposite in="darkColor" in2="offsetBlurNeg" operator="in" result="darkShadow"/>
+      <feMerge>
+        <feMergeNode in="darkShadow"/>
+        <feMergeNode in="lightShadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <radialGradient id="depthLayer" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#5f3fff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.25"/>
+    </radialGradient>
+
+    <linearGradient id="metallic" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e0f8ff" stop-opacity="0.9"/>
+      <stop offset="20%" stop-color="#6fb8ff" stop-opacity="0.6"/>
+      <stop offset="40%" stop-color="#2a5fff" stop-opacity="0.3"/>
+      <stop offset="60%" stop-color="#6fb8ff" stop-opacity="0.5"/>
+      <stop offset="80%" stop-color="#b8e0ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <radialGradient id="chromatic" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff3fff" stop-opacity="0.4"/>
+      <stop offset="33%" stop-color="#3fffff" stop-opacity="0.35"/>
+      <stop offset="66%" stop-color="#ffff3f" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ff3fff" stop-opacity="0.2"/>
+    </radialGradient>
   </defs>
 
+  <!-- Background ambient glow layer -->
+  <g opacity="0.6">
+    <circle cx="100" cy="90" r="110" fill="url(#chromatic)" filter="url(#ultraGlow)"/>
+  </g>
+
+  <!-- Main hexagon with enhanced shadow -->
   <g filter="url(#hexShadow)">
     <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
           fill="url(#hexGradient)"
@@ -125,6 +192,11 @@
           stroke-width="4"
           stroke-linejoin="round"/>
   </g>
+
+  <!-- Depth layer for 3D effect -->
+  <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
+        fill="url(#depthLayer)"
+        opacity="0.7"/>
 
   <g clip-path="url(#hexClip)">
     <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
@@ -192,31 +264,47 @@
         <path d="M -18 6 C -6 10 6 10 18 6" fill="none" stroke="url(#arcStroke)" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="4 5"/>
       </g>
 
-      <path d="M 34 -38 Q -44 -42 -52 0 Q -44 44 32 42"
-            fill="none"
-            stroke="url(#cStroke)"
-            stroke-width="9"
-            stroke-linecap="round"
-            stroke-linejoin="round"/>
+      <!-- C letter with 3D depth -->
+      <g filter="url(#depth3D)">
+        <path d="M 34 -38 Q -44 -42 -52 0 Q -44 44 32 42"
+              fill="none"
+              stroke="url(#cStroke)"
+              stroke-width="9"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+      </g>
 
-      <path d="M -15 -42 L 42 20"
-            fill="none"
-            stroke="url(#xStroke)"
-            stroke-width="7"
-            stroke-linecap="round"/>
+      <!-- X letter with 3D depth -->
+      <g filter="url(#depth3D)">
+        <path d="M -15 -42 L 42 20"
+              fill="none"
+              stroke="url(#xStroke)"
+              stroke-width="7"
+              stroke-linecap="round"/>
 
-      <path d="M -8 38 L 46 -8"
-            fill="none"
-            stroke="url(#xStroke)"
-            stroke-width="7"
-            stroke-linecap="round"/>
+        <path d="M -8 38 L 46 -8"
+              fill="none"
+              stroke="url(#xStroke)"
+              stroke-width="7"
+              stroke-linecap="round"/>
+      </g>
 
-      <path d="M 18 -6 L 47 0 L 18 16"
-            fill="none"
-            stroke="url(#cStroke)"
-            stroke-width="7"
-            stroke-linecap="round"
-            stroke-linejoin="round"/>
+      <!-- Arrow with metallic sheen -->
+      <g filter="url(#emboss)">
+        <path d="M 18 -6 L 47 0 L 18 16"
+              fill="none"
+              stroke="url(#cStroke)"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+        <path d="M 18 -6 L 47 0 L 18 16"
+              fill="none"
+              stroke="url(#metallic)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              opacity="0.6"/>
+      </g>
 
       <circle cx="0" cy="0" r="28" fill="url(#corePulse)"/>
     </g>
@@ -226,10 +314,30 @@
       <path d="M 58 138 Q 100 160 142 136" stroke="#b278ff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.5"/>
     </g>
 
+    <!-- Enhanced sparkles with layered glow -->
     <g filter="url(#sparkBlur)" opacity="0.75">
       <circle cx="58" cy="86" r="4.7" fill="#7afcff" opacity="0.9"/>
       <circle cx="142" cy="124" r="3.8" fill="#f0a6ff" opacity="0.85"/>
       <circle cx="118" cy="70" r="2.9" fill="#63ffcc" opacity="0.75"/>
+    </g>
+
+    <!-- Additional floating sparkles -->
+    <g filter="url(#ultraGlow)" opacity="0.5">
+      <circle cx="45" cy="55" r="2.2" fill="#a8f0ff"/>
+      <circle cx="155" cy="65" r="1.8" fill="#ffa8ff"/>
+      <circle cx="68" cy="145" r="2.5" fill="#a8fff0"/>
+      <circle cx="132" cy="155" r="2.0" fill="#fff0a8"/>
+      <circle cx="100" cy="35" r="1.5" fill="#f0a8ff"/>
+    </g>
+
+    <!-- Light rays from center -->
+    <g opacity="0.25">
+      <path d="M 100 100 L 50 30" stroke="url(#beamGradient)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M 100 100 L 150 30" stroke="url(#beamGradient)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M 100 100 L 40 100" stroke="url(#beamGradient)" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M 100 100 L 160 100" stroke="url(#beamGradient)" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M 100 100 L 50 165" stroke="url(#beamGradient)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M 100 100 L 150 165" stroke="url(#beamGradient)" stroke-width="2" stroke-linecap="round"/>
     </g>
 
     <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
@@ -237,5 +345,37 @@
           stroke="url(#shineGradient)"
           stroke-width="8"
           opacity="0.45"/>
+  </g>
+
+  <!-- Top layer: rim lighting for extra pop -->
+  <g opacity="0.5">
+    <path d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"
+          fill="none"
+          stroke="url(#metallic)"
+          stroke-width="2"
+          opacity="0.8"/>
+  </g>
+
+  <!-- Highlight accents on top edges -->
+  <g opacity="0.7">
+    <path d="M 100 10 L 173.2 50"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          opacity="0.6"/>
+    <path d="M 26.8 50 L 100 10"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          opacity="0.6"/>
+  </g>
+
+  <!-- Corner glow spots -->
+  <g filter="url(#ultraGlow)" opacity="0.4">
+    <circle cx="100" cy="10" r="4" fill="#ffffff"/>
+    <circle cx="173.2" cy="90" r="3" fill="#80f0ff"/>
+    <circle cx="26.8" cy="90" r="3" fill="#f080ff"/>
   </g>
 </svg>
