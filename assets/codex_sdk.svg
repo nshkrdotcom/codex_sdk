@@ -66,6 +66,56 @@
     <filter id="sparkBlur" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="3"/>
     </filter>
+
+    <radialGradient id="sigilHalo" cx="50%" cy="50%" r="68%">
+      <stop offset="0%" stop-color="#6f58ff" stop-opacity="0.55"/>
+      <stop offset="40%" stop-color="#2a0f63" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#020108" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="orbitStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#75fff8"/>
+      <stop offset="45%" stop-color="#9b83ff"/>
+      <stop offset="100%" stop-color="#ffa6ff"/>
+    </linearGradient>
+
+    <linearGradient id="petalStroke" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe6b3"/>
+      <stop offset="100%" stop-color="#70ffe3"/>
+    </linearGradient>
+
+    <linearGradient id="arcStroke" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5ff6ff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#b487ff" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <radialGradient id="nodeFill" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="70%" stop-color="#87fff4" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#1fa5ff" stop-opacity="0.05"/>
+    </radialGradient>
+
+    <filter id="sigilGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="nodePulse" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.4" result="soft"/>
+      <feColorMatrix in="soft" type="matrix"
+                     values="1 0 0 0 0
+                             0 1 0 0 0
+                             0 0 1 0 0
+                             0 0 0 0.65 0"
+                     result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
   <g filter="url(#hexShadow)">
@@ -96,6 +146,52 @@
     </g>
 
     <g transform="translate(100, 100)">
+      <g filter="url(#sigilGlow)" opacity="0.75">
+        <circle cx="0" cy="0" r="44" fill="url(#sigilHalo)"/>
+      </g>
+
+      <circle cx="0" cy="0" r="46" fill="none" stroke="url(#orbitStroke)" stroke-width="2.2" stroke-dasharray="12 7" stroke-linecap="round" opacity="0.95"/>
+
+      <polygon points="0 -42 6.21 -23.18 21 -36.37 16.97 -16.97 36.37 -21 23.18 -6.21 42 0 23.18 6.21 36.37 21 16.97 16.97 21 36.37 6.21 23.18 0 42 -6.21 23.18 -21 36.37 -16.97 16.97 -36.37 21 -23.18 6.21 -42 0 -23.18 -6.21 -36.37 -21 -16.97 -16.97 -21 -36.37 -6.21 -23.18"
+               fill="none"
+               stroke="url(#petalStroke)"
+               stroke-width="1.8"
+               stroke-linejoin="round"
+               opacity="0.78"/>
+
+      <g opacity="0.65" stroke-linecap="round" fill="none" stroke-width="2.6" stroke="url(#arcStroke)">
+        <path d="M -30 -12 A 34 34 0 0 1 30 -12" />
+        <path d="M -30 12 A 34 34 0 0 0 30 12" stroke-dasharray="9 7" />
+      </g>
+
+      <g opacity="0.55" transform="rotate(60)">
+        <path d="M -30 -12 A 34 34 0 0 1 30 -12" fill="none" stroke="url(#arcStroke)" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M -30 12 A 34 34 0 0 0 30 12" fill="none" stroke="url(#arcStroke)" stroke-width="2" stroke-linecap="round" stroke-dasharray="9 7"/>
+      </g>
+
+      <g opacity="0.5" transform="rotate(120)">
+        <path d="M -30 -12 A 34 34 0 0 1 30 -12" fill="none" stroke="url(#arcStroke)" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M -30 12 A 34 34 0 0 0 30 12" fill="none" stroke="url(#arcStroke)" stroke-width="2" stroke-linecap="round" stroke-dasharray="9 7"/>
+      </g>
+
+      <g filter="url(#nodePulse)" opacity="0.85">
+        <circle cx="38" cy="0" r="3.2" fill="url(#nodeFill)" stroke="#84fff4" stroke-width="0.6"/>
+        <circle cx="26.9" cy="26.9" r="2.9" fill="url(#nodeFill)" stroke="#9efff9" stroke-width="0.5"/>
+        <circle cx="0" cy="38" r="3.1" fill="url(#nodeFill)" stroke="#72fff0" stroke-width="0.6"/>
+        <circle cx="-26.9" cy="26.9" r="2.9" fill="url(#nodeFill)" stroke="#aab5ff" stroke-width="0.5"/>
+        <circle cx="-38" cy="0" r="3.2" fill="url(#nodeFill)" stroke="#84fff4" stroke-width="0.6"/>
+        <circle cx="-26.9" cy="-26.9" r="2.9" fill="url(#nodeFill)" stroke="#9efff9" stroke-width="0.5"/>
+        <circle cx="0" cy="-38" r="3.1" fill="url(#nodeFill)" stroke="#72fff0" stroke-width="0.6"/>
+        <circle cx="26.9" cy="-26.9" r="2.9" fill="url(#nodeFill)" stroke="#aab5ff" stroke-width="0.5"/>
+      </g>
+
+      <g opacity="0.72">
+        <path d="M -14 -32 C -28 -18 -28 18 -14 32" fill="none" stroke="url(#petalStroke)" stroke-width="2.1" stroke-linecap="round"/>
+        <path d="M 14 -32 C 28 -18 28 18 14 32" fill="none" stroke="url(#petalStroke)" stroke-width="2.1" stroke-linecap="round"/>
+        <path d="M -18 -6 C -6 -10 6 -10 18 -6" fill="none" stroke="url(#arcStroke)" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="4 5"/>
+        <path d="M -18 6 C -6 10 6 10 18 6" fill="none" stroke="url(#arcStroke)" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="4 5"/>
+      </g>
+
       <path d="M 34 -38 Q -44 -42 -52 0 Q -44 44 32 42"
             fill="none"
             stroke="url(#cStroke)"
