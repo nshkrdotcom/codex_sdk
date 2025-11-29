@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread_new_123","metadata":{"labels":{"topic":"reset"},"created_at":"2024-11-29T00:00:00Z"}}
+{"type":"turn.started","turn_id":"turn_new_abc","thread_id":"thread_new_123"}
+{"type":"item.agent_message.delta","thread_id":"thread_new_123","turn_id":"turn_new_abc","item":{"id":"msg_new","type":"agent_message","role":"assistant","content":{"type":"text","text":"Started fresh conversation"}}}
+{"type":"turn.completed","turn_id":"turn_new_abc","thread_id":"thread_new_123","final_response":{"type":"text","text":"Started fresh conversation"},"usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":5,"total_tokens":6}}

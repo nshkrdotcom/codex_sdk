@@ -10,9 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - App-server event coverage for token usage deltas, turn diffs, and compaction notices, plus explicit thread/turn IDs on item and error notifications
 - Streaming example updates to surface live usage and diff events alongside item progress
+- Automatic auth fallback to Codex CLI login when API keys are absent; live two-turn walkthrough example
+- Regression tests and fixtures for `/new` resets, early-exit session non-persistence, and rate-limit/sandbox error normalization
 
 ### Changed
-- Bumped SDK version metadata and documentation to 0.2.1 for the November 2025 release
+- Thread resumption now uses `codex exec … resume <thread_id>` (no `--thread-id` flag)
+- `/new` clears conversations and early-exit turns do not persist thread IDs, matching upstream CLI
+- Turn failures normalize rate-limit and sandbox assessment errors into `%Codex.Error{}`
 
 ## [0.2.0] - 2025-10-20
 

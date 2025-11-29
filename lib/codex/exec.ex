@@ -174,10 +174,10 @@ defmodule Codex.Exec do
           []
       end
 
-    thread_args =
+    resume_args =
       case exec_opts do
         %{thread: %{thread_id: thread_id}} when is_binary(thread_id) ->
-          ["--thread-id", thread_id]
+          ["resume", thread_id]
 
         _ ->
           []
@@ -221,7 +221,7 @@ defmodule Codex.Exec do
 
     base ++
       model_args ++
-      thread_args ++
+      resume_args ++
       continuation_args ++
       attachment_args ++
       schema_args ++

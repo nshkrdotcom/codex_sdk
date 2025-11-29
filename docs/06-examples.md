@@ -2,6 +2,8 @@
 
 This document provides comprehensive examples demonstrating common use cases and patterns for the Elixir Codex SDK. Runnable counterparts live under `/examples`; each script can be executed with `mix run examples/<name>.exs ...`.
 
+Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when present, otherwise they fall back to your Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
+
 ## Table of Contents
 
 1. [Basic Usage](#basic-usage)

@@ -16,7 +16,7 @@ Milestone 0 focuses on capturing golden event streams from the Python Codex SDK
 
 ## Harvesting Workflow
 1. **Clone Python SDK**  
-   Check out the `openai-agents-python` repository next to this project (or set `CODEX_PYTHON_SDK_PATH`).
+   Check out the `openai/codex` repository next to this project (or set `CODEX_PYTHON_SDK_PATH`).
 
 2. **Install Dependencies**  
    ```
@@ -30,8 +30,8 @@ Milestone 0 focuses on capturing golden event streams from the Python Codex SDK
 
 4. **Run Harvester**  
    ```
-   python3 scripts/harvest_python_fixtures.py \
-     --python-sdk ../openai-agents-python \
+  python3 scripts/harvest_python_fixtures.py \
+    --python-sdk ../openai/codex \
      --output integration/fixtures/python
    ```
 

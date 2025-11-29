@@ -14,3 +14,6 @@ Action items:
 - Align conversation/session reset behavior with upstream before releasing the next SDK cut.
 - Verify auth prompts and rate-limit error parsing in integration tests.
 - Note the skipped-upgrade behavior in release notes if it affects embedded CLI usage.
+
+SDK divergence callout:
+- The Elixir SDK currently shells out to the embedded `codex` binary without an explicit flag to suppress upgrade prompts. If upstream exposes a stable toggle for enterprise rollouts, thread the option through `Codex.Options`/`Codex.Exec` and update release notes accordingly.

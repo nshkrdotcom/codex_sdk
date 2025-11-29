@@ -66,6 +66,7 @@ defmodule Codex.Thread do
   @spec run(t(), String.t(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
   def run(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+    thread = maybe_reset_for_new(thread, input)
     span_token = make_ref()
 
     meta = %{
@@ -85,16 +86,24 @@ defmodule Codex.Thread do
         case Codex.Exec.run(input, exec_opts) do
           {:ok, exec_result} ->
             duration = System.monotonic_time() - started_monotonic
+            failure = extract_turn_failure(exec_result.events)
 
             Telemetry.emit(
               [:codex, :thread, :stop],
               %{duration: duration, system_time: System.system_time()},
-              Map.put(meta, :result, :ok)
+              meta
+              |> Map.put(:result, telemetry_result(failure))
+              |> maybe_put(:error, failure_meta(failure))
             )
 
             exec_result = Map.put(exec_result, :structured_output?, structured_output?)
 
-            {:ok, finalize_turn(thread, exec_result, exec_meta)}
+            result = finalize_turn(thread, exec_result, exec_meta)
+
+            case failure do
+              {:error, err} -> {:error, {:turn_failed, err}}
+              :ok -> {:ok, result}
+            end
 
           {:error, reason} ->
             duration = System.monotonic_time() - started_monotonic
@@ -123,6 +132,8 @@ defmodule Codex.Thread do
   @spec run_streamed(t(), String.t(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
   def run_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+    thread = maybe_reset_for_new(thread, input)
+
     with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
       structured_output? = Map.get(exec_meta, :structured_output?, false)
 
@@ -257,6 +268,13 @@ defmodule Codex.Thread do
       |> Map.put(:usage, usage || thread.usage)
       |> Map.put(:pending_tool_outputs, [])
       |> Map.put(:pending_tool_failures, [])
+      |> then(fn t ->
+        if early_exit?(events) do
+          reset_conversation(t)
+        else
+          t
+        end
+      end)
 
     %Result{
       thread: updated_thread,
@@ -455,6 +473,85 @@ defmodule Codex.Thread do
   end
 
   defp maybe_decode_stream_event(event, _structured?), do: event
+
+  defp extract_turn_failure(events) do
+    case Enum.find(events, &match?(%Events.TurnFailed{}, &1)) do
+      %Events.TurnFailed{error: error} ->
+        {:error, Error.normalize(error)}
+
+      nil ->
+        case Enum.find(events, fn
+               %Events.TurnCompleted{status: status}
+               when status in ["failed", :failed, "error"] ->
+                 true
+
+               _ ->
+                 false
+             end) do
+          %Events.TurnCompleted{final_response: response, status: status} ->
+            {:error, Error.normalize(turn_completed_error_payload(response, status))}
+
+          _ ->
+            :ok
+        end
+    end
+  end
+
+  defp telemetry_result(:ok), do: :ok
+  defp telemetry_result({:error, _}), do: :error
+
+  defp failure_meta({:error, %Error{} = error}) do
+    %{kind: error.kind, message: error.message}
+  end
+
+  defp failure_meta(_), do: nil
+
+  defp early_exit?(events) do
+    Enum.any?(events, fn
+      %Events.TurnCompleted{status: status} when status in ["early_exit", :early_exit] -> true
+      _ -> false
+    end)
+  end
+
+  defp maybe_reset_for_new(%__MODULE__{} = thread, input) do
+    if new_command?(input) do
+      reset_conversation(thread)
+    else
+      thread
+    end
+  end
+
+  defp new_command?(input) when is_binary(input) do
+    String.trim(input) == "/new"
+  end
+
+  defp reset_conversation(%__MODULE__{} = thread) do
+    %__MODULE__{
+      thread
+      | thread_id: nil,
+        metadata: %{},
+        labels: %{},
+        continuation_token: nil,
+        usage: %{},
+        pending_tool_outputs: [],
+        pending_tool_failures: []
+    }
+  end
+
+  defp turn_completed_error_payload(%Items.AgentMessage{text: text}, status),
+    do: %{"message" => text, "type" => status}
+
+  defp turn_completed_error_payload(%{"text" => text}, status) when is_binary(text),
+    do: %{"message" => text, "type" => status}
+
+  defp turn_completed_error_payload(%{text: text}, status) when is_binary(text),
+    do: %{"message" => text, "type" => status}
+
+  defp turn_completed_error_payload(response, status) when is_map(response),
+    do: Map.put(response, "type", status)
+
+  defp turn_completed_error_payload(response, status),
+    do: %{"message" => to_string(response), "type" => status}
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
