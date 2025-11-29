@@ -163,6 +163,39 @@ defmodule Codex.ThreadTest do
 
       assert {:error, :not_structured} = TurnResult.json(result)
     end
+
+    test "captures token usage updates and turn diffs" do
+      codex_path =
+        "thread_usage_events.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, result} = Thread.run(thread, "Track usage")
+
+      assert %Items.AgentMessage{text: "Usage tracked"} = result.final_response
+
+      assert %{
+               "input_tokens" => 100,
+               "cached_input_tokens" => 10,
+               "output_tokens" => 0,
+               "total_tokens" => 110
+             } = result.usage
+
+      assert result.thread.usage == result.usage
+
+      assert Enum.any?(result.events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
+      assert Enum.any?(result.events, &match?(%Events.TurnDiffUpdated{}, &1))
+      assert Enum.any?(result.events, &match?(%Events.TurnCompaction{}, &1))
+    end
   end
 
   describe "run_streamed/3" do
@@ -225,6 +258,34 @@ defmodule Codex.ThreadTest do
                _ ->
                  false
              end)
+    end
+
+    test "streams usage, diff, and compaction updates" do
+      codex_path =
+        "thread_usage_events.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, stream} = Thread.run_streamed(thread, "Watch usage")
+      events = Enum.to_list(stream)
+
+      assert Enum.any?(events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
+
+      assert Enum.any?(events, fn
+               %Events.TurnDiffUpdated{thread_id: "thread_usage", turn_id: "turn_usage"} -> true
+               _ -> false
+             end)
+
+      assert Enum.any?(events, &match?(%Events.TurnCompaction{stage: :completed}, &1))
     end
   end
 

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-11-29
+
+### Added
+- App-server event coverage for token usage deltas, turn diffs, and compaction notices, plus explicit thread/turn IDs on item and error notifications
+- Streaming example updates to surface live usage and diff events alongside item progress
+
+### Changed
+- Bumped SDK version metadata and documentation to 0.2.1 for the November 2025 release
+
 ## [0.2.0] - 2025-10-20
 
 ### Added

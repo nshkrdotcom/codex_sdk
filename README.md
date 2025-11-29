@@ -31,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.0"}
+    {:codex_sdk, "~> 0.2.1"}
   ]
 end
 ```
@@ -439,7 +439,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.0 (Feature-complete Codex interface)
+**Current Version**: 0.2.1 (App-server streaming and usage visibility)
+
+### v0.2.1 Highlights
+
+- App-server event coverage for token usage, turn diffs, and compaction notices
+- Streaming example surfaces live usage deltas and diff updates alongside items
+- Thread and turn identifiers preserved on streamed item/error notifications
 
 ### v0.2.0 Highlights
 

@@ -153,6 +153,115 @@ defmodule Codex.EventsTest do
                item: %Items.WebSearch{id: "search_1", query: "elixir json decode"}
              } = web_event
     end
+
+    test "parses token usage and diff updates" do
+      usage_event =
+        Events.parse!(%{
+          "type" => "thread/tokenUsage/updated",
+          "thread_id" => "thread_usage",
+          "turn_id" => "turn_usage",
+          "usage" => %{"input_tokens" => 10, "output_tokens" => 2},
+          "delta" => %{"output_tokens" => 2}
+        })
+
+      assert %Events.ThreadTokenUsageUpdated{
+               thread_id: "thread_usage",
+               turn_id: "turn_usage",
+               usage: %{"input_tokens" => 10, "output_tokens" => 2},
+               delta: %{"output_tokens" => 2}
+             } = usage_event
+
+      diff = %{"ops" => [%{"op" => "add", "text" => "Hello"}]}
+
+      diff_event =
+        Events.parse!(%{
+          "type" => "turn/diff/updated",
+          "thread_id" => "thread_usage",
+          "turn_id" => "turn_usage",
+          "diff" => diff
+        })
+
+      assert %Events.TurnDiffUpdated{
+               thread_id: "thread_usage",
+               turn_id: "turn_usage",
+               diff: ^diff
+             } = diff_event
+
+      assert %{
+               "type" => "turn/diff/updated",
+               "thread_id" => "thread_usage",
+               "turn_id" => "turn_usage",
+               "diff" => ^diff
+             } = Events.to_map(diff_event)
+    end
+
+    test "parses compaction notifications and carries thread context" do
+      compaction = %{"dropped_item_ids" => ["msg_1"], "token_savings" => 120}
+
+      event =
+        Events.parse!(%{
+          "type" => "turn/compaction/completed",
+          "thread_id" => "thread_usage",
+          "turn_id" => "turn_usage",
+          "compaction" => compaction
+        })
+
+      assert %Events.TurnCompaction{
+               thread_id: "thread_usage",
+               turn_id: "turn_usage",
+               compaction: ^compaction,
+               stage: :completed
+             } = event
+
+      assert %{
+               "type" => "turn/compaction/completed",
+               "thread_id" => "thread_usage",
+               "turn_id" => "turn_usage",
+               "compaction" => ^compaction
+             } = Events.to_map(event)
+    end
+
+    test "keeps thread and turn ids on item and error notifications" do
+      error =
+        Events.parse!(%{
+          "type" => "error",
+          "message" => "boom",
+          "thread_id" => "thread_123",
+          "turn_id" => "turn_456"
+        })
+
+      assert %Events.Error{
+               message: "boom",
+               thread_id: "thread_123",
+               turn_id: "turn_456"
+             } = error
+
+      assert %{
+               "type" => "error",
+               "message" => "boom",
+               "thread_id" => "thread_123",
+               "turn_id" => "turn_456"
+             } = Events.to_map(error)
+
+      completed =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "thread_id" => "thread_123",
+          "turn_id" => "turn_456",
+          "item" => %{"id" => "msg_1", "type" => "agent_message", "text" => "hi"}
+        })
+
+      assert %Events.ItemCompleted{
+               thread_id: "thread_123",
+               turn_id: "turn_456",
+               item: %Items.AgentMessage{id: "msg_1", text: "hi"}
+             } = completed
+
+      assert %{
+               "thread_id" => "thread_123",
+               "turn_id" => "turn_456"
+             } = Events.to_map(completed) |> Map.take(["thread_id", "turn_id"])
+    end
   end
 
   describe "round trip encoding" do
