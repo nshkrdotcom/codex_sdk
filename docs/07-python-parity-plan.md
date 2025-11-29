@@ -1,7 +1,7 @@
 # Python Feature Parity Plan
 
 ## Context & Research
-- Requirement: deliver a 100% feature-parity Elixir port of the Python Codex SDK (openai-agents-python), which itself shells out to `codex-rs`.
+- Requirement: deliver a 100% feature-parity Elixir port of the Python Codex SDK (openai/codex), which itself shells out to `codex-rs`.
 - Local audit: the repo already mirrors TypeScript SDK semantics (streaming vs buffered turns, structured outputs, resume support) and ships with comprehensive TDD documentation (`docs/03-implementation-plan.md`, `docs/04-testing-strategy.md`) plus an OTP-centric architecture guide (`docs/02-architecture.md`).
 - Gap: the Python client source is not vendored here; we must study its public repo (modules like `codex.client`, `codex.threads`, `codex.tools`, auto-run orchestration) to capture feature surface: session persistence, command approvals, attachments, tool/mcp support, structured responses, sandbox controls, telemetry hooks, error domains.
 - Evidence inside `codex/` confirms `codex-rs` is the canonical Rust engine. Both CLI and TypeScript SDK consume it as a subprocess via JSONL event streams; parity requires replicating the Python abstractions atop the same protocol.

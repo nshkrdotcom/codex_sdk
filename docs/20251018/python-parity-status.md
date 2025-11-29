@@ -1,7 +1,7 @@
 # Python Parity Status — 2025-10-17
 
 ## Overview
-- Reviewed the vendored `codex/` repository, including the shared Rust event schema (`codex/codex-rs/exec/src/exec_events.rs`) and TypeScript SDK (`codex/sdk/typescript/src/thread.ts`, `threadOptions.ts`). The Python SDK (`openai-agents-python`) is **not** vendored here, but it drives the same codex-rs protocol and features documented upstream.
+- Reviewed the vendored `codex/` repository, including the shared Rust event schema (`codex/codex-rs/exec/src/exec_events.rs`) and TypeScript SDK (`codex/sdk/typescript/src/thread.ts`, `threadOptions.ts`). The Python SDK (`openai/codex`) is **not** vendored here, but it drives the same codex-rs protocol and features documented upstream.
 - Cross-checked the current Elixir implementation (`lib/codex/**/*.ex`) and tests to determine which Python capabilities are still missing. Recent work (e.g. attachment TTL registry) is already reflected below.
 - Goal: enumerate every known Python feature we lack so follow-up tasks can be planned without rediscovery.
 

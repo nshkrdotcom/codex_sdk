@@ -1,7 +1,7 @@
 # Codex SDK TDD Implementation Guide
 
 ## Mission & Success Criteria
-- Deliver a 100% feature-parity Elixir SDK mirroring the Python client (`openai-agents-python`) while sharing the same `codex-rs` Rust engine.
+- Deliver a 100% feature-parity Elixir SDK mirroring the Python client (`openai/codex`) while sharing the same `codex-rs` Rust engine.
 - Ship an idiomatic, well-documented OTP interface that honors repository conventions, keeps the Rust engine isolated, and maintains deterministic, reproducible builds.
 - Sustain a continuous test-driven development cadence: every user-facing capability enters the codebase behind a failing test and lands with green CI, ≥95 % coverage, and lint/format compliance.
 

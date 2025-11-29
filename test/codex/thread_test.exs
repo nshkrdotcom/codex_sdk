@@ -3,7 +3,7 @@ defmodule Codex.ThreadTest do
 
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Events
-  alias Codex.{Items, Options, Thread}
+  alias Codex.{Error, Items, Options, Thread}
   alias Codex.Turn.Result, as: TurnResult
   alias Codex.TestSupport.FixtureScripts
 
@@ -286,6 +286,167 @@ defmodule Codex.ThreadTest do
              end)
 
       assert Enum.any?(events, &match?(%Events.TurnCompaction{stage: :completed}, &1))
+    end
+  end
+
+  describe "conversation lifecycle" do
+    test "/new resets the conversation and clears existing thread_id" do
+      capture_path =
+        Path.join(System.tmp_dir!(), "codex_exec_new_args_#{System.unique_integer([:positive])}")
+
+      script_path =
+        "thread_new_command.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+
+      thread =
+        Thread.build(codex_opts, thread_opts,
+          thread_id: "thread_old",
+          labels: %{topic: "legacy"}
+        )
+
+      {:ok, result} = Thread.run(thread, "/new")
+
+      args =
+        capture_path
+        |> File.read!()
+        |> String.trim()
+        |> String.split(~r/\s+/)
+
+      refute Enum.any?(args, &(&1 == "--thread-id"))
+
+      assert %Items.AgentMessage{text: "Started fresh conversation"} = result.final_response
+      assert result.thread.thread_id == "thread_new_123"
+      assert result.thread.labels == %{"topic" => "reset"}
+      assert result.thread.metadata["labels"] == %{"topic" => "reset"}
+    end
+
+    test "does not persist thread_id when turn exits early" do
+      codex_path =
+        "thread_early_exit.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+
+      thread =
+        Thread.build(codex_opts, thread_opts,
+          thread_id: "thread_stale",
+          labels: %{topic: "should_reset"}
+        )
+
+      {:ok, result} = Thread.run(thread, "abort mission")
+
+      assert %Items.AgentMessage{text: "Session exited before start"} = result.final_response
+      assert result.thread.thread_id == nil
+      assert result.thread.labels == %{}
+    end
+
+    test "resumes existing conversation using resume subcommand" do
+      capture_path =
+        Path.join(
+          System.tmp_dir!(),
+          "codex_exec_resume_args_#{System.unique_integer([:positive])}"
+        )
+
+      script_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+
+      thread =
+        Thread.build(codex_opts, thread_opts, thread_id: "thread_resume")
+
+      {:ok, _result} = Thread.run(thread, "continue")
+
+      raw_args = capture_path |> File.read!() |> String.trim()
+
+      refute String.contains?(raw_args, "--thread-id")
+
+      assert String.contains?(raw_args, "resume thread_resume"),
+             "expected resume subcommand in args: #{inspect(raw_args)}"
+    end
+  end
+
+  describe "turn failures" do
+    test "normalizes rate limit failures into Codex.Error" do
+      codex_path =
+        "thread_error_rate_limit.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:turn_failed, %Error{} = error}} =
+               Thread.run(thread, "trigger rate limit")
+
+      assert error.kind == :rate_limit
+      assert error.message == "Azure OpenAI rate limit hit"
+      assert error.details[:code] == "rate_limit_exceeded"
+      assert error.details[:status] == 429
+      assert error.details[:retry_after] == 15
+    end
+
+    test "parses sandbox assessment failures with nested details" do
+      codex_path =
+        "thread_error_sandbox_assessment.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:turn_failed, %Error{} = error}} =
+               Thread.run(thread, "trigger sandbox assessment")
+
+      assert error.kind == :sandbox_assessment_failed
+      assert error.message =~ "Sandbox assessment rejected command"
+      assert error.details[:code] == "sandbox_assessment_failed"
+      assert error.details[:type] == "sandbox_assessment"
+
+      assert %{
+               "command" => "rm -rf /",
+               "assessment" => %{"status" => "blocked", "reason" => "dangerous_command"}
+             } = error.details[:details]
     end
   end
 

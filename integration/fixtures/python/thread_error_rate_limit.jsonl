@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"thread_rate_limit","metadata":{"labels":{"topic":"errors"}}}
+{"type":"turn.started","turn_id":"turn_rate_limit","thread_id":"thread_rate_limit"}
+{"type":"turn.failed","thread_id":"thread_rate_limit","turn_id":"turn_rate_limit","error":{"message":"Azure OpenAI rate limit hit","type":"rate_limit_error","code":"rate_limit_exceeded","status":429,"retry_after":15,"details":{"policy":"azure","kind":"azure"}}}

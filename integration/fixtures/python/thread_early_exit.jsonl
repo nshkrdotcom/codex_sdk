@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"thread_ephemeral","metadata":{"labels":{}}}
+{"type":"turn.started","turn_id":"turn_ephemeral","thread_id":"thread_ephemeral"}
+{"type":"turn.completed","turn_id":"turn_ephemeral","thread_id":"thread_ephemeral","status":"early_exit","final_response":{"type":"text","text":"Session exited before start"}}

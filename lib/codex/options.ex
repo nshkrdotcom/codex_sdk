@@ -86,11 +86,51 @@ defmodule Codex.Options do
 
   defp fetch_api_key(attrs) do
     case pick(attrs, [:api_key, "api_key"], System.get_env("CODEX_API_KEY")) do
-      nil -> {:ok, nil}
-      "" -> {:ok, nil}
-      key -> {:ok, key}
+      key when is_binary(key) and key != "" ->
+        {:ok, key}
+
+      _ ->
+        {:ok, fetch_cli_api_key()}
     end
   end
+
+  defp fetch_cli_api_key do
+    cli_auth_paths()
+    |> Enum.find_value(&read_auth_token/1)
+  end
+
+  defp cli_auth_paths do
+    codex_home =
+      System.get_env("CODEX_HOME") ||
+        Path.join(System.user_home!(), ".codex")
+
+    [
+      Path.join(codex_home, "auth.json"),
+      Path.join(codex_home, ".credentials.json"),
+      Path.join(System.user_home!(), ".config/codex/credentials.json"),
+      Path.join(System.user_home!(), ".config/openai/codex.json"),
+      Path.join(System.user_home!(), ".codex/credentials.json")
+    ]
+    |> Enum.uniq()
+  end
+
+  defp read_auth_token(path) do
+    with true <- File.exists?(path),
+         {:ok, contents} <- File.read(path),
+         {:ok, decoded} <- Jason.decode(contents),
+         token when is_binary(token) and token != "" <- extract_token(decoded) do
+      token
+    else
+      _ -> nil
+    end
+  end
+
+  defp extract_token(%{"OPENAI_API_KEY" => token}), do: token
+  defp extract_token(%{"access_token" => token}), do: token
+
+  defp extract_token(%{"tokens" => %{"access_token" => token}}), do: token
+  defp extract_token(%{"tokens" => %{"token" => token}}), do: token
+  defp extract_token(_), do: nil
 
   defp fetch_base_url(attrs) do
     case pick(attrs, [:base_url, "base_url"], @default_base_url) do

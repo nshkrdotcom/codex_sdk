@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread_sandbox","metadata":{"labels":{"topic":"errors"}}}
+{"type":"turn.started","turn_id":"turn_sandbox","thread_id":"thread_sandbox"}
+{"type":"turn.failed","thread_id":"thread_sandbox","turn_id":"turn_sandbox","error":{"message":"Sandbox assessment rejected command","type":"sandbox_assessment","code":"sandbox_assessment_failed","details":{"command":"rm -rf /","assessment":{"status":"blocked","reason":"dangerous_command"}}}}
+{"type":"turn.completed","turn_id":"turn_sandbox","thread_id":"thread_sandbox","status":"failed","final_response":{"type":"text","text":"Command rejected by sandbox assessment"}}

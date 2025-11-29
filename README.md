@@ -63,10 +63,11 @@ For authentication, sign in with your ChatGPT account (this stores credentials f
 codex
 # Select "Sign in with ChatGPT"
 
-Alternatively, set `CODEX_API_KEY` (or `OPENAI_API_KEY`) before starting your BEAM node and the SDK
-will forward it to the spawned CLI process. If neither an API key nor an authenticated CLI session
-is available, Codex executions will fail with upstream authentication errors—the SDK does not
-perform additional login flows.
+Alternatively, set `CODEX_API_KEY` (or `OPENAI_API_KEY`) before starting your BEAM node. The SDK
+automatically falls back to your CLI login if no API key is set, reading tokens from `CODEX_HOME`
+(default `~/.codex/auth.json`) or legacy credential files. If neither an API key nor an authenticated
+CLI session is available, Codex executions will fail with upstream authentication errors—the SDK
+does not perform additional login flows.
 ```
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
@@ -182,6 +183,9 @@ mix run examples/concurrency_and_collaboration.exs parallel lib/codex/thread.ex 
 
 # Auto-run tool bridging (forwards outputs/failures to codex exec)
 mix run examples/tool_bridging_auto_run.exs
+
+# Live two-turn session using CLI login or CODEX_API_KEY
+mix run examples/live_session_walkthrough.exs "your prompt here"
 ```
 
 ### Resuming Threads
@@ -439,13 +443,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.1 (App-server streaming and usage visibility)
+**Current Version**: 0.2.1 (Auth/session lifecycle parity, resume fixes)
 
 ### v0.2.1 Highlights
 
-- App-server event coverage for token usage, turn diffs, and compaction notices
-- Streaming example surfaces live usage deltas and diff updates alongside items
-- Thread and turn identifiers preserved on streamed item/error notifications
+- Auth fallback to Codex CLI login when `CODEX_API_KEY` is absent; live two-turn walkthrough example added
+- Resumption now uses `codex exec … resume <thread_id>`; `/new` resets threads and early-exit sessions are not persisted
+- App-server event coverage for token usage, turn diffs, and compaction notices; streaming example surfaces live usage/diff updates alongside items
 
 ### v0.2.0 Highlights
 
