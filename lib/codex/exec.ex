@@ -10,29 +10,38 @@ defmodule Codex.Exec do
 
   alias Codex.Events
   alias Codex.Files.Attachment
+  alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Models
   alias Codex.Options
   alias Codex.TransportError
 
-  @type exec_opts :: %{
-          optional(:codex_opts) => Options.t(),
-          optional(:thread) => Codex.Thread.t(),
-          optional(:turn_opts) => map(),
-          optional(:continuation_token) => String.t(),
-          optional(:attachments) => [Attachment.t()],
-          optional(:output_schema_path) => String.t(),
-          optional(:tool_outputs) => [map()],
-          optional(:tool_failures) => [map()]
-        }
+  @default_timeout_ms 3_600_000
+
+  @type exec_opts ::
+          ExecOptions.t()
+          | %{
+              optional(:codex_opts) => Options.t(),
+              optional(:thread) => Codex.Thread.t(),
+              optional(:turn_opts) => map(),
+              optional(:continuation_token) => String.t(),
+              optional(:attachments) => [Attachment.t()],
+              optional(:output_schema_path) => String.t(),
+              optional(:tool_outputs) => [map()],
+              optional(:tool_failures) => [map()],
+              optional(:env) => map(),
+              optional(:cancellation_token) => String.t(),
+              optional(:timeout_ms) => pos_integer()
+            }
 
   @doc """
   Runs codex in blocking mode and accumulates all emitted events.
   """
   @spec run(String.t(), exec_opts()) :: {:ok, map()} | {:error, term()}
-  def run(input, opts) when is_binary(input) and is_map(opts) do
-    with :ok <- ensure_erlexec_started(),
-         {:ok, command} <- build_command(opts),
-         {:ok, state} <- start_process(command, opts),
+  def run(input, opts) when is_binary(input) do
+    with {:ok, exec_opts} <- ExecOptions.new(opts),
+         :ok <- ensure_erlexec_started(),
+         {:ok, command} <- build_command(exec_opts),
+         {:ok, state} <- start_process(command, exec_opts),
          :ok <- send_prompt(state, input),
          {:ok, data} <- collect_events(state) do
       {:ok, data}
@@ -44,10 +53,11 @@ defmodule Codex.Exec do
   enumeration and stops automatically when the stream halts.
   """
   @spec run_stream(String.t(), exec_opts()) :: {:ok, Enumerable.t()} | {:error, term()}
-  def run_stream(input, opts) when is_binary(input) and is_map(opts) do
-    with :ok <- ensure_erlexec_started(),
-         {:ok, command} <- build_command(opts),
-         {:ok, state} <- start_process(command, opts),
+  def run_stream(input, opts) when is_binary(input) do
+    with {:ok, exec_opts} <- ExecOptions.new(opts),
+         :ok <- ensure_erlexec_started(),
+         {:ok, command} <- build_command(exec_opts),
+         {:ok, state} <- start_process(command, exec_opts),
          :ok <- send_prompt(state, input) do
       {:ok, build_stream(state)}
     end
@@ -64,14 +74,23 @@ defmodule Codex.Exec do
 
   defp start_process(command, exec_opts) do
     env = build_env(exec_opts)
+    timeout_ms = resolve_timeout_ms(exec_opts)
 
-    exec_opts =
+    run_opts =
       [:stdin, {:stdout, self()}, {:stderr, self()}, :monitor]
       |> maybe_put_env(env)
 
-    case :exec.run(command, exec_opts) do
+    case :exec.run(command, run_opts) do
       {:ok, pid, os_pid} ->
-        {:ok, %{pid: pid, os_pid: os_pid, buffer: "", stderr: [], done?: false}}
+        {:ok,
+         %{
+           pid: pid,
+           os_pid: os_pid,
+           buffer: "",
+           stderr: [],
+           done?: false,
+           timeout_ms: timeout_ms
+         }}
 
       {:error, reason} ->
         {:error, reason}
@@ -88,7 +107,7 @@ defmodule Codex.Exec do
     do_collect(state, os_pid, [])
   end
 
-  defp do_collect(state, os_pid, events) do
+  defp do_collect(%{timeout_ms: timeout_ms} = state, os_pid, events) do
     receive do
       {:stdout, ^os_pid, chunk} ->
         {decoded, new_buffer} = decode_lines(state.buffer <> iodata_to_binary(chunk))
@@ -105,9 +124,10 @@ defmodule Codex.Exec do
         stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
         {:error, TransportError.new(normalize_exit_status(status), stderr: stderr)}
     after
-      15_000 ->
+      timeout_ms ->
+        Logger.warning("codex exec timed out after #{timeout_ms}ms without output")
         safe_stop(state)
-        {:error, :codex_timeout}
+        {:error, {:codex_timeout, timeout_ms}}
     end
   end
 
@@ -153,7 +173,10 @@ defmodule Codex.Exec do
     _ -> :ok
   end
 
-  defp build_command(%{codex_opts: %Options{} = opts} = exec_opts) do
+  defp resolve_timeout_ms(%ExecOptions{timeout_ms: nil}), do: @default_timeout_ms
+  defp resolve_timeout_ms(%ExecOptions{timeout_ms: timeout_ms}), do: timeout_ms
+
+  defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
       args = build_args(exec_opts)
       command = Enum.map([binary_path | args], &to_charlist/1)
@@ -163,21 +186,18 @@ defmodule Codex.Exec do
 
   defp build_command(_), do: {:error, :missing_options}
 
-  defp build_args(exec_opts) do
+  defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts) do
     base = ["exec", "--experimental-json"]
 
     model_args =
-      case exec_opts do
-        %{codex_opts: %Options{model: model}} when is_binary(model) and model != "" ->
-          ["--model", model]
-
-        _ ->
-          []
+      case codex_opts do
+        %Options{model: model} when is_binary(model) and model != "" -> ["--model", model]
+        _ -> []
       end
 
     config_args =
-      case exec_opts do
-        %{codex_opts: %Options{reasoning_effort: effort}} when not is_nil(effort) ->
+      case codex_opts do
+        %Options{reasoning_effort: effort} when not is_nil(effort) ->
           stringified = effort |> Models.reasoning_effort_to_string()
           ["--config", ~s(model_reasoning_effort="#{stringified}")]
 
@@ -186,48 +206,43 @@ defmodule Codex.Exec do
       end
 
     resume_args =
-      case exec_opts do
-        %{thread: %{thread_id: thread_id}} when is_binary(thread_id) ->
-          ["resume", thread_id]
-
-        _ ->
-          []
+      case exec_opts.thread do
+        %{thread_id: thread_id} when is_binary(thread_id) -> ["resume", thread_id]
+        _ -> []
       end
 
     continuation_args =
-      case exec_opts do
-        %{continuation_token: token} when is_binary(token) and token != "" ->
-          ["--continuation-token", token]
-
-        _ ->
-          []
+      case exec_opts.continuation_token do
+        token when is_binary(token) and token != "" -> ["--continuation-token", token]
+        _ -> []
       end
 
     attachment_args =
-      exec_opts
-      |> Map.get(:attachments, [])
+      exec_opts.attachments
+      |> List.wrap()
       |> Enum.flat_map(&attachment_cli_args/1)
 
     schema_args =
-      case exec_opts do
-        %{output_schema_path: path} when is_binary(path) and path != "" ->
-          ["--output-schema", path]
+      case exec_opts.output_schema_path do
+        path when is_binary(path) and path != "" -> ["--output-schema", path]
+        _ -> []
+      end
 
-        _ ->
-          []
+    cancellation_args =
+      case exec_opts.cancellation_token do
+        token when is_binary(token) and token != "" -> ["--cancellation-token", token]
+        _ -> []
       end
 
     # Forward pending tool responses so codex exec can replay them when resuming
     # a continuation. The CLI accepts repeated --tool-output/--tool-failure flags
     # with JSON bodies (mirrors Python/TypeScript SDK behaviour).
     tool_output_args =
-      exec_opts
-      |> Map.get(:tool_outputs, [])
+      exec_opts.tool_outputs
       |> Enum.flat_map(&tool_payload_args("--tool-output", &1, [:call_id, :output]))
 
     tool_failure_args =
-      exec_opts
-      |> Map.get(:tool_failures, [])
+      exec_opts.tool_failures
       |> Enum.flat_map(&tool_payload_args("--tool-failure", &1, [:call_id, :reason]))
 
     base ++
@@ -235,6 +250,7 @@ defmodule Codex.Exec do
       config_args ++
       resume_args ++
       continuation_args ++
+      cancellation_args ++
       attachment_args ++
       schema_args ++
       tool_output_args ++
@@ -254,11 +270,17 @@ defmodule Codex.Exec do
 
   defp attachment_cli_args(_), do: []
 
-  defp build_env(%{codex_opts: %Options{} = opts}) do
-    []
-    |> maybe_put_key("CODEX_API_KEY", opts.api_key)
-    |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
-    |> maybe_put_key("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "codex_sdk_elixir")
+  defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env}) do
+    base_env =
+      []
+      |> maybe_put_key("CODEX_API_KEY", opts.api_key)
+      |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
+      |> maybe_put_key("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "codex_sdk_elixir")
+      |> Map.new()
+
+    base_env
+    |> Map.merge(env, fn _key, _base, custom -> custom end)
+    |> Enum.map(fn {key, value} -> {key, value} end)
   end
 
   defp build_env(_), do: []

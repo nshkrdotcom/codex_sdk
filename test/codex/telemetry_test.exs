@@ -149,6 +149,34 @@ defmodule Codex.TelemetryTest do
            end)
   end
 
+  test "early exit runs mark telemetry and logs pruning" do
+    script_path =
+      FixtureScripts.cat_fixture("thread_early_exit.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    handler = "codex-default-logger-test-#{System.unique_integer([:positive])}"
+    :ok = Telemetry.attach_default_logger(handler_id: handler)
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    log =
+      capture_log(fn ->
+        {:ok, _} = Thread.run(thread, "prune")
+      end)
+
+    assert log =~ "early_exit"
+
+    assert_receive {[:codex, :thread, :start], %{system_time: _}, %{originator: :sdk}}, 100
+
+    assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
+    assert measurements.duration_ms > 0
+    assert metadata.result == :early_exit
+    assert metadata.early_exit?
+  end
+
   def collect_event(event, measurements, metadata, pid) do
     send(pid, {event, measurements, metadata})
   end

@@ -96,9 +96,11 @@ defmodule Codex.Telemetry do
 
   def handle_event([:codex, :thread, :stop], measurements, metadata, %{level: level}) do
     duration_ms = Map.get(measurements, :duration_ms)
+    result = Map.get(metadata, :result, :ok)
+    early_exit? = Map.get(metadata, :early_exit?, false)
 
     Logger.log(level, fn ->
-      "[codex] thread stop duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))}"
+      "[codex] thread stop duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))} result=#{result}#{maybe_flag(" early_exit", early_exit?)}"
     end)
   end
 
@@ -124,6 +126,9 @@ defmodule Codex.Telemetry do
   end
 
   def handle_trace_event(_event, _measurements, _metadata, _config), do: :ok
+
+  defp maybe_flag(_label, false), do: ""
+  defp maybe_flag(label, true), do: "#{label}=true"
 
   # -- emit helpers ---------------------------------------------------------
 

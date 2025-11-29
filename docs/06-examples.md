@@ -17,6 +17,7 @@ Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when prese
 9. [Advanced Patterns](#advanced-patterns)
 10. [Production Patterns](#production-patterns)
 11. [Live Usage & Compaction](#live-usage--compaction)
+12. [Live Exec Controls](#live-exec-controls)
 
 ---
 
@@ -1264,6 +1265,34 @@ Run it with:
 ```bash
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
+
+## Live Exec Controls
+
+`examples/live_exec_controls.exs` streams against the live Codex CLI while forwarding per-turn env,
+cancellation tokens, and custom timeouts to `codex exec`. Use it to validate env injection for
+tooling or to wire cancellation tokens from upstream request lifecycles.
+
+```bash
+mix run examples/live_exec_controls.exs \
+  "List three repo files and echo \$CODEX_DEMO_ENV"
+```
+
+Events with `requires_approval: false` bypass approval hooks automatically; only flagged operations
+invoke your configured approval policy or hook.
+
+Overrides remain available:
+
+```bash
+# Custom env, timeout, and cancellation token
+mix run examples/live_exec_controls.exs \
+  "List three repo files and echo \$CODEX_DEMO_ENV" \
+  --env CODEX_DEMO_ENV=from-docs \
+  --timeout-ms 45000 \
+  --cancel demo-token-123
+```
+
+If your Codex CLI is older and does not yet support `--cancellation-token`, rerun without
+`--cancel` or upgrade via `npm install -g @openai/codex`.
 
 ## Testing Patterns
 

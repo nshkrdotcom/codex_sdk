@@ -36,6 +36,9 @@ defmodule Codex.Approvals do
   @spec review_tool(term(), map(), map(), keyword()) :: review_result()
   def review_tool(policy_or_hook, event, context, opts \\ [])
 
+  def review_tool(_policy_or_hook, %{requires_approval: false}, _context, _opts), do: :allow
+  def review_tool(_policy_or_hook, %{"requires_approval" => false}, _context, _opts), do: :allow
+
   # Nil policy - allow by default
   def review_tool(nil, _event, _context, _opts), do: :allow
 
