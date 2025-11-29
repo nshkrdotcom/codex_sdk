@@ -266,6 +266,39 @@ defmodule Codex.ApprovalsTest do
       refute_receive {:telemetry, [:codex, :approval, :approved], _measurements, _metadata}
       refute_receive {:telemetry, [:codex, :approval, :denied], _measurements, _metadata}
     end
+
+    test "skips approval flow when already approved by policy" do
+      event = %{
+        tool_name: "approved_tool",
+        arguments: %{},
+        call_id: "approved_call",
+        requires_approval: true,
+        approved_by_policy: true
+      }
+
+      string_key_event = %{
+        "tool_name" => "approved_tool",
+        "arguments" => %{},
+        "call_id" => "approved_call_2",
+        "requires_approval" => true,
+        "approved" => true
+      }
+
+      context = %{thread: nil, metadata: %{}}
+
+      assert :allow = Approvals.review_tool(StaticPolicy.deny(reason: "blocked"), event, context)
+
+      assert :allow =
+               Approvals.review_tool(
+                 StaticPolicy.deny(reason: "blocked"),
+                 string_key_event,
+                 context
+               )
+
+      refute_receive {:telemetry, [:codex, :approval, :requested], _measurements, _metadata}
+      refute_receive {:telemetry, [:codex, :approval, :approved], _measurements, _metadata}
+      refute_receive {:telemetry, [:codex, :approval, :denied], _measurements, _metadata}
+    end
   end
 
   def forward_approval_event(event_name, measurements, metadata, pid) do

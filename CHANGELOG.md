@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests and fixtures for `/new` resets, early-exit session non-persistence, and rate-limit/sandbox error normalization
 - Live usage/compaction streaming example aligned with new model defaults and reasoning effort handling
 - Live exec controls example (env injection, cancellation tokens, timeout tuning) plus README/docs updates covering safe-command approval bypass
+- Sandbox warning normalization updates (Windows read-only `.git` detection, world-writable dedup) and runnable example `sandbox_warnings_and_approval_bypass.exs`
+- README/docs refresh covering policy-approved bypass flags and normalized sandbox warning strings
 
 ### Changed
 - Thread resumption now uses `codex exec … resume <thread_id>` (no `--thread-id` flag)

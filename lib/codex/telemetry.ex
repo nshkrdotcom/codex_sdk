@@ -167,7 +167,9 @@ defmodule Codex.Telemetry do
   end
 
   defp normalize_metadata(metadata) when is_map(metadata) do
-    Map.put_new(metadata, :originator, @default_originator)
+    metadata
+    |> normalize_warnings()
+    |> Map.put_new(:originator, @default_originator)
   end
 
   defp normalize_metadata(metadata) when is_list(metadata) do
@@ -177,6 +179,84 @@ defmodule Codex.Telemetry do
   end
 
   defp normalize_metadata(_), do: %{originator: @default_originator}
+
+  defp normalize_warnings(metadata) do
+    case warning_key_and_values(metadata) do
+      {nil, _} ->
+        metadata
+
+      {key, warnings} ->
+        Map.put(metadata, key, normalize_warning_list(warnings))
+    end
+  end
+
+  defp warning_key_and_values(metadata) do
+    cond do
+      Map.has_key?(metadata, :sandbox_warnings) ->
+        {:sandbox_warnings, Map.get(metadata, :sandbox_warnings)}
+
+      Map.has_key?(metadata, "sandbox_warnings") ->
+        {"sandbox_warnings", Map.get(metadata, "sandbox_warnings")}
+
+      Map.has_key?(metadata, :warnings) ->
+        {:warnings, Map.get(metadata, :warnings)}
+
+      Map.has_key?(metadata, "warnings") ->
+        {"warnings", Map.get(metadata, "warnings")}
+
+      true ->
+        {nil, nil}
+    end
+  end
+
+  defp normalize_warning_list(nil), do: []
+
+  defp normalize_warning_list(warning) when not is_list(warning),
+    do: normalize_warning_list([warning])
+
+  defp normalize_warning_list(warnings) do
+    {_, acc} =
+      Enum.reduce(warnings, {MapSet.new(), []}, fn warning, {seen, acc} ->
+        normalized = normalize_warning_value(warning)
+        key = warning_key(normalized)
+
+        if MapSet.member?(seen, key) do
+          {seen, acc}
+        else
+          {MapSet.put(seen, key), acc ++ [normalized]}
+        end
+      end)
+
+    acc
+  end
+
+  defp normalize_warning_value(warning) when is_binary(warning) do
+    if windows_path_fragment?(warning) do
+      warning
+      |> String.replace("\\", "/")
+      |> String.replace(~r{/+}, "/")
+    else
+      warning
+    end
+  end
+
+  defp normalize_warning_value(warning), do: normalize_warning_value(to_string(warning))
+
+  defp warning_key(value) do
+    normalized = to_string(value)
+
+    if windows_path_fragment?(normalized) do
+      normalized
+      |> String.replace("\\", "/")
+      |> String.downcase()
+    else
+      normalized
+    end
+  end
+
+  defp windows_path_fragment?(value) do
+    Regex.match?(~r/[A-Za-z]:[\\\/]/, value)
+  end
 
   defp convert_duration_to_ms(duration) do
     duration

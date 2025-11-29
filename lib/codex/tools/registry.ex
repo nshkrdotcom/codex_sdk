@@ -57,7 +57,7 @@ defmodule Codex.Tools.Registry do
   """
   def invoke(name, args, context) when is_binary(name) do
     with {:ok, %{module: module, metadata: metadata} = info} <- lookup(name) do
-      normalized_args = Map.new(args)
+      normalized_args = normalize_args(args)
 
       full_context =
         context
@@ -157,6 +157,7 @@ defmodule Codex.Tools.Registry do
   defp build_telemetry_metadata(tool, module, metadata, args, context) do
     event = Map.get(context, :event)
     thread = Map.get(context, :thread)
+    warnings = sandbox_warnings(context)
 
     %{
       tool: tool,
@@ -168,6 +169,7 @@ defmodule Codex.Tools.Registry do
       call_id: event && Map.get(event, :call_id),
       thread_id: thread && Map.get(thread, :thread_id)
     }
+    |> maybe_put(:sandbox_warnings, warnings)
   end
 
   defp duration_to_ms(duration_native) when is_integer(duration_native) do
@@ -175,4 +177,35 @@ defmodule Codex.Tools.Registry do
     |> System.convert_time_unit(:native, :microsecond)
     |> div(1000)
   end
+
+  defp sandbox_warnings(context) do
+    Map.get(context, :sandbox_warnings) ||
+      Map.get(context, "sandbox_warnings") ||
+      Map.get(context, :warnings) ||
+      Map.get(context, "warnings")
+  end
+
+  defp normalize_args(args) when is_map(args), do: args
+  defp normalize_args(args) when is_list(args), do: Map.new(args)
+
+  defp normalize_args(args) when is_binary(args) do
+    case Jason.decode(args) do
+      {:ok, decoded} when is_map(decoded) -> decoded
+      _ -> %{"input" => args}
+    end
+  rescue
+    _ -> %{"input" => args}
+  end
+
+  defp normalize_args(nil), do: %{}
+
+  defp normalize_args(other) do
+    Map.new(other)
+  rescue
+    _ -> %{"input" => other}
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, _key, []), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end
