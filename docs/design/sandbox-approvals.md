@@ -29,6 +29,18 @@
 ### Current Status
 - `Codex.Approvals.StaticPolicy` ships with `allow/0` and `deny/1` helpers used by tests and the default auto-run pipeline.
 - Tool invocations now consult the configured policy and halt auto-run with a tagged error when denied.
+- Tool-call events can arrive with `approved_by_policy` (or `approved`) already set by upstream safe-command checks; the SDK should bypass hooks in that case while still emitting telemetry for downstream auditing. Example:
+
+```elixir
+event = %Codex.Events.ToolCallRequested{
+  tool_name: "list_dir",
+  call_id: "safe-1",
+  requires_approval: true,
+  approved_by_policy: true,
+  sandbox_warnings: ["Read-only git dir: C:/workspace/.git"]
+}
+Codex.Approvals.review_tool(policy, event, %{}) # => :allow
+```
 
 ## TDD Entry Points
 1. Red test where approval module denies command and turn returns specific error tuple.

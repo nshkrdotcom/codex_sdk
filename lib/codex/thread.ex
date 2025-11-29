@@ -724,6 +724,10 @@ defmodule Codex.Thread do
     tool_context =
       metadata[:tool_context] || metadata["tool_context"] || %{}
 
+    warnings =
+      Map.get(event, :sandbox_warnings) || Map.get(event, "sandbox_warnings") ||
+        Map.get(event, :warnings) || Map.get(event, "warnings")
+
     %{
       thread: thread,
       metadata: metadata,
@@ -732,6 +736,7 @@ defmodule Codex.Thread do
       attempt: attempt,
       retry?: attempt > 1
     }
+    |> maybe_put(:sandbox_warnings, warnings)
   end
 
   defp normalize_tool_failure(%Codex.Error{} = error) do

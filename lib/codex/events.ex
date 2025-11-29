@@ -241,7 +241,10 @@ defmodule Codex.Events do
               call_id: nil,
               tool_name: nil,
               arguments: %{},
-              requires_approval: false
+              requires_approval: false,
+              approved: nil,
+              approved_by_policy: nil,
+              sandbox_warnings: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t(),
@@ -249,7 +252,10 @@ defmodule Codex.Events do
             call_id: String.t(),
             tool_name: String.t(),
             arguments: map(),
-            requires_approval: boolean()
+            requires_approval: boolean(),
+            approved: boolean() | nil,
+            approved_by_policy: boolean() | nil,
+            sandbox_warnings: [String.t()] | nil
           }
   end
 
@@ -439,7 +445,10 @@ defmodule Codex.Events do
       call_id: Map.fetch!(map, "call_id"),
       tool_name: Map.fetch!(map, "tool_name"),
       arguments: Map.get(map, "arguments", %{}),
-      requires_approval: Map.get(map, "requires_approval", false)
+      requires_approval: Map.get(map, "requires_approval", false),
+      approved: Map.get(map, "approved"),
+      approved_by_policy: Map.get(map, "approved_by_policy"),
+      sandbox_warnings: Map.get(map, "sandbox_warnings") || Map.get(map, "warnings")
     }
   end
 
@@ -604,6 +613,9 @@ defmodule Codex.Events do
       "arguments" => event.arguments,
       "requires_approval" => event.requires_approval
     }
+    |> put_optional("approved", event.approved)
+    |> put_optional("approved_by_policy", event.approved_by_policy)
+    |> put_optional("sandbox_warnings", event.sandbox_warnings)
   end
 
   def to_map(%ToolCallCompleted{} = event) do

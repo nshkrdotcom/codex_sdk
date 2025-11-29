@@ -39,11 +39,19 @@ defmodule Codex.Approvals do
   def review_tool(_policy_or_hook, %{requires_approval: false}, _context, _opts), do: :allow
   def review_tool(_policy_or_hook, %{"requires_approval" => false}, _context, _opts), do: :allow
 
+  def review_tool(policy_or_hook, event, context, opts) do
+    if approved_by_policy?(event) do
+      :allow
+    else
+      do_review_tool(policy_or_hook, event, context, opts)
+    end
+  end
+
   # Nil policy - allow by default
-  def review_tool(nil, _event, _context, _opts), do: :allow
+  defp do_review_tool(nil, _event, _context, _opts), do: :allow
 
   # StaticPolicy - backwards compatible
-  def review_tool(%StaticPolicy{} = policy, event, context, _opts) do
+  defp do_review_tool(%StaticPolicy{} = policy, event, context, _opts) do
     emit_requested_telemetry(event)
     started = System.monotonic_time()
 
@@ -54,7 +62,7 @@ defmodule Codex.Approvals do
   end
 
   # Hook module - new behaviour
-  def review_tool(module, event, context, opts) when is_atom(module) do
+  defp do_review_tool(module, event, context, opts) when is_atom(module) do
     emit_requested_telemetry(event)
     started = System.monotonic_time()
     timeout = Keyword.get(opts, :timeout, 30_000)
@@ -125,6 +133,8 @@ defmodule Codex.Approvals do
     end
   end
 
+  defp do_review_tool(_policy_or_hook, _event, _context, _opts), do: :allow
+
   defp emit_requested_telemetry(event) do
     tool_name = get_event_field(event, :tool_name)
     call_id = get_event_field(event, :call_id)
@@ -191,4 +201,16 @@ defmodule Codex.Approvals do
   defp get_event_field(event, field) when is_map(event) do
     event[field] || event[to_string(field)]
   end
+
+  defp approved_by_policy?(event) when is_map(event) do
+    event
+    |> Map.take([:approved, "approved", :approved_by_policy, "approved_by_policy"])
+    |> Map.values()
+    |> Enum.any?(&truthy?/1)
+  end
+
+  defp approved_by_policy?(_event), do: false
+
+  defp truthy?(value) when value in [true, "true", "TRUE", "True"], do: true
+  defp truthy?(_), do: false
 end

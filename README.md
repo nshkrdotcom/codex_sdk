@@ -291,6 +291,11 @@ Codex respects upstream safe-command markers: tool events flagged with `requires
 bypass approval gating automatically, keeping low-risk workspace actions fast while still blocking
 requests that require review.
 
+Tool-call events can also arrive pre-approved via `approved_by_policy` (or `approved`) from the
+CLI; the SDK mirrors that bypass and skips hooks while still emitting telemetry. Sandbox warnings
+are normalized so Windows paths dedupe cleanly (e.g., `C:/Temp` and `C:\\Temp` coalesce). See
+`examples/sandbox_warnings_and_approval_bypass.exs` for a runnable walkthrough.
+
 ### File Attachments & Registries
 
 Stage attachments once and reuse them across turns or threads with the built-in registry:
@@ -437,6 +442,7 @@ See the `examples/` directory for comprehensive demonstrations:
 - **`conversation_and_resume.exs`** - Persisting, resuming, and replaying conversations
 - **`concurrency_and_collaboration.exs`** - Multi-turn concurrency patterns
 - **`approval_hook_example.exs`** - Custom approval hook wiring and telemetry inspection
+- **`sandbox_warnings_and_approval_bypass.exs`** - Normalized sandbox warnings and policy-approved bypass demo
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
 - **`live_cli_demo.exs`** - Live CLI walkthrough (requires `CODEX_TEST_LIVE=true` and CLI auth)
 

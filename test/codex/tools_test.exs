@@ -131,6 +131,42 @@ defmodule Codex.ToolsTest do
     assert failure_metadata.originator == :sdk
   end
 
+  test "normalizes sandbox warnings with Windows paths and deduplicates" do
+    {:ok, _} = Tools.register(ResultTool, name: "result_tool")
+
+    handler_id = "tool-warnings-test-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:codex, :tool, :start],
+        &__MODULE__.forward_tool_event/4,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    warnings = [
+      "World-writable directory: C:\\\\Temp",
+      "World-writable directory: C:/Temp",
+      "Read-only git dir: C:\\\\workspace\\\\.git",
+      "/var/tmp is world-writable"
+    ]
+
+    context = %{thread_id: "t1", sandbox_warnings: warnings}
+
+    assert {:ok, %{"status" => "ok"}} =
+             Tools.invoke("result_tool", %{"mode" => "ok"}, context)
+
+    assert_receive {:telemetry_event, [:codex, :tool, :start], _m, metadata}
+
+    assert metadata.sandbox_warnings == [
+             "World-writable directory: C:/Temp",
+             "Read-only git dir: C:/workspace/.git",
+             "/var/tmp is world-writable"
+           ]
+  end
+
   def forward_tool_event(event, measurements, metadata, pid) do
     send(pid, {:telemetry_event, event, measurements, metadata})
   end
