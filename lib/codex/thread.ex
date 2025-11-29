@@ -327,9 +327,10 @@ defmodule Codex.Thread do
           updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
           {updated_thread, response, usage, continuation}
 
-        %Events.TurnCompaction{thread_id: thread_id} ->
+        %Events.TurnCompaction{thread_id: thread_id, compaction: compaction} ->
           updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
-          {updated_thread, response, usage, continuation}
+          updated_usage = apply_compaction_usage_update(usage, compaction)
+          {updated_thread, response, updated_usage, continuation}
 
         %Events.ItemAgentMessageDelta{item: item} ->
           new_response =
@@ -388,20 +389,11 @@ defmodule Codex.Thread do
     end)
   end
 
-  defp apply_usage_update(current_usage, %Events.ThreadTokenUsageUpdated{} = event) do
-    cond do
-      is_map(event.usage) and map_size(event.usage) > 0 ->
-        event.usage
-
-      is_map(event.delta) ->
-        merge_usage(current_usage || %{}, event.delta)
-
-      is_map(event.usage) ->
-        current_usage || event.usage
-
-      true ->
-        current_usage
-    end
+  defp apply_usage_update(current_usage, %Events.ThreadTokenUsageUpdated{
+         usage: usage,
+         delta: delta
+       }) do
+    update_usage_with_maps(current_usage, usage, delta)
   end
 
   defp merge_usage(nil, nil), do: %{}
@@ -415,6 +407,79 @@ defmodule Codex.Thread do
         true -> r || l
       end
     end)
+  end
+
+  defp apply_compaction_usage_update(current_usage, compaction) when is_map(compaction) do
+    usage =
+      compaction
+      |> get_usage_map(:usage)
+      |> Kernel.||(get_usage_map(compaction, :token_usage))
+
+    delta =
+      compaction
+      |> get_usage_map(:usage_delta)
+      |> Kernel.||(get_usage_map(compaction, :usageDelta))
+
+    update_usage_with_maps(current_usage, usage, delta)
+  end
+
+  defp apply_compaction_usage_update(current_usage, _compaction), do: current_usage
+
+  defp update_usage_with_maps(current_usage, usage_map, delta_map) do
+    cond do
+      is_map(usage_map) and map_size(usage_map) > 0 ->
+        base_usage = overlay_usage(current_usage, usage_map)
+        merge_usage_delta(base_usage, usage_map, current_usage, delta_map)
+
+      is_map(delta_map) ->
+        merge_usage(current_usage || %{}, delta_map)
+
+      is_map(usage_map) ->
+        overlay_usage(current_usage, usage_map)
+
+      true ->
+        current_usage
+    end
+  end
+
+  defp overlay_usage(current_usage, usage_map) do
+    Map.merge(current_usage || %{}, usage_map || %{}, fn _key, _left, right -> right end)
+  end
+
+  defp merge_usage_delta(base_usage, usage_map, current_usage, delta_map)
+       when is_map(delta_map) do
+    Enum.reduce(delta_map, base_usage, fn {key, value}, acc ->
+      if Map.has_key?(usage_map || %{}, key) do
+        acc
+      else
+        previous = Map.get(current_usage || %{}, key)
+        Map.put(acc, key, add_usage(previous, value))
+      end
+    end)
+  end
+
+  defp merge_usage_delta(base_usage, _usage_map, _current_usage, _delta_map), do: base_usage
+
+  defp add_usage(nil, value), do: value
+  defp add_usage(value, nil), do: value
+
+  defp add_usage(left, right) when is_number(left) and is_number(right), do: left + right
+  defp add_usage(_left, right), do: right
+
+  defp get_usage_map(map, key) do
+    value =
+      cond do
+        is_map(map) && Map.has_key?(map, key) ->
+          Map.get(map, key)
+
+        is_map(map) && Map.has_key?(map, to_string(key)) ->
+          Map.get(map, to_string(key))
+
+        true ->
+          nil
+      end
+
+    if is_map(value), do: value, else: nil
   end
 
   defp decode_final_response(nil, _structured?), do: nil

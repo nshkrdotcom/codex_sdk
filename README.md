@@ -172,6 +172,9 @@ mix run examples/basic_usage.exs
 # Streaming patterns (real-time, progressive, stateful)
 mix run examples/streaming.exs progressive
 
+# Live model defaults + compaction/usage handling (requires CODEX_API_KEY)
+mix run examples/live_usage_and_compaction.exs "summarize recent changes"
+
 # Structured output decoding and struct mapping
 mix run examples/structured_output.exs struct
 

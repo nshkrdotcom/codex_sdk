@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"thread_usage_compaction","metadata":{"labels":{"topic":"usage-compaction"}}}
+{"type":"turn.started","turn_id":"turn_usage_compaction","thread_id":"thread_usage_compaction"}
+{"type":"thread/tokenUsage/updated","thread_id":"thread_usage_compaction","turn_id":"turn_usage_compaction","usage":{"input_tokens":180,"cached_input_tokens":20,"output_tokens":0,"total_tokens":200},"delta":{"reasoning_output_tokens":12}}
+{"type":"turn/compaction/completed","thread_id":"thread_usage_compaction","turn_id":"turn_usage_compaction","compaction":{"token_savings":35,"usage_delta":{"input_tokens":-30,"cached_input_tokens":-10,"output_tokens":5,"total_tokens":-35,"reasoning_output_tokens":3}}}
+{"type":"thread/tokenUsage/updated","thread_id":"thread_usage_compaction","turn_id":"turn_usage_compaction","delta":{"output_tokens":20,"total_tokens":20,"reasoning_output_tokens":5}}
+{"type":"item.agent_message.delta","thread_id":"thread_usage_compaction","turn_id":"turn_usage_compaction","item":{"id":"message_1","type":"agent_message","role":"assistant","content":{"type":"text","text":"Usage + compaction tracked"}}}
+{"type":"item.completed","thread_id":"thread_usage_compaction","turn_id":"turn_usage_compaction","item":{"id":"message_1","type":"agent_message","role":"assistant","text":"Usage + compaction tracked"}}
+{"type":"turn.completed","turn_id":"turn_usage_compaction","thread_id":"thread_usage_compaction","final_response":{"type":"text","text":"Usage + compaction tracked"}}

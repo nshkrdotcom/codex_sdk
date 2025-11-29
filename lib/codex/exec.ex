@@ -10,6 +10,7 @@ defmodule Codex.Exec do
 
   alias Codex.Events
   alias Codex.Files.Attachment
+  alias Codex.Models
   alias Codex.Options
   alias Codex.TransportError
 
@@ -174,6 +175,16 @@ defmodule Codex.Exec do
           []
       end
 
+    config_args =
+      case exec_opts do
+        %{codex_opts: %Options{reasoning_effort: effort}} when not is_nil(effort) ->
+          stringified = effort |> Models.reasoning_effort_to_string()
+          ["--config", ~s(model_reasoning_effort="#{stringified}")]
+
+        _ ->
+          []
+      end
+
     resume_args =
       case exec_opts do
         %{thread: %{thread_id: thread_id}} when is_binary(thread_id) ->
@@ -221,6 +232,7 @@ defmodule Codex.Exec do
 
     base ++
       model_args ++
+      config_args ++
       resume_args ++
       continuation_args ++
       attachment_args ++

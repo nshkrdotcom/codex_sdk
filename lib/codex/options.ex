@@ -6,24 +6,25 @@ defmodule Codex.Options do
   """
 
   require Bitwise
+  alias Codex.Models
 
   @default_base_url "https://api.openai.com/v1"
-
-  @default_model System.get_env("CODEX_MODEL") || System.get_env("CODEX_MODEL_DEFAULT")
 
   @enforce_keys []
   defstruct api_key: nil,
             base_url: @default_base_url,
             codex_path_override: nil,
             telemetry_prefix: [:codex],
-            model: @default_model
+            model: Models.default_model(),
+            reasoning_effort: Models.default_reasoning_effort()
 
   @type t :: %__MODULE__{
           api_key: String.t() | nil,
           base_url: String.t(),
           codex_path_override: String.t() | nil,
           telemetry_prefix: [atom()],
-          model: String.t()
+          model: String.t() | nil,
+          reasoning_effort: Models.reasoning_effort() | nil
         }
 
   @doc """
@@ -40,14 +41,16 @@ defmodule Codex.Options do
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model} <- fetch_model(attrs) do
+         {:ok, model} <- fetch_model(attrs),
+         {:ok, reasoning_effort} <- fetch_reasoning_effort(attrs, model) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
          base_url: base_url,
          codex_path_override: override,
          telemetry_prefix: telemetry_prefix,
-         model: model
+         model: model,
+         reasoning_effort: reasoning_effort
        }}
     end
   end
@@ -187,12 +190,18 @@ defmodule Codex.Options do
   defp pick(_attrs, [], default), do: default
 
   defp fetch_model(attrs) do
-    default = System.get_env("CODEX_MODEL") || @default_model
-
-    case pick(attrs, [:model, "model"], default) do
+    case pick(attrs, [:model, "model"], Models.default_model()) do
       nil -> {:ok, nil}
       "" -> {:ok, nil}
       model -> {:ok, model}
     end
+  end
+
+  defp fetch_reasoning_effort(attrs, model) do
+    default = Models.default_reasoning_effort(model)
+
+    attrs
+    |> pick([:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"], default)
+    |> Models.normalize_reasoning_effort()
   end
 end
