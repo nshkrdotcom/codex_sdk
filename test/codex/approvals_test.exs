@@ -249,6 +249,23 @@ defmodule Codex.ApprovalsTest do
       assert metadata.tool == "test_tool"
       assert metadata.originator == :sdk
     end
+
+    test "bypasses approvals when event does not require them" do
+      event = %{
+        tool_name: "safe_tool",
+        arguments: %{},
+        call_id: "safe_call",
+        requires_approval: false
+      }
+
+      context = %{thread: nil, metadata: %{}}
+
+      assert :allow = Approvals.review_tool(StaticPolicy.deny(reason: "blocked"), event, context)
+
+      refute_receive {:telemetry, [:codex, :approval, :requested], _measurements, _metadata}
+      refute_receive {:telemetry, [:codex, :approval, :approved], _measurements, _metadata}
+      refute_receive {:telemetry, [:codex, :approval, :denied], _measurements, _metadata}
+    end
   end
 
   def forward_approval_event(event_name, measurements, metadata, pid) do

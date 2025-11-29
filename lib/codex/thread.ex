@@ -86,17 +86,23 @@ defmodule Codex.Thread do
         case Codex.Exec.run(input, exec_opts) do
           {:ok, exec_result} ->
             duration = System.monotonic_time() - started_monotonic
-            failure = extract_turn_failure(exec_result.events)
+            events = exec_result.events
+            failure = extract_turn_failure(events)
+            early_exit? = early_exit?(events)
 
             Telemetry.emit(
               [:codex, :thread, :stop],
               %{duration: duration, system_time: System.system_time()},
               meta
-              |> Map.put(:result, telemetry_result(failure))
+              |> Map.put(:result, telemetry_result(failure, early_exit?))
               |> maybe_put(:error, failure_meta(failure))
+              |> maybe_put(:early_exit?, early_exit?)
             )
 
-            exec_result = Map.put(exec_result, :structured_output?, structured_output?)
+            exec_result =
+              exec_result
+              |> Map.put(:structured_output?, structured_output?)
+              |> Map.put(:pruned?, early_exit?)
 
             result = finalize_turn(thread, exec_result, exec_meta)
 
@@ -239,10 +245,23 @@ defmodule Codex.Thread do
     schema = Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
 
     with {:ok, schema_path, cleanup} <- OutputSchemaFile.create(schema) do
+      env = Map.get(turn_opts_map, :env, Map.get(turn_opts_map, "env"))
+
+      cancellation_token =
+        Map.get(turn_opts_map, :cancellation_token, Map.get(turn_opts_map, "cancellation_token"))
+
+      timeout_ms = Map.get(turn_opts_map, :timeout_ms, Map.get(turn_opts_map, "timeout_ms"))
+
       filtered_turn_opts =
         turn_opts_map
         |> Map.delete(:output_schema)
         |> Map.delete("output_schema")
+        |> Map.delete(:env)
+        |> Map.delete("env")
+        |> Map.delete(:cancellation_token)
+        |> Map.delete("cancellation_token")
+        |> Map.delete(:timeout_ms)
+        |> Map.delete("timeout_ms")
 
       exec_opts =
         %{
@@ -255,6 +274,9 @@ defmodule Codex.Thread do
           tool_failures: thread.pending_tool_failures
         }
         |> maybe_put(:output_schema_path, schema_path)
+        |> maybe_put(:env, env)
+        |> maybe_put(:cancellation_token, cancellation_token)
+        |> maybe_put(:timeout_ms, timeout_ms)
 
       {:ok, exec_opts, cleanup, %{structured_output?: not is_nil(schema)}}
     end
@@ -466,20 +488,17 @@ defmodule Codex.Thread do
   defp add_usage(left, right) when is_number(left) and is_number(right), do: left + right
   defp add_usage(_left, right), do: right
 
-  defp get_usage_map(map, key) do
-    value =
-      cond do
-        is_map(map) && Map.has_key?(map, key) ->
-          Map.get(map, key)
+  defp get_usage_map(map, key) when is_map(map) do
+    fetch_map_value(map, key) || fetch_map_value(map, to_string(key))
+  end
 
-        is_map(map) && Map.has_key?(map, to_string(key)) ->
-          Map.get(map, to_string(key))
+  defp get_usage_map(_map, _key), do: nil
 
-        true ->
-          nil
-      end
-
-    if is_map(value), do: value, else: nil
+  defp fetch_map_value(map, key) do
+    case Map.fetch(map, key) do
+      {:ok, value} when is_map(value) -> value
+      _ -> nil
+    end
   end
 
   defp decode_final_response(nil, _structured?), do: nil
@@ -562,8 +581,9 @@ defmodule Codex.Thread do
     end
   end
 
-  defp telemetry_result(:ok), do: :ok
-  defp telemetry_result({:error, _}), do: :error
+  defp telemetry_result(:ok, true), do: :early_exit
+  defp telemetry_result(:ok, false), do: :ok
+  defp telemetry_result({:error, _}, _), do: :error
 
   defp failure_meta({:error, %Error{} = error}) do
     %{kind: error.kind, message: error.message}

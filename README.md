@@ -175,6 +175,9 @@ mix run examples/streaming.exs progressive
 # Live model defaults + compaction/usage handling (requires CODEX_API_KEY)
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 
+# Live exec controls (env injection, cancellation token, timeout)
+mix run examples/live_exec_controls.exs "list files and print CODEX_DEMO_ENV"
+
 # Structured output decoding and struct mapping
 mix run examples/structured_output.exs struct
 
@@ -230,6 +233,16 @@ thread_id = "thread_abc123"
 turn_options = %{output_schema: my_json_schema}
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
+
+# Exec controls: inject env, set cancellation token/timeout (forwarded to codex exec)
+turn_options = %{
+  env: %{"CODEX_DEMO_ENV" => "from-sdk"},
+  cancellation_token: "demo-token-123",
+  timeout_ms: 120_000
+}
+
+{:ok, stream} =
+  Codex.Thread.run_streamed(thread, "List three files and echo $CODEX_DEMO_ENV", turn_options)
 ```
 
 ### Approval Hooks
@@ -273,6 +286,10 @@ end
 
 Hooks can be synchronous or async (see `Codex.Approvals.Hook` for callback semantics), and all
 decisions emit telemetry so you can audit approvals externally.
+
+Codex respects upstream safe-command markers: tool events flagged with `requires_approval: false`
+bypass approval gating automatically, keeping low-risk workspace actions fast while still blocking
+requests that require review.
 
 ### File Attachments & Registries
 

@@ -4,6 +4,12 @@ defmodule Codex.Models do
   """
 
   @type reasoning_effort :: :minimal | :low | :medium | :high | :xhigh
+  @type model :: %{
+          id: String.t(),
+          default_reasoning_effort: reasoning_effort(),
+          tool_enabled?: boolean(),
+          default?: boolean()
+        }
 
   @models [
     %{
@@ -33,7 +39,7 @@ defmodule Codex.Models do
   @doc """
   Returns the list of supported models with metadata describing defaults.
   """
-  @spec list() :: [map()]
+  @spec list() :: nonempty_list(model())
   def list, do: @models
 
   @doc """
@@ -111,7 +117,7 @@ defmodule Codex.Models do
   @doc """
   Lists the valid reasoning effort values understood by the SDK.
   """
-  @spec reasoning_efforts() :: [reasoning_effort()]
+  @spec reasoning_efforts() :: nonempty_list(reasoning_effort())
   def reasoning_efforts, do: @reasoning_efforts
 
   @doc """
