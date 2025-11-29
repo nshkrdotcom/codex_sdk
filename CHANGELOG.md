@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Streaming example updates to surface live usage and diff events alongside item progress
 - Automatic auth fallback to Codex CLI login when API keys are absent; live two-turn walkthrough example
 - Regression tests and fixtures for `/new` resets, early-exit session non-persistence, and rate-limit/sandbox error normalization
+- Live usage/compaction streaming example aligned with new model defaults and reasoning effort handling
 
 ### Changed
 - Thread resumption now uses `codex exec … resume <thread_id>` (no `--thread-id` flag)

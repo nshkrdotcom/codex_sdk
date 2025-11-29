@@ -38,6 +38,50 @@ defmodule Codex.ThreadTest do
       assert length(result.events) == 5
     end
 
+    test "passes default model and reasoning effort to codex exec" do
+      capture_path =
+        Path.join(
+          System.tmp_dir!(),
+          "codex_exec_model_args_#{System.unique_integer([:positive])}"
+        )
+
+      script_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, _result} = Thread.run(thread, "Model defaults")
+
+      args =
+        capture_path
+        |> File.read!()
+        |> String.trim()
+        |> String.split(~r/\s+/)
+
+      assert Enum.chunk_every(args, 2)
+             |> Enum.any?(fn
+               ["--model", "gpt-5.1-codex-max"] -> true
+               _ -> false
+             end)
+
+      assert Enum.chunk_every(args, 2)
+             |> Enum.any?(fn
+               ["--config", ~s(model_reasoning_effort="medium")] -> true
+               _ -> false
+             end)
+    end
+
     test "writes output schema to temp file and passes flag to exec" do
       capture_path =
         Path.join(
@@ -195,6 +239,46 @@ defmodule Codex.ThreadTest do
       assert Enum.any?(result.events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
       assert Enum.any?(result.events, &match?(%Events.TurnDiffUpdated{}, &1))
       assert Enum.any?(result.events, &match?(%Events.TurnCompaction{}, &1))
+    end
+
+    test "merges usage deltas and compaction updates into thread usage" do
+      codex_path =
+        "thread_usage_compaction.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, result} = Thread.run(thread, "Track compaction usage")
+
+      assert %Items.AgentMessage{text: "Usage + compaction tracked"} = result.final_response
+
+      assert %{
+               "input_tokens" => 150,
+               "cached_input_tokens" => 10,
+               "output_tokens" => 25,
+               "total_tokens" => 185,
+               "reasoning_output_tokens" => 20
+             } = result.usage
+
+      assert result.thread.usage == result.usage
+
+      assert Enum.any?(result.events, fn
+               %Events.TurnCompaction{compaction: %{"usage_delta" => _}, stage: :completed} ->
+                 true
+
+               _ ->
+                 false
+             end)
+
+      assert Enum.any?(result.events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
     end
   end
 

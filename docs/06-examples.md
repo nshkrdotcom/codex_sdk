@@ -16,6 +16,7 @@ Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when prese
 8. [Configuration](#configuration)
 9. [Advanced Patterns](#advanced-patterns)
 10. [Production Patterns](#production-patterns)
+11. [Live Usage & Compaction](#live-usage--compaction)
 
 ---
 
@@ -1248,6 +1249,21 @@ end
 ```
 
 ---
+
+## Live Usage & Compaction
+
+`examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or `OPENAI_API_KEY`) and mirrors the latest defaults:
+
+- Uses the SDK default model (`gpt-5.1-codex-max`) and reasoning effort.
+- Streams events, printing token-usage deltas and turn diffs as they arrive.
+- Captures explicit compaction notifications (including usage deltas) and merges them into the displayed token totals.
+- Prints the final agent response alongside merged usage.
+
+Run it with:
+
+```bash
+mix run examples/live_usage_and_compaction.exs "summarize recent changes"
+```
 
 ## Testing Patterns
 
