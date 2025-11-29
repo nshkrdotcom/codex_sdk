@@ -593,6 +593,74 @@ Emitted when a turn fails with an error.
 
 ---
 
+#### `ThreadTokenUsageUpdated`
+
+Emitted when the app server publishes in-flight token usage totals.
+
+**Type**:
+```elixir
+@type t() :: %Codex.Events.ThreadTokenUsageUpdated{
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil,
+  usage: map(),
+  delta: map() | nil
+}
+```
+
+**Fields**:
+- `thread_id`: Explicit thread identifier provided by Codex
+- `turn_id`: Turn identifier when available
+- `usage`: Cumulative token usage so far
+- `delta`: Optional incremental token counts
+
+---
+
+#### `TurnDiffUpdated`
+
+Diff metadata streamed alongside turn progress.
+
+**Type**:
+```elixir
+@type t() :: %Codex.Events.TurnDiffUpdated{
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil,
+  diff: map()
+}
+```
+
+---
+
+#### `TurnCompaction`
+
+Signals that Codex compacted a turn's history, often to trim token usage.
+
+**Type**:
+```elixir
+@type t() :: %Codex.Events.TurnCompaction{
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil,
+  compaction: map(),
+  stage: :started | :completed | :failed | :unknown | String.t()
+}
+```
+
+---
+
+#### `Error`
+
+General error notification emitted by Codex.
+
+**Type**:
+```elixir
+@type t() :: %Codex.Events.Error{
+  message: String.t(),
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil
+}
+```
+
+---
+
 #### `ItemStarted`
 
 Emitted when a new item is added to the thread.
@@ -601,7 +669,9 @@ Emitted when a new item is added to the thread.
 ```elixir
 @type t() :: %Codex.Events.ItemStarted{
   type: :item_started,
-  item: Codex.Items.t()
+  item: Codex.Items.t(),
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil
 }
 ```
 
@@ -615,7 +685,9 @@ Emitted when an item's state changes.
 ```elixir
 @type t() :: %Codex.Events.ItemUpdated{
   type: :item_updated,
-  item: Codex.Items.t()
+  item: Codex.Items.t(),
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil
 }
 ```
 
@@ -629,7 +701,9 @@ Emitted when an item reaches a terminal state.
 ```elixir
 @type t() :: %Codex.Events.ItemCompleted{
   type: :item_completed,
-  item: Codex.Items.t()
+  item: Codex.Items.t(),
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil
 }
 ```
 

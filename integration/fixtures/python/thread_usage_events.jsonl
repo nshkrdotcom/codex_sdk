@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"thread_usage","metadata":{"labels":{"topic":"usage"}}}
+{"type":"turn.started","turn_id":"turn_usage","thread_id":"thread_usage"}
+{"type":"thread/tokenUsage/updated","thread_id":"thread_usage","turn_id":"turn_usage","usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":0,"total_tokens":110},"delta":{"input_tokens":100}}
+{"type":"turn/diff/updated","thread_id":"thread_usage","turn_id":"turn_usage","diff":{"ops":[{"op":"add","path":"response","text":"+ summarized"}]}}
+{"type":"turn/compaction/completed","thread_id":"thread_usage","turn_id":"turn_usage","compaction":{"dropped_item_ids":["old_1","old_2"],"token_savings":256}}
+{"type":"item.agent_message.delta","thread_id":"thread_usage","turn_id":"turn_usage","item":{"id":"message_1","type":"agent_message","role":"assistant","content":{"type":"text","text":"Usage tracked"}}}
+{"type":"item.completed","thread_id":"thread_usage","turn_id":"turn_usage","item":{"id":"message_1","type":"agent_message","role":"assistant","text":"Usage tracked"}}
+{"type":"turn.completed","turn_id":"turn_usage","thread_id":"thread_usage","final_response":{"type":"text","text":"Usage tracked"}}

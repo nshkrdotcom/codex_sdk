@@ -62,8 +62,20 @@ defmodule Examples.Streaming do
           %Events.ItemCompleted{item: %Items.AgentMessage{text: text}} ->
             %{state | messages: [text | state.messages]}
 
+          %Events.ThreadTokenUsageUpdated{} = usage_event ->
+            updated_usage =
+              merge_usage(state.usage, usage_event.usage || usage_event.delta || %{})
+
+            %{state | usage: updated_usage}
+
           %Events.TurnCompleted{usage: usage} when is_map(usage) ->
-            %{state | usage: usage}
+            %{state | usage: merge_usage(state.usage, usage)}
+
+          %Events.TurnDiffUpdated{diff: diff} ->
+            %{state | diffs: [diff | state.diffs]}
+
+          %Events.TurnCompaction{} = compaction ->
+            %{state | compactions: [compaction | state.compactions]}
 
           _ ->
             state
@@ -91,6 +103,23 @@ defmodule Examples.Streaming do
     IO.puts("\nTurn completed (usage=#{inspect(usage)})")
   end
 
+  defp handle_event(%Events.ThreadTokenUsageUpdated{} = event) do
+    context = format_context(event.thread_id, event.turn_id)
+    delta_suffix = if event.delta, do: " delta=#{inspect(event.delta)}", else: ""
+    IO.puts("Usage update#{context}: #{inspect(event.usage)}#{delta_suffix}")
+  end
+
+  defp handle_event(%Events.TurnDiffUpdated{} = event) do
+    context = format_context(event.thread_id, event.turn_id)
+    ops = Map.get(event.diff, "ops") || Map.get(event.diff, :ops) || event.diff
+    IO.puts("Turn diff#{context}: #{inspect(ops)}")
+  end
+
+  defp handle_event(%Events.TurnCompaction{} = event) do
+    context = format_context(event.thread_id, event.turn_id)
+    IO.puts("Compaction #{event.stage}#{context}: #{inspect(event.compaction)}")
+  end
+
   defp handle_event(_), do: :ok
 
   defp initial_state do
@@ -99,8 +128,31 @@ defmodule Examples.Streaming do
       commands: [],
       files: [],
       messages: [],
-      usage: nil
+      usage: nil,
+      diffs: [],
+      compactions: []
     }
+  end
+
+  defp merge_usage(nil, nil), do: %{}
+  defp merge_usage(map, nil) when is_map(map), do: map
+  defp merge_usage(nil, map) when is_map(map), do: map
+
+  defp merge_usage(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _key, l, r ->
+      if is_number(l) and is_number(r), do: l + r, else: r || l
+    end)
+  end
+
+  defp format_context(nil, nil), do: ""
+
+  defp format_context(thread_id, turn_id) do
+    parts =
+      [["thread", thread_id], ["turn", turn_id]]
+      |> Enum.reject(fn [_label, id] -> is_nil(id) end)
+      |> Enum.map_join(" ", fn [label, id] -> "#{label}=#{id}" end)
+
+    " (#{parts})"
   end
 end
 

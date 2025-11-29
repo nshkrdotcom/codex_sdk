@@ -296,6 +296,23 @@ defmodule Codex.Thread do
           updated = Map.put(acc_thread, :continuation_token, token)
           {updated, response, usage, token}
 
+        %Events.ThreadTokenUsageUpdated{} = usage_event ->
+          updated_usage = apply_usage_update(usage, usage_event)
+
+          updated_thread =
+            acc_thread
+            |> maybe_put(:thread_id, usage_event.thread_id)
+
+          {updated_thread, response, updated_usage, continuation}
+
+        %Events.TurnDiffUpdated{thread_id: thread_id} ->
+          updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
+          {updated_thread, response, usage, continuation}
+
+        %Events.TurnCompaction{thread_id: thread_id} ->
+          updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
+          {updated_thread, response, usage, continuation}
+
         %Events.ItemAgentMessageDelta{item: item} ->
           new_response =
             case item do
@@ -351,6 +368,22 @@ defmodule Codex.Thread do
 
       {updated_thread, response, usage}
     end)
+  end
+
+  defp apply_usage_update(current_usage, %Events.ThreadTokenUsageUpdated{} = event) do
+    cond do
+      is_map(event.usage) and map_size(event.usage) > 0 ->
+        event.usage
+
+      is_map(event.delta) ->
+        merge_usage(current_usage || %{}, event.delta)
+
+      is_map(event.usage) ->
+        current_usage || event.usage
+
+      true ->
+        current_usage
+    end
   end
 
   defp merge_usage(nil, nil), do: %{}

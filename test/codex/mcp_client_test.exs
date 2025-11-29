@@ -56,7 +56,7 @@ defmodule Codex.MCPClientTest do
 
     transport_ref = {FakeTransport, transport}
 
-    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.0")
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
 
     assert Client.capabilities(client) == ["tools", "attachments"]
 
