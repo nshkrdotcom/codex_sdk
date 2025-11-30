@@ -7,6 +7,7 @@ Guidance for enabling and validating the Codex SDK telemetry pipeline in product
 - All SDK-originated events include `originator: :sdk` plus `span_token` metadata used for span correlation.
 - Stop/exception events add `system_time` to support precise span end timestamps.
 - Default logs can be enabled with `Codex.Telemetry.attach_default_logger/1`; they report durations in milliseconds.
+- Thread telemetry now carries `thread_id`, `turn_id`, and any `source` metadata found on the thread, and it emits incremental signals for token-usage updates, diff streams, and compaction stages (`[:codex, :thread, :token_usage, :updated]`, `[:codex, :turn, :diff, :updated]`, `[:codex, :turn, :compaction, stage]`).
 
 ## Enabling OTLP Export
 1. Enable OTLP exporting and export the collector endpoint (and optional headers):
@@ -22,6 +23,15 @@ Guidance for enabling and validating the Codex SDK telemetry pipeline in product
    iex> Application.started_applications() |> Enum.filter(&(elem(&1, 0) in [:opentelemetry, :opentelemetry_exporter]))
    ```
 4. Emit a thread run and confirm spans arrive in your collector.
+
+### mTLS
+- Provide client certificates for the OTLP exporter with:
+  ```bash
+  export CODEX_OTLP_CERTFILE=/path/to/client.crt
+  export CODEX_OTLP_KEYFILE=/path/to/client.key
+  export CODEX_OTLP_CACERTFILE=/path/to/ca.crt
+  ```
+- The exporter passes these through as `ssl_options`; leave them unset to fall back to the default root store.
 
 ## Local Verification with the PID Exporter
 Use the in-memory exporter to validate spans without a collector:

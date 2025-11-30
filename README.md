@@ -196,6 +196,9 @@ mix run examples/live_session_walkthrough.exs "your prompt here"
 # Live tooling stream: shows shell + MCP events and falls back to last agent message
 mix run examples/live_tooling_stream.exs "optional prompt"
 
+# Live telemetry stream: prints thread/turn ids, source metadata, usage deltas, diffs, and compaction (low reasoning, fast prompt)
+mix run examples/live_telemetry_stream.exs
+
 # Live CLI demo (forces live run; CODEX_TEST_LIVE=true for CI)
 CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```

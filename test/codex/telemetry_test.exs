@@ -2,7 +2,6 @@ defmodule Codex.TelemetryTest do
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
-  require Record
 
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.TestSupport.FixtureScripts
@@ -13,12 +12,6 @@ defmodule Codex.TelemetryTest do
     [:codex, :thread, :stop],
     [:codex, :thread, :exception]
   ]
-
-  Record.defrecord(
-    :otel_span,
-    :span,
-    Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl")
-  )
 
   setup do
     handler_id = "telemetry-test-#{System.unique_integer([:positive])}"
@@ -52,6 +45,37 @@ defmodule Codex.TelemetryTest do
     assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
     assert measurements.duration_ms > 0
     assert metadata.originator == :sdk
+  end
+
+  test "thread telemetry captures ids and source metadata" do
+    script_body = """
+    #!/usr/bin/env bash
+    cat <<'EOF'
+    {"type":"thread.started","thread_id":"thread_src","metadata":{"labels":{"topic":"sources"},"source":{"origin":"unit-test","workspace":"/tmp/test"}}}
+    {"type":"turn.started","turn_id":"turn_src","thread_id":"thread_src"}
+    {"type":"turn.completed","turn_id":"turn_src","thread_id":"thread_src","final_response":{"type":"text","text":"done"}}
+    EOF
+    """
+
+    script_path = temp_script(script_body)
+    on_exit(fn -> File.rm_rf(script_path) end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    {:ok, _result} = Thread.run(thread, "capture source info")
+
+    assert_receive {[:codex, :thread, :start], %{system_time: _},
+                    %{originator: :sdk, span_token: span_token}},
+                   100
+
+    assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
+    assert measurements.duration_ms > 0
+    assert metadata.thread_id == "thread_src"
+    assert metadata.turn_id == "turn_src"
+    assert metadata.source == %{"origin" => "unit-test", "workspace" => "/tmp/test"}
+    assert metadata.span_token == span_token
   end
 
   test "exceptions emit telemetry" do
@@ -111,6 +135,7 @@ defmodule Codex.TelemetryTest do
       Application.put_env(:codex_sdk, :enable_otlp?, previous)
       _ = Application.stop(:opentelemetry_exporter)
       _ = Application.stop(:opentelemetry)
+      _ = Application.stop(:tls_certificate_check)
       :telemetry.detach(Telemetry.tracing_handler_id())
     end)
 
@@ -147,6 +172,111 @@ defmodule Codex.TelemetryTest do
     assert Enum.any?(Application.started_applications(), fn {app, _, _} ->
              app == :opentelemetry
            end)
+
+    assert_receive {[:codex, :thread, :start], _m, _md}, 100
+    assert_receive {[:codex, :thread, :stop], _m, metadata}, 100
+
+    attributes =
+      metadata
+      |> Telemetry.thread_span_attributes()
+      |> Map.merge(Telemetry.finalize_thread_attributes(metadata))
+
+    assert attributes[:"codex.thread.id"] == "thread_abc123"
+    assert attributes[:"codex.turn.id"] == "turn_def456"
+    assert attributes[:"codex.originator"] == "sdk"
+  end
+
+  test "telemetry emits token usage, diff, and compaction updates with ids" do
+    handler_id = "telemetry-progress-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach_many(
+      handler_id,
+      [
+        [:codex, :thread, :token_usage, :updated],
+        [:codex, :turn, :diff, :updated],
+        [:codex, :turn, :compaction, :completed]
+      ],
+      &__MODULE__.collect_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    script_path =
+      FixtureScripts.cat_fixture("thread_usage_events.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    {:ok, _result} = Thread.run(thread, "usage telemetry")
+
+    assert_receive {[:codex, :thread, :token_usage, :updated], %{system_time: _},
+                    %{
+                      thread_id: "thread_usage",
+                      turn_id: "turn_usage",
+                      usage: usage,
+                      delta: delta
+                    }},
+                   100
+
+    assert usage["total_tokens"] == 110
+    assert delta["input_tokens"] == 100
+
+    diff = %{"ops" => [%{"op" => "add", "path" => "response", "text" => "+ summarized"}]}
+
+    assert_receive {[:codex, :turn, :diff, :updated], %{system_time: _},
+                    %{thread_id: "thread_usage", turn_id: "turn_usage", diff: ^diff}},
+                   100
+
+    assert_receive {[:codex, :turn, :compaction, :completed], %{system_time: _} = measurements,
+                    %{thread_id: "thread_usage", turn_id: "turn_usage", compaction: compaction}},
+                   100
+
+    assert compaction["token_savings"] == 256
+    assert measurements[:token_savings] == 256
+  end
+
+  test "configure supports mTLS exporter settings" do
+    cert_path = temp_file("cert", "mtls-cert")
+    key_path = temp_file("key", "mtls-key")
+    ca_path = temp_file("ca", "mtls-ca")
+
+    on_exit(fn ->
+      File.rm_rf(cert_path)
+      File.rm_rf(key_path)
+      File.rm_rf(ca_path)
+    end)
+
+    previous = Application.get_env(:codex_sdk, :enable_otlp?, false)
+    Application.put_env(:codex_sdk, :enable_otlp?, true)
+
+    on_exit(fn ->
+      Application.put_env(:codex_sdk, :enable_otlp?, previous)
+      _ = Application.stop(:opentelemetry_exporter)
+      _ = Application.stop(:opentelemetry)
+      _ = Application.stop(:tls_certificate_check)
+      :telemetry.detach(Telemetry.tracing_handler_id())
+    end)
+
+    env = %{
+      "CODEX_OTLP_ENDPOINT" => "https://otel.example.com:4318",
+      "CODEX_OTLP_CERTFILE" => cert_path,
+      "CODEX_OTLP_KEYFILE" => key_path,
+      "CODEX_OTLP_CACERTFILE" => ca_path
+    }
+
+    assert :ok = Telemetry.configure(env: env, enabled?: true)
+
+    assert [{:otel_simple_processor, %{exporter: {:opentelemetry_exporter, exporter_cfg}}}] =
+             Application.get_env(:opentelemetry, :processors)
+
+    assert exporter_cfg[:ssl_options] |> Enum.into(%{}) == %{
+             certfile: cert_path,
+             keyfile: key_path,
+             cacertfile: ca_path
+           }
   end
 
   test "early exit runs mark telemetry and logs pruning" do
@@ -185,6 +315,17 @@ defmodule Codex.TelemetryTest do
     path = Path.join(System.tmp_dir!(), "codex_telemetry_#{System.unique_integer([:positive])}")
     File.write!(path, contents)
     File.chmod!(path, 0o755)
+    path
+  end
+
+  defp temp_file(prefix, content) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_telemetry_#{prefix}_#{System.unique_integer([:positive])}"
+      )
+
+    File.write!(path, content)
     path
   end
 end

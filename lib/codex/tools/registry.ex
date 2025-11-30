@@ -168,7 +168,8 @@ defmodule Codex.Tools.Registry do
       retry?: Map.get(context, :retry?, false),
       attempt: Map.get(context, :attempt),
       call_id: event && Map.get(event, :call_id),
-      thread_id: thread && Map.get(thread, :thread_id)
+      thread_id: thread && Map.get(thread, :thread_id),
+      turn_id: event && Map.get(event, :turn_id)
     }
     |> maybe_put(:capabilities, capabilities)
     |> maybe_put(:sandbox_warnings, warnings)

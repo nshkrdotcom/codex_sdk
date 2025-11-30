@@ -18,6 +18,7 @@ Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when prese
 10. [Production Patterns](#production-patterns)
 11. [Live Usage & Compaction](#live-usage--compaction)
 12. [Live Exec Controls](#live-exec-controls)
+13. [Live Telemetry Stream](#live-telemetry-stream)
 
 ---
 
@@ -1303,6 +1304,16 @@ mix run examples/live_exec_controls.exs \
 
 If your Codex CLI is older and does not yet support `--cancellation-token`, rerun without
 `--cancel` or upgrade via `npm install -g @openai/codex`.
+
+## Live Telemetry Stream
+
+`examples/live_telemetry_stream.exs` attaches telemetry handlers to the live Codex CLI so you can observe thread/turn identifiers, source metadata, token-usage deltas, diff updates, and compaction savings as they stream in. It uses a low reasoning effort and a short default prompt to return quickly.
+
+```bash
+mix run examples/live_telemetry_stream.exs
+```
+
+Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 ## Testing Patterns
 

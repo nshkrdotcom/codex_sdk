@@ -136,60 +136,40 @@ defmodule Codex.Approvals do
   defp do_review_tool(_policy_or_hook, _event, _context, _opts), do: :allow
 
   defp emit_requested_telemetry(event) do
-    tool_name = get_event_field(event, :tool_name)
-    call_id = get_event_field(event, :call_id)
-
     Telemetry.emit(
       [:codex, :approval, :requested],
       %{system_time: System.system_time()},
-      %{
-        tool: tool_name,
-        call_id: call_id,
-        originator: :sdk
-      }
+      approval_metadata(event)
     )
   end
 
   defp emit_result_telemetry(:allow, event, started) do
     duration = System.monotonic_time() - started
-    tool_name = get_event_field(event, :tool_name)
 
     Telemetry.emit(
       [:codex, :approval, :approved],
       %{duration: duration, system_time: System.system_time()},
-      %{
-        tool: tool_name,
-        originator: :sdk
-      }
+      approval_metadata(event)
     )
   end
 
   defp emit_result_telemetry({:deny, reason}, event, started) do
     duration = System.monotonic_time() - started
-    tool_name = get_event_field(event, :tool_name)
 
     Telemetry.emit(
       [:codex, :approval, :denied],
       %{duration: duration, system_time: System.system_time()},
-      %{
-        tool: tool_name,
-        reason: reason,
-        originator: :sdk
-      }
+      approval_metadata(event, %{reason: reason})
     )
   end
 
   defp emit_timeout_telemetry(event, started) do
     duration = System.monotonic_time() - started
-    tool_name = get_event_field(event, :tool_name)
 
     Telemetry.emit(
       [:codex, :approval, :timeout],
       %{duration: duration, system_time: System.system_time()},
-      %{
-        tool: tool_name,
-        originator: :sdk
-      }
+      approval_metadata(event)
     )
   end
 
@@ -213,4 +193,22 @@ defmodule Codex.Approvals do
 
   defp truthy?(value) when value in [true, "true", "TRUE", "True"], do: true
   defp truthy?(_), do: false
+
+  defp approval_metadata(event, extra \\ %{}) do
+    %{
+      tool: get_event_field(event, :tool_name),
+      call_id: get_event_field(event, :call_id),
+      thread_id: get_event_field(event, :thread_id),
+      turn_id: get_event_field(event, :turn_id),
+      source: approval_source(event),
+      originator: :sdk
+    }
+    |> Map.merge(extra)
+  end
+
+  defp approval_source(event) do
+    get_event_field(event, :source) ||
+      get_event_field(event, "source") ||
+      if approved_by_policy?(event), do: :policy, else: :user
+  end
 end

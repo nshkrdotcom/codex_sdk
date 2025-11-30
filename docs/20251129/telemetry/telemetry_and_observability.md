@@ -9,6 +9,8 @@ SDK impact:
 - If forwarding telemetry, propagate the new identifiers and metadata so downstream systems can correlate events.
 - Ensure OTEL exporters or logs accept the enriched exec/compaction telemetry without field loss.
 - Consider exposing token-usage updates to SDK users for metering/monitoring.
+- Thread telemetry should now attach `thread_id`, `turn_id`, and any upstream `metadata.source` to both emitted telemetry and OTEL span attributes, and emit progress hooks for token-usage, diff, and compaction updates.
+- OTLP exporters must support optional mTLS configuration; wire `CODEX_OTLP_CERTFILE`, `CODEX_OTLP_KEYFILE`, and `CODEX_OTLP_CACERTFILE` into the exporter when present.
 
 Action items:
 - Update telemetry schemas and tests to include new fields (source info, thread_id/turn_id).
