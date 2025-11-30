@@ -728,6 +728,8 @@ defmodule Codex.Thread do
       Map.get(event, :sandbox_warnings) || Map.get(event, "sandbox_warnings") ||
         Map.get(event, :warnings) || Map.get(event, "warnings")
 
+    capabilities = Map.get(event, :capabilities) || Map.get(event, "capabilities")
+
     %{
       thread: thread,
       metadata: metadata,
@@ -736,6 +738,7 @@ defmodule Codex.Thread do
       attempt: attempt,
       retry?: attempt > 1
     }
+    |> maybe_put(:capabilities, capabilities)
     |> maybe_put(:sandbox_warnings, warnings)
   end
 

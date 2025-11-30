@@ -783,7 +783,7 @@ Shell command executed by the agent.
   command: String.t(),
   aggregated_output: String.t(),
   exit_code: integer() | nil,
-  status: :in_progress | :completed | :failed
+  status: :in_progress | :completed | :failed | :declined
 }
 ```
 
@@ -817,7 +817,7 @@ File modifications made by the agent.
   id: String.t(),
   type: :file_change,
   changes: [file_update_change()],
-  status: :completed | :failed
+  status: :in_progress | :completed | :failed | :declined
 }
 ```
 
@@ -855,6 +855,9 @@ Model Context Protocol tool invocation.
   type: :mcp_tool_call,
   server: String.t(),
   tool: String.t(),
+  arguments: map() | list() | nil,
+  result: map() | nil,
+  error: map() | nil,
   status: :in_progress | :completed | :failed
 }
 ```
@@ -866,6 +869,8 @@ Model Context Protocol tool invocation.
   type: :mcp_tool_call,
   server: "database_server",
   tool: "query_records",
+  arguments: %{"query" => "SELECT * FROM users"},
+  result: %{"content" => [%{"type" => "text", "text" => "ok"}]},
   status: :completed
 }
 ```

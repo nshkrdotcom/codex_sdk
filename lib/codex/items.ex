@@ -73,7 +73,7 @@ defmodule Codex.Items do
               exit_code: nil,
               status: :in_progress
 
-    @type status :: :in_progress | :completed | :failed
+    @type status :: :in_progress | :completed | :failed | :declined
 
     @type t :: %__MODULE__{
             id: String.t() | nil,
@@ -100,7 +100,7 @@ defmodule Codex.Items do
     @type change_kind :: :add | :delete | :update
     @type change :: %{path: String.t(), kind: change_kind()}
 
-    @type status :: :completed | :failed
+    @type status :: :in_progress | :completed | :failed | :declined
 
     @type t :: %__MODULE__{
             id: String.t() | nil,
@@ -120,6 +120,9 @@ defmodule Codex.Items do
               type: :mcp_tool_call,
               server: nil,
               tool: nil,
+              arguments: nil,
+              result: nil,
+              error: nil,
               status: :in_progress
 
     @type status :: :in_progress | :completed | :failed
@@ -129,6 +132,9 @@ defmodule Codex.Items do
             type: :mcp_tool_call,
             server: String.t(),
             tool: String.t(),
+            arguments: map() | list() | nil,
+            result: map() | nil,
+            error: map() | nil,
             status: status()
           }
   end
@@ -183,12 +189,15 @@ defmodule Codex.Items do
   @command_status_map %{
     "in_progress" => :in_progress,
     "completed" => :completed,
-    "failed" => :failed
+    "failed" => :failed,
+    "declined" => :declined
   }
 
   @file_change_status_map %{
+    "in_progress" => :in_progress,
     "completed" => :completed,
-    "failed" => :failed
+    "failed" => :failed,
+    "declined" => :declined
   }
 
   @file_change_kind_map %{
@@ -265,6 +274,9 @@ defmodule Codex.Items do
     base_item_map(item, "mcp_tool_call")
     |> maybe_put("server", item.server)
     |> maybe_put("tool", item.tool)
+    |> maybe_put("arguments", item.arguments)
+    |> maybe_put("result", item.result)
+    |> maybe_put("error", item.error)
     |> maybe_put("status", status_to_string(item.status, @mcp_status_map))
   end
 
@@ -334,6 +346,9 @@ defmodule Codex.Items do
       id: get(map, :id),
       server: get(map, :server) || "",
       tool: get(map, :tool) || "",
+      arguments: get(map, :arguments),
+      result: get(map, :result),
+      error: get(map, :error),
       status: parse_status(get(map, :status), @mcp_status_map, :in_progress)
     }
   end

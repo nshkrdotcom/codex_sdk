@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"thread_mcp_123","metadata":{"git":{"branch":"feature/mcp-updates","dirty":false},"labels":{"topic":"mcp-stream"}}}
+{"type":"turn.started","turn_id":"turn_mcp_step","thread_id":"thread_mcp_123"}
+{"type":"item.started","thread_id":"thread_mcp_123","turn_id":"turn_mcp_step","item":{"id":"mcp_call_1","type":"mcp_tool_call","server":"shell-mcp","tool":"list_dir","arguments":{"path":"/tmp"},"status":"in_progress"}}
+{"type":"item.updated","thread_id":"thread_mcp_123","turn_id":"turn_mcp_step","item":{"id":"mcp_call_1","type":"mcp_tool_call","server":"shell-mcp","tool":"list_dir","arguments":{"path":"/tmp"},"result":{"content":[{"type":"text","text":"listing..."}],"structured_content":null},"status":"in_progress"}}
+{"type":"item.completed","thread_id":"thread_mcp_123","turn_id":"turn_mcp_step","item":{"id":"cmd_1","type":"command_execution","command":"rm -rf /tmp","aggregated_output":"","exit_code":null,"status":"declined"}}
+{"type":"item.completed","thread_id":"thread_mcp_123","turn_id":"turn_mcp_step","item":{"id":"mcp_call_1","type":"mcp_tool_call","server":"shell-mcp","tool":"list_dir","arguments":{"path":"/tmp"},"result":{"content":[{"type":"text","text":"ok"}],"structured_content":{"entries":3}},"status":"completed"}}
+{"type":"turn.completed","turn_id":"turn_mcp_step","thread_id":"thread_mcp_123","final_response":{"type":"text","text":"Done"},"usage":{"input_tokens":8,"cached_input_tokens":0,"output_tokens":4,"total_tokens":12}}

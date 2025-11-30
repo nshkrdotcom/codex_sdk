@@ -192,6 +192,12 @@ mix run examples/tool_bridging_auto_run.exs
 
 # Live two-turn session using CLI login or CODEX_API_KEY
 mix run examples/live_session_walkthrough.exs "your prompt here"
+
+# Live tooling stream: shows shell + MCP events and falls back to last agent message
+mix run examples/live_tooling_stream.exs "optional prompt"
+
+# Live CLI demo (forces live run; CODEX_TEST_LIVE=true for CI)
+CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
 
 ### Resuming Threads

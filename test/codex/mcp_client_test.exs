@@ -58,10 +58,34 @@ defmodule Codex.MCPClientTest do
 
     assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
 
-    assert Client.capabilities(client) == ["tools", "attachments"]
+    assert Client.capabilities(client) == %{"attachments" => %{}, "tools" => %{}}
 
     assert [sent] = FakeTransport.sent(transport)
     assert sent["type"] == "handshake"
     assert sent["client"] == "codex"
+  end
+
+  test "handshake preserves capability metadata including elicitation support" do
+    {:ok, transport} =
+      FakeTransport.start_link([
+        %{
+          "type" => "handshake.ack",
+          "capabilities" => %{
+            "tools" => %{"listChanged" => true},
+            "elicitation" => %{"server" => "shell"},
+            "mcpServers" => [%{"name" => "shell-mcp", "capabilities" => %{"exec" => true}}]
+          }
+        }
+      ])
+
+    transport_ref = {FakeTransport, transport}
+
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+
+    assert Client.capabilities(client) == %{
+             "tools" => %{"listChanged" => true},
+             "elicitation" => %{"server" => "shell"},
+             "mcpServers" => [%{"name" => "shell-mcp", "capabilities" => %{"exec" => true}}]
+           }
   end
 end
