@@ -17,21 +17,19 @@ defmodule Codex.Exec do
 
   @default_timeout_ms 3_600_000
 
-  @type exec_opts ::
-          ExecOptions.t()
-          | %{
-              optional(:codex_opts) => Options.t(),
-              optional(:thread) => Codex.Thread.t(),
-              optional(:turn_opts) => map(),
-              optional(:continuation_token) => String.t(),
-              optional(:attachments) => [Attachment.t()],
-              optional(:output_schema_path) => String.t(),
-              optional(:tool_outputs) => [map()],
-              optional(:tool_failures) => [map()],
-              optional(:env) => map(),
-              optional(:cancellation_token) => String.t(),
-              optional(:timeout_ms) => pos_integer()
-            }
+  @type exec_opts :: %{
+          optional(:codex_opts) => Options.t(),
+          optional(:thread) => Codex.Thread.t(),
+          optional(:turn_opts) => map(),
+          optional(:continuation_token) => String.t(),
+          optional(:attachments) => [Attachment.t()],
+          optional(:output_schema_path) => String.t(),
+          optional(:tool_outputs) => [map()],
+          optional(:tool_failures) => [map()],
+          optional(:env) => map(),
+          optional(:cancellation_token) => String.t(),
+          optional(:timeout_ms) => pos_integer()
+        }
 
   @doc """
   Runs codex in blocking mode and accumulates all emitted events.

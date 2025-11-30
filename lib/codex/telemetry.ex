@@ -52,6 +52,7 @@ defmodule Codex.Telemetry do
         exporter_spec = build_exporter_spec(endpoint, env, opts)
         processors = build_processors(exporter_spec, opts)
 
+        enable_otel_tracing()
         reset_otel_apps()
         Application.put_env(:opentelemetry, :processors, processors)
 
@@ -66,6 +67,7 @@ defmodule Codex.Telemetry do
         end
       end
     else
+      disable_otel_tracing()
       reset_otel_apps()
       Application.put_env(:opentelemetry, :processors, [])
       :ok
@@ -100,7 +102,7 @@ defmodule Codex.Telemetry do
     early_exit? = Map.get(metadata, :early_exit?, false)
 
     Logger.log(level, fn ->
-      "[codex] thread stop duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))} result=#{result}#{maybe_flag(" early_exit", early_exit?)}"
+      "[codex] thread stop duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))} turn_id=#{inspect(Map.get(metadata, :turn_id))} result=#{result}#{maybe_flag(" early_exit", early_exit?)}"
     end)
   end
 
@@ -109,7 +111,7 @@ defmodule Codex.Telemetry do
     reason = Map.get(metadata, :reason)
 
     Logger.log(:error, fn ->
-      "[codex] thread exception duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))} reason=#{inspect(reason)}"
+      "[codex] thread exception duration_ms=#{duration_ms} thread_id=#{inspect(Map.get(metadata, :thread_id))} turn_id=#{inspect(Map.get(metadata, :turn_id))} reason=#{inspect(reason)}"
     end)
   end
 
@@ -280,6 +282,20 @@ defmodule Codex.Telemetry do
     end
   end
 
+  defp enable_otel_tracing do
+    Application.put_env(:opentelemetry, :tracer, :otel_trace)
+    Application.put_env(:opentelemetry, :meter, :otel_meter)
+    Application.put_env(:opentelemetry, :traces_exporter, :otlp)
+    Application.put_env(:opentelemetry, :metrics_exporter, :otlp)
+  end
+
+  defp disable_otel_tracing do
+    Application.put_env(:opentelemetry, :tracer, :none)
+    Application.put_env(:opentelemetry, :meter, :none)
+    Application.put_env(:opentelemetry, :traces_exporter, :none)
+    Application.put_env(:opentelemetry, :metrics_exporter, :none)
+  end
+
   defp build_exporter_spec(endpoint, env, opts) do
     case Keyword.get(opts, :exporter) do
       nil ->
@@ -288,12 +304,15 @@ defmodule Codex.Telemetry do
           |> Map.get("CODEX_OTLP_HEADERS")
           |> parse_headers()
 
+        ssl_options = build_ssl_options(env, opts)
+
         config =
           %{}
           |> Map.put(:endpoints, [endpoint])
           |> maybe_put(:headers, headers)
           |> maybe_put(:protocol, Keyword.get(opts, :protocol))
           |> maybe_put(:compression, Keyword.get(opts, :compression))
+          |> maybe_put(:ssl_options, ssl_options)
 
         {:opentelemetry_exporter, config}
 
@@ -330,6 +349,29 @@ defmodule Codex.Telemetry do
 
   defp parse_headers(list) when is_list(list), do: list
   defp parse_headers(_), do: []
+
+  defp build_ssl_options(env, opts) do
+    case Keyword.get(opts, :ssl_options) do
+      value when is_list(value) and value != [] ->
+        value
+
+      value when is_map(value) ->
+        Map.to_list(value)
+
+      value when not is_nil(value) ->
+        List.wrap(value)
+
+      _ ->
+        [
+          {:certfile, env |> Map.get("CODEX_OTLP_CERTFILE") |> normalize_string()},
+          {:keyfile, env |> Map.get("CODEX_OTLP_KEYFILE") |> normalize_string()},
+          {:cacertfile,
+           env |> Map.get("CODEX_OTLP_CACERTFILE") |> normalize_string() ||
+             env |> Map.get("CODEX_OTLP_CA_CERTFILE") |> normalize_string()}
+        ]
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    end
+  end
 
   defp build_processors(exporter_spec, opts) do
     case Keyword.get(opts, :processors) do
@@ -372,8 +414,12 @@ defmodule Codex.Telemetry do
   end
 
   defp maybe_start_exporter({module, _})
-       when module in [:otel_exporter_pid, :otel_exporter_stdout, :otel_exporter_tab],
-       do: :ok
+       when module in [:otel_exporter_pid, :otel_exporter_stdout, :otel_exporter_tab] do
+    with :ok <- maybe_start_app(:tls_certificate_check),
+         :ok <- maybe_start_app(:opentelemetry_exporter) do
+      :ok
+    end
+  end
 
   defp maybe_start_exporter(module) when module == :opentelemetry_exporter,
     do: maybe_start_exporter({module, []})
@@ -431,12 +477,17 @@ defmodule Codex.Telemetry do
 
   defp finish_thread_span(_status, _measurements, _metadata), do: :ok
 
-  defp thread_span_attributes(metadata) do
+  @doc false
+  @spec thread_span_attributes(map()) :: map()
+  def thread_span_attributes(metadata) do
     metadata
-    |> Map.take([:thread_id, :originator])
+    |> Map.take([:thread_id, :turn_id, :originator])
     |> Enum.reduce(%{}, fn
       {:thread_id, value}, acc when not is_nil(value) ->
         Map.put(acc, :"codex.thread.id", value)
+
+      {:turn_id, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.turn.id", value)
 
       {:originator, value}, acc ->
         Map.put(acc, :"codex.originator", format_originator(value))
@@ -446,17 +497,42 @@ defmodule Codex.Telemetry do
     end)
   end
 
-  defp finalize_thread_attributes(metadata) do
+  @doc false
+  @spec finalize_thread_attributes(map()) :: map()
+  def finalize_thread_attributes(metadata) do
     metadata
-    |> Map.take([:result])
+    |> Map.take([:result, :thread_id, :turn_id, :source, :early_exit?])
     |> Enum.reduce(%{}, fn
       {:result, value}, acc when not is_nil(value) ->
         Map.put(acc, :"codex.thread.result", to_string(value))
+
+      {:thread_id, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.thread.id", value)
+
+      {:turn_id, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.turn.id", value)
+
+      {:source, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.source", format_source(value))
+
+      {:early_exit?, true}, acc ->
+        Map.put(acc, :"codex.thread.early_exit", true)
 
       _, acc ->
         acc
     end)
   end
+
+  defp format_source(%{} = source) do
+    case Jason.encode(source) do
+      {:ok, encoded} -> encoded
+      _ -> inspect(source)
+    end
+  end
+
+  defp format_source(value) when is_atom(value), do: Atom.to_string(value)
+  defp format_source(value) when is_binary(value), do: value
+  defp format_source(value), do: to_string(value)
 
   defp format_originator(nil), do: "sdk"
   defp format_originator(value) when is_atom(value), do: Atom.to_string(value)

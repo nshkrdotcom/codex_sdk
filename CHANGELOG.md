@@ -17,11 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sandbox warning normalization updates (Windows read-only `.git` detection, world-writable dedup) and runnable example `sandbox_warnings_and_approval_bypass.exs`
 - README/docs refresh covering policy-approved bypass flags and normalized sandbox warning strings
 - Added `examples/live_tooling_stream.exs` to showcase streamed MCP/shell events and fallback handling when `turn.completed` omits a final response
+- Live telemetry stream example (thread/turn IDs, source metadata, usage deltas, diffs, compaction savings) with README/docs references
+- Live telemetry stream defaults tuned for fast runs (minimal reasoning, short prompt)
 
 ### Changed
 - Thread resumption now uses `codex exec … resume <thread_id>` (no `--thread-id` flag)
 - `/new` clears conversations and early-exit turns do not persist thread IDs, matching upstream CLI
 - Turn failures normalize rate-limit and sandbox assessment errors into `%Codex.Error{}`
+- Telemetry now propagates source info, thread/turn IDs, OTLP mTLS options, and richer token/diff/compaction signals through emitters and OTEL spans
 
 ## [0.2.0] - 2025-10-20
 

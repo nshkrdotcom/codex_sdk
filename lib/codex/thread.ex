@@ -69,12 +69,14 @@ defmodule Codex.Thread do
     thread = maybe_reset_for_new(thread, input)
     span_token = make_ref()
 
-    meta = %{
-      thread_id: thread.thread_id,
-      input: input,
-      originator: :sdk,
-      span_token: span_token
-    }
+    meta =
+      %{
+        thread_id: thread.thread_id,
+        input: input,
+        originator: :sdk,
+        span_token: span_token
+      }
+      |> maybe_put(:source, extract_source(thread.metadata))
 
     Telemetry.emit([:codex, :thread, :start], %{system_time: System.system_time()}, meta)
     started_monotonic = System.monotonic_time()
@@ -84,16 +86,19 @@ defmodule Codex.Thread do
 
       try do
         case Codex.Exec.run(input, exec_opts) do
-          {:ok, exec_result} ->
+          {:ok, %{events: events} = exec_result} ->
             duration = System.monotonic_time() - started_monotonic
-            events = exec_result.events
             failure = extract_turn_failure(events)
             early_exit? = early_exit?(events)
+            identifiers = extract_thread_context(events, thread)
+            progress_meta = merge_metadata(meta, identifiers)
+
+            emit_progress_events(events, progress_meta)
 
             Telemetry.emit(
               [:codex, :thread, :stop],
               %{duration: duration, system_time: System.system_time()},
-              meta
+              progress_meta
               |> Map.put(:result, telemetry_result(failure, early_exit?))
               |> maybe_put(:error, failure_meta(failure))
               |> maybe_put(:early_exit?, early_exit?)
@@ -117,7 +122,10 @@ defmodule Codex.Thread do
             Telemetry.emit(
               [:codex, :thread, :exception],
               %{duration: duration, system_time: System.system_time()},
-              meta
+              merge_metadata(meta, %{
+                thread_id: thread.thread_id,
+                source: extract_source(thread.metadata)
+              })
               |> Map.put(:reason, reason)
               |> Map.put(:result, :error)
             )
@@ -143,13 +151,25 @@ defmodule Codex.Thread do
     with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
       structured_output? = Map.get(exec_meta, :structured_output?, false)
 
+      progress_meta =
+        %{
+          thread_id: thread.thread_id,
+          originator: :sdk,
+          span_token: make_ref()
+        }
+        |> maybe_put(:source, extract_source(thread.metadata))
+
       case Codex.Exec.run_stream(input, exec_opts) do
         {:ok, stream} ->
           wrapped =
             Stream.transform(
               stream,
               fn -> :ok end,
-              fn event, acc -> {[maybe_decode_stream_event(event, structured_output?)], acc} end,
+              fn event, acc ->
+                decoded = maybe_decode_stream_event(event, structured_output?)
+                emit_progress_event(decoded, progress_meta)
+                {[decoded], acc}
+              end,
               fn _ -> cleanup.() end
             )
 
@@ -501,6 +521,12 @@ defmodule Codex.Thread do
     end
   end
 
+  defp extract_source(metadata) when is_map(metadata) do
+    Map.get(metadata, :source) || Map.get(metadata, "source")
+  end
+
+  defp extract_source(_metadata), do: nil
+
   defp decode_final_response(nil, _structured?), do: nil
   defp decode_final_response(%Items.AgentMessage{} = item, _structured?), do: item
 
@@ -584,6 +610,150 @@ defmodule Codex.Thread do
   defp telemetry_result(:ok, true), do: :early_exit
   defp telemetry_result(:ok, false), do: :ok
   defp telemetry_result({:error, _}, _), do: :error
+
+  defp emit_progress_events(events, meta) when is_list(events) do
+    Enum.each(events, &emit_progress_event(&1, meta))
+  end
+
+  defp emit_progress_events(_events, _meta), do: :ok
+
+  defp emit_progress_event(%Events.ThreadTokenUsageUpdated{} = event, meta) do
+    Telemetry.emit(
+      [:codex, :thread, :token_usage, :updated],
+      %{system_time: System.system_time()},
+      progress_metadata(meta, %{
+        thread_id: event.thread_id,
+        turn_id: event.turn_id,
+        usage: event.usage,
+        delta: event.delta
+      })
+    )
+  end
+
+  defp emit_progress_event(%Events.TurnDiffUpdated{} = event, meta) do
+    Telemetry.emit(
+      [:codex, :turn, :diff, :updated],
+      %{system_time: System.system_time()},
+      progress_metadata(meta, %{
+        thread_id: event.thread_id,
+        turn_id: event.turn_id,
+        diff: event.diff
+      })
+    )
+  end
+
+  defp emit_progress_event(%Events.TurnCompaction{stage: stage} = event, meta) do
+    stage_name = normalize_compaction_stage(stage)
+
+    measurements =
+      %{
+        system_time: System.system_time()
+      }
+      |> maybe_put(:token_savings, compaction_token_savings(event.compaction))
+
+    Telemetry.emit(
+      [:codex, :turn, :compaction, stage_name],
+      measurements,
+      progress_metadata(meta, %{
+        thread_id: event.thread_id,
+        turn_id: event.turn_id,
+        compaction: event.compaction,
+        stage: stage
+      })
+    )
+  end
+
+  defp emit_progress_event(_event, _meta), do: :ok
+
+  defp progress_metadata(meta, updates) do
+    meta
+    |> merge_metadata(updates)
+  end
+
+  defp merge_metadata(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _key, original, updated ->
+      if is_nil(updated), do: original, else: updated
+    end)
+  end
+
+  defp merge_metadata(left, _right), do: left
+
+  defp extract_thread_context(events, thread) when is_list(events) do
+    Enum.reduce(
+      events,
+      %{thread_id: thread.thread_id, turn_id: nil, source: extract_source(thread.metadata)},
+      fn
+        %Events.ThreadStarted{thread_id: id, metadata: metadata}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:source, extract_source(metadata))
+
+        %Events.TurnStarted{thread_id: id, turn_id: turn_id}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+
+        %Events.TurnContinuation{thread_id: id, turn_id: turn_id}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+
+        %Events.TurnCompleted{thread_id: id, turn_id: turn_id, usage: usage}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+          |> maybe_put(:source, extract_source(usage))
+
+        %Events.ThreadTokenUsageUpdated{thread_id: id, turn_id: turn_id}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+
+        %Events.TurnDiffUpdated{thread_id: id, turn_id: turn_id}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+
+        %Events.TurnCompaction{thread_id: id, turn_id: turn_id, compaction: compaction}, acc ->
+          acc
+          |> maybe_put(:thread_id, id)
+          |> maybe_put(:turn_id, turn_id)
+          |> maybe_put(:source, extract_source(compaction))
+
+        _event, acc ->
+          acc
+      end
+    )
+  end
+
+  defp extract_thread_context(_events, thread) do
+    %{thread_id: thread.thread_id, turn_id: nil, source: extract_source(thread.metadata)}
+  end
+
+  defp compaction_token_savings(compaction) do
+    case compaction do
+      %{} ->
+        Map.get(compaction, :token_savings) || Map.get(compaction, "token_savings")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp normalize_compaction_stage(stage) when is_atom(stage), do: stage
+
+  defp normalize_compaction_stage(stage) when is_binary(stage) do
+    stage
+    |> String.downcase()
+    |> case do
+      "started" -> :started
+      "completed" -> :completed
+      "failed" -> :failed
+      _ -> :unknown
+    end
+  end
+
+  defp normalize_compaction_stage(_stage), do: :unknown
 
   defp failure_meta({:error, %Error{} = error}) do
     %{kind: error.kind, message: error.message}
