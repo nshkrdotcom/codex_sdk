@@ -244,18 +244,20 @@ defmodule Codex.Events do
               requires_approval: false,
               approved: nil,
               approved_by_policy: nil,
-              sandbox_warnings: nil
+              sandbox_warnings: nil,
+              capabilities: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t(),
             turn_id: String.t(),
             call_id: String.t(),
             tool_name: String.t(),
-            arguments: map(),
+            arguments: map() | list() | String.t(),
             requires_approval: boolean(),
             approved: boolean() | nil,
             approved_by_policy: boolean() | nil,
-            sandbox_warnings: [String.t()] | nil
+            sandbox_warnings: [String.t()] | nil,
+            capabilities: map() | nil
           }
   end
 
@@ -448,7 +450,8 @@ defmodule Codex.Events do
       requires_approval: Map.get(map, "requires_approval", false),
       approved: Map.get(map, "approved"),
       approved_by_policy: Map.get(map, "approved_by_policy"),
-      sandbox_warnings: Map.get(map, "sandbox_warnings") || Map.get(map, "warnings")
+      sandbox_warnings: Map.get(map, "sandbox_warnings") || Map.get(map, "warnings"),
+      capabilities: Map.get(map, "capabilities")
     }
   end
 
@@ -616,6 +619,7 @@ defmodule Codex.Events do
     |> put_optional("approved", event.approved)
     |> put_optional("approved_by_policy", event.approved_by_policy)
     |> put_optional("sandbox_warnings", event.sandbox_warnings)
+    |> put_optional("capabilities", event.capabilities)
   end
 
   def to_map(%ToolCallCompleted{} = event) do

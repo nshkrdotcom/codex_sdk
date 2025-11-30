@@ -158,6 +158,7 @@ defmodule Codex.Tools.Registry do
     event = Map.get(context, :event)
     thread = Map.get(context, :thread)
     warnings = sandbox_warnings(context)
+    capabilities = capability_metadata(context)
 
     %{
       tool: tool,
@@ -169,6 +170,7 @@ defmodule Codex.Tools.Registry do
       call_id: event && Map.get(event, :call_id),
       thread_id: thread && Map.get(thread, :thread_id)
     }
+    |> maybe_put(:capabilities, capabilities)
     |> maybe_put(:sandbox_warnings, warnings)
   end
 
@@ -183,6 +185,11 @@ defmodule Codex.Tools.Registry do
       Map.get(context, "sandbox_warnings") ||
       Map.get(context, :warnings) ||
       Map.get(context, "warnings")
+  end
+
+  defp capability_metadata(context) do
+    Map.get(context, :capabilities) ||
+      Map.get(context, "capabilities")
   end
 
   defp normalize_args(args) when is_map(args), do: args

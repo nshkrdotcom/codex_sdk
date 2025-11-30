@@ -203,6 +203,16 @@ defmodule ProgressiveDisplay do
 end
 ```
 
+### Live Tooling Stream (Codex CLI)
+
+Run a live streamed turn that shows shell and MCP tool events without requiring an API key (uses your Codex CLI login if present):
+
+```bash
+mix run examples/live_tooling_stream.exs "Summarize this repository and run one quick check"
+```
+
+The example prints started/updated/completed tool events (including arguments and streamed results) and falls back to the last agent message if the final response isn’t explicitly included in `turn.completed`.
+
 ---
 
 ## Structured Output

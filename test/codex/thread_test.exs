@@ -280,6 +280,65 @@ defmodule Codex.ThreadTest do
 
       assert Enum.any?(result.events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
     end
+
+    test "parses MCP tool calls with arguments, streamed results, and git metadata" do
+      codex_path =
+        "thread_mcp_rich.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, result} = Thread.run(thread, "Check MCP call")
+
+      assert get_in(result.thread.metadata, ["git", "branch"]) == "feature/mcp-updates"
+
+      assert Enum.any?(result.events, fn
+               %Events.ItemUpdated{
+                 item: %Items.McpToolCall{
+                   arguments: %{"path" => "/tmp"},
+                   result: %{
+                     "content" => [%{"text" => "listing..."}],
+                     "structured_content" => nil
+                   },
+                   status: :in_progress
+                 }
+               } ->
+                 true
+
+               _ ->
+                 false
+             end)
+
+      assert Enum.any?(result.events, fn
+               %Events.ItemCompleted{
+                 item: %Items.McpToolCall{
+                   arguments: %{"path" => "/tmp"},
+                   result: %{
+                     "content" => [%{"text" => "ok"}],
+                     "structured_content" => %{"entries" => 3}
+                   },
+                   status: :completed
+                 }
+               } ->
+                 true
+
+               _ ->
+                 false
+             end)
+
+      assert Enum.any?(result.events, fn
+               %Events.ItemCompleted{item: %Items.CommandExecution{status: :declined}} -> true
+               _ -> false
+             end)
+    end
   end
 
   describe "run_streamed/3" do
@@ -370,6 +429,47 @@ defmodule Codex.ThreadTest do
              end)
 
       assert Enum.any?(events, &match?(%Events.TurnCompaction{stage: :completed}, &1))
+    end
+
+    test "streams MCP tool call payloads with arguments and results" do
+      codex_path =
+        "thread_mcp_rich.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, stream} = Thread.run_streamed(thread, "Stream MCP")
+      events = Enum.to_list(stream)
+
+      assert Enum.any?(events, fn
+               %Events.ItemStarted{
+                 item: %Items.McpToolCall{arguments: %{"path" => "/tmp"}, status: :in_progress}
+               } ->
+                 true
+
+               _ ->
+                 false
+             end)
+
+      assert Enum.any?(events, fn
+               %Events.ItemCompleted{
+                 item: %Items.McpToolCall{
+                   result: %{"structured_content" => %{"entries" => 3}}
+                 }
+               } ->
+                 true
+
+               _ ->
+                 false
+             end)
     end
   end
 

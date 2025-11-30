@@ -14,3 +14,7 @@ Action items:
 - Update MCP client/server adapters to recognize elicitations and the latest shell-tool-mcp capabilities.
 - Add decoding tests for streamed tool output and argument-rich tool calls.
 - Decide whether to surface git branch/env wiring in SDK APIs or document the absence explicitly.
+
+SDK stance:
+- Git metadata emitted by the runtime (e.g., current branch) is preserved on `Thread.metadata` so callers can surface repository context.
+- Turn `:env` overrides are forwarded to `Codex.Exec` unchanged when running unified exec flows.
