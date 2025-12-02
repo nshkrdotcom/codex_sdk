@@ -24,6 +24,7 @@ codex_sdk-*.tar
 
 # Cloned codex repository
 /codex/
+/openai-agents-python/
 
 # Dialyzer PLTs
 /priv/plts/
