@@ -101,7 +101,16 @@ defmodule Codex.Tools do
   @spec reset_metrics() :: :ok
   def reset_metrics do
     ensure_metrics_table()
-    :ets.delete_all_objects(@metrics_table)
+
+    try do
+      :ets.delete_all_objects(@metrics_table)
+    rescue
+      ArgumentError ->
+        # Table may have been removed by another process; recreate it to keep
+        # callers resilient in async test runs.
+        ensure_metrics_table()
+    end
+
     :ok
   end
 

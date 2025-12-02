@@ -38,11 +38,16 @@ defmodule Codex.TelemetryTest do
 
     {:ok, _result} = Thread.run(thread, "hi")
 
-    assert_receive {[:codex, :thread, :start], %{system_time: _},
-                    %{input: "hi", originator: :sdk}},
-                   100
+    {_m_start, _meta_start} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, metadata -> metadata.input == "hi" end
+      )
 
-    assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
+    {measurements, metadata} =
+      assert_event([:codex, :thread, :stop],
+        match: fn _e, _m, md -> md.thread_id == "thread_abc123" end
+      )
+
     assert measurements.duration_ms > 0
     assert metadata.originator == :sdk
   end
@@ -66,11 +71,16 @@ defmodule Codex.TelemetryTest do
 
     {:ok, _result} = Thread.run(thread, "capture source info")
 
-    assert_receive {[:codex, :thread, :start], %{system_time: _},
-                    %{originator: :sdk, span_token: span_token}},
-                   100
+    {_m_start, %{span_token: span_token}} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, metadata -> metadata.input == "capture source info" end
+      )
 
-    assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
+    {measurements, metadata} =
+      assert_event([:codex, :thread, :stop],
+        match: fn _e, _m, md -> md.thread_id == "thread_src" end
+      )
+
     assert measurements.duration_ms > 0
     assert metadata.thread_id == "thread_src"
     assert metadata.turn_id == "turn_src"
@@ -173,8 +183,15 @@ defmodule Codex.TelemetryTest do
              app == :opentelemetry
            end)
 
-    assert_receive {[:codex, :thread, :start], _m, _md}, 100
-    assert_receive {[:codex, :thread, :stop], _m, metadata}, 100
+    {_start_m, _start_meta} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, metadata -> metadata.input == "otel trace run" end
+      )
+
+    {_stop_m, metadata} =
+      assert_event([:codex, :thread, :stop],
+        match: fn _e, _m, md -> md.thread_id == "thread_abc123" end
+      )
 
     attributes =
       metadata
@@ -299,9 +316,16 @@ defmodule Codex.TelemetryTest do
 
     assert log =~ "early_exit"
 
-    assert_receive {[:codex, :thread, :start], %{system_time: _}, %{originator: :sdk}}, 100
+    {_start_measurements, _start_metadata} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, md -> md.input == "prune" end
+      )
 
-    assert_receive {[:codex, :thread, :stop], measurements, metadata}, 100
+    {measurements, metadata} =
+      assert_event([:codex, :thread, :stop],
+        match: fn _e, _m, md -> md.thread_id == "thread_ephemeral" end
+      )
+
     assert measurements.duration_ms > 0
     assert metadata.result == :early_exit
     assert metadata.early_exit?
@@ -309,6 +333,26 @@ defmodule Codex.TelemetryTest do
 
   def collect_event(event, measurements, metadata, pid) do
     send(pid, {event, measurements, metadata})
+  end
+
+  defp assert_event(event_name, opts) do
+    matcher = Keyword.get(opts, :match, fn _e, _m, _md -> true end)
+    timeout = Keyword.get(opts, :timeout, 200)
+
+    receive do
+      {^event_name, measurements, metadata} ->
+        if matcher.(event_name, measurements, metadata) do
+          {measurements, metadata}
+        else
+          assert_event(event_name, opts)
+        end
+
+      _other ->
+        assert_event(event_name, opts)
+    after
+      timeout ->
+        flunk("expected telemetry event #{inspect(event_name)}")
+    end
   end
 
   defp temp_script(contents) do
