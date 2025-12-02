@@ -8,6 +8,9 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 |--------|---------|
 | `Codex` | Main entry point for starting and resuming threads |
 | `Codex.Thread` | Manages conversation threads and turn execution |
+| `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
+| `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
+| `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
 | `Codex.Exec` | GenServer managing codex-rs process lifecycle |
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
@@ -96,6 +99,34 @@ codex_opts = %Codex.Options{base_url: "https://custom.api"}
 
 ---
 
+## Agents and Runner
+
+`Codex.Thread.run/3` delegates to a multi-turn runner that can be configured with reusable agents and per-run settings.
+
+### `Codex.Agent`
+
+Represents a reusable agent definition with fields for `instructions` or `prompt`, optional `handoffs`, `tools`, guardrail lists, hooks, and optional `model` or `model_settings` overrides. Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
+
+### `Codex.RunConfig`
+
+Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, optional `model` override, guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer.
+
+### `Codex.AgentRunner`
+
+Low-level entry point for multi-turn execution. Accepts a thread, input, and options that may include `:agent`, `:run_config`, `:max_turns`, and per-turn flags (e.g., `output_schema`). `Codex.Thread.run/3` and `Codex.Thread.run_streamed/3` are facades over this runner.
+
+Example:
+```elixir
+{:ok, thread} = Codex.start_thread()
+{:ok, result} =
+  Codex.AgentRunner.run(thread, "Summarize docs",
+    run_config: %{max_turns: 5},
+    agent: %{instructions: "Be concise"}
+  )
+```
+
+---
+
 ## Codex.Thread
 
 Manages individual conversation threads and turn execution. Threads maintain state across multiple turns.
@@ -119,21 +150,22 @@ Manages individual conversation threads and turn execution. Threads maintain sta
 
 #### `run/3`
 
-Executes a turn and returns the complete result (blocking mode).
+Executes a multi-turn run and returns the complete result (blocking mode). Internally uses the agent runner and will follow continuation tokens until completion or `max_turns` is reached.
 
 **Signature**:
 ```elixir
-@spec run(t(), String.t(), Codex.Turn.Options.t()) ::
+@spec run(t(), String.t(), map() | keyword()) ::
   {:ok, Codex.Turn.Result.t()} | {:error, term()}
 ```
 
 **Parameters**:
 - `thread`: Thread struct from `Codex.start_thread/2` or `Codex.resume_thread/3`
 - `input`: Prompt or instruction for the agent
-- `turn_opts` (optional): Turn-specific options. Defaults to `%Codex.Turn.Options{}`
+- `opts` (optional): Per-turn options (e.g., `output_schema`, `env`, `attachments`) plus runner settings (`:agent`, `:run_config`, or `:max_turns`)
 
 **Returns**:
 - `{:ok, result}`: Complete turn result with items, response, and usage
+- `{:error, {:max_turns_exceeded, max_turns, context}}`: Run exceeded the allowed turn count
 - `{:error, {:turn_failed, error}}`: Agent encountered an error
 - `{:error, reason}`: Other error (process, configuration, etc.)
 
@@ -158,7 +190,7 @@ schema = %{
   }
 }
 
-turn_opts = %Codex.Turn.Options{output_schema: schema}
+turn_opts = %{output_schema: schema}
 {:ok, result} = Codex.Thread.run(thread, "Summarize GenServers", turn_opts)
 
 {:ok, data} = Jason.decode(result.final_response)
@@ -166,14 +198,16 @@ IO.inspect(data["key_points"])
 
 # Continue conversation
 {:ok, result2} = Codex.Thread.run(thread, "Give me an example")
+
+# Override turn limit
+{:ok, result} = Codex.Thread.run(thread, "Try multiple steps", %{max_turns: 5})
 ```
 
 **Behavior**:
-- Blocks until turn completes
-- Accumulates all events internally
-- Returns final result with all items
-- Thread struct is updated with thread_id after first turn
-- Subsequent calls use the same thread_id for context
+- Blocks until the run completes or `max_turns` is hit (default: 10)
+- Accumulates events and usage across turns
+- Invokes registered tools automatically when codex requests them
+- Thread struct is updated with thread_id after first turn; subsequent calls reuse it for context
 
 ---
 
@@ -183,14 +217,14 @@ Executes a turn and returns a stream of events (streaming mode).
 
 **Signature**:
 ```elixir
-@spec run_streamed(t(), String.t(), Codex.Turn.Options.t()) ::
+@spec run_streamed(t(), String.t(), map() | keyword()) ::
   {:ok, Enumerable.t()} | {:error, term()}
 ```
 
 **Parameters**:
 - `thread`: Thread struct
 - `input`: Prompt or instruction
-- `turn_opts` (optional): Turn-specific options
+- `opts` (optional): Turn-specific options plus optional runner settings (`:agent`, `:run_config`)
 
 **Returns**:
 - `{:ok, stream}`: Enumerable stream of events
@@ -1013,14 +1047,14 @@ Thread-specific configuration.
 
 ---
 
-### `Codex.Turn.Options`
+### Turn options
 
-Turn-specific configuration.
+Turn-specific configuration passed as a map or keyword list.
 
 **Type**:
 ```elixir
-@type t() :: %Codex.Turn.Options{
-  output_schema: map() | nil
+@type t() :: %{
+  optional(:output_schema) => map() | nil
 }
 ```
 
@@ -1029,7 +1063,7 @@ Turn-specific configuration.
 
 **Example**:
 ```elixir
-%Codex.Turn.Options{
+turn_opts = %{
   output_schema: %{
     "type" => "object",
     "properties" => %{
@@ -1174,7 +1208,7 @@ schema = %{
   "required" => ["status"]
 }
 
-turn_opts = %Codex.Turn.Options{output_schema: schema}
+turn_opts = %{output_schema: schema}
 {:ok, result} = Codex.Thread.run(thread, "Check system status", turn_opts)
 
 case Jason.decode(result.final_response) do
@@ -1205,7 +1239,7 @@ For developers familiar with the TypeScript SDK:
 | `for await (const event of events)` | `Enum.each(stream, fn event -> ... end)` |
 | `CodexOptions` | `%Codex.Options{}` |
 | `ThreadOptions` | `%Codex.Thread.Options{}` |
-| `TurnOptions` | `%Codex.Turn.Options{}` |
+| `TurnOptions` | map/keyword (e.g., `%{output_schema: schema}`) |
 
 ---
 
