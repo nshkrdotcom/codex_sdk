@@ -14,6 +14,7 @@ defmodule Codex.Thread do
   alias Codex.OutputSchemaFile
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.ToolGuardrail
+  alias Codex.ToolOutput
   alias Codex.Tools
   alias Codex.Telemetry
   alias Codex.Turn.Result
@@ -873,9 +874,17 @@ defmodule Codex.Thread do
         :allow ->
           case Tools.invoke(event.tool_name, event.arguments, context) do
             {:ok, output} ->
+              normalized_output = ToolOutput.normalize(output)
+
               with :ok <-
-                     run_tool_guardrails(:output, guardrails.output, event, output, context) do
-                {:ok, output}
+                     run_tool_guardrails(
+                       :output,
+                       guardrails.output,
+                       event,
+                       normalized_output,
+                       context
+                     ) do
+                {:ok, normalized_output}
               end
 
             {:error, reason} ->

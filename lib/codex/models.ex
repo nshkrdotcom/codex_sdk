@@ -48,6 +48,7 @@ defmodule Codex.Models do
   @spec default_model() :: String.t()
   def default_model do
     System.get_env("CODEX_MODEL") ||
+      System.get_env("OPENAI_DEFAULT_MODEL") ||
       System.get_env("CODEX_MODEL_DEFAULT") ||
       @default_model
   end
