@@ -2,6 +2,7 @@
 
 alias Codex.Items
 alias Codex.Events
+alias Codex.RunResultStreaming
 
 defmodule Examples.Streaming do
   @moduledoc false
@@ -9,22 +10,25 @@ defmodule Examples.Streaming do
   def realtime_stream do
     {:ok, thread} = Codex.start_thread()
 
-    {:ok, stream} =
+    {:ok, result} =
       Codex.Thread.run_streamed(
         thread,
         "Inspect the project structure and call out any missing README sections"
       )
 
-    Enum.each(stream, &handle_event/1)
+    result
+    |> RunResultStreaming.raw_events()
+    |> Enum.each(&handle_event/1)
   end
 
   def progressive_story do
     {:ok, thread} = Codex.start_thread()
 
-    {:ok, stream} =
+    {:ok, result} =
       Codex.Thread.run_streamed(thread, "Write a short story about a robot learning Elixir")
 
-    stream
+    result
+    |> RunResultStreaming.raw_events()
     |> Stream.filter(fn
       %Events.ItemCompleted{item: %Items.AgentMessage{}} -> true
       _ -> false
@@ -44,11 +48,13 @@ defmodule Examples.Streaming do
   def stateful_stream do
     {:ok, thread} = Codex.start_thread()
 
-    {:ok, stream} =
+    {:ok, result} =
       Codex.Thread.run_streamed(thread, "Implement a new feature across the codebase")
 
     final_state =
-      Enum.reduce(stream, initial_state(), fn event, state ->
+      result
+      |> RunResultStreaming.raw_events()
+      |> Enum.reduce(initial_state(), fn event, state ->
         case event do
           %Events.ThreadStarted{thread_id: id} ->
             %{state | thread_id: id}

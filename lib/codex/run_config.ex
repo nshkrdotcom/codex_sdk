@@ -3,6 +3,7 @@ defmodule Codex.RunConfig do
   Per-run configuration applied to agent execution.
   """
 
+  alias Codex.FileSearch
   alias Codex.ModelSettings
   alias Codex.Session
 
@@ -20,7 +21,13 @@ defmodule Codex.RunConfig do
             previous_response_id: nil,
             input_guardrails: [],
             output_guardrails: [],
-            hooks: nil
+            hooks: nil,
+            file_search: nil,
+            workflow: nil,
+            group: nil,
+            trace_id: nil,
+            trace_include_sensitive_data: false,
+            tracing_disabled: false
 
   @type t :: %__MODULE__{
           model: String.t() | nil,
@@ -34,7 +41,8 @@ defmodule Codex.RunConfig do
           previous_response_id: String.t() | nil,
           input_guardrails: list(),
           output_guardrails: list(),
-          hooks: term()
+          hooks: term(),
+          file_search: FileSearch.t() | nil
         }
 
   @doc """
@@ -71,6 +79,20 @@ defmodule Codex.RunConfig do
       Map.get(attrs, :output_guardrails, Map.get(attrs, "output_guardrails", []))
 
     hooks = Map.get(attrs, :hooks, Map.get(attrs, "hooks"))
+    file_search = Map.get(attrs, :file_search, Map.get(attrs, "file_search"))
+    workflow = Map.get(attrs, :workflow, Map.get(attrs, "workflow"))
+    group = Map.get(attrs, :group, Map.get(attrs, "group"))
+    trace_id = Map.get(attrs, :trace_id, Map.get(attrs, "trace_id"))
+
+    trace_include_sensitive_data =
+      Map.get(
+        attrs,
+        :trace_include_sensitive_data,
+        Map.get(attrs, "trace_include_sensitive_data", false)
+      )
+
+    tracing_disabled =
+      Map.get(attrs, :tracing_disabled, Map.get(attrs, "tracing_disabled", false))
 
     with :ok <- validate_optional_string(model, :model),
          {:ok, model_settings} <- normalize_model_settings(model_settings),
@@ -82,7 +104,13 @@ defmodule Codex.RunConfig do
          :ok <- validate_optional_string(conversation_id, :conversation_id),
          :ok <- validate_optional_string(previous_response_id, :previous_response_id),
          {:ok, input_guardrails} <- ensure_list(input_guardrails, :input_guardrails),
-         {:ok, output_guardrails} <- ensure_list(output_guardrails, :output_guardrails) do
+         {:ok, output_guardrails} <- ensure_list(output_guardrails, :output_guardrails),
+         {:ok, file_search} <- FileSearch.new(file_search),
+         :ok <- validate_optional_string(workflow, :workflow),
+         :ok <- validate_optional_string(group, :group),
+         :ok <- validate_optional_string(trace_id, :trace_id),
+         :ok <- validate_boolean(tracing_disabled, :tracing_disabled),
+         :ok <- validate_boolean(trace_include_sensitive_data, :trace_include_sensitive_data) do
       {:ok,
        %__MODULE__{
          model: model,
@@ -96,7 +124,13 @@ defmodule Codex.RunConfig do
          previous_response_id: previous_response_id,
          input_guardrails: input_guardrails,
          output_guardrails: output_guardrails,
-         hooks: hooks
+         hooks: hooks,
+         file_search: file_search,
+         workflow: workflow,
+         group: group,
+         trace_id: trace_id,
+         trace_include_sensitive_data: trace_include_sensitive_data,
+         tracing_disabled: tracing_disabled
        }}
     else
       {:error, _} = error -> error

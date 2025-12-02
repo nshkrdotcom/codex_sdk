@@ -62,9 +62,11 @@ defmodule CodexExamples.LiveExecControls do
       |> maybe_put(:cancellation_token, cancellation_token)
 
     case Codex.Thread.run_streamed(thread, prompt, turn_opts) do
-      {:ok, stream} ->
+      {:ok, result} ->
         try do
-          Enum.each(stream, &print_event/1)
+          result
+          |> Codex.RunResultStreaming.raw_events()
+          |> Enum.each(&print_event/1)
         rescue
           error in [Codex.TransportError] ->
             %Codex.TransportError{exit_status: status, stderr: stderr} = error

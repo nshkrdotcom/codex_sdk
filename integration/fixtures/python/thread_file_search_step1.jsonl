@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_file_search_1","metadata":{"labels":{"topic":"file_search"}}}
+{"type":"turn.started","turn_id":"turn_fs_1","thread_id":"thread_file_search_1"}
+{"type":"tool.call.required","thread_id":"thread_file_search_1","turn_id":"turn_fs_1","call_id":"file_search_call_1","tool_name":"file_search","arguments":{"query":"find docs"}}
+{"type":"turn.continuation","thread_id":"thread_file_search_1","turn_id":"turn_fs_1","continuation_token":"cont-file-search","retryable":true,"reason":"tool_call"}
+{"type":"turn.completed","turn_id":"turn_fs_1","thread_id":"thread_file_search_1","status":"pending","usage":{"input_tokens":8,"cached_input_tokens":0,"output_tokens":0,"total_tokens":8}}

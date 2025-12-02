@@ -246,13 +246,13 @@ defmodule Codex.ChaosTest do
 
     test "cleans up resources on early stream halt" do
       {:ok, thread} = Codex.start_thread()
-      {:ok, stream} = Codex.Thread.run_streamed(thread, "test")
+      {:ok, result} = Codex.Thread.run_streamed(thread, "test")
 
       # Track temp files before
       temp_files_before = count_temp_files()
 
       # Take only first event, halting stream early
-      [_first_event | _] = Enum.take(stream, 1)
+      [_first_event | _] = result |> Codex.RunResultStreaming.raw_events() |> Enum.take(1)
 
       # Give cleanup time
       Process.sleep(100)
@@ -751,12 +751,14 @@ end
 ```elixir
 test "streaming does not accumulate memory" do
   {:ok, thread} = Codex.start_thread()
-  {:ok, stream} = Codex.Thread.run_streamed(thread, "generate 1000 items")
+  {:ok, result} = Codex.Thread.run_streamed(thread, "generate 1000 items")
 
   memory_before = :erlang.memory(:total)
 
   # Consume stream
-  Enum.each(stream, fn _ -> :ok end)
+  result
+  |> Codex.RunResultStreaming.raw_events()
+  |> Enum.each(fn _ -> :ok end)
 
   memory_after = :erlang.memory(:total)
   memory_delta = memory_after - memory_before

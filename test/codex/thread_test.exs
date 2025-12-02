@@ -1,9 +1,9 @@
 defmodule Codex.ThreadTest do
   use ExUnit.Case, async: true
 
-  alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Events
-  alias Codex.{Error, Items, Options, Thread}
+  alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.{Error, Items, Options, RunResultStreaming, Thread, Tools}
   alias Codex.Turn.Result, as: TurnResult
   alias Codex.TestSupport.FixtureScripts
 
@@ -357,10 +357,9 @@ defmodule Codex.ThreadTest do
       {:ok, thread_opts} = ThreadOptions.new(%{})
       thread = Thread.build(codex_opts, thread_opts)
 
-      {:ok, stream} = Thread.run_streamed(thread, "Hello")
+      {:ok, result} = Thread.run_streamed(thread, "Hello")
 
-      assert is_function(stream, 2)
-      events = Enum.to_list(stream)
+      events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
       assert length(events) == 5
       assert Enum.any?(events, &match?(%Events.TurnCompleted{}, &1))
     end
@@ -382,9 +381,9 @@ defmodule Codex.ThreadTest do
 
       schema = %{"type" => "object"}
 
-      {:ok, stream} = Thread.run_streamed(thread, "Stream structured", %{output_schema: schema})
+      {:ok, result} = Thread.run_streamed(thread, "Stream structured", %{output_schema: schema})
 
-      events = Enum.to_list(stream)
+      events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
 
       assert Enum.any?(events, fn
                %Events.ItemCompleted{item: %Items.AgentMessage{parsed: %{"status" => "ok"}}} ->
@@ -418,8 +417,8 @@ defmodule Codex.ThreadTest do
       {:ok, thread_opts} = ThreadOptions.new(%{})
       thread = Thread.build(codex_opts, thread_opts)
 
-      {:ok, stream} = Thread.run_streamed(thread, "Watch usage")
-      events = Enum.to_list(stream)
+      {:ok, result} = Thread.run_streamed(thread, "Watch usage")
+      events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
 
       assert Enum.any?(events, &match?(%Events.ThreadTokenUsageUpdated{}, &1))
 
@@ -446,8 +445,8 @@ defmodule Codex.ThreadTest do
       {:ok, thread_opts} = ThreadOptions.new(%{})
       thread = Thread.build(codex_opts, thread_opts)
 
-      {:ok, stream} = Thread.run_streamed(thread, "Stream MCP")
-      events = Enum.to_list(stream)
+      {:ok, result} = Thread.run_streamed(thread, "Stream MCP")
+      events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
 
       assert Enum.any?(events, fn
                %Events.ItemStarted{
@@ -693,6 +692,61 @@ defmodule Codex.ThreadTest do
 
       assert result.thread.pending_tool_outputs == []
       assert result.thread.pending_tool_failures == []
+    end
+  end
+
+  defmodule DedupTool do
+    @behaviour Codex.Tool
+
+    @impl true
+    def metadata, do: %{name: "dedup_tool", description: "noop"}
+
+    @impl true
+    def invoke(_args, %{metadata: %{parent: parent}}) do
+      send(parent, :tool_invoked)
+      {:ok, %{"status" => "ok"}}
+    end
+  end
+
+  describe "handle_tool_requests/3" do
+    setup do
+      Tools.reset!()
+      Tools.reset_metrics()
+
+      {:ok, _} = Tools.register(DedupTool, name: "dedup_tool")
+
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      {:ok, thread_opts} = ThreadOptions.new(%{metadata: %{parent: self()}})
+
+      thread = Thread.build(codex_opts, thread_opts)
+
+      %{thread: thread}
+    end
+
+    test "skips duplicate tool outputs when already present", %{thread: thread} do
+      existing = %{call_id: "call-1", tool_name: "dedup_tool", output: %{"cached" => true}}
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_dup",
+        turn_id: "turn_dup",
+        call_id: "call-1",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: %{thread | pending_tool_outputs: [existing]},
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{tool_outputs: [existing]}
+      }
+
+      assert {:ok, updated} = Thread.handle_tool_requests(result, 1, %{})
+
+      assert updated.raw.tool_outputs == [existing]
+      assert updated.thread.pending_tool_outputs == [existing]
+      refute_receive :tool_invoked
     end
   end
 end

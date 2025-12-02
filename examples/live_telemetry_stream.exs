@@ -1,7 +1,7 @@
 System.put_env("CODEX_MODEL", "gpt-5.1-codex-mini")
 System.put_env("CODEX_MODEL_DEFAULT", "gpt-5.1-codex-mini")
 
-alias Codex.{Models, Options, Thread, TransportError}
+alias Codex.{Models, Options, RunResultStreaming, Thread, TransportError}
 
 defmodule LiveTelemetryStream do
   @moduledoc false
@@ -59,10 +59,11 @@ defmodule LiveTelemetryStream do
     {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
 
     case Thread.run_streamed(thread, prompt) do
-      {:ok, stream} ->
+      {:ok, result} ->
         try do
           final =
-            stream
+            result
+            |> RunResultStreaming.raw_events()
             |> Enum.reduce(%{final_response: nil}, fn
               %Codex.Events.ItemCompleted{item: %Codex.Items.AgentMessage{text: text}}, acc ->
                 IO.puts("\n[agent message]\n#{text}\n")

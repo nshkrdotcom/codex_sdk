@@ -13,3 +13,5 @@ This checklist tracks coverage of Python Codex SDK features in the Elixir port. 
 | Telemetry lifecycle events | _N/A_ | `Codex.TelemetryTest` | ✅ Implemented | Thread start/stop/exception events and default logger attached via telemetry. |
 
 Update this table as fixtures land and Elixir parity tests are implemented.
+
+See `Codex.TestSupport.ParityMatrix` (validated by `Codex.ParityMatrixTest`) for a fuller matrix that mirrors the Python suite categories (runner/loop, guardrails, function tools, hosted tools, MCP, sessions, streaming, tracing/usage, approvals/safety) and the fixtures backing each bucket, including the new `thread_file_search_step1/2.jsonl` coverage.

@@ -1,0 +1,4 @@
+{"type":"turn.started","turn_id":"turn_fs_2","thread_id":"thread_file_search_1"}
+{"type":"tool.call.completed","thread_id":"thread_file_search_1","turn_id":"turn_fs_2","call_id":"file_search_call_1","tool_name":"file_search","output":{"results":[{"text":"find docs"}]}}
+{"type":"item.agent_message.delta","item":{"id":"item_fs_1","type":"agent_message","role":"assistant","content":{"type":"text","text":"Search complete"}}}
+{"type":"turn.completed","turn_id":"turn_fs_2","thread_id":"thread_file_search_1","final_response":{"type":"text","text":"Search complete"},"usage":{"input_tokens":6,"cached_input_tokens":0,"output_tokens":5,"total_tokens":11}}

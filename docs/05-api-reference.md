@@ -117,7 +117,7 @@ Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
 
 ### `Codex.RunConfig`
 
-Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, optional `model` override, guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer.
+Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, optional `model` override, tracing metadata (`workflow`, `group`, `trace_id`, `trace_include_sensitive_data`, `tracing_disabled`), guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer. The optional `file_search` field seeds hosted file search calls with `vector_store_ids`, `filters`, `ranking_options`, and `include_search_results` (run-level values override thread defaults).
 
 ### `Codex.AgentRunner`
 
@@ -221,12 +221,13 @@ IO.inspect(data["key_points"])
 
 #### `run_streamed/3`
 
-Executes a turn and returns a stream of events (streaming mode).
+Executes a turn and returns a streaming result wrapper. Semantic events are exposed via
+`Codex.RunResultStreaming.events/1` and raw Codex events via `raw_events/1`.
 
 **Signature**:
 ```elixir
 @spec run_streamed(t(), String.t(), map() | keyword()) ::
-  {:ok, Enumerable.t()} | {:error, term()}
+  {:ok, Codex.RunResultStreaming.t()} | {:error, term()}
 ```
 
 **Parameters**:
@@ -235,16 +236,16 @@ Executes a turn and returns a stream of events (streaming mode).
 - `opts` (optional): Turn-specific options plus optional runner settings (`:agent`, `:run_config`)
 
 **Returns**:
-- `{:ok, stream}`: Enumerable stream of events
+- `{:ok, result}`: `Codex.RunResultStreaming` with semantic and raw event streams plus cancellation controls
 - `{:error, reason}`: Configuration or process error
 
 **Examples**:
 ```elixir
 # Basic streaming
 {:ok, thread} = Codex.start_thread()
-{:ok, stream} = Codex.Thread.run_streamed(thread, "Analyze this codebase")
+{:ok, result} = Codex.Thread.run_streamed(thread, "Analyze this codebase")
 
-for event <- stream do
+for event <- Codex.RunResultStreaming.raw_events(result) do
   case event do
     %Codex.Events.ItemStarted{item: item} ->
       IO.puts("Started: #{item.type}")
@@ -264,12 +265,14 @@ for event <- stream do
 end
 
 # Process first N events
-{:ok, stream} = Codex.Thread.run_streamed(thread, "Generate 100 files")
-first_10 = Enum.take(stream, 10)
+{:ok, stream_result} = Codex.Thread.run_streamed(thread, "Generate 100 files")
+first_10 = stream_result |> Codex.RunResultStreaming.raw_events() |> Enum.take(10)
 
 # Filter specific events
-{:ok, stream} = Codex.Thread.run_streamed(thread, "Fix bugs")
-commands = stream
+{:ok, stream_result} = Codex.Thread.run_streamed(thread, "Fix bugs")
+commands =
+  stream_result
+  |> Codex.RunResultStreaming.raw_events()
   |> Stream.filter(fn
     %Codex.Events.ItemCompleted{item: %{type: :command_execution}} -> true
     _ -> false
@@ -424,7 +427,7 @@ Schemas are strict by default (`"additionalProperties": false`) and can be overr
 
 ### Codex.ToolOutput
 
-Tools may return structured outputs using `%Codex.ToolOutput.Text{}`, `%Codex.ToolOutput.Image{}`, or `%Codex.ToolOutput.FileContent{}` (or the `text/1`, `image/1`, and `file/1` helpers). Outputs are normalized to codex-friendly input items (`input_text`, `input_image`, `input_file`) by the runner before being forwarded back to the model.
+Tools may return structured outputs using `%Codex.ToolOutput.Text{}`, `%Codex.ToolOutput.Image{}`, or `%Codex.ToolOutput.FileContent{}` (or the `text/1`, `image/1`, and `file/1` helpers). Outputs are normalized to codex-friendly input items (`input_text`, `input_image`, `input_file`) by the runner before being forwarded back to the model. File payloads support `file_id`, `file_url`, inline `data`, `filename`, and `mime_type`; image payloads support `url`/`file_id` plus `detail`. Lists of outputs are flattened and deduplicated to avoid resending the same file/image inputs across continuations. Passing a `%Codex.Files.Attachment{}` automatically produces an `input_file` item with the staged file encoded as base64 alongside the attachment checksum id.
 
 ### Hosted tools
 
@@ -433,8 +436,10 @@ Hosted capabilities mirror the Python SDK wrappers and are exposed as tool modul
 - `Codex.Tools.ShellTool` — runs shell commands via a provided `:executor`, supports `:timeout_ms`, `:max_output_bytes`, and optional `:approval` hooks
 - `Codex.Tools.ApplyPatchTool` — routes patches to a custom `:editor` callback
 - `Codex.Tools.ComputerTool` — performs computer actions guarded by a `:safety` callback and optional approval hook, delegated to an `:executor`
-- `Codex.Tools.FileSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs
+- `Codex.Tools.FileSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs (plus ranking options and `include_search_results` pulled from thread/run `file_search` config)
 - `Codex.Tools.ImageGenerationTool` / `Codex.Tools.CodeInterpreterTool` — call provided `:generator` / `:runner` callbacks
+
+Defaults for hosted file search can be set on `Thread.Options.file_search` or `RunConfig.file_search`; request arguments supplied by the model still win.
 
 Register them like any other tool, passing callbacks in registration metadata:
 
@@ -457,6 +462,13 @@ Staging and attachment helpers that keep file workflows deterministic.
 - `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files during tests.
 
 Attachments are forwarded to the codex executable via CLI flags (`--attachment`, `--attachment-name`, `--attachment-checksum`), making the workflow match Python's file pipeline.
+Returning a `%Codex.Files.Attachment{}` from a tool (or passing one to `Codex.ToolOutput.normalize/1`) yields an `input_file` payload with the checksum as `file_id` and the staged contents base64-encoded.
+
+---
+
+## Realtime and Voice
+
+Realtime and voice APIs from the Python SDK are not yet available in Elixir. The stub modules `Codex.Realtime` and `Codex.Voice` return `{:error, %Codex.Error{kind: :unsupported_feature}}` with descriptive messages to make the gap explicit until support lands.
 
 ---
 
@@ -1084,31 +1096,33 @@ Thread-specific configuration.
 **Type**:
 ```elixir
 @type t() :: %Codex.Thread.Options{
-  model: String.t() | nil,
-  sandbox_mode: sandbox_mode() | nil,
-  working_directory: String.t() | nil,
-  skip_git_repo_check: boolean()
+  metadata: map(),
+  labels: map(),
+  auto_run: boolean(),
+  approval_policy: module() | nil,
+  approval_hook: module() | nil,
+  approval_timeout_ms: pos_integer(),
+  sandbox: :default | :strict | :permissive,
+  attachments: [map()],
+  file_search: Codex.FileSearch.t() | nil
 }
 ```
 
-**Sandbox Modes**:
-- `:read_only`: Agent can read files but not modify them
-- `:workspace_write`: Agent can write within working directory
-- `:danger_full_access`: Agent has unrestricted filesystem access
-
 **Fields**:
-- `model`: Model name (e.g., "o1", "gpt-4")
-- `sandbox_mode`: File access restrictions
-- `working_directory`: Working directory for agent operations
-- `skip_git_repo_check`: Skip Git repository check (default: false)
+- `metadata`: Arbitrary per-thread metadata stored on the thread and passed to tool contexts (commonly includes `:tool_context` or approval hints)
+- `labels`: Optional label map merged with server metadata
+- `auto_run`: Enable CLI-driven auto-run (default: false)
+- `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
+- `sandbox`: Sandbox hint (`:default`, `:strict`, `:permissive`)
+- `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
+- `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
 
 **Example**:
 ```elixir
 %Codex.Thread.Options{
-  model: "o1",
-  sandbox_mode: :read_only,
-  working_directory: "/home/user/project",
-  skip_git_repo_check: false
+  metadata: %{tool_context: %{project: "docs"}},
+  attachments: [%Codex.Files.Attachment{...}],
+  file_search: %{vector_store_ids: ["vs_default"], include_search_results: true}
 }
 ```
 

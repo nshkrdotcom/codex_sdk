@@ -7,6 +7,25 @@ defmodule Codex.Tools.Hosted do
       default
   end
 
+  def file_search_value(metadata, key, default \\ nil) do
+    case metadata_value(metadata, key) do
+      nil -> nested_file_search_value(metadata, key, default)
+      value -> value
+    end
+  end
+
+  defp nested_file_search_value(metadata, key, default) do
+    case metadata_value(metadata, :file_search) do
+      %{} = file_search ->
+        Map.get(file_search, key) ||
+          Map.get(file_search, to_string(key)) ||
+          default
+
+      _ ->
+        default
+    end
+  end
+
   def callback(metadata, key) do
     metadata_value(metadata, key)
   end
@@ -237,22 +256,65 @@ defmodule Codex.Tools.FileSearchTool do
   @impl true
   def invoke(args, context) do
     metadata = Map.get(context, :metadata, %{})
-    vector_store_ids = Hosted.metadata_value(metadata, :vector_store_ids, [])
-    filters = Hosted.metadata_value(metadata, :filters)
+    file_search = Map.get(context, :file_search)
+
+    vector_store_ids =
+      Hosted.file_search_value(
+        metadata,
+        :vector_store_ids,
+        file_search_field(file_search, :vector_store_ids, [])
+      )
+
+    filters =
+      Hosted.file_search_value(metadata, :filters, file_search_field(file_search, :filters))
+
+    ranking_options =
+      Hosted.file_search_value(
+        metadata,
+        :ranking_options,
+        file_search_field(file_search, :ranking_options)
+      )
+
+    include_results =
+      Hosted.file_search_value(
+        metadata,
+        :include_search_results,
+        file_search_field(file_search, :include_search_results)
+      )
 
     search_args =
       args
       |> Map.put_new("filters", filters)
       |> Map.put_new("vector_store_ids", vector_store_ids)
+      |> maybe_put_arg("include_search_results", include_results)
+      |> maybe_put_arg("ranking_options", ranking_options)
 
-    with {:ok, fun} <- Hosted.require_callback(metadata, :searcher) do
-      case Hosted.safe_call(fun, search_args, context, metadata) do
+    enriched_metadata =
+      metadata
+      |> maybe_put_arg(:filters, filters)
+      |> maybe_put_arg(:vector_store_ids, vector_store_ids)
+      |> maybe_put_arg(:include_search_results, include_results)
+      |> maybe_put_arg(:ranking_options, ranking_options)
+
+    with {:ok, fun} <- Hosted.require_callback(enriched_metadata, :searcher) do
+      case Hosted.safe_call(fun, search_args, context, enriched_metadata) do
         {:ok, result} -> {:ok, result}
         {:error, reason} -> {:error, reason}
         other -> {:ok, other}
       end
     end
   end
+
+  defp file_search_field(file_search, key, default \\ nil)
+  defp file_search_field(%Codex.FileSearch{} = fs, key, default), do: Map.get(fs, key) || default
+
+  defp file_search_field(%{} = map, key, default),
+    do: Map.get(map, key) || Map.get(map, to_string(key)) || default
+
+  defp file_search_field(_other, _key, default), do: default
+
+  defp maybe_put_arg(map, _key, nil), do: map
+  defp maybe_put_arg(map, key, value), do: Map.put(map, key, value)
 end
 
 defmodule Codex.Tools.WebSearchTool do
