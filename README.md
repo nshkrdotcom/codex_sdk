@@ -163,7 +163,13 @@ IO.inspect(data["issues"])
 
 ### Runnable Examples
 
-The repository ships with standalone scripts under `examples/` that you can execute via `mix run`:
+The repository ships with standalone scripts under `examples/` that you can execute via `mix run`. Live scripts (prefixed `live_`) hit the real Codex CLI using your existing CLI login—no extra API key wiring needed. To run everything sequentially:
+
+```bash
+./examples/run_all.sh
+```
+
+Or run individual scripts:
 
 ```bash
 # Basic blocking turn and item traversal
@@ -202,6 +208,7 @@ mix run examples/live_telemetry_stream.exs
 # Live CLI demo (forces live run; CODEX_TEST_LIVE=true for CI)
 CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
+
 
 ### Resuming Threads
 
@@ -443,7 +450,7 @@ MIX_ENV=dev mix dialyzer
 
 ## Examples
 
-See the `examples/` directory for comprehensive demonstrations:
+See the `examples/` directory for comprehensive demonstrations. A quick index:
 
 - **`basic_usage.exs`** - First turn, follow-ups, and result inspection
 - **`streaming.exs`** - Real-time turn streaming (progressive and stateful modes)
@@ -453,7 +460,8 @@ See the `examples/` directory for comprehensive demonstrations:
 - **`approval_hook_example.exs`** - Custom approval hook wiring and telemetry inspection
 - **`sandbox_warnings_and_approval_bypass.exs`** - Normalized sandbox warnings and policy-approved bypass demo
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
-- **`live_cli_demo.exs`** - Live CLI walkthrough (requires `CODEX_TEST_LIVE=true` and CLI auth)
+- **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth; `CODEX_TEST_LIVE=true` for CI)
+- **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
 
 Run examples with:
 
@@ -462,7 +470,11 @@ mix run examples/basic_usage.exs
 
 # Live CLI example (requires authenticated codex CLI)
 CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
+
+# Run all live examples in sequence
+./examples/run_all.sh
 ```
+
 
 ## Documentation
 
