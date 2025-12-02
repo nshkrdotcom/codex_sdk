@@ -30,14 +30,14 @@ defmodule Codex.Tool do
 
   @doc false
   defmacro __using__(opts) do
+    {evaluated_opts, _} = Code.eval_quoted(opts, [], __CALLER__)
+    metadata = Macro.escape(normalise_metadata(evaluated_opts), unquote: true)
+
     quote do
       @behaviour Codex.Tool
-
-      @codex_tool_metadata Map.new(unquote(opts))
-
       @impl true
       def metadata do
-        @codex_tool_metadata
+        unquote(metadata)
       end
 
       defoverridable metadata: 0

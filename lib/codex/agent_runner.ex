@@ -9,6 +9,7 @@ defmodule Codex.AgentRunner do
   alias Codex.Handoff
   alias Codex.Options
   alias Codex.RunConfig
+  alias Codex.Session
   alias Codex.ToolGuardrail
   alias Codex.Thread
   alias Codex.Turn.Result
@@ -23,23 +24,29 @@ defmodule Codex.AgentRunner do
       tuned_thread = apply_model_override(thread, run_config)
       guardrails = build_guardrails(agent, run_config)
 
+      {prepared_input, session, _history} =
+        maybe_prepare_session(run_config, input)
+
       with :ok <-
-             run_guardrails(:input, guardrails.input, input, %{
+             run_guardrails(:input, guardrails.input, prepared_input, %{
                agent: agent,
                run_config: run_config
              }) do
-        do_run(
-          tuned_thread,
-          input,
-          agent,
-          run_config,
-          guardrails,
-          turn_opts,
-          backoff || (&default_backoff/1),
-          1,
-          [],
-          %{}
-        )
+        result =
+          do_run(
+            tuned_thread,
+            prepared_input,
+            agent,
+            run_config,
+            guardrails,
+            turn_opts,
+            backoff || (&default_backoff/1),
+            1,
+            [],
+            %{}
+          )
+
+        maybe_store_session(session, prepared_input, run_config, result)
       end
     end
   end
@@ -89,6 +96,7 @@ defmodule Codex.AgentRunner do
                   |> Map.put(:usage, merged_usage)
                   |> Map.put(:pending_tool_outputs, [])
                   |> Map.put(:pending_tool_failures, [])
+                  |> annotate_conversation(run_config)
 
                 {:ok,
                  %Result{
@@ -139,7 +147,10 @@ defmodule Codex.AgentRunner do
                            processed.final_response,
                            %{agent: agent}
                          ) do
-                    final_thread = %{processed.thread | usage: merged_usage}
+                    final_thread =
+                      processed.thread
+                      |> Map.put(:usage, merged_usage)
+                      |> annotate_conversation(run_config)
 
                     {:ok,
                      %Result{
@@ -405,6 +416,58 @@ defmodule Codex.AgentRunner do
 
   def maybe_reset_tool_choice(_agent, turn_opts, _tool_results), do: turn_opts
 
+  defp maybe_prepare_session(%RunConfig{session: nil}, input), do: {input, nil, []}
+
+  defp maybe_prepare_session(
+         %RunConfig{session: session, session_input_callback: callback},
+         input
+       ) do
+    case Session.load(session) do
+      {:ok, history} ->
+        prepared = apply_session_callback(callback, input, history)
+        {prepared, session, history}
+
+      {:error, _reason} ->
+        {input, session, []}
+    end
+  end
+
+  defp apply_session_callback(nil, input, _history), do: input
+
+  defp apply_session_callback(fun, input, history) when is_function(fun) do
+    case safe_session_callback(fun, input, history) do
+      {:ok, new_input} -> new_input
+      {:ok, new_input, _ctx} -> new_input
+      value when is_binary(value) -> value
+      _ -> input
+    end
+  end
+
+  defp safe_session_callback(fun, input, history) when is_function(fun, 3),
+    do: fun.(input, history, %{})
+
+  defp safe_session_callback(fun, input, history) when is_function(fun, 2),
+    do: fun.(input, history)
+
+  defp safe_session_callback(fun, input, _history) when is_function(fun, 1), do: fun.(input)
+  defp safe_session_callback(fun, _input, _history) when is_function(fun, 0), do: fun.()
+
+  defp maybe_store_session(nil, _input, _run_config, result), do: result
+
+  defp maybe_store_session(session, input, %RunConfig{} = run_config, {:ok, %Result{} = result}) do
+    entry = %{
+      input: input,
+      response: result.final_response,
+      conversation_id: run_config.conversation_id || result.thread.thread_id,
+      previous_response_id: run_config.previous_response_id
+    }
+
+    _ = Session.save(session, entry)
+    {:ok, result}
+  end
+
+  defp maybe_store_session(_session, _input, _run_config, other), do: other
+
   defp apply_model_override(%Thread{codex_opts: %Options{} = opts} = thread, %RunConfig{
          model: model
        }) do
@@ -423,4 +486,20 @@ defmodule Codex.AgentRunner do
   defp safe_backoff(_fun, _attempt), do: :ok
 
   defp default_backoff(_attempt), do: :ok
+
+  defp annotate_conversation(thread, %RunConfig{} = run_config) do
+    conversation_meta =
+      %{}
+      |> maybe_put(:conversation_id, run_config.conversation_id)
+      |> maybe_put(:previous_response_id, run_config.previous_response_id)
+
+    updated_metadata =
+      thread.metadata
+      |> Map.merge(conversation_meta)
+
+    Map.put(thread, :metadata, updated_metadata)
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

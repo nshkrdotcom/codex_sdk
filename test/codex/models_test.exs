@@ -45,6 +45,19 @@ defmodule Codex.ModelsTest do
     assert Models.default_reasoning_effort("gpt-5.1-codex-mini") == :medium
   end
 
+  test "honors OPENAI_DEFAULT_MODEL override" do
+    original = System.get_env("OPENAI_DEFAULT_MODEL")
+    System.put_env("OPENAI_DEFAULT_MODEL", "custom-model")
+
+    try do
+      assert Models.default_model() == "custom-model"
+    after
+      if original,
+        do: System.put_env("OPENAI_DEFAULT_MODEL", original),
+        else: System.delete_env("OPENAI_DEFAULT_MODEL")
+    end
+  end
+
   test "identifies tool-enabled models" do
     assert Models.tool_enabled?("gpt-5.1-codex-max")
     assert Models.tool_enabled?("gpt-5.1-codex-mini")

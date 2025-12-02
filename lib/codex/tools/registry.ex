@@ -75,42 +75,31 @@ defmodule Codex.Tools.Registry do
         |> Map.put(:originator, :sdk)
         |> Map.put(:span_token, make_ref())
 
-      Telemetry.emit(
-        [:codex, :tool, :start],
-        %{system_time: System.system_time()},
-        telemetry_meta
-      )
+      if tool_enabled?(metadata, full_context) do
+        Telemetry.emit(
+          [:codex, :tool, :start],
+          %{system_time: System.system_time()},
+          telemetry_meta
+        )
 
-      started = System.monotonic_time()
+        started = System.monotonic_time()
 
-      case safe_invoke(module, normalized_args, full_context) do
-        {:ok, output} ->
-          duration = System.monotonic_time() - started
-          Tools.record_invocation(info.name, :success, duration_to_ms(duration))
+        case safe_invoke(module, normalized_args, full_context) do
+          {:ok, output} ->
+            handle_success(info.name, telemetry_meta, started, output)
 
-          Telemetry.emit(
-            [:codex, :tool, :success],
-            %{duration: duration, system_time: System.system_time()},
-            telemetry_meta
-            |> Map.put(:output, output)
-            |> Map.put(:result, :ok)
-          )
+          {:error, reason} ->
+            case maybe_handle_error(metadata, reason, full_context) do
+              {:ok, output} ->
+                handle_success(info.name, telemetry_meta, started, output)
 
-          {:ok, output}
-
-        {:error, reason} = error ->
-          duration = System.monotonic_time() - started
-          Tools.record_invocation(info.name, :failure, duration_to_ms(duration), reason)
-
-          Telemetry.emit(
-            [:codex, :tool, :failure],
-            %{duration: duration, system_time: System.system_time()},
-            telemetry_meta
-            |> Map.put(:error, reason)
-            |> Map.put(:result, :error)
-          )
-
-          error
+              {:error, handled_reason} = error ->
+                handle_failure(info.name, telemetry_meta, started, handled_reason)
+                error
+            end
+        end
+      else
+        {:error, {:tool_disabled, name}}
       end
     end
   end
@@ -211,6 +200,84 @@ defmodule Codex.Tools.Registry do
     Map.new(other)
   rescue
     _ -> %{"input" => other}
+  end
+
+  defp tool_enabled?(metadata, context) do
+    case metadata |> Map.get(:enabled?) || Map.get(metadata, "enabled?") do
+      fun when is_function(fun, 2) -> fun.(context, metadata)
+      fun when is_function(fun, 1) -> fun.(context)
+      fun when is_function(fun, 0) -> fun.()
+      value when is_boolean(value) -> value
+      _ -> true
+    end
+  end
+
+  defp maybe_handle_error(metadata, reason, context) do
+    case metadata |> Map.get(:on_error) || Map.get(metadata, "on_error") do
+      fun when is_function(fun, 3) ->
+        safe_error_apply(fun, reason, context)
+
+      fun when is_function(fun, 2) ->
+        safe_error_apply(fun, reason, context)
+
+      fun when is_function(fun, 1) ->
+        safe_error_apply(fun, reason, context)
+
+      _ ->
+        {:error, reason}
+    end
+  end
+
+  defp safe_error_apply(fun, reason, context) when is_function(fun, 3) do
+    fun.(reason, context, context)
+  rescue
+    error -> {:error, {:error_handler_failed, error}}
+  catch
+    kind, payload -> {:error, {:error_handler_failed, {kind, payload}}}
+  end
+
+  defp safe_error_apply(fun, reason, context) when is_function(fun, 2) do
+    fun.(reason, context)
+  rescue
+    error -> {:error, {:error_handler_failed, error}}
+  catch
+    kind, payload -> {:error, {:error_handler_failed, {kind, payload}}}
+  end
+
+  defp safe_error_apply(fun, reason, _context) when is_function(fun, 1) do
+    fun.(reason)
+  rescue
+    error -> {:error, {:error_handler_failed, error}}
+  catch
+    kind, payload -> {:error, {:error_handler_failed, {kind, payload}}}
+  end
+
+  defp handle_success(name, telemetry_meta, started, output) do
+    duration = System.monotonic_time() - started
+    Tools.record_invocation(name, :success, duration_to_ms(duration))
+
+    Telemetry.emit(
+      [:codex, :tool, :success],
+      %{duration: duration, system_time: System.system_time()},
+      telemetry_meta
+      |> Map.put(:output, output)
+      |> Map.put(:result, :ok)
+    )
+
+    {:ok, output}
+  end
+
+  defp handle_failure(name, telemetry_meta, started, reason) do
+    duration = System.monotonic_time() - started
+    Tools.record_invocation(name, :failure, duration_to_ms(duration), reason)
+
+    Telemetry.emit(
+      [:codex, :tool, :failure],
+      %{duration: duration, system_time: System.system_time()},
+      telemetry_meta
+      |> Map.put(:error, reason)
+      |> Map.put(:result, :error)
+    )
   end
 
   defp maybe_put(map, _key, nil), do: map

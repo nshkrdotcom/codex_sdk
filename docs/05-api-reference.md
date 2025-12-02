@@ -402,6 +402,50 @@ Every invocation emits `:telemetry` events using the following namespaces:
 - `[:codex, :tool, :success]` — emitted on success with the same metadata plus the returned `:output`; measurements include `:duration` in native units
 - `[:codex, :tool, :failure]` — emitted on failures with the same measurements and an `:error` entry describing the failure
 
+### Codex.FunctionTool
+
+Function-backed tools can be defined with `use Codex.FunctionTool`, which generates a JSON schema from the supplied parameter definitions and handles enablement/error hooks:
+
+```elixir
+defmodule Math.Add do
+  use Codex.FunctionTool,
+    name: "add_numbers",
+    description: "Adds two numbers",
+    parameters: %{left: :number, right: :number},
+    enabled?: fn _ctx -> true end,
+    on_error: fn reason, _ctx -> {:ok, %{message: inspect(reason)}} end,
+    handler: fn %{"left" => left, "right" => right}, _ctx ->
+      {:ok, %{"sum" => left + right}}
+    end
+end
+```
+
+Schemas are strict by default (`"additionalProperties": false`) and can be overridden via the `:schema` option. `:enabled?` gates invocation, while `:on_error` can turn failures into usable outputs.
+
+### Codex.ToolOutput
+
+Tools may return structured outputs using `%Codex.ToolOutput.Text{}`, `%Codex.ToolOutput.Image{}`, or `%Codex.ToolOutput.FileContent{}` (or the `text/1`, `image/1`, and `file/1` helpers). Outputs are normalized to codex-friendly input items (`input_text`, `input_image`, `input_file`) by the runner before being forwarded back to the model.
+
+### Hosted tools
+
+Hosted capabilities mirror the Python SDK wrappers and are exposed as tool modules:
+
+- `Codex.Tools.ShellTool` — runs shell commands via a provided `:executor`, supports `:timeout_ms`, `:max_output_bytes`, and optional `:approval` hooks
+- `Codex.Tools.ApplyPatchTool` — routes patches to a custom `:editor` callback
+- `Codex.Tools.ComputerTool` — performs computer actions guarded by a `:safety` callback and optional approval hook, delegated to an `:executor`
+- `Codex.Tools.FileSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs
+- `Codex.Tools.ImageGenerationTool` / `Codex.Tools.CodeInterpreterTool` — call provided `:generator` / `:runner` callbacks
+
+Register them like any other tool, passing callbacks in registration metadata:
+
+```elixir
+{:ok, _} =
+  Codex.Tools.register(Codex.Tools.ShellTool,
+    executor: &MyShell.exec/3,
+    timeout_ms: 1_000
+  )
+```
+
 ---
 
 ## Codex.Files
@@ -432,6 +476,21 @@ Thin client for performing capability handshake with MCP-compatible servers.
 
 - `handshake/2` — sends a handshake request (`{"type": "handshake"}`) and records advertised capabilities.
 - `capabilities/1` — returns the negotiated capability list used to seed the tool registry.
+- `list_tools/2` — fetches tool metadata, caches responses by default, and supports `allow`/`deny`/`filter` options plus `cache?: false` to bypass cached entries.
+- `call_tool/4` — invokes a tool with `retries`/`backoff` and optional `approval` callback.
+
+### Hosted MCP tool
+
+`Codex.Tools.HostedMcpTool` wraps an MCP client for use inside the tool registry. Register it with a `:client` and `:tool` plus optional `:retries`, `:backoff`, or `:approval` fields to mirror Python's hosted MCP wrapper.
+
+---
+
+## Codex.Session
+
+Behaviour for persisting conversation history between runs. The built-in `Codex.Session.Memory` adapter stores entries in an Agent for tests and short-lived runs.
+
+- `session` / `session_input_callback` — configure on `RunConfig` to load history before a run and optionally transform the input. Callbacks receive the input and loaded history.
+- `conversation_id` / `previous_response_id` — optional identifiers stored on thread metadata and persisted alongside session entries.
 
 ---
 
