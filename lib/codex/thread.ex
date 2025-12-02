@@ -8,10 +8,12 @@ defmodule Codex.Thread do
   alias Codex.Approvals
   alias Codex.Error
   alias Codex.Events
+  alias Codex.GuardrailError
   alias Codex.Items
   alias Codex.Options
   alias Codex.OutputSchemaFile
   alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.ToolGuardrail
   alias Codex.Tools
   alias Codex.Telemetry
   alias Codex.Turn.Result
@@ -786,24 +788,32 @@ defmodule Codex.Thread do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc false
-  @spec handle_tool_requests(Result.t(), non_neg_integer()) ::
+  @spec handle_tool_requests(Result.t(), non_neg_integer(), map()) ::
           {:ok, Result.t()} | {:error, term()}
-  def handle_tool_requests(%Result{} = result, attempt) do
+  def handle_tool_requests(result, attempt, opts \\ %{})
+
+  def handle_tool_requests(%Result{} = result, attempt, opts) do
     tool_events = Enum.filter(result.events, &match?(%Events.ToolCallRequested{}, &1))
 
+    guardrails = %{
+      input: Map.get(opts, :tool_input, Map.get(opts, "tool_input", [])) || [],
+      output: Map.get(opts, :tool_output, Map.get(opts, "tool_output", [])) || []
+    }
+
     Enum.reduce_while(tool_events, {:ok, result}, fn event, {:ok, acc_result} ->
-      case maybe_invoke_tool(acc_result.thread, event, attempt) do
+      case maybe_invoke_tool(acc_result.thread, event, attempt, guardrails) do
         {:ok, output} ->
           outputs = Map.get(acc_result.raw, :tool_outputs, [])
 
-          pending_outputs =
-            acc_result.thread.pending_tool_outputs ++ [%{call_id: event.call_id, output: output}]
+          tool_payload = %{call_id: event.call_id, tool_name: event.tool_name, output: output}
+
+          pending_outputs = acc_result.thread.pending_tool_outputs ++ [tool_payload]
 
           updated_raw =
             Map.put(
               acc_result.raw,
               :tool_outputs,
-              outputs ++ [%{call_id: event.call_id, output: output}]
+              outputs ++ [tool_payload]
             )
 
           updated_thread =
@@ -816,11 +826,23 @@ defmodule Codex.Thread do
         {:failure, reason} ->
           failures =
             Map.get(acc_result.raw, :tool_failures, []) ++
-              [%{call_id: event.call_id, reason: normalize_tool_failure(reason)}]
+              [
+                %{
+                  call_id: event.call_id,
+                  tool_name: event.tool_name,
+                  reason: normalize_tool_failure(reason)
+                }
+              ]
 
           pending_failures =
             acc_result.thread.pending_tool_failures ++
-              [%{call_id: event.call_id, reason: normalize_tool_failure(reason)}]
+              [
+                %{
+                  call_id: event.call_id,
+                  tool_name: event.tool_name,
+                  reason: normalize_tool_failure(reason)
+                }
+              ]
 
           updated_raw = Map.put(acc_result.raw, :tool_failures, failures)
 
@@ -837,31 +859,36 @@ defmodule Codex.Thread do
     end)
   end
 
-  def handle_tool_requests(result, _attempt), do: {:ok, result}
+  def handle_tool_requests(result, _attempt, _opts), do: {:ok, result}
 
-  defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt) do
+  defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt, guardrails) do
     context = build_tool_context(thread, event, attempt)
 
-    # Prefer approval_hook over approval_policy
-    policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
-    timeout = thread.thread_opts.approval_timeout_ms || 30_000
+    with :ok <- run_tool_guardrails(:input, guardrails.input, event, event.arguments, context) do
+      # Prefer approval_hook over approval_policy
+      policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
+      timeout = thread.thread_opts.approval_timeout_ms || 30_000
 
-    case Approvals.review_tool(policy_or_hook, event, context, timeout: timeout) do
-      :allow ->
-        case Tools.invoke(event.tool_name, event.arguments, context) do
-          {:ok, output} ->
-            {:ok, output}
+      case Approvals.review_tool(policy_or_hook, event, context, timeout: timeout) do
+        :allow ->
+          case Tools.invoke(event.tool_name, event.arguments, context) do
+            {:ok, output} ->
+              with :ok <-
+                     run_tool_guardrails(:output, guardrails.output, event, output, context) do
+                {:ok, output}
+              end
 
-          {:error, reason} ->
-            {:failure,
-             Error.new(:tool_failure, "tool #{event.tool_name} failed", %{
-               tool: event.tool_name,
-               reason: reason
-             })}
-        end
+            {:error, reason} ->
+              {:failure,
+               Error.new(:tool_failure, "tool #{event.tool_name} failed", %{
+                 tool: event.tool_name,
+                 reason: reason
+               })}
+          end
 
-      {:deny, reason} ->
-        {:error, ApprovalError.new(event.tool_name, reason)}
+        {:deny, reason} ->
+          {:error, ApprovalError.new(event.tool_name, reason)}
+      end
     end
   end
 
@@ -887,6 +914,36 @@ defmodule Codex.Thread do
     }
     |> maybe_put(:capabilities, capabilities)
     |> maybe_put(:sandbox_warnings, warnings)
+  end
+
+  defp run_tool_guardrails(_stage, guardrails, _event, _payload, _context)
+       when guardrails in [nil, []],
+       do: :ok
+
+  defp run_tool_guardrails(stage, guardrails, event, payload, context) do
+    context = Map.put(context, :event, event)
+
+    Enum.reduce_while(guardrails, :ok, fn guardrail, :ok ->
+      case ToolGuardrail.run(guardrail, event, payload, context) do
+        :ok ->
+          {:cont, :ok}
+
+        {:reject, message} ->
+          {:halt, {:error, guardrail_error(stage, guardrail, :reject, message)}}
+
+        {:tripwire, message} ->
+          {:halt, {:error, guardrail_error(stage, guardrail, :tripwire, message)}}
+      end
+    end)
+  end
+
+  defp guardrail_error(stage, guardrail, type, message) do
+    %GuardrailError{
+      stage: if(stage == :output, do: :tool_output, else: :tool_input),
+      guardrail: Map.get(guardrail, :name),
+      message: message,
+      type: type
+    }
   end
 
   defp normalize_tool_failure(%Codex.Error{} = error) do

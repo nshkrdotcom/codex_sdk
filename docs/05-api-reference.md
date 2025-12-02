@@ -105,7 +105,15 @@ codex_opts = %Codex.Options{base_url: "https://custom.api"}
 
 ### `Codex.Agent`
 
-Represents a reusable agent definition with fields for `instructions` or `prompt`, optional `handoffs`, `tools`, guardrail lists, hooks, and optional `model` or `model_settings` overrides. Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
+Represents a reusable agent definition with fields for `instructions` or `prompt`, optional `handoffs`, `tools`, guardrail lists, hooks, and optional `model` or `model_settings` overrides. New fields mirror the agent runner ADRs:
+
+- `handoff_description` and `handoffs` (lists of downstream `Codex.Agent` or `Codex.Handoff.wrap/2` structs) describe delegation targets
+- `tool_use_behavior` controls when tool outputs end a run (`:run_llm_again` default, `:stop_on_first_tool`, `%{stop_at_tool_names: [...]}`, or a callback)
+- `reset_tool_choice` resets tool choice hints after a tool call (default: true)
+
+Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
+
+`Codex.Handoff.wrap/2` turns an agent into a handoff tool with optional input filters and history nesting controls; `Codex.AgentRunner.get_handoffs/2` filters enabled handoffs using the provided context. Guardrails can be created with `Codex.Guardrail.new/1` and `Codex.ToolGuardrail.new/1`; when supplied on the agent/run config they run before turns, after final outputs, and around tool calls, raising `Codex.GuardrailError` on rejections/tripwires.
 
 ### `Codex.RunConfig`
 
