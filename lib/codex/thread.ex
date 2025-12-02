@@ -3,6 +3,7 @@ defmodule Codex.Thread do
   Represents a Codex conversation thread and exposes turn execution APIs.
   """
 
+  alias Codex.AgentRunner
   alias Codex.ApprovalError
   alias Codex.Approvals
   alias Codex.Error
@@ -61,11 +62,18 @@ defmodule Codex.Thread do
   end
 
   @doc """
-  Executes a blocking turn against the codex engine.
+  Executes a blocking multi-turn run using the agent runner.
   """
   @spec run(t(), String.t(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
-  def run(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+  def run(%__MODULE__{} = thread, input, opts \\ %{}) when is_binary(input) do
+    AgentRunner.run(thread, input, opts)
+  end
+
+  @doc false
+  @spec run_turn(t(), String.t(), map() | keyword()) ::
+          {:ok, Result.t()} | {:error, term()}
+  def run_turn(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
     thread = maybe_reset_for_new(thread, input)
     span_token = make_ref()
 
@@ -139,13 +147,20 @@ defmodule Codex.Thread do
   end
 
   @doc """
-  Executes a turn and returns a stream of events for progressive consumption.
+  Executes a run and returns a stream of events for progressive consumption.
 
   The stream is lazy; events will not be produced until enumerated.
   """
   @spec run_streamed(t(), String.t(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
-  def run_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+  def run_streamed(%__MODULE__{} = thread, input, opts \\ %{}) when is_binary(input) do
+    AgentRunner.run_streamed(thread, input, opts)
+  end
+
+  @doc false
+  @spec run_turn_streamed(t(), String.t(), map() | keyword()) ::
+          {:ok, Enumerable.t()} | {:error, term()}
+  def run_turn_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
     thread = maybe_reset_for_new(thread, input)
 
     with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
@@ -196,61 +211,18 @@ defmodule Codex.Thread do
     backoff = Keyword.get(opts, :backoff, &default_backoff/1)
     turn_opts = Keyword.get(opts, :turn_opts, %{})
 
-    do_run_auto(thread, input, turn_opts, max_attempts, backoff, 1, [], %{})
-  end
+    run_opts =
+      turn_opts
+      |> Map.new()
+      |> Map.put(:max_turns, max_attempts)
+      |> Map.put(:backoff, backoff)
 
-  defp do_run_auto(
-         thread,
-         input,
-         turn_opts,
-         max_attempts,
-         backoff,
-         attempt,
-         acc_events,
-         acc_usage
-       ) do
-    case run(thread, input, turn_opts) do
-      {:ok, %Result{} = result} ->
-        with {:ok, processed} <- handle_tool_requests(result, attempt) do
-          merged_events = acc_events ++ processed.events
-          merged_usage = merge_usage(acc_usage, processed.usage)
+    case AgentRunner.run(thread, input, run_opts) do
+      {:error, {:max_turns_exceeded, ^max_attempts, context}} ->
+        {:error, {:max_attempts_reached, max_attempts, context}}
 
-          cond do
-            processed.thread.continuation_token && attempt < max_attempts ->
-              backoff.(attempt)
-
-              do_run_auto(
-                processed.thread,
-                input,
-                turn_opts,
-                max_attempts,
-                backoff,
-                attempt + 1,
-                merged_events,
-                merged_usage
-              )
-
-            processed.thread.continuation_token ->
-              {:error,
-               {:max_attempts_reached, max_attempts,
-                %{continuation: processed.thread.continuation_token}}}
-
-            true ->
-              final_thread = %{processed.thread | usage: merged_usage}
-
-              {:ok,
-               %Result{
-                 processed
-                 | events: merged_events,
-                   usage: merged_usage,
-                   thread: final_thread,
-                   attempts: attempt
-               }}
-          end
-        end
-
-      {:error, _} = error ->
-        error
+      other ->
+        other
     end
   end
 
@@ -438,11 +410,13 @@ defmodule Codex.Thread do
     update_usage_with_maps(current_usage, usage, delta)
   end
 
-  defp merge_usage(nil, nil), do: %{}
-  defp merge_usage(map, nil) when is_map(map), do: map
-  defp merge_usage(nil, map) when is_map(map), do: map
+  @doc false
+  @spec merge_usage(map() | nil, map() | nil) :: map()
+  def merge_usage(nil, nil), do: %{}
+  def merge_usage(map, nil) when is_map(map), do: map
+  def merge_usage(nil, map) when is_map(map), do: map
 
-  defp merge_usage(left, right) when is_map(left) and is_map(right) do
+  def merge_usage(left, right) when is_map(left) and is_map(right) do
     Map.merge(left, right, fn _key, l, r ->
       cond do
         is_number(l) and is_number(r) -> l + r
@@ -811,7 +785,10 @@ defmodule Codex.Thread do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp handle_tool_requests(%Result{} = result, attempt) do
+  @doc false
+  @spec handle_tool_requests(Result.t(), non_neg_integer()) ::
+          {:ok, Result.t()} | {:error, term()}
+  def handle_tool_requests(%Result{} = result, attempt) do
     tool_events = Enum.filter(result.events, &match?(%Events.ToolCallRequested{}, &1))
 
     Enum.reduce_while(tool_events, {:ok, result}, fn event, {:ok, acc_result} ->
@@ -860,7 +837,7 @@ defmodule Codex.Thread do
     end)
   end
 
-  defp handle_tool_requests(result, _attempt), do: {:ok, result}
+  def handle_tool_requests(result, _attempt), do: {:ok, result}
 
   defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt) do
     context = build_tool_context(thread, event, attempt)

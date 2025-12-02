@@ -467,6 +467,25 @@ defmodule ResumeExample do
 end
 ```
 
+### Agent Runner Loop
+
+Automatically follow continuation tokens with the multi-turn runner.
+
+```elixir
+defmodule AgentRunnerExample do
+  def run do
+    {:ok, thread} = Codex.start_thread()
+
+    Codex.AgentRunner.run(thread, "Plan a checklist",
+      agent: %{instructions: "Keep responses short"},
+      run_config: %{max_turns: 3}
+    )
+  end
+end
+```
+
+Run `mix run examples/agent_runner_multi_turn.exs` for a runnable script.
+
 ---
 
 ## File Operations

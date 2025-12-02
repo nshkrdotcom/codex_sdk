@@ -7,7 +7,7 @@ defmodule Codex.Integration.TurnResumptionTest do
 
   @moduletag :integration
 
-  test "resumes using continuation tokens from prior turn" do
+  test "follows continuation tokens across turns automatically" do
     {:ok, thread_opts} = ThreadOptions.new(%{})
 
     {script_path, state_file} =
@@ -29,15 +29,10 @@ defmodule Codex.Integration.TurnResumptionTest do
 
     thread = Thread.build(codex_opts, thread_opts)
 
-    {:ok, partial} = Thread.run(thread, "Start turn")
-    assert partial.thread.thread_id == "thread_auto_123"
-    assert partial.thread.continuation_token == "cont-auto-run"
-    assert partial.final_response == nil
-
-    {:ok, resumed} = Thread.run(partial.thread, "resume automatically")
-
-    assert resumed.thread.thread_id == "thread_auto_123"
-    assert resumed.thread.continuation_token == nil
-    assert %Items.AgentMessage{text: "All operations succeeded"} = resumed.final_response
+    {:ok, result} = Thread.run(thread, "Start turn")
+    assert result.thread.thread_id == "thread_auto_123"
+    assert result.thread.continuation_token == nil
+    assert result.attempts == 2
+    assert %Items.AgentMessage{text: "All operations succeeded"} = result.final_response
   end
 end
