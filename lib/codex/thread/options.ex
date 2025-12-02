@@ -3,6 +3,8 @@ defmodule Codex.Thread.Options do
   Per-thread configuration options.
   """
 
+  alias Codex.FileSearch
+
   @enforce_keys []
   defstruct metadata: %{},
             labels: %{},
@@ -11,7 +13,8 @@ defmodule Codex.Thread.Options do
             approval_hook: nil,
             approval_timeout_ms: 30_000,
             sandbox: :default,
-            attachments: []
+            attachments: [],
+            file_search: nil
 
   @type t :: %__MODULE__{
           metadata: map(),
@@ -21,7 +24,8 @@ defmodule Codex.Thread.Options do
           approval_hook: module() | nil,
           approval_timeout_ms: pos_integer(),
           sandbox: :default | :strict | :permissive,
-          attachments: [map()] | []
+          attachments: [map()] | [],
+          file_search: FileSearch.t() | nil
         }
 
   @doc """
@@ -43,10 +47,12 @@ defmodule Codex.Thread.Options do
 
     sandbox = Map.get(attrs, :sandbox, Map.get(attrs, "sandbox", :default))
     attachments = Map.get(attrs, :attachments, Map.get(attrs, "attachments", []))
+    file_search = Map.get(attrs, :file_search, Map.get(attrs, "file_search"))
 
     with {:ok, metadata} <- ensure_map(metadata, :metadata),
          {:ok, labels} <- ensure_map(labels, :labels),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
+         {:ok, file_search} <- FileSearch.new(file_search),
          true <-
            sandbox in [:default, :strict, :permissive] or {:error, {:invalid_sandbox, sandbox}},
          true <- is_boolean(auto_run) or {:error, {:invalid_auto_run, auto_run}},
@@ -62,7 +68,8 @@ defmodule Codex.Thread.Options do
          approval_hook: approval_hook,
          approval_timeout_ms: approval_timeout_ms,
          sandbox: sandbox,
-         attachments: attachments
+         attachments: attachments,
+         file_search: file_search
        }}
     else
       {:error, _} = error -> error

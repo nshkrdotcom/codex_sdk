@@ -63,13 +63,23 @@ defmodule Codex.ToolOutput do
   @doc """
   Normalizes structured tool outputs into codex-compatible maps.
 
-  Lists are flattened recursively to support tools that emit multiple items.
+  Lists are flattened and deduplicated to mirror the Python runner's history
+  merging semantics.
   """
   @spec normalize(t()) :: list() | map()
-  def normalize(list) when is_list(list), do: Enum.map(list, &normalize/1)
-  def normalize(%Text{text: text}), do: %{"type" => "input_text", "text" => text}
+  def normalize(list) when is_list(list) do
+    list
+    |> List.flatten()
+    |> Enum.map(&normalize_single/1)
+    |> List.flatten()
+    |> dedup_outputs()
+  end
 
-  def normalize(%Image{} = image) do
+  def normalize(value), do: normalize_single(value)
+
+  defp normalize_single(%Text{text: text}), do: %{"type" => "input_text", "text" => text}
+
+  defp normalize_single(%Image{} = image) do
     base =
       %{}
       |> maybe_put("url", image.url)
@@ -80,21 +90,68 @@ defmodule Codex.ToolOutput do
     %{"type" => "input_image", "image_url" => base}
   end
 
-  def normalize(%FileContent{} = file) do
+  defp normalize_single(%FileContent{} = file) do
     file_data =
       %{}
       |> maybe_put("file_id", file.file_id)
       |> maybe_put("data", file.data)
-      |> maybe_put("url", file.url)
+      |> maybe_put("file_url", file.url)
       |> maybe_put("filename", file.filename)
       |> maybe_put("mime_type", file.mime_type)
 
     %{"type" => "input_file", "file_data" => file_data}
   end
 
-  def normalize(%_struct{} = struct), do: struct |> Map.from_struct() |> normalize()
-  def normalize(%{} = map), do: stringify_keys(map)
-  def normalize(other), do: other
+  defp normalize_single(%Codex.Files.Attachment{} = attachment) do
+    %{
+      "type" => "input_file",
+      "file_data" => attachment_file_data(attachment)
+    }
+  end
+
+  defp normalize_single(%_struct{} = struct),
+    do: struct |> Map.from_struct() |> normalize_single()
+
+  defp normalize_single(%{} = map), do: stringify_keys(map)
+  defp normalize_single(other), do: other
+
+  defp attachment_file_data(%Codex.Files.Attachment{} = attachment) do
+    %{
+      "file_id" => attachment.id,
+      "filename" => attachment.name,
+      "data" => attachment.path |> File.read!() |> Base.encode64()
+    }
+  end
+
+  defp dedup_outputs(list) do
+    list
+    |> Enum.reduce({[], MapSet.new()}, fn item, {acc, seen} ->
+      key = dedup_key(item)
+
+      if MapSet.member?(seen, key) do
+        {acc, seen}
+      else
+        {[item | acc], MapSet.put(seen, key)}
+      end
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp dedup_key(%{"type" => "input_image", "image_url" => %{} = image_url}) do
+    {:input_image,
+     Map.get(image_url, "file_id") || Map.get(image_url, "url") || Map.get(image_url, "data")}
+  end
+
+  defp dedup_key(%{"type" => "input_file", "file_data" => %{} = file_data}) do
+    {:input_file,
+     Map.get(file_data, "file_id") ||
+       Map.get(file_data, "file_url") ||
+       Map.get(file_data, "data") ||
+       Map.get(file_data, "filename")}
+  end
+
+  defp dedup_key(other), do: other
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

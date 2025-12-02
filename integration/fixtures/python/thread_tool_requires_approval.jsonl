@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_approval","metadata":{"labels":{"topic":"approval"},"created_at":"2024-07-18T12:20:00Z"}}
+{"type":"turn.started","turn_id":"turn_approval_attempt1","thread_id":"thread_approval"}
+{"type":"tool.call.required","thread_id":"thread_approval","turn_id":"turn_approval_attempt1","call_id":"tool_call_appr","tool_name":"math_tool","arguments":{"x":2,"y":3},"requires_approval":true}
+{"type":"turn.continuation","thread_id":"thread_approval","turn_id":"turn_approval_attempt1","continuation_token":"cont-approval","retryable":true,"reason":"tool_call"}
+{"type":"turn.completed","turn_id":"turn_approval_attempt1","thread_id":"thread_approval","status":"pending","usage":{"input_tokens":6,"cached_input_tokens":0,"output_tokens":0,"total_tokens":6}}

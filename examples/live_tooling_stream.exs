@@ -1,6 +1,6 @@
 Mix.Task.run("app.start")
 
-alias Codex.{Events, Items, Options, Thread}
+alias Codex.{Events, Items, Options, RunResultStreaming, Thread}
 
 defmodule CodexExamples.LiveToolingStream do
   @moduledoc false
@@ -30,9 +30,11 @@ defmodule CodexExamples.LiveToolingStream do
     """)
 
     with {:ok, thread} <- Codex.start_thread(codex_opts, thread_opts),
-         {:ok, stream} <- Thread.run_streamed(thread, prompt) do
+         {:ok, result} <- Thread.run_streamed(thread, prompt) do
       state =
-        Enum.reduce(stream, %{final_response: nil, last_agent_message: nil}, fn event, acc ->
+        result
+        |> RunResultStreaming.raw_events()
+        |> Enum.reduce(%{final_response: nil, last_agent_message: nil}, fn event, acc ->
           handle_event(event)
 
           case event do

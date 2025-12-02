@@ -481,7 +481,15 @@ defmodule Codex.Telemetry do
   @spec thread_span_attributes(map()) :: map()
   def thread_span_attributes(metadata) do
     metadata
-    |> Map.take([:thread_id, :turn_id, :originator])
+    |> Map.take([
+      :thread_id,
+      :turn_id,
+      :originator,
+      :workflow,
+      :group,
+      :trace_id,
+      :trace_sensitive
+    ])
     |> Enum.reduce(%{}, fn
       {:thread_id, value}, acc when not is_nil(value) ->
         Map.put(acc, :"codex.thread.id", value)
@@ -491,6 +499,18 @@ defmodule Codex.Telemetry do
 
       {:originator, value}, acc ->
         Map.put(acc, :"codex.originator", format_originator(value))
+
+      {:workflow, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.workflow", value)
+
+      {:group, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.group", value)
+
+      {:trace_id, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.trace_id", value)
+
+      {:trace_sensitive, value}, acc when not is_nil(value) ->
+        Map.put(acc, :"codex.trace.sensitive_data", value)
 
       _, acc ->
         acc

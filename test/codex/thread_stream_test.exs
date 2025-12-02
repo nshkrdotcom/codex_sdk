@@ -4,7 +4,7 @@ defmodule Codex.ThreadStreamTest do
 
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.TestSupport.FixtureScripts
-  alias Codex.{Options, Thread}
+  alias Codex.{Options, RunResultStreaming, Thread}
 
   setup do
     {:ok, thread_opts} = ThreadOptions.new(%{})
@@ -30,10 +30,10 @@ defmodule Codex.ThreadStreamTest do
 
       thread = Thread.build(codex_opts, thread_opts)
 
-      {:ok, stream} = Thread.run_streamed(thread, "Hello stream")
+      {:ok, result} = Thread.run_streamed(thread, "Hello stream")
       refute File.exists?(touch_path)
 
-      events = Enum.to_list(stream)
+      events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
       assert length(events) == 5
       assert File.exists?(touch_path)
     end
@@ -54,10 +54,12 @@ defmodule Codex.ThreadStreamTest do
       thread = Thread.build(codex_opts, thread_opts)
 
       {:ok, full_stream} = Thread.run_streamed(thread, "Deterministic test")
-      all_events = Enum.to_list(full_stream)
+      all_events = full_stream |> RunResultStreaming.raw_events() |> Enum.to_list()
+
       {:ok, partial_stream} = Thread.run_streamed(thread, "Deterministic test")
 
-      assert Enum.take(all_events, take_count) == Enum.take(partial_stream, take_count)
+      assert Enum.take(all_events, take_count) ==
+               partial_stream |> RunResultStreaming.raw_events() |> Enum.take(take_count)
     end
   end
 end

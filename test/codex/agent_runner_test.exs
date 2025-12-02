@@ -258,6 +258,81 @@ defmodule Codex.AgentRunnerTest do
     end
   end
 
+  describe "file search configuration" do
+    setup do
+      Tools.reset!()
+      Tools.reset_metrics()
+
+      parent = self()
+
+      searcher = fn args, ctx, metadata ->
+        send(parent, {:file_search_called, args, metadata, ctx})
+        {:ok, %{results: [%{text: args["query"]}]}}
+      end
+
+      {:ok, _} = Tools.register(Codex.Tools.FileSearchTool, searcher: searcher)
+
+      {script_path, state_file} =
+        FixtureScripts.sequential_fixtures([
+          "thread_file_search_step1.jsonl",
+          "thread_file_search_step2.jsonl"
+        ])
+
+      on_exit(fn ->
+        File.rm_rf(script_path)
+        File.rm_rf(state_file)
+      end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} =
+        ThreadOptions.new(%{
+          metadata: %{tool_context: %{}},
+          file_search: %{
+            vector_store_ids: ["vs_thread"],
+            filters: %{"source" => "thread"},
+            include_search_results: false
+          }
+        })
+
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, thread: thread}
+    end
+
+    test "merges thread and run config into file search calls", %{thread: thread} do
+      {:ok, result} =
+        AgentRunner.run(thread, "Search files", %{
+          run_config: %{
+            file_search: %{
+              vector_store_ids: ["vs_run"],
+              ranking_options: %{"score_threshold" => 0.5},
+              include_search_results: true
+            }
+          }
+        })
+
+      assert_receive {:file_search_called, args, metadata, ctx}
+
+      assert args["vector_store_ids"] == ["vs_run"]
+      assert args["filters"] == %{"source" => "thread"}
+      assert args["include_search_results"] == true
+      assert args["ranking_options"] == %{"score_threshold" => 0.5}
+
+      assert metadata[:include_search_results] == true
+      assert metadata[:ranking_options] == %{"score_threshold" => 0.5}
+      assert metadata[:vector_store_ids] == ["vs_run"]
+      assert metadata[:filters] == %{"source" => "thread"}
+
+      assert ctx.file_search
+      assert %Items.AgentMessage{text: "Search complete"} = result.final_response
+    end
+  end
+
   describe "reset_tool_choice handling" do
     test "clears tool_choice after tool use when enabled" do
       {:ok, agent} = Agent.new(%{name: "resetter"})

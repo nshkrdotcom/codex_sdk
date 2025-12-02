@@ -1,7 +1,7 @@
 System.put_env("CODEX_MODEL", "gpt-5.1-codex-mini")
 System.put_env("CODEX_MODEL_DEFAULT", "gpt-5.1-codex-mini")
 
-alias Codex.{Events, Items, Models, Options, Thread}
+alias Codex.{Events, Items, Models, Options, RunResultStreaming, Thread}
 alias Codex.TransportError
 
 defmodule LiveUsageAndCompaction do
@@ -34,10 +34,11 @@ defmodule LiveUsageAndCompaction do
     {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
 
     case Thread.run_streamed(thread, prompt) do
-      {:ok, stream} ->
+      {:ok, result} ->
         try do
           final_state =
-            stream
+            result
+            |> RunResultStreaming.raw_events()
             |> Enum.reduce(initial_state(), &handle_event/2)
 
           IO.puts("\nFinal response:\n#{final_state.final_response || "<none>"}")
