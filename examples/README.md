@@ -16,3 +16,11 @@ All examples run with `mix run` from the repository root. The `live_*.exs` scrip
 - `examples/live_tooling_stream.exs` — streams tool calls and approvals
 - `examples/live_telemetry_stream.exs` — emits telemetry events during streaming
 - `examples/live_usage_and_compaction.exs` — shows live usage accumulation
+- `examples/live_multi_turn_runner.exs` — multi-turn runner with tool_use_behavior, max_turns, and usage summary
+- `examples/live_tooling_guardrails_approvals.exs` — guardrail events, handoffs, and approval hook demos
+- `examples/live_structured_hosted_tools.exs` — structured function tool outputs plus hosted shell/apply_patch/computer/file_search/image
+- `examples/live_mcp_and_sessions.exs` — hosted MCP stub with retries/filters and a resumable session flow
+- `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
+- `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
+- `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
+- `examples/live_realtime_voice_stub.exs` — shows the realtime/voice unsupported errors
