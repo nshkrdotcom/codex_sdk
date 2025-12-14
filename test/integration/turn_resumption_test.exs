@@ -1,9 +1,9 @@
 defmodule Codex.Integration.TurnResumptionTest do
   use ExUnit.Case, async: false
 
-  alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
   alias Codex.{Items, Options, Thread}
+  alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
 
   @moduletag :integration
 

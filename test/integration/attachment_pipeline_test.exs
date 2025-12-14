@@ -1,9 +1,9 @@
 defmodule Codex.Integration.AttachmentPipelineTest do
   use ExUnit.Case, async: false
 
-  alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
   alias Codex.{Files, Options, Thread}
+  alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
 
   @moduletag :integration
 
@@ -17,8 +17,14 @@ defmodule Codex.Integration.AttachmentPipelineTest do
     end)
   end
 
-  test "staged attachments are forwarded to codex executable" do
-    source = tmp_file!("doc.txt", "attachment body")
+  test "staged image attachments are forwarded to codex executable via --image" do
+    source =
+      tmp_file!(
+        "demo.png",
+        Base.decode64!(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X2YAAAAABJRU5ErkJggg=="
+        )
+      )
 
     {:ok, attachment} = Files.stage(source)
     {:ok, thread_opts} = ThreadOptions.new(%{})
@@ -42,9 +48,9 @@ defmodule Codex.Integration.AttachmentPipelineTest do
 
     args = capture_path |> File.read!() |> String.trim()
 
-    assert String.contains?(args, "--attachment")
+    assert String.contains?(args, "--image")
     assert String.contains?(args, attachment.path)
-    assert String.contains?(args, attachment.checksum)
+    refute String.contains?(args, "--attachment")
   end
 
   test "force_cleanup removes expired attachments" do

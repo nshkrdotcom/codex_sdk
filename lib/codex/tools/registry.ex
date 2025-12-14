@@ -76,28 +76,17 @@ defmodule Codex.Tools.Registry do
         |> Map.put(:span_token, make_ref())
 
       if tool_enabled?(metadata, full_context) do
-        Telemetry.emit(
-          [:codex, :tool, :start],
-          %{system_time: System.system_time()},
-          telemetry_meta
+        started = emit_tool_start(telemetry_meta)
+
+        invoke_registered(
+          info.name,
+          module,
+          metadata,
+          normalized_args,
+          full_context,
+          telemetry_meta,
+          started
         )
-
-        started = System.monotonic_time()
-
-        case safe_invoke(module, normalized_args, full_context) do
-          {:ok, output} ->
-            handle_success(info.name, telemetry_meta, started, output)
-
-          {:error, reason} ->
-            case maybe_handle_error(metadata, reason, full_context) do
-              {:ok, output} ->
-                handle_success(info.name, telemetry_meta, started, output)
-
-              {:error, handled_reason} = error ->
-                handle_failure(info.name, telemetry_meta, started, handled_reason)
-                error
-            end
-        end
       else
         {:error, {:tool_disabled, name}}
       end
@@ -105,12 +94,41 @@ defmodule Codex.Tools.Registry do
   end
 
   defp safe_invoke(module, args, context) do
-    try do
-      module.invoke(args, context)
-    rescue
-      error -> {:error, {:tool_exception, module, error}}
-    catch
-      kind, reason -> {:error, {:tool_failure, module, {kind, reason}}}
+    module.invoke(args, context)
+  rescue
+    error -> {:error, {:tool_exception, module, error}}
+  catch
+    kind, reason -> {:error, {:tool_failure, module, {kind, reason}}}
+  end
+
+  defp emit_tool_start(telemetry_meta) do
+    Telemetry.emit(
+      [:codex, :tool, :start],
+      %{system_time: System.system_time()},
+      telemetry_meta
+    )
+
+    System.monotonic_time()
+  end
+
+  defp invoke_registered(name, module, metadata, args, context, telemetry_meta, started) do
+    case safe_invoke(module, args, context) do
+      {:ok, output} ->
+        handle_success(name, telemetry_meta, started, output)
+
+      {:error, reason} ->
+        handle_invoke_error(name, metadata, reason, context, telemetry_meta, started)
+    end
+  end
+
+  defp handle_invoke_error(name, metadata, reason, context, telemetry_meta, started) do
+    case maybe_handle_error(metadata, reason, context) do
+      {:ok, output} ->
+        handle_success(name, telemetry_meta, started, output)
+
+      {:error, handled_reason} = error ->
+        handle_failure(name, telemetry_meta, started, handled_reason)
+        error
     end
   end
 

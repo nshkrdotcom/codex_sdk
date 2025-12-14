@@ -4,9 +4,9 @@ defmodule Codex.SessionTest do
   alias Codex.AgentRunner
   alias Codex.Options
   alias Codex.Session.Memory
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
 
   test "session input callback merges history and saves responses" do
     codex_path =

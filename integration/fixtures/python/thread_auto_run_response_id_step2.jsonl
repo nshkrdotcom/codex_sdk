@@ -1,0 +1,3 @@
+{"type":"turn.started","turn_id":"turn_auto_resp_attempt2","thread_id":"thread_auto_resp_123"}
+{"type":"item.agent_message.delta","item":{"id":"item_auto_resp_msg","type":"agent_message","role":"assistant","content":{"type":"text","text":"All operations succeeded"}}}
+{"type":"turn.completed","turn_id":"turn_auto_resp_attempt2","thread_id":"thread_auto_resp_123","response_id":"resp_auto_2","final_response":{"type":"text","text":"All operations succeeded"},"usage":{"input_tokens":7,"cached_input_tokens":0,"output_tokens":11,"total_tokens":18}}

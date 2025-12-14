@@ -3,9 +3,9 @@ defmodule Codex.TelemetryTest do
 
   import ExUnit.CaptureLog
 
-  alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.{Options, Telemetry, Thread}
   alias Codex.TestSupport.FixtureScripts
-  alias Codex.{Options, Thread, Telemetry}
+  alias Codex.Thread.Options, as: ThreadOptions
 
   @thread_events [
     [:codex, :thread, :start],

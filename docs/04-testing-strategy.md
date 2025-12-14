@@ -119,7 +119,7 @@ end
 
 **Characteristics**:
 - Tagged `:live`
-- Require API key via environment variable
+- Require opt-in via `CODEX_TEST_LIVE=true`
 - Optional (skip in CI by default)
 - Slow (seconds per test)
 - Useful for validation and debugging
@@ -133,11 +133,16 @@ defmodule Codex.LiveTest do
   @moduletag timeout: 60_000
 
   setup do
-    unless System.get_env("CODEX_API_KEY") do
-      ExUnit.configure(exclude: [:live])
-    end
+    case System.get_env("CODEX_TEST_LIVE") do
+      value when value in ["1", "true", "yes"] ->
+        case System.get_env("CODEX_PATH") || System.find_executable("codex") do
+          path when is_binary(path) and path != "" -> :ok
+          _ -> {:skip, "Install codex or set CODEX_PATH"}
+        end
 
-    :ok
+      _ ->
+        {:skip, "Set CODEX_TEST_LIVE=true and run with mix test --only live --include live"}
+    end
   end
 
   test "real turn execution" do

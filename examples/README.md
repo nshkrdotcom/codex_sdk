@@ -8,6 +8,20 @@ All examples run with `mix run` from the repository root. The `live_*.exs` scrip
 ./examples/run_all.sh
 ```
 
+## Live ExUnit tests
+
+The repo ships an opt-in `:live` ExUnit suite that hits the real `codex` CLI:
+
+```bash
+CODEX_TEST_LIVE=true mix test --only live --include live
+# Or run the entire suite plus the live tests:
+CODEX_TEST_LIVE=true mix test --include live
+```
+
+Prereqs:
+- `codex` installed and on PATH (or set `CODEX_PATH`)
+- authenticated via `codex login` or `CODEX_API_KEY`
+
 ## Notable live examples
 
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI

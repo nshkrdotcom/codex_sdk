@@ -25,7 +25,7 @@ defmodule CodexExamples.DemoApprovalHook do
   end
 
   @impl true
-  def await(ref, timeout) do
+  def await(_ref, timeout) do
     Process.sleep(min(timeout, 200))
     {:ok, :allow}
   end

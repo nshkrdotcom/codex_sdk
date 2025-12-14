@@ -13,7 +13,8 @@ defmodule Codex.Turn.Result do
             final_response: nil,
             usage: nil,
             raw: %{},
-            attempts: 1
+            attempts: 1,
+            last_response_id: nil
 
   @type t :: %__MODULE__{
           thread: Thread.t(),
@@ -21,7 +22,8 @@ defmodule Codex.Turn.Result do
           final_response: Items.AgentMessage.t() | map() | nil,
           usage: map() | nil,
           raw: map(),
-          attempts: non_neg_integer()
+          attempts: non_neg_integer(),
+          last_response_id: String.t() | nil
         }
 
   @doc """

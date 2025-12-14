@@ -31,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.1"}
+    {:codex_sdk, "~> 0.2.2"}
   ]
 end
 ```
@@ -205,8 +205,8 @@ mix run examples/live_tooling_stream.exs "optional prompt"
 # Live telemetry stream: prints thread/turn ids, source metadata, usage deltas, diffs, and compaction (low reasoning, fast prompt)
 mix run examples/live_telemetry_stream.exs
 
-# Live CLI demo (forces live run; CODEX_TEST_LIVE=true for CI)
-CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
+# Live CLI demo (requires authenticated codex CLI or CODEX_API_KEY)
+mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
 
 
@@ -244,6 +244,17 @@ thread_id = "thread_abc123"
   )
 
 {:ok, thread} = Codex.start_thread(codex_options, thread_options)
+
+# Run-level options (validated by Codex.RunConfig.new/1)
+run_options = %{
+  run_config: %{
+    auto_previous_response_id: true
+  }
+}
+
+{:ok, result} = Codex.Thread.run(thread, "Your prompt", run_options)
+IO.inspect(result.last_response_id)
+# Note: last_response_id remains nil until codex exec emits response_id fields.
 
 # Turn-level options
 turn_options = %{output_schema: my_json_schema}
@@ -347,6 +358,23 @@ When the flag is not set (default), the SDK runs without booting the OTLP export
 `tls_certificate_check` warnings on systems without the helper installed. See
 `docs/observability-runbook.md` for advanced setup instructions.
 
+The Codex CLI (`codex-rs`) has its own OpenTelemetry **log** exporter, configured separately via
+`$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) under `[otel]`. This is independent of
+the Elixir SDK exporter above.
+
+```toml
+[otel]
+environment = "staging"
+exporter = "otlp-grpc"
+log_user_prompt = false
+
+[otel.exporter."otlp-grpc"]
+endpoint = "https://otel.example.com:4317"
+```
+
+See `codex/docs/config.md` for the full upstream reference. To point Codex at an isolated config
+directory from the SDK, pass `env: %{"CODEX_HOME" => "/path/to/codex_home"}` in turn options.
+
 ## Architecture
 
 The SDK follows a layered architecture built on OTP principles:
@@ -425,7 +453,10 @@ The SDK uses [Supertester](https://hex.pm/packages/supertester) for robust, dete
 ```bash
 mix test
 mix test --cover
-CODEX_TEST_LIVE=true mix test --include integration
+# Only the live-tagged tests (hits real codex CLI)
+CODEX_TEST_LIVE=true mix test --only live --include live
+# Full test suite + live-tagged tests
+CODEX_TEST_LIVE=true mix test --include live
 mix codex.verify
 mix codex.verify --dry-run
 mix codex.parity
@@ -443,7 +474,7 @@ MIX_ENV=dev mix dialyzer
 - **Zero `Process.sleep`**: All tests use proper OTP synchronization
 - **Fully Async**: All tests run with `async: true`
 - **Mock Support**: Tests work with mocked `codex-rs` output
-- **Live Testing**: Optional integration tests with real CLI (`CODEX_TEST_LIVE=true`)
+- **Live Testing**: Optional `:live` ExUnit suite hitting real CLI (`CODEX_TEST_LIVE=true mix test --only live --include live`)
 - **Chaos Engineering**: Resilience testing for process crashes
 - **Performance Assertions**: SLA verification and leak detection
 - **Parity Fixtures**: Python fixture harvesting via `scripts/harvest_python_fixtures.py`
@@ -460,7 +491,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`approval_hook_example.exs`** - Custom approval hook wiring and telemetry inspection
 - **`sandbox_warnings_and_approval_bypass.exs`** - Normalized sandbox warnings and policy-approved bypass demo
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
-- **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth; `CODEX_TEST_LIVE=true` for CI)
+- **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
 
 Run examples with:
@@ -469,7 +500,7 @@ Run examples with:
 mix run examples/basic_usage.exs
 
 # Live CLI example (requires authenticated codex CLI)
-CODEX_TEST_LIVE=true mix run examples/live_cli_demo.exs "What is the capital of France?"
+mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 # Run all live examples in sequence
 ./examples/run_all.sh
@@ -490,7 +521,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.1 (Auth/session lifecycle parity, resume fixes)
+**Current Version**: 0.2.2 (Response chaining config, OTEL docs alignment)
+
+### v0.2.2 Highlights
+
+- Added `auto_previous_response_id` to `Codex.RunConfig` plus `last_response_id` on turn results (forward-compatible with future `response_id` support)
+- Clarified OTEL export layers: Elixir-side OTLP exporter vs codex-rs `[otel]` config.toml exporter
+- Fixed tool registration to load metadata modules before resolving tool names
 
 ### v0.2.1 Highlights
 

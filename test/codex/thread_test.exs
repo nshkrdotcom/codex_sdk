@@ -2,10 +2,10 @@ defmodule Codex.ThreadTest do
   use ExUnit.Case, async: true
 
   alias Codex.Events
-  alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.{Error, Items, Options, RunResultStreaming, Thread, Tools}
-  alias Codex.Turn.Result, as: TurnResult
   alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.Turn.Result, as: TurnResult
 
   describe "run/3" do
     test "returns turn result and updates thread metadata" do
@@ -634,7 +634,7 @@ defmodule Codex.ThreadTest do
   end
 
   describe "tool output forwarding" do
-    test "forwards pending tool outputs and failures to codex exec" do
+    test "does not forward pending tool outputs and failures to codex exec" do
       capture_path =
         Path.join(System.tmp_dir!(), "codex_exec_tool_args_#{System.unique_integer([:positive])}")
 
@@ -667,28 +667,8 @@ defmodule Codex.ThreadTest do
         |> String.trim()
         |> String.split(~r/\s+/)
 
-      output_index = Enum.find_index(args, &(&1 == "--tool-output"))
-      refute is_nil(output_index), "expected --tool-output flag in #{inspect(args)}"
-
-      failure_index = Enum.find_index(args, &(&1 == "--tool-failure"))
-      refute is_nil(failure_index), "expected --tool-failure flag in #{inspect(args)}"
-
-      output_payload =
-        args
-        |> Enum.at(output_index + 1)
-        |> Jason.decode!()
-
-      failure_payload =
-        args
-        |> Enum.at(failure_index + 1)
-        |> Jason.decode!()
-
-      assert output_payload == %{"call_id" => "call-output", "output" => %{"sum" => 9}}
-
-      assert failure_payload == %{
-               "call_id" => "call-failure",
-               "reason" => %{"message" => "boom"}
-             }
+      refute "--tool-output" in args
+      refute "--tool-failure" in args
 
       assert result.thread.pending_tool_outputs == []
       assert result.thread.pending_tool_failures == []

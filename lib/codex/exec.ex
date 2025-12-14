@@ -9,8 +9,8 @@ defmodule Codex.Exec do
   require Logger
 
   alias Codex.Events
-  alias Codex.Files.Attachment
   alias Codex.Exec.Options, as: ExecOptions
+  alias Codex.Files.Attachment
   alias Codex.Models
   alias Codex.Options
   alias Codex.TransportError
@@ -40,9 +40,8 @@ defmodule Codex.Exec do
          :ok <- ensure_erlexec_started(),
          {:ok, command} <- build_command(exec_opts),
          {:ok, state} <- start_process(command, exec_opts),
-         :ok <- send_prompt(state, input),
-         {:ok, data} <- collect_events(state) do
-      {:ok, data}
+         :ok <- send_prompt(state, input) do
+      collect_events(state)
     end
   end
 
@@ -185,85 +184,53 @@ defmodule Codex.Exec do
   defp build_command(_), do: {:error, :missing_options}
 
   defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts) do
-    base = ["exec", "--experimental-json"]
-
-    model_args =
-      case codex_opts do
-        %Options{model: model} when is_binary(model) and model != "" -> ["--model", model]
-        _ -> []
-      end
-
-    config_args =
-      case codex_opts do
-        %Options{reasoning_effort: effort} when not is_nil(effort) ->
-          stringified = effort |> Models.reasoning_effort_to_string()
-          ["--config", ~s(model_reasoning_effort="#{stringified}")]
-
-        _ ->
-          []
-      end
-
-    resume_args =
-      case exec_opts.thread do
-        %{thread_id: thread_id} when is_binary(thread_id) -> ["resume", thread_id]
-        _ -> []
-      end
-
-    continuation_args =
-      case exec_opts.continuation_token do
-        token when is_binary(token) and token != "" -> ["--continuation-token", token]
-        _ -> []
-      end
-
-    attachment_args =
-      exec_opts.attachments
-      |> List.wrap()
-      |> Enum.flat_map(&attachment_cli_args/1)
-
-    schema_args =
-      case exec_opts.output_schema_path do
-        path when is_binary(path) and path != "" -> ["--output-schema", path]
-        _ -> []
-      end
-
-    cancellation_args =
-      case exec_opts.cancellation_token do
-        token when is_binary(token) and token != "" -> ["--cancellation-token", token]
-        _ -> []
-      end
-
-    # Forward pending tool responses so codex exec can replay them when resuming
-    # a continuation. The CLI accepts repeated --tool-output/--tool-failure flags
-    # with JSON bodies (mirrors Python/TypeScript SDK behaviour).
-    tool_output_args =
-      exec_opts.tool_outputs
-      |> Enum.flat_map(&tool_payload_args("--tool-output", &1, [:call_id, :output]))
-
-    tool_failure_args =
-      exec_opts.tool_failures
-      |> Enum.flat_map(&tool_payload_args("--tool-failure", &1, [:call_id, :reason]))
-
-    base ++
-      model_args ++
-      config_args ++
-      resume_args ++
-      continuation_args ++
-      cancellation_args ++
-      attachment_args ++
-      schema_args ++
-      tool_output_args ++
-      tool_failure_args
+    ["exec", "--experimental-json"] ++
+      model_args(codex_opts) ++
+      reasoning_effort_args(codex_opts) ++
+      resume_args(exec_opts.thread) ++
+      continuation_args(exec_opts.continuation_token) ++
+      cancellation_args(exec_opts.cancellation_token) ++
+      attachment_args(exec_opts.attachments) ++
+      schema_args(exec_opts.output_schema_path)
   end
 
+  defp model_args(%Options{model: model}) when is_binary(model) and model != "" do
+    ["--model", model]
+  end
+
+  defp model_args(_), do: []
+
+  defp reasoning_effort_args(%Options{reasoning_effort: effort}) when not is_nil(effort) do
+    stringified = Models.reasoning_effort_to_string(effort)
+    ["--config", ~s(model_reasoning_effort="#{stringified}")]
+  end
+
+  defp reasoning_effort_args(_), do: []
+
+  defp resume_args(%{thread_id: thread_id}) when is_binary(thread_id), do: ["resume", thread_id]
+  defp resume_args(_), do: []
+
+  defp continuation_args(token) when is_binary(token) and token != "",
+    do: ["--continuation-token", token]
+
+  defp continuation_args(_), do: []
+
+  defp cancellation_args(token) when is_binary(token) and token != "",
+    do: ["--cancellation-token", token]
+
+  defp cancellation_args(_), do: []
+
+  defp attachment_args(attachments) do
+    attachments
+    |> List.wrap()
+    |> Enum.flat_map(&attachment_cli_args/1)
+  end
+
+  defp schema_args(path) when is_binary(path) and path != "", do: ["--output-schema", path]
+  defp schema_args(_), do: []
+
   defp attachment_cli_args(%Attachment{} = attachment) do
-    [
-      "--attachment",
-      attachment.path,
-      "--attachment-name",
-      attachment.name,
-      "--attachment-checksum",
-      attachment.checksum
-    ]
+    ["--image", attachment.path]
   end
 
   defp attachment_cli_args(_), do: []
@@ -341,65 +308,4 @@ defmodule Codex.Exec do
   rescue
     _ -> raw_status
   end
-
-  defp tool_payload_args(_flag, payload, _keys) when payload in [nil, %{}], do: []
-
-  defp tool_payload_args(flag, payload, required_keys) when is_map(payload) do
-    normalized = normalize_tool_payload(payload)
-    payload_map = Map.take(normalized, required_keys)
-
-    if Enum.all?(required_keys, &Map.has_key?(payload_map, &1)) do
-      encoded =
-        normalized
-        |> Map.take(required_keys)
-        |> stringify_keys()
-        |> Jason.encode!()
-
-      [flag, encoded]
-    else
-      []
-    end
-  end
-
-  defp tool_payload_args(_flag, _payload, _keys), do: []
-
-  defp normalize_tool_payload(%_struct{} = struct) do
-    struct
-    |> Map.from_struct()
-    |> Map.delete(:__struct__)
-    |> normalize_tool_payload()
-  end
-
-  defp normalize_tool_payload(map) when is_map(map) do
-    Map.new(map, fn {key, value} ->
-      {key, normalize_tool_value(value)}
-    end)
-  end
-
-  defp normalize_tool_payload(other), do: other
-
-  defp normalize_tool_value(%_struct{} = value),
-    do: value |> Map.from_struct() |> normalize_tool_payload()
-
-  defp normalize_tool_value(map) when is_map(map), do: normalize_tool_payload(map)
-
-  defp normalize_tool_value(list) when is_list(list), do: Enum.map(list, &normalize_tool_value/1)
-
-  defp normalize_tool_value(value), do: value
-
-  defp stringify_keys(%_struct{} = struct), do: stringify_keys(Map.from_struct(struct))
-
-  defp stringify_keys(map) when is_map(map) do
-    Map.new(map, fn {key, value} ->
-      {stringify_key(key), stringify_keys(value)}
-    end)
-  end
-
-  defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
-
-  defp stringify_keys(value), do: value
-
-  defp stringify_key(key) when is_atom(key), do: Atom.to_string(key)
-  defp stringify_key(key) when is_binary(key), do: key
-  defp stringify_key(key), do: to_string(key)
 end

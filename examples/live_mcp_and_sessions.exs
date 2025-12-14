@@ -1,7 +1,8 @@
 # Covers ADR-006, ADR-007 (MCP hosted tool + session resume)
 Mix.Task.run("app.start")
 
-alias Codex.{Agent, AgentRunner, RunConfig, Tools}
+alias Codex.{AgentRunner, RunConfig, Tools}
+alias Codex.Agent, as: CodexAgent
 alias Codex.Items.AgentMessage
 
 defmodule CodexExamples.StubMcpTransport do
@@ -97,7 +98,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
       )
 
     {:ok, agent} =
-      Agent.new(%{
+      CodexAgent.new(%{
         name: "McpSessionAgent",
         instructions:
           "Use hosted_mcp (stub.echo) once to mirror the request, then answer concisely. Keep the session id in mind.",

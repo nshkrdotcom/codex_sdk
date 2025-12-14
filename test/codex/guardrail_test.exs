@@ -5,12 +5,12 @@ defmodule Codex.GuardrailTest do
   alias Codex.Approvals.StaticPolicy
   alias Codex.Guardrail
   alias Codex.GuardrailError
-  alias Codex.ToolGuardrail
+  alias Codex.Options
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
+  alias Codex.ToolGuardrail
   alias Codex.Tools
-  alias Codex.Options
 
   defmodule MathTool do
     use Codex.Tool, name: "math_tool", description: "adds provided numbers"

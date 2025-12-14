@@ -2,6 +2,8 @@
 
 Guidance for enabling and validating the Codex SDK telemetry pipeline in production and local environments. OTLP exporting is **disabled by default**; enable it explicitly when you have a collector configured.
 
+Note: This runbook covers **Elixir-side** telemetry (`Codex.Telemetry`). The Codex CLI (`codex-rs`) can also export its own OpenTelemetry log events via `$CODEX_HOME/config.toml` `[otel]` (see `codex/docs/config.md`), which is independent of the SDK exporter.
+
 ## Telemetry Payloads
 - Thread, tool, and approval events now emit `duration_ms` alongside the original `duration` field.
 - All SDK-originated events include `originator: :sdk` plus `span_token` metadata used for span correlation.

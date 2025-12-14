@@ -106,9 +106,16 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
   end
 
   defp stage_demo_attachment do
-    path = Path.join(System.tmp_dir!(), "codex_demo_attachment.txt")
-    File.write!(path, "codex attachments demo")
-    Codex.Files.stage(path, name: "demo_attachment.txt")
+    path = Path.join(System.tmp_dir!(), "codex_demo_attachment.png")
+
+    File.write!(
+      path,
+      Base.decode64!(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X2YAAAAABJRU5ErkJggg=="
+      )
+    )
+
+    Codex.Files.stage(path, name: "demo_attachment.png")
   end
 
   defp file_search_metadata do

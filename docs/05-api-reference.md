@@ -117,7 +117,7 @@ Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
 
 ### `Codex.RunConfig`
 
-Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, optional `model` override, tracing metadata (`workflow`, `group`, `trace_id`, `trace_include_sensitive_data`, `tracing_disabled`), guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer. The optional `file_search` field seeds hosted file search calls with `vector_store_ids`, `filters`, `ranking_options`, and `include_search_results` (run-level values override thread defaults).
+Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, `auto_previous_response_id: false`, optional `model` override, tracing metadata (`workflow`, `group`, `trace_id`, `trace_include_sensitive_data`, `tracing_disabled`), guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer. The optional `file_search` field seeds hosted file search calls with `vector_store_ids`, `filters`, `ranking_options`, and `include_search_results` (run-level values override thread defaults). `conversation_id` and `previous_response_id` are recorded on thread metadata and used for future chaining; when `auto_previous_response_id` is enabled and a backend emits `response_id`, the runner updates `previous_response_id` automatically (currently `nil` on `codex exec --experimental-json`).
 
 ### `Codex.AgentRunner`
 
@@ -461,7 +461,7 @@ Staging and attachment helpers that keep file workflows deterministic.
 - `attach/2` — appends a staged attachment to `Codex.Thread.Options`, deduplicating by checksum.
 - `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files during tests.
 
-Attachments are forwarded to the codex executable via CLI flags (`--attachment`, `--attachment-name`, `--attachment-checksum`), making the workflow match Python's file pipeline.
+On the exec JSONL transport (`codex exec --experimental-json`), attachments are forwarded as images via repeated `--image <path>` flags. The upstream exec CLI does not currently support arbitrary non-image file attachments.
 Returning a `%Codex.Files.Attachment{}` from a tool (or passing one to `Codex.ToolOutput.normalize/1`) yields an `input_file` payload with the checksum as `file_id` and the staged contents base64-encoded.
 
 ---
@@ -502,7 +502,7 @@ Thin client for performing capability handshake with MCP-compatible servers.
 Behaviour for persisting conversation history between runs. The built-in `Codex.Session.Memory` adapter stores entries in an Agent for tests and short-lived runs.
 
 - `session` / `session_input_callback` — configure on `RunConfig` to load history before a run and optionally transform the input. Callbacks receive the input and loaded history.
-- `conversation_id` / `previous_response_id` — optional identifiers stored on thread metadata and persisted alongside session entries.
+- `conversation_id` / `previous_response_id` — optional identifiers stored on thread metadata and persisted alongside session entries (optionally updated by `auto_previous_response_id` when the backend provides a `response_id`).
 
 ---
 
@@ -1219,7 +1219,8 @@ Result of a completed turn (from `run/3`).
   final_response: Codex.Items.AgentMessage.t() | map() | nil,
   usage: map() | nil,
   raw: map(),
-  attempts: non_neg_integer()
+  attempts: non_neg_integer(),
+  last_response_id: String.t() | nil
 }
 ```
 
@@ -1230,6 +1231,7 @@ Result of a completed turn (from `run/3`).
 - `usage`: Token usage statistics (nil if turn failed before completion)
 - `raw`: Underlying exec metadata (`events`, CLI flags, etc.)
 - `attempts`: Number of attempts performed (useful for auto-run)
+- `last_response_id`: Last backend response identifier when surfaced (currently `nil` on `codex exec --experimental-json`)
 
 **Helpers**:
 

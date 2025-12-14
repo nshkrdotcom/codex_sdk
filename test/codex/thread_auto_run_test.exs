@@ -1,11 +1,11 @@
 defmodule Codex.ThreadAutoRunTest do
   use ExUnit.Case, async: false
 
-  alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
   alias Codex.ApprovalError
   alias Codex.Approvals.StaticPolicy
   alias Codex.{Items, Options, Thread, Tools}
+  alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
 
   defmodule MathTool do
     use Codex.Tool, name: "math_tool", description: "adds provided numbers"

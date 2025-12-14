@@ -35,6 +35,15 @@ defmodule Codex.Models do
 
   @reasoning_efforts [:minimal, :low, :medium, :high, :xhigh]
   @default_model "gpt-5.1-codex-max"
+  @reasoning_effort_aliases %{
+    "extra_high" => :xhigh,
+    "extra-high" => :xhigh,
+    "minimal" => :minimal,
+    "low" => :low,
+    "medium" => :medium,
+    "high" => :high,
+    "xhigh" => :xhigh
+  }
 
   @doc """
   Returns the list of supported models with metadata describing defaults.
@@ -87,16 +96,15 @@ defmodule Codex.Models do
       |> String.trim()
       |> String.downcase()
 
-    case normalized do
-      "" -> {:ok, nil}
-      "extra_high" -> {:ok, :xhigh}
-      "extra-high" -> {:ok, :xhigh}
-      "minimal" -> {:ok, :minimal}
-      "low" -> {:ok, :low}
-      "medium" -> {:ok, :medium}
-      "high" -> {:ok, :high}
-      "xhigh" -> {:ok, :xhigh}
-      other -> {:error, {:invalid_reasoning_effort, other}}
+    cond do
+      normalized == "" ->
+        {:ok, nil}
+
+      Map.has_key?(@reasoning_effort_aliases, normalized) ->
+        {:ok, Map.fetch!(@reasoning_effort_aliases, normalized)}
+
+      true ->
+        {:error, {:invalid_reasoning_effort, normalized}}
     end
   end
 

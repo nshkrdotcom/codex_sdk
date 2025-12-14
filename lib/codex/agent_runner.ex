@@ -9,15 +9,62 @@ defmodule Codex.AgentRunner do
   alias Codex.GuardrailError
   alias Codex.Handoff
   alias Codex.Options
+  alias Codex.RunConfig
   alias Codex.RunResultStreaming
   alias Codex.RunResultStreaming.Control, as: StreamingControl
-  alias Codex.RunConfig
   alias Codex.Session
-  alias Codex.StreamEvent.{AgentUpdated, GuardrailResult, RunItem, RawResponses, ToolApproval}
+  alias Codex.StreamEvent.{AgentUpdated, GuardrailResult, RawResponses, RunItem, ToolApproval}
   alias Codex.StreamQueue
-  alias Codex.ToolGuardrail
   alias Codex.Thread
+  alias Codex.ToolGuardrail
   alias Codex.Turn.Result
+
+  defmodule State do
+    @moduledoc false
+
+    @enforce_keys [
+      :thread,
+      :input,
+      :agent,
+      :run_config,
+      :guardrails,
+      :turn_opts,
+      :backoff,
+      :attempt,
+      :events,
+      :usage
+    ]
+
+    defstruct [
+      :thread,
+      :input,
+      :agent,
+      :run_config,
+      :guardrails,
+      :turn_opts,
+      :backoff,
+      :attempt,
+      :events,
+      :usage,
+      :queue,
+      :control
+    ]
+
+    @type t :: %__MODULE__{
+            thread: Thread.t(),
+            input: String.t(),
+            agent: Agent.t(),
+            run_config: RunConfig.t(),
+            guardrails: map(),
+            turn_opts: map() | keyword(),
+            backoff: term(),
+            attempt: non_neg_integer(),
+            events: [term()],
+            usage: map(),
+            queue: pid() | nil,
+            control: pid() | nil
+          }
+  end
 
   @spec run(Thread.t(), String.t(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
@@ -43,20 +90,25 @@ defmodule Codex.AgentRunner do
                run_config: run_config
              }) do
         result =
-          do_run(
-            tuned_thread,
-            prepared_input,
-            agent,
-            run_config,
-            guardrails,
-            turn_opts,
-            backoff || (&default_backoff/1),
-            1,
-            [],
-            %{}
-          )
+          do_run(%State{
+            thread: tuned_thread,
+            input: prepared_input,
+            agent: agent,
+            run_config: run_config,
+            guardrails: guardrails,
+            turn_opts: turn_opts,
+            backoff: backoff || (&default_backoff/1),
+            attempt: 1,
+            events: [],
+            usage: %{}
+          })
 
-        maybe_store_session(session, prepared_input, run_config, result)
+        maybe_store_session(
+          session,
+          prepared_input,
+          finalize_run_config(run_config, result),
+          result
+        )
       end
     end
   end
@@ -81,375 +133,394 @@ defmodule Codex.AgentRunner do
 
       start_fun =
         fn ->
-          stream_run(
-            tuned_thread,
-            prepared_input,
-            agent,
-            run_config,
-            guardrails,
-            turn_opts,
-            backoff || (&default_backoff/1),
-            queue,
-            control,
-            session,
-            history
-          )
+          stream_run(%State{
+            thread: tuned_thread,
+            input: prepared_input,
+            agent: agent,
+            run_config: run_config,
+            guardrails: guardrails,
+            turn_opts: turn_opts,
+            backoff: backoff || (&default_backoff/1),
+            attempt: 1,
+            events: [],
+            usage: %{},
+            queue: queue,
+            control: control
+          })
+          |> maybe_store_session(prepared_input, run_config, session, history)
         end
 
       {:ok, RunResultStreaming.new(queue, control, start_fun)}
     end
   end
 
-  defp stream_run(
-         thread,
-         input,
-         agent,
-         run_config,
-         guardrails,
-         turn_opts,
-         backoff,
-         queue,
-         control,
-         session,
-         _history
-       ) do
-    emit_agent_update(queue, agent, run_config)
+  defp stream_run(%State{} = state) do
+    emit_agent_update(state.queue, state.agent, state.run_config)
 
-    guardrail_hook = %{on_result: &emit_guardrail_event(queue, &1, &2, &3, &4)}
+    guardrail_hook = %{on_result: &emit_guardrail_event(state.queue, &1, &2, &3, &4)}
 
-    with :ok <-
-           run_guardrails(
-             :input,
-             guardrails.input,
-             input,
-             %{agent: agent, run_config: run_config},
-             guardrail_hook
-           ) do
-      result =
-        do_run_streamed(
-          thread,
-          input,
-          agent,
-          run_config,
-          guardrails,
-          turn_opts,
-          backoff,
-          1,
-          [],
-          %{},
-          queue,
-          control
-        )
+    case run_guardrails(
+           :input,
+           state.guardrails.input,
+           state.input,
+           %{agent: state.agent, run_config: state.run_config},
+           guardrail_hook
+         ) do
+      :ok ->
+        do_run_streamed(state)
 
-      maybe_store_session(session, input, run_config, result)
-    else
       {:error, reason} ->
-        StreamQueue.close(queue)
+        StreamQueue.close(state.queue)
         {:error, reason}
     end
   end
 
-  defp do_run(
-         thread,
-         input,
-         agent,
-         run_config,
-         guardrails,
-         turn_opts,
-         backoff,
-         attempt,
-         acc_events,
-         acc_usage
-       ) do
-    case Thread.run_turn(thread, input, turn_opts) do
-      {:ok, %Result{} = result} ->
-        with {:ok, processed} <-
-               Thread.handle_tool_requests(result, attempt, %{
-                 tool_input: guardrails.tool_input,
-                 tool_output: guardrails.tool_output
-               }) do
-          tool_results = tool_results_from_raw(processed.raw)
-          merged_events = acc_events ++ processed.events
-          merged_usage = Thread.merge_usage(acc_usage, processed.usage)
+  defp maybe_store_session(result, _input, _run_config, nil, _history), do: result
 
-          case check_tool_use_behavior(agent, run_config, tool_results) do
-            {:final, final_output} ->
-              with :ok <-
-                     run_guardrails(:output, guardrails.output, final_output, %{agent: agent}) do
-                final_thread =
-                  processed.thread
-                  |> Map.put(:continuation_token, nil)
-                  |> Map.put(:usage, merged_usage)
-                  |> Map.put(:pending_tool_outputs, [])
-                  |> Map.put(:pending_tool_failures, [])
-                  |> annotate_conversation(run_config)
+  defp maybe_store_session(result, input, %RunConfig{} = run_config, session, _history) do
+    maybe_store_session(session, input, finalize_run_config(run_config, result), result)
+  end
 
-                {:ok,
-                 %Result{
-                   processed
-                   | events: merged_events,
-                     usage: merged_usage,
-                     thread: final_thread,
-                     final_response: final_output,
-                     attempts: attempt
-                 }}
-              end
+  defp do_run(%State{} = state) do
+    state = %{state | thread: annotate_conversation(state.thread, state.run_config)}
 
-            {:error, _} = error ->
-              error
+    with {:ok, %Result{} = turn_result} <-
+           Thread.run_turn(state.thread, state.input, state.turn_opts),
+         {:ok, %Result{} = processed} <- handle_tools(turn_result, state) do
+      state = update_after_turn(state, processed)
 
-            :continue ->
-              next_turn_opts = maybe_reset_tool_choice(agent, turn_opts, tool_results)
-              next_turn_opts = next_turn_opts || %{}
+      tool_results = tool_results_from_raw(processed.raw)
 
-              cond do
-                processed.thread.continuation_token && attempt < run_config.max_turns ->
-                  safe_backoff(backoff, attempt)
-                  next_thread = %{processed.thread | usage: merged_usage}
-
-                  do_run(
-                    next_thread,
-                    input,
-                    agent,
-                    run_config,
-                    guardrails,
-                    next_turn_opts,
-                    backoff,
-                    attempt + 1,
-                    merged_events,
-                    merged_usage
-                  )
-
-                processed.thread.continuation_token ->
-                  {:error,
-                   {:max_turns_exceeded, run_config.max_turns,
-                    %{continuation: processed.thread.continuation_token}}}
-
-                true ->
-                  with :ok <-
-                         run_guardrails(
-                           :output,
-                           guardrails.output,
-                           processed.final_response,
-                           %{agent: agent}
-                         ) do
-                    final_thread =
-                      processed.thread
-                      |> Map.put(:usage, merged_usage)
-                      |> annotate_conversation(run_config)
-
-                    {:ok,
-                     %Result{
-                       processed
-                       | events: merged_events,
-                         usage: merged_usage,
-                         thread: final_thread,
-                         attempts: attempt
-                     }}
-                  end
-              end
-          end
-        end
-
-      {:error, _} = error ->
-        error
+      case check_tool_use_behavior(state.agent, state.run_config, tool_results) do
+        {:final, final_output} -> finalize_tool_stop(state, processed, final_output)
+        :continue -> continue_run(state, processed, tool_results)
+        {:error, _} = error -> error
+      end
     end
   end
 
-  defp do_run_streamed(
-         thread,
-         input,
-         agent,
-         run_config,
-         guardrails,
-         turn_opts,
-         backoff,
-         attempt,
-         acc_events,
-         acc_usage,
-         queue,
-         control
-       ) do
-    case StreamingControl.cancel_mode(control) do
-      :immediate ->
-        StreamQueue.close(queue)
-        {:error, :cancelled}
+  defp handle_tools(%Result{} = turn_result, %State{} = state) do
+    Thread.handle_tool_requests(turn_result, state.attempt, %{
+      tool_input: state.guardrails.tool_input,
+      tool_output: state.guardrails.tool_output
+    })
+  end
+
+  defp update_after_turn(%State{} = state, %Result{} = processed) do
+    merged_events = state.events ++ processed.events
+    merged_usage = Thread.merge_usage(state.usage, processed.usage)
+
+    run_config = maybe_chain_previous_response_id(state.run_config, processed.last_response_id)
+
+    %{state | events: merged_events, usage: merged_usage, run_config: run_config}
+  end
+
+  defp finalize_tool_stop(%State{} = state, %Result{} = processed, final_output) do
+    with :ok <-
+           run_guardrails(:output, state.guardrails.output, final_output, %{agent: state.agent}) do
+      final_thread =
+        processed.thread
+        |> Map.put(:continuation_token, nil)
+        |> Map.put(:usage, state.usage)
+        |> Map.put(:pending_tool_outputs, [])
+        |> Map.put(:pending_tool_failures, [])
+        |> annotate_conversation(state.run_config)
+
+      {:ok,
+       %Result{
+         processed
+         | events: state.events,
+           usage: state.usage,
+           thread: final_thread,
+           final_response: final_output,
+           attempts: state.attempt
+       }}
+    end
+  end
+
+  defp continue_run(%State{} = state, %Result{} = processed, tool_results) do
+    next_turn_opts = maybe_reset_tool_choice(state.agent, state.turn_opts, tool_results) || %{}
+
+    case processed.thread.continuation_token do
+      token when is_binary(token) and token != "" ->
+        continue_with_continuation(state, processed, token, next_turn_opts)
 
       _ ->
-        case Thread.run_turn_streamed(thread, input, turn_opts) do
-          {:ok, stream} ->
-            hooks = %{
-              on_guardrail: &emit_guardrail_event(queue, &1, &2, &3, &4),
-              on_approval: &emit_approval_event(queue, &1, &2, &3)
-            }
-
-            structured? =
-              turn_opts
-              |> Map.new()
-              |> then(fn map ->
-                Map.get(map, :output_schema) || Map.get(map, "output_schema")
-              end)
-
-            {events, status} = collect_stream_events(stream, queue, control)
-
-            {updated_thread, response, usage} =
-              Thread.reduce_events(thread, events, %{structured_output?: not is_nil(structured?)})
-
-            merged_usage = Thread.merge_usage(acc_usage, usage)
-            StreamingControl.put_usage(control, merged_usage)
-
-            StreamQueue.push(queue, %RawResponses{events: events, usage: usage})
-
-            turn_result = %Result{
-              thread: updated_thread,
-              events: events,
-              final_response: response,
-              usage: usage,
-              raw: %{events: events, structured_output?: not is_nil(structured?)},
-              attempts: attempt
-            }
-
-            if status == :cancelled do
-              StreamQueue.close(queue)
-              {:ok, turn_result}
-            else
-              with {:ok, processed} <-
-                     Thread.handle_tool_requests(turn_result, attempt, %{
-                       tool_input: guardrails.tool_input,
-                       tool_output: guardrails.tool_output,
-                       hooks: hooks
-                     }) do
-                tool_results = tool_results_from_raw(processed.raw)
-                merged_events = acc_events ++ processed.events
-                merged_usage = Thread.merge_usage(acc_usage, processed.usage)
-                StreamingControl.put_usage(control, merged_usage)
-
-                case check_tool_use_behavior(agent, run_config, tool_results) do
-                  {:final, final_output} ->
-                    case run_guardrails(
-                           :output,
-                           guardrails.output,
-                           final_output,
-                           %{agent: agent},
-                           %{on_result: &emit_guardrail_event(queue, &1, &2, &3, &4)}
-                         ) do
-                      :ok ->
-                        final_thread =
-                          processed.thread
-                          |> Map.put(:continuation_token, nil)
-                          |> Map.put(:usage, merged_usage)
-                          |> Map.put(:pending_tool_outputs, [])
-                          |> Map.put(:pending_tool_failures, [])
-                          |> annotate_conversation(run_config)
-
-                        StreamQueue.close(queue)
-
-                        {:ok,
-                         %Result{
-                           processed
-                           | events: merged_events,
-                             usage: merged_usage,
-                             thread: final_thread,
-                             final_response: final_output,
-                             attempts: attempt
-                         }}
-
-                      {:error, reason} ->
-                        StreamQueue.close(queue)
-                        {:error, reason}
-                    end
-
-                  {:error, _} = error ->
-                    StreamQueue.close(queue)
-                    error
-
-                  :continue ->
-                    next_turn_opts = maybe_reset_tool_choice(agent, turn_opts, tool_results)
-                    next_turn_opts = next_turn_opts || %{}
-
-                    cond do
-                      StreamingControl.cancel_mode(control) == :after_turn ->
-                        StreamQueue.close(queue)
-
-                        {:ok,
-                         %Result{
-                           processed
-                           | events: merged_events,
-                             usage: merged_usage,
-                             thread: %{processed.thread | usage: merged_usage},
-                             attempts: attempt
-                         }}
-
-                      processed.thread.continuation_token &&
-                          attempt < run_config.max_turns ->
-                        safe_backoff(backoff, attempt)
-                        next_thread = %{processed.thread | usage: merged_usage}
-
-                        do_run_streamed(
-                          next_thread,
-                          input,
-                          agent,
-                          run_config,
-                          guardrails,
-                          next_turn_opts,
-                          backoff,
-                          attempt + 1,
-                          merged_events,
-                          merged_usage,
-                          queue,
-                          control
-                        )
-
-                      processed.thread.continuation_token ->
-                        StreamQueue.close(queue)
-
-                        {:error,
-                         {:max_turns_exceeded, run_config.max_turns,
-                          %{continuation: processed.thread.continuation_token}}}
-
-                      true ->
-                        case run_guardrails(
-                               :output,
-                               guardrails.output,
-                               processed.final_response,
-                               %{agent: agent},
-                               %{on_result: &emit_guardrail_event(queue, &1, &2, &3, &4)}
-                             ) do
-                          :ok ->
-                            final_thread =
-                              processed.thread
-                              |> Map.put(:usage, merged_usage)
-                              |> annotate_conversation(run_config)
-
-                            StreamQueue.close(queue)
-
-                            {:ok,
-                             %Result{
-                               processed
-                               | events: merged_events,
-                                 usage: merged_usage,
-                                 thread: final_thread,
-                                 attempts: attempt
-                             }}
-
-                          {:error, reason} ->
-                            StreamQueue.close(queue)
-                            {:error, reason}
-                        end
-                    end
-                end
-              else
-                {:error, _reason} = error ->
-                  StreamQueue.close(queue)
-                  error
-              end
-            end
-
-          {:error, _} = error ->
-            StreamQueue.close(queue)
-            error
-        end
+        finalize_without_continuation(state, processed)
     end
+  end
+
+  defp continue_with_continuation(%State{} = state, %Result{} = processed, token, next_turn_opts) do
+    if state.attempt < state.run_config.max_turns do
+      safe_backoff(state.backoff, state.attempt)
+      next_thread = %{processed.thread | usage: state.usage}
+
+      do_run(%State{
+        state
+        | thread: next_thread,
+          turn_opts: next_turn_opts,
+          attempt: state.attempt + 1
+      })
+    else
+      {:error, {:max_turns_exceeded, state.run_config.max_turns, %{continuation: token}}}
+    end
+  end
+
+  defp finalize_without_continuation(%State{} = state, %Result{} = processed) do
+    with :ok <-
+           run_guardrails(:output, state.guardrails.output, processed.final_response, %{
+             agent: state.agent
+           }) do
+      final_thread =
+        processed.thread
+        |> Map.put(:usage, state.usage)
+        |> annotate_conversation(state.run_config)
+
+      {:ok,
+       %Result{
+         processed
+         | events: state.events,
+           usage: state.usage,
+           thread: final_thread,
+           attempts: state.attempt
+       }}
+    end
+  end
+
+  defp do_run_streamed(%State{queue: queue, control: control} = state)
+       when is_pid(queue) and is_pid(control) do
+    case StreamingControl.cancel_mode(state.control) do
+      :immediate -> close_queue(state.queue, {:error, :cancelled})
+      _ -> do_run_streamed_active(state)
+    end
+  end
+
+  defp do_run_streamed_active(%State{} = state) do
+    case Thread.run_turn_streamed(state.thread, state.input, state.turn_opts) do
+      {:ok, stream} -> do_run_streamed_with_stream(state, stream)
+      {:error, _reason} = error -> close_queue(state.queue, error)
+    end
+  end
+
+  defp do_run_streamed_with_stream(%State{} = state, stream) do
+    hooks = stream_hooks(state)
+    structured_output? = structured_output?(state.turn_opts)
+    {events, status} = collect_stream_events(stream, state.queue, state.control)
+
+    {updated_thread, response, usage} =
+      Thread.reduce_events(state.thread, events, %{structured_output?: structured_output?})
+
+    merged_usage = Thread.merge_usage(state.usage, usage)
+    StreamingControl.put_usage(state.control, merged_usage)
+
+    StreamQueue.push(state.queue, %RawResponses{events: events, usage: usage})
+
+    turn_result =
+      streamed_turn_result(
+        updated_thread,
+        events,
+        response,
+        usage,
+        state.attempt,
+        structured_output?
+      )
+
+    case status do
+      :cancelled ->
+        close_queue(state.queue, {:ok, turn_result})
+
+      _ ->
+        handle_streamed_continuation(
+          state,
+          turn_result,
+          hooks
+        )
+    end
+  end
+
+  defp stream_hooks(%State{} = state) do
+    %{
+      on_guardrail: &emit_guardrail_event(state.queue, &1, &2, &3, &4),
+      on_approval: &emit_approval_event(state.queue, &1, &2, &3)
+    }
+  end
+
+  defp structured_output?(turn_opts) do
+    schema =
+      turn_opts
+      |> Map.new()
+      |> then(fn map -> Map.get(map, :output_schema) || Map.get(map, "output_schema") end)
+
+    not is_nil(schema)
+  end
+
+  defp streamed_turn_result(updated_thread, events, response, usage, attempt, structured_output?) do
+    %Result{
+      thread: updated_thread,
+      events: events,
+      final_response: response,
+      usage: usage,
+      raw: %{events: events, structured_output?: structured_output?},
+      attempts: attempt,
+      last_response_id: Thread.last_response_id(events)
+    }
+  end
+
+  defp handle_streamed_continuation(%State{} = state, %Result{} = turn_result, hooks) do
+    case handle_tools_streamed(turn_result, state, hooks) do
+      {:ok, %Result{} = processed} ->
+        state = update_after_turn(state, processed)
+        StreamingControl.put_usage(state.control, state.usage)
+
+        tool_results = tool_results_from_raw(processed.raw)
+
+        case check_tool_use_behavior(state.agent, state.run_config, tool_results) do
+          {:final, final_output} -> finalize_streamed_tool_stop(state, processed, final_output)
+          :continue -> continue_streamed_run(state, processed, tool_results, hooks)
+          {:error, _} = error -> close_queue(state.queue, error)
+        end
+
+      {:error, _reason} = error ->
+        close_queue(state.queue, error)
+    end
+  end
+
+  defp handle_tools_streamed(%Result{} = turn_result, %State{} = state, hooks) do
+    Thread.handle_tool_requests(turn_result, state.attempt, %{
+      tool_input: state.guardrails.tool_input,
+      tool_output: state.guardrails.tool_output,
+      hooks: hooks
+    })
+  end
+
+  defp finalize_streamed_tool_stop(%State{} = state, %Result{} = processed, final_output) do
+    case run_guardrails(
+           :output,
+           state.guardrails.output,
+           final_output,
+           %{agent: state.agent},
+           %{on_result: &emit_guardrail_event(state.queue, &1, &2, &3, &4)}
+         ) do
+      :ok ->
+        final_thread =
+          processed.thread
+          |> Map.put(:continuation_token, nil)
+          |> Map.put(:usage, state.usage)
+          |> Map.put(:pending_tool_outputs, [])
+          |> Map.put(:pending_tool_failures, [])
+          |> annotate_conversation(state.run_config)
+
+        close_queue(
+          state.queue,
+          {:ok,
+           %Result{
+             processed
+             | events: state.events,
+               usage: state.usage,
+               thread: final_thread,
+               final_response: final_output,
+               attempts: state.attempt
+           }}
+        )
+
+      {:error, reason} ->
+        close_queue(state.queue, {:error, reason})
+    end
+  end
+
+  defp continue_streamed_run(%State{} = state, %Result{} = processed, tool_results, hooks) do
+    next_turn_opts = maybe_reset_tool_choice(state.agent, state.turn_opts, tool_results) || %{}
+
+    case next_stream_action(state, processed) do
+      :stop_after_turn ->
+        close_queue(
+          state.queue,
+          {:ok,
+           %Result{
+             processed
+             | events: state.events,
+               usage: state.usage,
+               thread: %{processed.thread | usage: state.usage},
+               attempts: state.attempt
+           }}
+        )
+
+      :continue ->
+        next_thread = %{processed.thread | usage: state.usage}
+
+        do_run_streamed(%State{
+          state
+          | thread: next_thread,
+            turn_opts: next_turn_opts,
+            attempt: state.attempt + 1
+        })
+
+      {:error, continuation} ->
+        close_queue(
+          state.queue,
+          {:error,
+           {:max_turns_exceeded, state.run_config.max_turns, %{continuation: continuation}}}
+        )
+
+      :final ->
+        finalize_streamed_without_continuation(state, processed, hooks)
+    end
+  end
+
+  defp next_stream_action(%State{} = state, %Result{} = processed) do
+    cond do
+      StreamingControl.cancel_mode(state.control) == :after_turn ->
+        :stop_after_turn
+
+      is_binary(processed.thread.continuation_token) and processed.thread.continuation_token != "" and
+          state.attempt < state.run_config.max_turns ->
+        safe_backoff(state.backoff, state.attempt)
+        :continue
+
+      is_binary(processed.thread.continuation_token) and processed.thread.continuation_token != "" ->
+        {:error, processed.thread.continuation_token}
+
+      true ->
+        :final
+    end
+  end
+
+  defp finalize_streamed_without_continuation(%State{} = state, %Result{} = processed, _hooks) do
+    case run_guardrails(
+           :output,
+           state.guardrails.output,
+           processed.final_response,
+           %{agent: state.agent},
+           %{on_result: &emit_guardrail_event(state.queue, &1, &2, &3, &4)}
+         ) do
+      :ok ->
+        final_thread =
+          processed.thread
+          |> Map.put(:usage, state.usage)
+          |> annotate_conversation(state.run_config)
+
+        close_queue(
+          state.queue,
+          {:ok,
+           %Result{
+             processed
+             | events: state.events,
+               usage: state.usage,
+               thread: final_thread,
+               attempts: state.attempt
+           }}
+        )
+
+      {:error, reason} ->
+        close_queue(state.queue, {:error, reason})
+    end
+  end
+
+  defp close_queue(nil, result), do: result
+
+  defp close_queue(queue, result) when is_pid(queue) do
+    StreamQueue.close(queue)
+    result
   end
 
   defp collect_stream_events(stream, queue, control) do
@@ -829,15 +900,29 @@ defmodule Codex.AgentRunner do
 
   defp maybe_store_session(_session, _input, _run_config, other), do: other
 
+  defp finalize_run_config(%RunConfig{} = run_config, {:ok, %Result{} = result}) do
+    maybe_chain_previous_response_id(run_config, result.last_response_id)
+  end
+
+  defp finalize_run_config(%RunConfig{} = run_config, _other), do: run_config
+
+  defp maybe_chain_previous_response_id(
+         %RunConfig{auto_previous_response_id: true} = run_config,
+         value
+       )
+       when is_binary(value) and value != "" do
+    %{run_config | previous_response_id: value}
+  end
+
+  defp maybe_chain_previous_response_id(%RunConfig{} = run_config, _value), do: run_config
+
   defp apply_model_override(%Thread{codex_opts: %Options{} = opts} = thread, %RunConfig{
          model: model
        }) do
-    cond do
-      is_binary(model) and model != "" ->
-        %{thread | codex_opts: %{opts | model: model}}
-
-      true ->
-        thread
+    if is_binary(model) and model != "" do
+      %{thread | codex_opts: %{opts | model: model}}
+    else
+      thread
     end
   end
 

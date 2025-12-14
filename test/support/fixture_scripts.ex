@@ -94,14 +94,13 @@ defmodule Codex.TestSupport.FixtureScripts do
   defp sequence_case_clauses(fixture_names) do
     fixture_names
     |> Enum.with_index(1)
-    |> Enum.map(fn {fixture, idx} ->
+    |> Enum.map_join("\n", fn {fixture, idx} ->
       """
       #{idx})
         #{emit_fixture(fixture)}
         ;;
       """
     end)
-    |> Enum.join("\n")
   end
 
   defp emit_fixture(fixture_name) do
