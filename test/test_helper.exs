@@ -4,5 +4,5 @@ Code.require_file("support/parity_matrix.ex", __DIR__)
 
 {:ok, _} = Application.ensure_all_started(:erlexec)
 
-ExUnit.configure(exclude: [:pending, :live], max_cases: 1)
+ExUnit.configure(exclude: [:pending, :live], max_cases: 1, capture_log: true)
 ExUnit.start()

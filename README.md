@@ -31,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.4"}
+    {:codex_sdk, "~> 0.2.5"}
   ]
 end
 ```
@@ -521,7 +521,12 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.4 (Examples reliability + structured output schema fix)
+**Current Version**: 0.2.5 (Quiet tests + tools registry race fix)
+
+### v0.2.5 Highlights
+
+- Tests run quietly by default (log capture + console logger level tuned for test)
+- Fixed a race in tool registry resets that could intermittently fail in async tests
 
 ### v0.2.4 Highlights
 

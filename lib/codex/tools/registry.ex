@@ -137,8 +137,17 @@ defmodule Codex.Tools.Registry do
   """
   def reset! do
     case :ets.whereis(@table) do
-      :undefined -> :ok
-      _ -> :ets.delete(@table)
+      :undefined ->
+        :ok
+
+      _ ->
+        try do
+          :ets.delete(@table)
+        rescue
+          ArgumentError ->
+            # Another process may have deleted the table between whereis/1 and delete/1.
+            :ok
+        end
     end
 
     ensure_table()
@@ -148,13 +157,19 @@ defmodule Codex.Tools.Registry do
   defp ensure_table do
     case :ets.whereis(@table) do
       :undefined ->
-        :ets.new(@table, [
-          :named_table,
-          :public,
-          :set,
-          read_concurrency: true,
-          write_concurrency: true
-        ])
+        try do
+          :ets.new(@table, [
+            :named_table,
+            :public,
+            :set,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
+        rescue
+          ArgumentError ->
+            # Another process created the table concurrently.
+            :ok
+        end
 
       _ ->
         :ok
