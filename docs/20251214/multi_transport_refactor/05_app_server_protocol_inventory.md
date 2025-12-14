@@ -42,9 +42,10 @@ Upstream docs: `codex/codex-rs/app-server/README.md:39`.
 
 The complete registry lives in:
 
-- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:96` (client requests)
-- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465` (server requests)
-- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:521` (server notifications)
+- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:96-299` (client requests via `client_request_definitions!` macro)
+- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465-494` (server requests via `server_request_definitions!` macro)
+- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:521-559` (server notifications via `server_notification_definitions!` macro)
+- `codex/codex-rs/app-server-protocol/src/protocol/common.rs:561-563` (client notifications: only `Initialized`)
 
 ### v2 client request methods (non-deprecated)
 

@@ -37,8 +37,23 @@ Legend:
 
 ### `UserInput::Skill` is core-only for now
 
-- Core protocol includes `UserInput::Skill` (`codex/codex-rs/protocol/src/user_input.rs:25`).
-- App-server v2 input union does not (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289`).
+- Core protocol includes `UserInput::Skill` (`codex/codex-rs/protocol/src/user_input.rs:25-29`).
+- App-server v2 input union does not (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293`).
+- The conversion explicitly treats extra variants as unreachable (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1311`).
 
 So **no external client** (exec JSONL, app-server, TS SDK) can send a skill selection input today.
+
+### Upstream TS SDK scope
+
+The upstream TypeScript SDK (`codex/sdk/typescript/src/thread.ts:28-36`) only supports:
+- `type: "text"` (text prompt)
+- `type: "local_image"` (local image path)
+
+It does NOT use app-server, only `codex exec`. This means `codex_sdk` achieving "TS SDK parity" is already done for exec transport.
+
+## See Also
+
+For detailed method-by-method implementation planning, see:
+- `10_protocol_mapping_spec.md` - Complete protocol mapping with Elixir API names
+- `09_requirements_and_nongoals.md` - Explicit parity definitions and scope
 
