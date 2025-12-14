@@ -2,6 +2,8 @@
 
 All examples run with `mix run` from the repository root. The `live_*.exs` scripts hit the live Codex CLI (no mocks, no extra API-key setup required if you are already logged in).
 
+By default, `./examples/run_all.sh` sets `CODEX_MODEL=gpt-5.1-codex-mini` so every example uses the same model (override by exporting `CODEX_MODEL` before running).
+
 ## Running everything
 
 ```bash

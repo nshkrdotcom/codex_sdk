@@ -7,9 +7,9 @@ states:
 - `openai-agents-python` (`0d2d771..71fa12c`)
 - `codex` / `codex-rs` (`6eeaf46ac..a2c86e5d8`)
 
-## Current Elixir Port State (0.2.3)
+## Current Elixir Port State (0.2.4)
 
-- **Version**: 0.2.3
+- **Version**: 0.2.4
 - **Elixir Source Files**: 46 (`lib/*.ex` and `lib/codex/*.ex`)
 - **Thread + runner APIs**:
   - `Codex.start_thread/2`, `Codex.resume_thread/3`

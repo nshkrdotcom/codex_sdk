@@ -97,6 +97,7 @@ defmodule Codex.Exec do
            pid: pid,
            os_pid: os_pid,
            buffer: "",
+           non_json_stdout: [],
            stderr: [],
            done?: false,
            timeout_ms: timeout_ms
@@ -120,19 +121,34 @@ defmodule Codex.Exec do
   defp do_collect(%{timeout_ms: timeout_ms} = state, os_pid, events) do
     receive do
       {:stdout, ^os_pid, chunk} ->
-        {decoded, new_buffer} = decode_lines(state.buffer <> iodata_to_binary(chunk))
-        do_collect(%{state | buffer: new_buffer}, os_pid, events ++ decoded)
+        {decoded, new_buffer, non_json} = decode_lines(state.buffer <> iodata_to_binary(chunk))
+
+        do_collect(
+          %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json},
+          os_pid,
+          events ++ decoded
+        )
 
       {:stderr, ^os_pid, chunk} ->
         do_collect(%{state | stderr: [chunk | state.stderr]}, os_pid, events)
 
       {:DOWN, ^os_pid, :process, _pid, :normal} ->
-        {decoded, _} = decode_lines(state.buffer)
+        {decoded, _, _} = decode_lines(state.buffer)
         {:ok, %{events: events ++ decoded}}
 
       {:DOWN, ^os_pid, :process, _pid, {:exit_status, status}} ->
         stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
-        {:error, TransportError.new(normalize_exit_status(status), stderr: stderr)}
+        non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
+
+        merged_stderr =
+          if String.trim(non_json) == "" do
+            stderr
+          else
+            [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
+            |> IO.iodata_to_binary()
+          end
+
+        {:error, TransportError.new(normalize_exit_status(status), stderr: merged_stderr)}
     after
       timeout_ms ->
         Logger.warning("codex exec timed out after #{timeout_ms}ms without output")
@@ -155,19 +171,31 @@ defmodule Codex.Exec do
     receive do
       {:stdout, ^os_pid, chunk} ->
         data = state.buffer <> iodata_to_binary(chunk)
-        {decoded, new_buffer} = decode_lines(data)
-        {decoded, %{state | buffer: new_buffer}}
+        {decoded, new_buffer, non_json} = decode_lines(data)
+
+        {decoded,
+         %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
 
       {:stderr, ^os_pid, chunk} ->
         {[], %{state | stderr: [chunk | state.stderr]}}
 
       {:DOWN, ^os_pid, :process, _pid, :normal} ->
-        {decoded, _} = decode_lines(state.buffer)
+        {decoded, _, _} = decode_lines(state.buffer)
         {decoded, %{state | buffer: "", done?: true}}
 
       {:DOWN, ^os_pid, :process, _pid, {:exit_status, status}} ->
         stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
-        raise TransportError.new(normalize_exit_status(status), stderr: stderr)
+        non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
+
+        merged_stderr =
+          if String.trim(non_json) == "" do
+            stderr
+          else
+            [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
+            |> IO.iodata_to_binary()
+          end
+
+        raise TransportError.new(normalize_exit_status(status), stderr: merged_stderr)
     end
   end
 
@@ -343,8 +371,10 @@ defmodule Codex.Exec do
       []
       |> maybe_put_key("CODEX_API_KEY", opts.api_key)
       |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
-      |> maybe_put_key("OPENAI_BASE_URL", opts.base_url)
-      |> maybe_put_key("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "codex_sdk_elixir")
+      |> maybe_put_key(
+        "OPENAI_BASE_URL",
+        if(opts.base_url != "https://api.openai.com/v1", do: opts.base_url, else: nil)
+      )
       |> Map.new()
 
     merged =
@@ -357,7 +387,12 @@ defmodule Codex.Exec do
       preserve = preserved_env()
       [:clear | preserve ++ merged_list]
     else
-      merged_list
+      if merged_list == [] do
+        []
+      else
+        preserve = preserved_env()
+        preserve ++ merged_list
+      end
     end
   end
 
@@ -387,21 +422,25 @@ defmodule Codex.Exec do
   defp decode_lines(data) do
     case String.split(data, "\n", trim: false) do
       [] ->
-        {[], data}
+        {[], data, []}
 
       [single] ->
-        {[], single}
+        {[], single, []}
 
       parts ->
         {maybe_lines, [last]} = Enum.split(parts, -1)
 
-        decoded =
+        {decoded, non_json} =
           maybe_lines
           |> Enum.reject(&(&1 == ""))
-          |> Enum.map(&decode_line/1)
-          |> Enum.reject(&is_nil/1)
+          |> Enum.reduce({[], []}, fn line, {events, raw} ->
+            case decode_line(line) do
+              {:ok, event} -> {events ++ [event], raw}
+              {:non_json, raw_line} -> {events, raw ++ [raw_line]}
+            end
+          end)
 
-        {decoded, last}
+        {decoded, last, non_json}
     end
   end
 
@@ -409,16 +448,16 @@ defmodule Codex.Exec do
     case Jason.decode(line) do
       {:ok, decoded} ->
         try do
-          Events.parse!(decoded)
+          {:ok, Events.parse!(decoded)}
         rescue
           error in ArgumentError ->
             Logger.warning("Unsupported codex event: #{Exception.message(error)}")
-            nil
+            {:non_json, line}
         end
 
       {:error, reason} ->
         Logger.warning("Failed to decode codex event: #{inspect(reason)} (#{line})")
-        nil
+        {:non_json, line}
     end
   end
 
