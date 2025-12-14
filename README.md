@@ -31,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.2"}
+    {:codex_sdk, "~> 0.2.3"}
   ]
 end
 ```
@@ -521,7 +521,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.2 (Response chaining config, OTEL docs alignment)
+**Current Version**: 0.2.3 (Codex CLI option forwarding + exec env hardening)
+
+### v0.2.3 Highlights
+
+- Forwarded Codex CLI execution knobs (sandbox/cd/add-dir/skip-git, web search, approval policy, network access) and `OPENAI_BASE_URL`
+- Added optional `clear_env?` per-turn switch to clear inherited environment for codex subprocesses
+- Updated port gap analysis docs to match the actual wired integration surface
 
 ### v0.2.2 Highlights
 

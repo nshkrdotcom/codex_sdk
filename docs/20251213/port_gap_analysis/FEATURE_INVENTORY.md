@@ -21,14 +21,15 @@
 | Option | TypeScript | Python | Elixir |
 |--------|-----------|--------|--------|
 | API Key | `apiKey` | via OpenAI client | `api_key` |
-| Base URL | `baseUrl` | via OpenAI client | `base_url` |
-| Model | per-thread | `Agent.model` | `model` in Options |
+| Base URL | `baseUrl` (`OPENAI_BASE_URL`) | via OpenAI client | `base_url` (forwarded to `codex` via `OPENAI_BASE_URL`) |
+| Model | per-thread (`ThreadOptions.model`) | `Agent.model` / `RunConfig.model` | `Codex.Options.model` (+ `RunConfig.model` override) |
 | Reasoning Effort | `modelReasoningEffort` | `ModelSettings.reasoning` | `reasoning_effort` |
-| Sandbox | `sandboxMode` | N/A | `sandbox` |
-| Working Dir | `workingDirectory` | N/A | via env |
-| Network Access | `networkAccessEnabled` | N/A | via codex flags |
-| Web Search | `webSearchEnabled` | `WebSearchTool` | via codex flags |
-| Approval Policy | `approvalPolicy` | N/A | `approval_policy` |
+| Sandbox | `sandboxMode` (`--sandbox`) | N/A | `Thread.Options.sandbox` (forwarded to `codex exec --sandbox`) |
+| Working Dir | `workingDirectory` (`--cd`) | N/A | `Thread.Options.working_directory` (forwarded to `codex exec --cd`) |
+| Network Access | `networkAccessEnabled` (`--config sandbox_workspace_write.network_access=...`) | N/A | `Thread.Options.network_access_enabled` (forwarded to `codex exec --config ...`) |
+| Web Search | `webSearchEnabled` (`--config features.web_search_request=...`) | `WebSearchTool` | `Thread.Options.web_search_enabled` (forwarded to `codex exec --config ...`) |
+| Approval Policy | `approvalPolicy` (`--config approval_policy=...`) | N/A | SDK-level approvals (`Thread.Options.approval_*`, `Codex.Approvals.*`) |
+| Env override | `CodexOptions.env` (can replace `process.env`) | env vars / client config | `turn_opts[:env]` (passed to subprocess) + `turn_opts[:clear_env?]` (optional, clears env then re-adds a safe minimal set) |
 
 ### 1.3 Model Settings
 
@@ -45,6 +46,10 @@
 | Reasoning | N/A | `reasoning` | `reasoning` |
 | Store | N/A | `store` | `store` |
 | Prompt Cache | N/A | `prompt_cache_retention` | `prompt_cache` |
+
+Note: Elixir provides a `Codex.ModelSettings` struct with many Python-like fields, but it is not
+currently forwarded into the `codex exec` subprocess invocation, so these settings are effectively
+no-ops unless/until wiring is added.
 
 ---
 
@@ -101,15 +106,15 @@
 
 | Tool | TypeScript | Python | Elixir |
 |------|-----------|--------|--------|
-| File Search | via codex | `FileSearchTool` | `Codex.FileSearch` |
-| Web Search | via codex | `WebSearchTool` | via codex |
-| Code Interpreter | via codex | `CodeInterpreterTool` | via codex |
-| Image Generation | via codex | `ImageGenerationTool` | via codex |
-| Computer Control | N/A | `ComputerTool` | N/A |
-| Hosted MCP | via codex | `HostedMCPTool` | N/A |
-| Local Shell | via codex | `LocalShellTool` | via codex |
-| Shell Tool | via codex | `ShellTool` | via codex |
-| Apply Patch | N/A | `ApplyPatchTool` | N/A |
+| File Search | via codex | `FileSearchTool` | `Codex.Tools.FileSearchTool` (+ `Codex.FileSearch` config) |
+| Web Search | via codex | `WebSearchTool` | `Codex.Tools.WebSearchTool` (callback-driven wrapper) |
+| Code Interpreter | via codex | `CodeInterpreterTool` | `Codex.Tools.CodeInterpreterTool` (callback-driven wrapper) |
+| Image Generation | via codex | `ImageGenerationTool` | `Codex.Tools.ImageGenerationTool` (callback-driven wrapper) |
+| Computer Control | N/A | `ComputerTool` | `Codex.Tools.ComputerTool` (callback-driven wrapper; no built-in automation) |
+| Hosted MCP | via codex | `HostedMCPTool` | `Codex.Tools.HostedMcpTool` |
+| Local Shell | via codex | `LocalShellTool` | N/A (no dedicated module; `Codex.Tools.ShellTool` exists) |
+| Shell Tool | via codex | `ShellTool` | `Codex.Tools.ShellTool` (callback-driven wrapper) |
+| Apply Patch | N/A | `ApplyPatchTool` | `Codex.Tools.ApplyPatchTool` (callback-driven wrapper; no diff engine) |
 
 ### 3.3 Tool Output Types
 
@@ -214,10 +219,10 @@
 | Turn Started | `TurnStartedEvent` | N/A | `Codex.Events.TurnStarted` |
 | Turn Completed | `TurnCompletedEvent` | N/A | `Codex.Events.TurnCompleted` |
 | Turn Failed | `TurnFailedEvent` | N/A | `Codex.Events.TurnFailed` |
-| Item Started | `ItemStartedEvent` | N/A | N/A |
-| Item Updated | `ItemUpdatedEvent` | N/A | N/A |
+| Item Started | `ItemStartedEvent` | N/A | `Codex.Events.ItemStarted` |
+| Item Updated | `ItemUpdatedEvent` | N/A | `Codex.Events.ItemUpdated` |
 | Item Completed | `ItemCompletedEvent` | N/A | `Codex.Events.ItemCompleted` |
-| Error | `ThreadErrorEvent` | N/A | N/A |
+| Error | `ThreadErrorEvent` | N/A | `Codex.Events.Error` |
 
 ### 7.2 Elixir-Specific Events
 
@@ -366,7 +371,7 @@
 
 | Feature | TypeScript | Python | Elixir |
 |---------|-----------|--------|--------|
-| Policy | `approvalPolicy` | N/A | `approval_policy` |
+| Policy | `approvalPolicy` (forwarded to CLI config) | N/A | SDK-level approvals (`Thread.Options.approval_*`, `Codex.Approvals.*`) |
 | Hook | N/A | N/A | `Codex.Approvals.Hook` |
 | Static Policy | preset modes | N/A | `Codex.Approvals.StaticPolicy` |
 | Async Approval | N/A | N/A | `{:async, ref}` |
@@ -385,7 +390,7 @@
 | Persist | N/A | N/A | `:persist` option |
 | Checksum | N/A | N/A | SHA256 |
 | Registry | N/A | N/A | `Codex.Files.Registry` |
-| Cleanup | N/A | N/A | `prune_staging/0` |
+| Cleanup | N/A | N/A | `force_cleanup/0` |
 
 ---
 
@@ -421,13 +426,13 @@
 
 | Hook | Python | Elixir |
 |------|--------|--------|
-| on_llm_start | yes | via hooks field (TBD) |
-| on_llm_end | yes | via hooks field (TBD) |
-| on_agent_start | yes | via hooks field (TBD) |
-| on_agent_end | yes | via hooks field (TBD) |
-| on_handoff | yes | via hooks field (TBD) |
-| on_tool_start | yes | via hooks field (TBD) |
-| on_tool_end | yes | via hooks field (TBD) |
+| on_llm_start | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_llm_end | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_agent_start | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_agent_end | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_handoff | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_tool_start | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
+| on_tool_end | yes | field exists (`Codex.Agent.hooks` / `Codex.RunConfig.hooks`); not invoked today |
 
 ---
 
@@ -456,8 +461,12 @@
 | Conversation ID | `conversation_id` | `conversation_id` |
 | Previous Response | `previous_response_id` | `previous_response_id` |
 | Auto Previous | `auto_previous_response_id` | `auto_previous_response_id` |
-| Hooks | N/A | `hooks` |
-| File Search | N/A | `file_search` |
+| Hooks | `RunHooks` / `AgentHooks` | `hooks` (field exists; not invoked today) |
+| File Search | via `FileSearchTool` | `file_search` (used for hosted wrapper configuration) |
+
+Note: `conversation_id` / `previous_response_id` are functional in the Python SDK (OpenAI API-level
+features). In Elixir they are currently stored/propagated in SDK metadata and session entries, but
+are not forwarded to `codex exec` (Codex CLI uses `thread_id` + `resume` instead).
 
 ---
 
@@ -476,4 +485,44 @@
 
 ---
 
-This inventory provides a complete reference for identifying which features exist in each SDK and their current porting status in the Elixir implementation.
+---
+
+## 19. PUBLIC API INVENTORY (HIGH-LEVEL)
+
+### 19.1 TypeScript SDK exports (`codex/sdk/typescript/src/index.ts`)
+
+- Classes: `Codex`, `Thread`
+- Types: `CodexOptions`, `ThreadOptions`, `TurnOptions`, `ApprovalMode`, `SandboxMode`, `ModelReasoningEffort`
+- Event types: `ThreadEvent` and its variants (`ThreadStartedEvent`, `TurnStartedEvent`, `TurnCompletedEvent`, `TurnFailedEvent`, `ItemStartedEvent`, `ItemUpdatedEvent`, `ItemCompletedEvent`, `ThreadErrorEvent`), plus `Usage`
+- Item types: `ThreadItem` and its variants (`AgentMessageItem`, `ReasoningItem`, `CommandExecutionItem`, `FileChangeItem`, `McpToolCallItem`, `WebSearchItem`, `TodoListItem`, `ErrorItem`)
+- Input types: `Input`, `UserInput`, `RunResult`, `RunStreamedResult`
+
+### 19.2 Python SDK top-level exports (`openai-agents-python/src/agents/__init__.py#__all__`)
+
+The Python SDK has a large, explicitly-exported surface area. The canonical list is maintained in
+`openai-agents-python/src/agents/__init__.py` (look for `__all__ = [...]`), including:
+
+- Core: `Agent`, `Runner`, `RunConfig`, `RunResult`, `RunResultStreaming`, `RunHooks`, `AgentHooks`
+- Tools: `Tool`, `FunctionTool`, `function_tool`, hosted tools like `FileSearchTool`, `WebSearchTool`, `ShellTool`, `ApplyPatchTool`, plus `ApplyPatchEditor`/operations and `apply_diff`
+- Memory: `Session`, `SQLiteSession`, `OpenAIConversationsSession` (+ optional extension sessions)
+- Realtime/voice: `RealtimeAgent`, `RealtimeSession`, `RealtimeRunner`, `VoicePipeline` (+ STT/TTS models)
+- Tracing: trace/span data types and processor registration functions
+
+### 19.3 Elixir SDK public modules (selected)
+
+- Entry: `Codex.start_thread/2`, `Codex.resume_thread/3`
+- Execution: `Codex.Thread.run/3`, `Codex.Thread.run_streamed/3`, `Codex.Thread.run_auto/3`
+- Subprocess wrapper: `Codex.Exec`, config via `Codex.Options`, `Codex.Thread.Options`
+- Agent loop: `Codex.AgentRunner`, `Codex.Agent`, `Codex.RunConfig`
+- Tools: `Codex.Tools`, `Codex.FunctionTool`, hosted wrappers under `Codex.Tools.*Tool`
+- Guardrails/handoffs: `Codex.Guardrail`, `Codex.ToolGuardrail`, `Codex.Handoff`
+- Sessions/files: `Codex.Session`, `Codex.Session.Memory`, `Codex.Files`
+- MCP: `Codex.MCP.Client`
+
+---
+
+## Review Notes
+
+- Date: 2025-12-14
+- Summary: Corrected several Elixir/TypeScript mismatches and then implemented Codex CLI option forwarding (sandbox/cd/add-dir/skip-git, `OPENAI_BASE_URL`, approval policy + web search config) to align runtime behavior with the TypeScript SDK.
+- Confidence: High for TypeScript CLI parity items (validated against `codex exec --help` and `codex --help`); Medium for conversation/response chaining (no `codex exec` flags; appears internal to Codex CLI sessions).

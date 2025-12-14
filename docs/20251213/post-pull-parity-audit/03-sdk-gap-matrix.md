@@ -31,9 +31,9 @@ stopping emission of undocumented `--tool-output/--tool-failure` flags.
 | Apply-patch context threading | agents-python `9f96338` | tool runtime | 🟡 | Elixir hosted tool callbacks receive a `context` map; audit and document its guarantees for `apply_patch`. |
 | `codex exec` JSONL event schema | codex-rs `exec_events.rs` | exec JSONL | ✅ | Decoder is permissive and handles minimal schema. |
 | Fixtures reflect real exec schema | internal | exec JSONL | ❌ | Existing fixtures include richer/other-transport fields. Plan: add fixtures matching `exec_events.rs` and keep backwards-compat parsing tests. |
-| Exec argument parity (`--image`, `--skip-git-repo-check`, etc) | codex-rs `exec/src/cli.rs` | exec JSONL | 🟡 | SDK now uses `--image` for attachments and does not emit undocumented tool-output flags; remaining work is exposing `--skip-git-repo-check`, `--cd`, `--add-dir`, `--sandbox`, etc as validated SDK options. |
-| Non-git usage (`--skip-git-repo-check`) | codex-rs exec | exec JSONL | ❌ | Add a run-scoped knob mapping to this flag. |
-| Workspace selection (`--cd`, `--add-dir`) | codex-rs exec | exec JSONL | ❌ | Add run/thread options and document safety implications. |
+| Exec argument parity (`--image`, `--skip-git-repo-check`, etc) | codex-rs `exec/src/cli.rs` | exec JSONL | ✅ | SDK aligns to real `codex exec` flags: `--image`, `--sandbox`, `--cd`, `--add-dir`, `--skip-git-repo-check`, plus `--config` for approval/search/network. |
+| Non-git usage (`--skip-git-repo-check`) | codex-rs exec | exec JSONL | ✅ | Supported via `Codex.Thread.Options.skip_git_repo_check`. |
+| Workspace selection (`--cd`, `--add-dir`) | codex-rs exec | exec JSONL | ✅ | Supported via `Codex.Thread.Options.working_directory` and `additional_directories`. |
 | Exec `review` workflow (`codex exec review …`) | codex-rs exec | exec JSONL | ❌ | Optional: expose as `Codex.Review.*` module or explicit function on `Codex`. |
 | codex-rs `[otel]` export docs | codex-rs `ad7b9d63c` | config.toml | ✅ | Docs now distinguish Elixir OTLP vs codex-rs OTEL. |
 | Isolated `CODEX_HOME` per run | codex-rs `[otel]` + config loader | exec JSONL | ❌ | Optional but useful: allow SDK to run with generated config dir (no mutation of user home). |

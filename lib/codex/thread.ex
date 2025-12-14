@@ -249,6 +249,7 @@ defmodule Codex.Thread do
 
     with {:ok, schema_path, cleanup} <- OutputSchemaFile.create(schema) do
       env = Map.get(turn_opts_map, :env, Map.get(turn_opts_map, "env"))
+      clear_env? = Map.get(turn_opts_map, :clear_env?, Map.get(turn_opts_map, "clear_env?"))
 
       cancellation_token =
         Map.get(turn_opts_map, :cancellation_token, Map.get(turn_opts_map, "cancellation_token"))
@@ -261,6 +262,8 @@ defmodule Codex.Thread do
         |> Map.delete("output_schema")
         |> Map.delete(:env)
         |> Map.delete("env")
+        |> Map.delete(:clear_env?)
+        |> Map.delete("clear_env?")
         |> Map.delete(:cancellation_token)
         |> Map.delete("cancellation_token")
         |> Map.delete(:timeout_ms)
@@ -278,6 +281,7 @@ defmodule Codex.Thread do
         }
         |> maybe_put(:output_schema_path, schema_path)
         |> maybe_put(:env, env)
+        |> maybe_put(:clear_env?, clear_env?)
         |> maybe_put(:cancellation_token, cancellation_token)
         |> maybe_put(:timeout_ms, timeout_ms)
 
