@@ -34,7 +34,7 @@ end
 
 ## Client Requests (Client → Server)
 
-**Upstream evidence**: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:96-199`
+**Upstream evidence**: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:96-203` (v2 request registry)
 
 ### Must Implement (Core Parity)
 
@@ -71,6 +71,8 @@ end
 
 ### Will NOT Implement (Deprecated v1)
 
+Deprecated v1 request methods are explicitly out of scope (see `docs/20251214/multi_transport_refactor/09_requirements_and_nongoals.md`).
+
 | Wire Method | Reason |
 |-------------|--------|
 | `newConversation` | Use `thread/start` |
@@ -86,7 +88,7 @@ end
 | `cancelLoginChatGpt` | Use `account/login/cancel` |
 | `logoutChatGpt` | Use `account/logout` |
 | `getAuthStatus` | Use `account/read` |
-| All other v1 methods | See common.rs:206-298 |
+| All other v1 methods | Registry: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:205-299` |
 
 ---
 
@@ -103,7 +105,7 @@ end
 ```elixir
 # After receiving initialize response
 def send_initialized(conn) do
-  send_notification(conn, "initialized", %{})
+  send_notification(conn, "initialized")
 end
 ```
 
@@ -117,13 +119,13 @@ end
 
 | Wire Method | Rust Variant | Params Type | Elixir Event | Mapping Notes |
 |-------------|--------------|-------------|--------------|---------------|
-| `error` | `Error` | `v2::ErrorNotification` | `%Codex.Events.Error{}` | Map `message` field |
-| `thread/started` | `ThreadStarted` | `v2::ThreadStartedNotification` | `%Codex.Events.ThreadStarted{}` | Extract `thread.id` → `thread_id` |
-| `thread/tokenUsage/updated` | `ThreadTokenUsageUpdated` | `v2::ThreadTokenUsageUpdatedNotification` | `%Codex.Events.ThreadTokenUsageUpdated{}` | Already supported |
-| `thread/compacted` | `ContextCompacted` | `v2::ContextCompactedNotification` | `%Codex.Events.TurnCompaction{stage: :completed}` | Map to compaction event |
-| `turn/started` | `TurnStarted` | `v2::TurnStartedNotification` | `%Codex.Events.TurnStarted{}` | Extract `turn.id` → `turn_id` |
-| `turn/completed` | `TurnCompleted` | `v2::TurnCompletedNotification` | `%Codex.Events.TurnCompleted{}` | Map `turn.status`, `turn.items`, usage |
-| `turn/diff/updated` | `TurnDiffUpdated` | `v2::TurnDiffUpdatedNotification` | `%Codex.Events.TurnDiffUpdated{}` | Already supported |
+| `error` | `Error` | `v2::ErrorNotification` | `%Codex.Events.Error{}` | Map `error.message` → `message`; consider extending event with `will_retry` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1170-1179`) |
+| `thread/started` | `ThreadStarted` | `v2::ThreadStartedNotification` | `%Codex.Events.ThreadStarted{}` | `thread.id` → `thread_id`; store remaining thread fields in `metadata` |
+| `thread/tokenUsage/updated` | `ThreadTokenUsageUpdated` | `v2::ThreadTokenUsageUpdatedNotification` | `%Codex.Events.ThreadTokenUsageUpdated{}` | Needs app-server adapter: `tokenUsage` snapshot (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1092-1106`) → `usage`/`token_usage` (`lib/codex/events.ex:369-376`) |
+| `thread/compacted` | `ContextCompacted` | `v2::ContextCompactedNotification` | `%Codex.Events.TurnCompaction{stage: :completed}` | Compatibility shim: map `thread/compacted` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1706-1709`) → `TurnCompaction` with empty `compaction` |
+| `turn/started` | `TurnStarted` | `v2::TurnStartedNotification` | `%Codex.Events.TurnStarted{}` | `threadId`/`turn.id` → `thread_id`/`turn_id` |
+| `turn/completed` | `TurnCompleted` | `v2::TurnCompletedNotification` | `%Codex.Events.TurnCompleted{}` | `turn.status` only; `turn.items` is `[]` except in `thread/resume` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1151-1154`), so compute `final_response` from `item/*` stream and attach usage from latest `thread/tokenUsage/updated` |
+| `turn/diff/updated` | `TurnDiffUpdated` | `v2::TurnDiffUpdatedNotification` | `%Codex.Events.TurnDiffUpdated{}` | App-server `diff` is a unified diff string (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`); update event type accordingly |
 | `turn/plan/updated` | `TurnPlanUpdated` | `v2::TurnPlanUpdatedNotification` | **NEW: `%Codex.Events.TurnPlanUpdated{}`** | New event type needed |
 | `item/started` | `ItemStarted` | `v2::ItemStartedNotification` | `%Codex.Events.ItemStarted{}` | Normalize `item` via Items adapter |
 | `item/completed` | `ItemCompleted` | `v2::ItemCompletedNotification` | `%Codex.Events.ItemCompleted{}` | Normalize `item` via Items adapter |
@@ -142,6 +144,18 @@ end
 | `windows/worldWritableWarning` | `WindowsWorldWritableWarning` | `v2::WindowsWorldWritableWarningNotification` | **Ignore or log** | Windows-specific |
 
 ### Normalization Strategy
+
+All app-server notifications arrive as JSON-RPC envelopes:
+
+```json
+{"method":"turn/started","params":{...}}
+```
+
+To reuse `Codex.Events.parse!/1`, implement a notification adapter that:
+
+1. Maps `method` → internal `"type"` string (either keep the slash form or remap to the existing dot+snake_case form)
+2. Converts param keys from camelCase → snake_case (`threadId` → `thread_id`, etc.)
+3. Normalizes nested `ThreadItem` payloads into `Codex.Items`-compatible maps/structs
 
 **Option A: Extend `Codex.Events`** (Recommended for P0 events)
 - Add new event structs for `TurnPlanUpdated`, reasoning deltas, command output deltas
@@ -169,7 +183,7 @@ end
 | `item/commandExecution/requestApproval` | `CommandExecutionRequestApproval` | `v2::CommandExecutionRequestApprovalParams` | `v2::CommandExecutionRequestApprovalResponse` | `Codex.Approvals.Hook.review_command/3` |
 | `item/fileChange/requestApproval` | `FileChangeRequestApproval` | `v2::FileChangeRequestApprovalParams` | `v2::FileChangeRequestApprovalResponse` | `Codex.Approvals.Hook.review_file/3` |
 
-### Approval Params (v2.rs:1714-1743)
+### Approval Params (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1714-1743`)
 
 **CommandExecutionRequestApprovalParams**:
 ```json
@@ -178,7 +192,7 @@ end
   "turnId": "turn_456",
   "itemId": "item_789",
   "reason": "Optional explanatory reason",
-  "proposedExecpolicyAmendment": ["npm", "install"]  // optional
+  "proposedExecpolicyAmendment": ["npm", "install"]
 }
 ```
 
@@ -189,18 +203,24 @@ end
   "turnId": "turn_456",
   "itemId": "item_789",
   "reason": "Optional explanatory reason",
-  "grantRoot": "/path/to/root"  // optional, unstable
+  "grantRoot": "/path/to/root"
 }
 ```
 
-### Approval Response (v2.rs:402-414)
+### Approval Response (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`)
 
 **ApprovalDecision enum values**:
-- `Accept` → `{:allow}`
-- `AcceptForSession` → `{:allow, for_session: true}`
-- `AcceptWithExecpolicyAmendment {execpolicy_amendment}` → `{:allow, amendment: [...]}`
-- `Decline` → `{:deny, "user declined"}`
-- `Cancel` → `{:deny, "cancelled"}`
+- `Accept` (wire `"accept"`) → hook returns `:allow`
+- `Decline` (wire `"decline"`) → hook returns `{:deny, reason}`
+- `Cancel` (wire `"cancel"`) → treat as `{:deny, "cancelled"}` by default
+- `AcceptForSession` (wire `"acceptForSession"`) and `AcceptWithExecpolicyAmendment` require either:
+  - a backwards compatible extension to `Codex.Approvals.Hook` decision returns, or
+  - an explicit user override API for approval requests
+
+Recommended backwards-compatible hook decision extensions:
+- `{:allow, for_session: true}` → `AcceptForSession`
+- `{:allow, execpolicy_amendment: command_argv}` → `AcceptWithExecpolicyAmendment { execpolicy_amendment }`
+  - Note the wire payload field is `execpolicy_amendment` (Rust field name in `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:409-411`)
 
 ### Hook Integration Flow
 
@@ -225,23 +245,22 @@ Server Request → Connection GenServer → Approval Event
 
 ## ThreadItem Normalization (App-Server → Elixir)
 
-**Upstream evidence**: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1320-1450` (approx)
+**Upstream evidence**: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1320-1392` (ThreadItem union)
 
 ### App-Server ThreadItem Types
 
 | App-Server Type | Elixir Type | Key Field Mappings |
 |-----------------|-------------|-------------------|
-| `userMessage` | N/A (user input, not an item) | — |
+| `userMessage` | **NEW: `%Codex.Items.UserMessage{}`** | `content` → list of `UserInput` blocks |
 | `agentMessage` | `%Codex.Items.AgentMessage{}` | `text` → `text` |
 | `reasoning` | `%Codex.Items.Reasoning{}` | `summary`, `content` → `text` (join) |
-| `commandExecution` | `%Codex.Items.CommandExecution{}` | `command`, `cwd`, `status`, `commandActions`, `aggregatedOutput`, `exitCode`, `durationMs` |
-| `fileChange` | `%Codex.Items.FileChange{}` | `changes` (list of `{path, kind, diff}`), `status` |
-| `mcpToolCall` | `%Codex.Items.McpToolCall{}` | `server`, `tool`, `status`, `arguments`, `result`, `error` |
+| `commandExecution` | `%Codex.Items.CommandExecution{}` (extend) | Add `cwd`, `process_id`, `command_actions`, `duration_ms`; `aggregated_output` is optional (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1338-1358`) |
+| `fileChange` | `%Codex.Items.FileChange{}` (extend) | Preserve `diff` (and `move_path` for update renames) from `changes` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1361-1461`) |
+| `mcpToolCall` | `%Codex.Items.McpToolCall{}` (extend) | Add `duration_ms`; `result.content` is MCP content blocks (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1368-1478`) |
 | `webSearch` | `%Codex.Items.WebSearch{}` | `query` |
 | `imageView` | **NEW: `%Codex.Items.ImageView{}`** | `path` |
-| `enteredReviewMode` | **NEW or raw** | `review` (label) |
-| `exitedReviewMode` | **NEW or raw** | `review` (full text) |
-| `compacted` | N/A (notification, not item) | — |
+| `enteredReviewMode` | `%Codex.Items.ReviewMode{}` | `entered: true`, `review` |
+| `exitedReviewMode` | `%Codex.Items.ReviewMode{}` | `entered: false`, `review` |
 
 ### Case Conversion
 
@@ -256,12 +275,12 @@ App-server uses camelCase; Elixir uses snake_case:
 
 ### Status Normalization
 
-App-server status values (camelCase strings):
-- `inProgress` → `:in_progress`
-- `completed` → `:completed`
-- `failed` → `:failed`
-- `declined` → `:declined`
-- `interrupted` → `:interrupted`
+App-server enum values serialize as lower camel-case strings (e.g. `InProgress` → `"inProgress"`).
+
+- Turn status (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1184-1189`): `inProgress`, `completed`, `interrupted`, `failed`
+- Command execution status (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1424-1432`): `inProgress`, `completed`, `failed`, `declined`
+- File change status (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1453-1461`): `inProgress`, `completed`, `failed`, `declined`
+- MCP tool call status (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1463-1470`): `inProgress`, `completed`, `failed`
 
 ---
 
@@ -287,7 +306,7 @@ Client → Server:
 {"id":1,"method":"thread/start","params":{"cwd":"/project"}}
 
 Server → Client:
-{"id":1,"result":{"thread":{"id":"thr_abc","preview":"","modelProvider":"openai","createdAt":1734200000}}}
+{"id":1,"result":{"thread":{"id":"thr_abc","preview":"","modelProvider":"openai","createdAt":1734200000,...},"model":"...","modelProvider":"openai","cwd":"/project",...}}
 
 Server → Client (notification):
 {"method":"thread/started","params":{"thread":{"id":"thr_abc",...}}}
@@ -303,7 +322,8 @@ Server → Client (notifications):
 {"method":"item/started","params":{"threadId":"thr_abc","turnId":"turn_xyz","item":{"type":"agentMessage","id":"msg_1","text":""}}}
 {"method":"item/agentMessage/delta","params":{"threadId":"thr_abc","turnId":"turn_xyz","itemId":"msg_1","delta":"Hi there!"}}
 {"method":"item/completed","params":{"threadId":"thr_abc","turnId":"turn_xyz","item":{"type":"agentMessage","id":"msg_1","text":"Hi there!"}}}
-{"method":"turn/completed","params":{"threadId":"thr_abc","turn":{"id":"turn_xyz","status":"completed","items":[...],"error":null}}}
+{"method":"thread/tokenUsage/updated","params":{"threadId":"thr_abc","turnId":"turn_xyz","tokenUsage":{...}}}
+{"method":"turn/completed","params":{"threadId":"thr_abc","turn":{"id":"turn_xyz","status":"completed","items":[],"error":null}}}
 ```
 
 ### Approval Flow
@@ -344,6 +364,10 @@ end
 ### Items (extend `Codex.Items`)
 
 ```elixir
+defmodule Codex.Items.UserMessage do
+  defstruct id: nil, type: :user_message, content: []
+end
+
 defmodule Codex.Items.ImageView do
   defstruct id: nil, type: :image_view, path: nil
 end

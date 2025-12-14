@@ -21,7 +21,7 @@ The upstream `skills/list` operation is an **app-server JSON-RPC method**, regis
 
 - `codex/codex-rs/app-server-protocol/src/protocol/common.rs:124`
 
-`codex exec --json` has no general “send request / receive response” mechanism for these app-server methods. It only runs a turn and streams turn events.
+`codex exec` JSONL output has no general “send request / receive response” mechanism for these app-server methods. It only runs a turn and streams turn events.
 
 So the transport isn’t “broken”; it’s just a different upstream surface.
 
@@ -38,4 +38,3 @@ If “feature parity with upstream codex” includes **app-server capabilities**
 
 This aligns with upstream’s own division:
 - The TypeScript SDK in `./codex` also wraps exec-only and does not expose skills/app-server APIs (see `codex/sdk/typescript/src/thread.ts:28`).
-

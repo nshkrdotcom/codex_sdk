@@ -24,7 +24,7 @@ Reviewed all documents in `docs/20251214/multi_transport_refactor/` against upst
 
 **Details**:
 - App-server uses server-initiated JSON-RPC requests (not notifications)
-- Client MUST respond with `ApprovalDecision` enum values (v2.rs:402-414)
+- Client MUST respond with `ApprovalDecision` enum values (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`)
 - Async hook patterns (`{:async, ref}`) require careful timeout and response correlation
 
 **Mitigation**: Added `11_failure_modes_and_recovery.md` with explicit approval flow documentation and timeout handling.
@@ -37,7 +37,7 @@ Reviewed all documents in `docs/20251214/multi_transport_refactor/` against upst
 - Exec uses snake_case with dot separators (`turn.completed`)
 - App-server uses camelCase with slash separators (`turn/completed`)
 - Some notifications exist only in app-server (e.g., `turn/plan/updated`, reasoning deltas)
-- `Codex.Events` currently only handles exec format
+- `Codex.Events.parse!/1` expects exec-style maps (`"type"` key + mostly snake_case keys), but already accepts some slash-style `"type"` variants (e.g. `thread/tokenUsage/updated`) (`lib/codex/events.ex:369-379`); app-server still requires a JSON-RPC envelope/key adapter (`{"method":...,"params":...}` → internal event map)
 
 **Mitigation**: Added `10_protocol_mapping_spec.md` with explicit mapping tables. Recommended hybrid approach: typed events for P0/P1, raw maps for P2/P3.
 
@@ -107,8 +107,8 @@ Reviewed all documents in `docs/20251214/multi_transport_refactor/` against upst
 **Fixed in**: `10_protocol_mapping_spec.md` and `11_failure_modes_and_recovery.md`
 
 **Now specifies**:
-- `CommandExecutionRequestApprovalParams` fields (v2.rs:1714-1722)
-- `FileChangeRequestApprovalParams` fields (v2.rs:1734-1743)
+- `CommandExecutionRequestApprovalParams` fields (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1714-1722`)
+- `FileChangeRequestApprovalParams` fields (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1734-1743`)
 - `ApprovalDecision` enum values and Elixir mapping
 - Hook integration flow with async handling
 
@@ -144,7 +144,7 @@ Reviewed all documents in `docs/20251214/multi_transport_refactor/` against upst
 
 | Feature | Blocker | Evidence |
 |---------|---------|----------|
-| `UserInput::Skill` selection | App-server v2 `UserInput` enum missing `Skill` variant | v2.rs:1289-1293, v2.rs:1311 (`unreachable!()`) |
+| `UserInput::Skill` selection | App-server v2 `UserInput` enum missing `Skill` variant | `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293`, `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1311` (`unreachable!()`) |
 
 **Options**:
 1. **Wait for upstream** to add `Skill` variant to app-server protocol
@@ -156,16 +156,16 @@ Recommendation: Implement emulation as opt-in, document clearly as "emulation mo
 
 | Feature | App-Server Method | Evidence |
 |---------|-------------------|----------|
-| Skills discovery | `skills/list` | common.rs:124-127, v2.rs:976-1030 |
-| Thread history | `thread/list` | common.rs:116-119 |
-| Thread management | `thread/archive`, `thread/compact` | common.rs:113-123 |
-| Model listing | `model/list` | common.rs:141-144 |
-| Config read/write | `config/read`, `config/value/write`, `config/batchWrite` | common.rs:187-198 |
-| Code review | `review/start` | common.rs:136-139 |
-| Turn interruption | `turn/interrupt` | common.rs:132-135 |
-| Sandboxed command | `command/exec` | common.rs:182-185 |
-| Account/auth | `account/*` | common.rs:156-203 |
-| MCP servers | `mcpServers/list`, `mcpServer/oauth/login` | common.rs:146-154 |
+| Skills discovery | `skills/list` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:124-127`, `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:976-1033` |
+| Thread history | `thread/list` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:116-119` |
+| Thread management | `thread/archive`, `thread/compact` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:112-123` |
+| Model listing | `model/list` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:141-144` |
+| Config read/write | `config/read`, `config/value/write`, `config/batchWrite` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:187-198` |
+| Code review | `review/start` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:136-139` |
+| Turn interruption | `turn/interrupt` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:132-135` |
+| Sandboxed command | `command/exec` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:181-185` |
+| Account/auth | `account/*` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:156-203` |
+| MCP servers | `mcpServers/list`, `mcpServer/oauth/login` | `codex/codex-rs/app-server-protocol/src/protocol/common.rs:146-154` |
 
 ---
 

@@ -146,18 +146,19 @@ end
 
 **Trigger**: Server returns `{"id": N, "error": {...}}`.
 
-**Error format**:
+**Error format** (see `codex/codex-rs/app-server-protocol/src/jsonrpc_lite.rs:57-71`):
 ```json
 {
   "id": 42,
   "error": {
+    "code": -32000,
     "message": "Thread not found",
-    "codexErrorInfo": "NotFound"
+    "data": {"details":"..."}
   }
 }
 ```
 
-**Recovery**: Return `{:error, %Codex.AppServer.Error{message: msg, info: info}}`.
+**Recovery**: Return `{:error, %Codex.AppServer.Error{message: msg, code: code, data: data, request_id: id}}`.
 
 ### F9: Malformed Response
 

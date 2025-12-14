@@ -94,8 +94,8 @@ Still present in `codex/codex-rs/app-server-protocol/src/protocol/common.rs:205`
 - `execCommandApproval` (server request)
 
 `codex_sdk` can choose to:
-- implement only v2 for parity with “current” clients, or
-- implement v1 too for full historical compatibility.
+- implement only v2 for parity with “current” clients (this plan), and
+- treat v1 as out-of-scope (see `docs/20251214/multi_transport_refactor/09_requirements_and_nongoals.md`).
 
 ## Server requests (approvals)
 

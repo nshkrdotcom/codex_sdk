@@ -18,7 +18,7 @@ The TS SDK does NOT support:
 - `UserInput::Skill` (not exposed)
 - App-server RPC methods (uses exec only)
 
-**Elixir current state**: Already at parity. `codex_sdk` uses `codex exec --json` and supports text + local images via `Codex.Exec`.
+**Elixir current state**: Already at parity. `codex_sdk` uses the exec JSONL surface (`codex exec --experimental-json` today) and supports text + local images via `Codex.Exec`.
 
 ### Definition 2: App-Server Surface Parity
 
@@ -39,8 +39,8 @@ This includes:
 - Feedback: `feedback/upload`
 
 And handling:
-- All v2 server notifications (see common.rs:521-559)
-- All v2 server requests (approvals) (see common.rs:465-494)
+- All v2 server notifications (see `codex/codex-rs/app-server-protocol/src/protocol/common.rs:521-559`)
+- All v2 server requests (approvals) (see `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465-494`)
 
 ### Definition 3: Core-Only Features (TUI-Only)
 
@@ -48,7 +48,7 @@ And handling:
 
 | Feature | Evidence | Status |
 |---------|----------|--------|
-| `UserInput::Skill` selection | `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293` defines UserInput with only Text/Image/LocalImage; v2.rs:1311 treats other variants as `unreachable!()` | **Blocked upstream** |
+| `UserInput::Skill` selection | `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293` defines UserInput with only Text/Image/LocalImage; `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1311` treats other variants as `unreachable!()` | **Blocked upstream** |
 
 The TUI constructs `UserInput::Skill` in-process (`codex/codex-rs/tui/src/chatwidget.rs:1754-1758`) and core processes it (`codex/codex-rs/core/src/skills/injection.rs:69`), but this path is not exposed to external clients.
 
@@ -69,18 +69,20 @@ The TUI constructs `UserInput::Skill` in-process (`codex/codex-rs/tui/src/chatwi
   2. Server response (server → client): `{ "id": N, "result": {...} }` or `{ "id": N, "error": {...} }`
   3. Server notification (server → client, no id): `{ "method": "...", "params": {...} }`
   4. Server request (server → client, requires response): `{ "id": N, "method": "...", "params": {...} }`
+  - Evidence: `codex/codex-rs/app-server-protocol/src/jsonrpc_lite.rs:21-71`
 - MUST correlate responses to in-flight requests by `id`
 - MUST handle interleaved notifications while requests are pending
 
 ### R3: Approval Handling
 
 - MUST handle server requests for approvals:
-  - `item/commandExecution/requestApproval` (common.rs:469-472)
-  - `item/fileChange/requestApproval` (common.rs:476-479)
+  - `item/commandExecution/requestApproval` (`codex/codex-rs/app-server-protocol/src/protocol/common.rs:469-472`)
+  - `item/fileChange/requestApproval` (`codex/codex-rs/app-server-protocol/src/protocol/common.rs:476-479`)
 - MUST integrate with existing `Codex.Approvals.Hook` callbacks
 - MUST respond with `ApprovalDecision` enum values:
   - `Accept`, `AcceptForSession`, `AcceptWithExecpolicyAmendment`, `Decline`, `Cancel`
   - Evidence: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`
+  - Note: supporting `AcceptForSession` / `AcceptWithExecpolicyAmendment` likely requires a backwards-compatible extension to `Codex.Approvals.Hook` decision return values (or an explicit manual-approval API), since the current hook decision surface is primarily allow/deny.
 
 ### R4: Event Normalization
 
@@ -104,7 +106,7 @@ The TUI constructs `UserInput::Skill` in-process (`codex/codex-rs/tui/src/chatwi
 
 ### NG1: v1 Deprecated API Support
 
-The following deprecated v1 methods (common.rs:206-298) are explicitly OUT OF SCOPE:
+The following deprecated v1 methods (`codex/codex-rs/app-server-protocol/src/protocol/common.rs:205-299`) are explicitly OUT OF SCOPE:
 - `newConversation`, `sendUserMessage`, `sendUserTurn`
 - `getConversationSummary`, `listConversations`, `resumeConversation`, `archiveConversation`
 - `interruptConversation`
@@ -115,7 +117,7 @@ Rationale: v2 provides equivalent functionality with cleaner semantics. v1 exist
 
 ### NG2: `UserInput::Skill` Wire Protocol Exposure
 
-Until upstream adds `Skill` to the app-server `UserInput` enum (v2.rs:1289), `codex_sdk` WILL NOT:
+Until upstream adds `Skill` to the app-server `UserInput` enum (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289`), `codex_sdk` WILL NOT:
 - Claim to support skill selection as a first-class input
 - Attempt to hack around the protocol limitation in ways that break if upstream changes
 
@@ -139,7 +141,7 @@ This provides behavioral parity (the skill content reaches the model) but NOT pr
 
 **Tradeoffs**:
 - Pro: Users get skill functionality without waiting for upstream
-- Con: Injection semantics may differ from core's `build_skill_injections` (injection.rs:16-59)
+- Con: Injection semantics may differ from core's `build_skill_injections` (`codex/codex-rs/core/src/skills/injection.rs:16-59`)
 - Con: Cannot leverage any future upstream skill-specific handling
 
 Decision: Implement as opt-in, clearly documented as "emulation mode".

@@ -2,7 +2,7 @@
 
 This doc set describes a proposed **major refactor** of `codex_sdk` to achieve **feature parity** with upstream `codex` by supporting both:
 
-1. `codex exec --json` (JSONL over stdout; one-shot process per run)
+1. `codex exec` JSONL output (`--experimental-json` in `codex_sdk` today; one-shot process per run)
 2. `codex app-server` (stateful, bidirectional JSON-RPC over stdio)
 
 It also explains what is and is not currently possible regarding **Skills** and `UserInput::Skill`.
@@ -35,4 +35,3 @@ This refactor doc set complements the 2025-12-14 upstream pull analysis:
 - `docs/20251214/skills_analysis/skills-comparison.md`
 - `docs/20251214/protocol_changes/new-protocol-types.md`
 - `docs/20251214/technical_plan/porting-plan.md`
-

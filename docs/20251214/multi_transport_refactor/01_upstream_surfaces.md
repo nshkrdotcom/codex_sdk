@@ -3,10 +3,10 @@
 Upstream `codex` (Rust) is one binary with multiple “surfaces” that matter for SDK parity:
 
 1. **Interactive TUI** (in-process, uses core protocol types directly)
-2. **Non-interactive Exec** (`codex exec --json` JSONL stream; one-shot)
+2. **Non-interactive Exec** (`codex exec` JSONL stream; one-shot)
 3. **Stateful App-Server** (`codex app-server` JSON-RPC over stdio; long-lived)
 
-This distinction is why some upstream features are *impossible* to reach from `codex exec --json` and require an app-server transport in `codex_sdk`.
+This distinction is why some upstream features are *impossible* to reach from `codex exec` JSONL and require an app-server transport in `codex_sdk`.
 
 ## 1) Interactive TUI (in-process)
 
@@ -52,4 +52,3 @@ There is **no Python codex SDK** under `./codex` in this checkout; only TypeScri
 Evidence: `openai-agents-python/README.md:3` (“supports the OpenAI Responses and Chat Completions APIs”).
 
 So: **it does not support Codex core protocol types like `UserInput::Skill` either.**
-

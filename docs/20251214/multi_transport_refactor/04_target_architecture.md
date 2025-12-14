@@ -4,7 +4,7 @@
 
 Support both upstream transports:
 
-- **Exec JSONL**: `codex exec --json` (current)
+- **Exec JSONL**: `codex exec` JSONL output (`--experimental-json` in `codex_sdk` today)
 - **App-server JSON-RPC**: `codex app-server` (new)
 
 …while keeping a unified, Elixir-native public API (threads, turns, streaming events, approvals).
@@ -96,9 +96,9 @@ Keep:
 
 Add a new option to choose transport (default `:exec`):
 
-- `transport: :exec | :app_server`
+- `transport: :exec | {:app_server, pid()}`
 
-For `:app_server`, the returned `%Codex.Thread{}` must carry a reference to the connection process.
+For `{:app_server, pid()}`, the returned `%Codex.Thread{}` must carry a reference to the connection process.
 
 ### “Full parity” API additions (app-server-only)
 
@@ -119,4 +119,3 @@ Add a supervision tree for app-server connections:
 - each connection supervised and restartable
 
 Threads reference their owning connection pid; on connection restart, threads become invalid unless reattached. Document this explicitly.
-
