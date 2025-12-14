@@ -62,7 +62,7 @@ This document set provides a comprehensive plan for synchronizing the Elixir cod
 
 ## Current Elixir Port Status
 
-- **Version**: 0.2.3
+- **Version**: 0.2.4
 - **Elixir Source Files**: 46 (`lib/*.ex` and `lib/codex/*.ex`)
 - **Key Features**: Thread lifecycle, streaming, tools, approvals, guardrails, sessions
 

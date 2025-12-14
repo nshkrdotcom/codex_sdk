@@ -9,71 +9,91 @@ defmodule Examples.StructuredOutput do
   def run_schema_example do
     {:ok, thread} = Codex.start_thread()
 
-    {:ok, result} =
-      Codex.Thread.run(
-        thread,
-        "Provide a quick code-quality summary for the Elixir standard library",
-        %{output_schema: schema()}
-      )
+    case Codex.Thread.run(
+           thread,
+           "Provide a quick code-quality summary for the Elixir standard library",
+           %{output_schema: schema()}
+         ) do
+      {:ok, result} ->
+        case TurnResult.json(result) do
+          {:ok, data} ->
+            IO.puts("Overall score: #{data["overall_score"]}/100")
+            IO.puts("\nIssues:")
 
-    case TurnResult.json(result) do
-      {:ok, data} ->
-        IO.puts("Overall score: #{data["overall_score"]}/100")
-        IO.puts("\nIssues:")
+            Enum.each(data["issues"], fn issue ->
+              IO.puts("  [#{String.upcase(issue["severity"])}] #{issue["description"]}")
+            end)
 
-        Enum.each(data["issues"], fn issue ->
-          IO.puts("  [#{String.upcase(issue["severity"])}] #{issue["description"]}")
-        end)
+          {:error, reason} ->
+            IO.puts("Failed to decode structured output: #{inspect(reason)}")
+        end
 
       {:error, reason} ->
-        IO.puts("Failed to decode structured output: #{inspect(reason)}")
+        print_transport_error("Structured output turn failed", reason)
     end
   end
 
   def run_struct_example do
     {:ok, thread} = Codex.start_thread()
 
-    {:ok, result} =
-      Codex.Thread.run(
-        thread,
-        "Summarise the top two potential bugs in this test suite",
-        %{output_schema: schema()}
-      )
+    case Codex.Thread.run(
+           thread,
+           "Summarise the top two potential bugs in this test suite",
+           %{output_schema: schema()}
+         ) do
+      {:ok, result} ->
+        case {result.final_response, TurnResult.json(result)} do
+          {%Items.AgentMessage{parsed: parsed}, {:ok, parsed}} ->
+            with {:ok, summary} <- Examples.StructuredOutput.CodeAnalysis.from_map(parsed) do
+              IO.puts("Score: #{summary.overall_score}")
+              IO.inspect(summary, label: "parsed struct")
+            end
 
-    case {result.final_response, TurnResult.json(result)} do
-      {%Items.AgentMessage{parsed: parsed}, {:ok, parsed}} ->
-        with {:ok, summary} <- Examples.StructuredOutput.CodeAnalysis.from_map(parsed) do
-          IO.puts("Score: #{summary.overall_score}")
-          IO.inspect(summary, label: "parsed struct")
+          {_, {:error, reason}} ->
+            IO.puts("Unable to parse structured data: #{inspect(reason)}")
         end
 
-      {_, {:error, reason}} ->
-        IO.puts("Unable to parse structured data: #{inspect(reason)}")
+      {:error, reason} ->
+        print_transport_error("Structured struct-decoding turn failed", reason)
     end
   end
 
   defp schema do
     %{
       "type" => "object",
+      "additionalProperties" => false,
       "properties" => %{
         "overall_score" => %{"type" => "integer", "minimum" => 0, "maximum" => 100},
         "issues" => %{
           "type" => "array",
           "items" => %{
             "type" => "object",
+            "additionalProperties" => false,
             "properties" => %{
               "severity" => %{"type" => "string", "enum" => ["low", "medium", "high"]},
               "description" => %{"type" => "string"},
               "file" => %{"type" => "string"},
               "line" => %{"type" => "integer"}
             },
-            "required" => ["severity", "description"]
+            "required" => ["severity", "description", "file", "line"]
           }
         },
         "suggestions" => %{"type" => "array", "items" => %{"type" => "string"}}
       },
       "required" => ["overall_score", "issues", "suggestions"]
     }
+  end
+
+  defp print_transport_error(prefix, %Codex.TransportError{} = err) do
+    IO.puts("#{prefix}: codex failed (exit_status=#{err.exit_status}).")
+
+    if is_binary(err.stderr) and err.stderr != "" do
+      IO.puts("\nstderr:\n#{err.stderr}")
+    end
+  end
+
+  defp print_transport_error(prefix, other) do
+    IO.puts("#{prefix}: #{inspect(other)}")
   end
 end
 

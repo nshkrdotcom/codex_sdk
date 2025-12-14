@@ -10,12 +10,20 @@ defmodule Examples.Concurrency do
       Enum.map(files, fn file ->
         Task.async(fn ->
           {:ok, thread} = Codex.start_thread()
-          {:ok, result} = Codex.Thread.run(thread, "Analyze #{file} for potential issues.")
-          {file, render(result.final_response)}
+
+          prompt = """
+          Analyze the file path `#{file}` for potential issues based on common Elixir patterns.
+          Be explicit about uncertainty (you do not have the file contents). Keep it to 4 bullets.
+          """
+
+          case Codex.Thread.run(thread, prompt, %{timeout_ms: 45_000}) do
+            {:ok, result} -> {file, render(result.final_response)}
+            {:error, reason} -> {file, "FAILED: #{inspect(reason)}"}
+          end
         end)
       end)
 
-    Task.await_many(tasks, 60_000)
+    await_many_with_progress(tasks, timeout_ms: 180_000, tick_ms: 5_000, label: "parallel")
     |> Enum.each(fn {file, response} ->
       IO.puts("\n#{file}:\n#{response}")
     end)
@@ -27,11 +35,15 @@ defmodule Examples.Concurrency do
       |> Enum.map(fn item ->
         Task.async(fn ->
           {:ok, thread} = Codex.start_thread()
-          {:ok, result} = Codex.Thread.run(thread, "Process #{item} and summarise it succinctly.")
-          render(result.final_response)
+          prompt = "Process #{item} and summarise it succinctly (1-2 sentences)."
+
+          case Codex.Thread.run(thread, prompt, %{timeout_ms: 45_000}) do
+            {:ok, result} -> render(result.final_response)
+            {:error, reason} -> "FAILED: #{inspect(reason)}"
+          end
         end)
       end)
-      |> Task.await_many(60_000)
+      |> await_many_with_progress(timeout_ms: 180_000, tick_ms: 5_000, label: "map-reduce")
 
     {:ok, thread} = Codex.start_thread()
 
@@ -93,6 +105,46 @@ defmodule Examples.Concurrency do
 
   defp render(%Items.AgentMessage{text: text}), do: text
   defp render(_), do: "(no response produced)"
+
+  defp await_many_with_progress(tasks, opts) do
+    timeout_ms = Keyword.fetch!(opts, :timeout_ms)
+    tick_ms = Keyword.fetch!(opts, :tick_ms)
+    label = Keyword.get(opts, :label, "tasks")
+
+    start = System.monotonic_time(:millisecond)
+    do_await_many_with_progress(tasks, start, timeout_ms, tick_ms, label)
+  end
+
+  defp do_await_many_with_progress(tasks, start_ms, timeout_ms, tick_ms, label) do
+    remaining_ms = timeout_ms - (System.monotonic_time(:millisecond) - start_ms)
+
+    if remaining_ms <= 0 do
+      Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
+      raise "Timed out waiting for #{label} tasks (#{timeout_ms}ms)"
+    end
+
+    wait_ms = min(tick_ms, remaining_ms)
+
+    yielded =
+      tasks
+      |> Task.yield_many(wait_ms)
+      |> Enum.map(fn {task, res} ->
+        {task, res || Task.yield(task, 0)}
+      end)
+
+    if Enum.all?(yielded, fn {_task, res} -> res != nil end) do
+      Enum.map(yielded, fn
+        {_task, {:ok, value}} -> value
+        {_task, {:exit, reason}} -> raise "Task failed: #{inspect(reason)}"
+      end)
+    else
+      elapsed_s = div(System.monotonic_time(:millisecond) - start_ms, 1000)
+      done = Enum.count(yielded, fn {_task, res} -> res != nil end)
+      total = length(yielded)
+      IO.puts("… #{label} still running (#{elapsed_s}s) [#{done}/#{total}]")
+      do_await_many_with_progress(tasks, start_ms, timeout_ms, tick_ms, label)
+    end
+  end
 end
 
 case System.argv() do

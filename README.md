@@ -31,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.3"}
+    {:codex_sdk, "~> 0.2.4"}
   ]
 end
 ```
@@ -521,7 +521,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.3 (Codex CLI option forwarding + exec env hardening)
+**Current Version**: 0.2.4 (Examples reliability + structured output schema fix)
+
+### v0.2.4 Highlights
+
+- Examples now default to `gpt-5.1-codex-mini` and `run_all.sh` continues past failures with a summary
+- Fixed `codex exec --output-schema` example schema and improved example error messages
+- Exec env handling hardened so CLI-login auth works reliably when env overrides are absent
 
 ### v0.2.3 Highlights
 

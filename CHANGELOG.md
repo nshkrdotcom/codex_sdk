@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2025-12-13
+
+### Added
+- `examples/run_all.sh` defaults to `gpt-5.1-codex-mini` for consistent runs and reports failures without stopping the whole suite
+
+### Fixed
+- Exec subprocess env inheritance so `codex` can use CLI-login auth when no env overrides are provided
+- Structured output example schema compatibility with `codex exec --output-schema`, plus clearer example error output
+- Concurrency example progress output and timeouts to avoid “stuck” runs
+
 ## [0.2.3] - 2025-12-13
 
 ### Added

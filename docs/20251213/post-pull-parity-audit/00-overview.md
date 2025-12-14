@@ -50,7 +50,7 @@ backend `response_id` signal that **exec JSONL does not currently emit**.
 
 ## What’s already implemented in Elixir (high signal)
 
-As of SDK `0.2.3`:
+As of SDK `0.2.4`:
 
 - `Codex.RunConfig` accepts `auto_previous_response_id` and validates it.
 - The runner tracks the most recent backend `response_id` **when present** and can chain it as
