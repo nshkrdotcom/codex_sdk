@@ -5,6 +5,44 @@
 
 ---
 
+## 0. CODEX CLI OPTION FORWARDING (MEDIUM PRIORITY)
+
+Several TypeScript SDK options are forwarded to `codex exec` via CLI flags and environment variables.
+The Elixir subprocess wrapper now forwards the main parity set as well.
+
+### 0.1 Base URL (`OPENAI_BASE_URL`) (DONE)
+
+TypeScript sets `OPENAI_BASE_URL = baseUrl` in the subprocess environment. Elixir forwards
+`Codex.Options.base_url` via `OPENAI_BASE_URL`.
+
+**Status**: Implemented in `lib/codex/exec.ex`.
+
+### 0.2 ThreadOptions parity (sandbox/cd/add-dir/skip-git/network/web_search/approval_policy) (DONE)
+
+TypeScript forwards these knobs to the CLI:
+- `--sandbox <mode>`
+- `--cd <path>`
+- `--add-dir <path>` (repeatable)
+- `--skip-git-repo-check`
+- `--config sandbox_workspace_write.network_access=...`
+- `--config features.web_search_request=...`
+- `--config approval_policy="..."`
+
+**Status**: Implemented via `Codex.Thread.Options` + forwarding in `lib/codex/exec.ex`.
+
+### 0.3 Optional hardening: clear environment (`clear_env?`)
+
+Erlexec inherits the parent environment by default. If you want to avoid accidental leakage of
+environment variables into the `codex` subprocess, you can opt into clearing the environment per
+turn.
+
+**Option**: `turn_opts[:clear_env?]` (boolean)
+- `false` (default): inherit parent env + add/override with the provided env map
+- `true`: pass erlexec `{:env, [:clear | ...]}` to clear env first, then re-add a minimal safe set
+  (`HOME`, `PATH`, etc.) plus the Codex-specific env vars (`OPENAI_BASE_URL`, API key, originator)
+
+**Implementation**: `lib/codex/exec.ex` builds an env spec including `:clear` when `clear_env?` is true.
+
 ## 1. SESSION BACKENDS (MEDIUM PRIORITY)
 
 ### 1.1 ETS Session Backend
@@ -179,6 +217,10 @@ end
 
 ## 2. LIFECYCLE HOOKS (MEDIUM PRIORITY)
 
+Elixir already has `hooks` fields on `Codex.Agent` and `Codex.RunConfig`, but they are not invoked by
+the current runner implementation. This section describes how to formalize + wire hook callbacks to
+match Python’s `RunHooks`/`AgentHooks` behavior.
+
 ### 2.1 Hooks Behavior Definition
 
 **File**: `lib/codex/hooks.ex`
@@ -302,170 +344,84 @@ end
 
 ## 3. HOSTED TOOL WRAPPERS (MEDIUM PRIORITY)
 
+The Elixir SDK already includes callback-driven hosted tool wrappers in
+`lib/codex/tools/hosted_tools.ex`:
+`Codex.Tools.{ShellTool,ApplyPatchTool,ComputerTool,FileSearchTool,WebSearchTool,ImageGenerationTool,CodeInterpreterTool,HostedMcpTool}`.
+
+The remaining gap is providing *default implementations* (or clear BYO documentation) that match
+Python’s out-of-the-box behavior.
+
 ### 3.1 Web Search Tool
 
-**File**: `lib/codex/tools/web_search.ex`
+**Module**: `Codex.Tools.WebSearchTool` (already exists)
+
+**What’s missing**: a default `:searcher` implementation (Python performs real web search out of the box).
+
+**Recommendation**:
+- Provide a default search backend (or explicitly document BYO).
+- The wrapper expects a `:searcher` callback in `context.metadata`.
+
+Example usage:
 
 ```elixir
-defmodule Codex.Tools.WebSearch do
-  @moduledoc """
-  Web search tool wrapper.
+{:ok, _handle} = Codex.Tools.register(Codex.Tools.WebSearchTool)
 
-  This tool is executed by the codex binary but this module
-  provides a convenient way to configure it.
-  """
-
-  defstruct [
-    :user_location,
-    :search_context_size,
-    :filters
-  ]
-
-  @type t :: %__MODULE__{
-    user_location: map() | nil,
-    search_context_size: :low | :medium | :high,
-    filters: map() | nil
+context = %{
+  metadata: %{
+    searcher: fn %{"query" => q}, _context ->
+      {:ok, %{query: q, results: []}}
+    end
   }
+}
 
-  def new(opts \\ []) do
-    %__MODULE__{
-      user_location: opts[:user_location],
-      search_context_size: opts[:search_context_size] || :medium,
-      filters: opts[:filters]
-    }
-  end
-
-  def to_tool_config(%__MODULE__{} = config) do
-    %{
-      type: "web_search",
-      user_location: config.user_location,
-      search_context_size: config.search_context_size,
-      filters: config.filters
-    }
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new()
-  end
-end
+Codex.Tools.invoke("web_search", %{"query" => "site:example.com codex"}, context)
 ```
 
 ### 3.2 Code Interpreter Tool
 
-**File**: `lib/codex/tools/code_interpreter.ex`
+**Module**: `Codex.Tools.CodeInterpreterTool` (already exists)
 
-```elixir
-defmodule Codex.Tools.CodeInterpreter do
-  @moduledoc """
-  Sandboxed code execution tool wrapper.
-  """
+**What’s missing**: a default `:runner` implementation.
 
-  defstruct [
-    :container,
-    :file_ids,
-    :timeout_ms
-  ]
-
-  @type t :: %__MODULE__{
-    container: String.t() | nil,
-    file_ids: [String.t()],
-    timeout_ms: pos_integer()
-  }
-
-  def new(opts \\ []) do
-    %__MODULE__{
-      container: opts[:container],
-      file_ids: opts[:file_ids] || [],
-      timeout_ms: opts[:timeout_ms] || 60_000
-    }
-  end
-
-  def to_tool_config(%__MODULE__{} = config) do
-    %{
-      type: "code_interpreter",
-      container: config.container,
-      file_ids: config.file_ids
-    }
-    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == [] end)
-    |> Map.new()
-  end
-end
-```
+**Recommendation**:
+- Provide a default runner (or document BYO) and treat timeouts/resource limits explicitly.
+- The wrapper expects a `:runner` callback in `context.metadata`.
 
 ### 3.3 Apply Patch Tool
 
-**File**: `lib/codex/tools/apply_patch.ex`
+**Module**: `Codex.Tools.ApplyPatchTool` (already exists)
+
+**What’s missing**: a built-in patch application engine.
+
+**Recommendation**:
+- Add an “apply diff” implementation similar to Python’s `apply_diff` + structured patch operations.
+- Or clearly document that callers must supply an `:editor` callback in `context.metadata`.
+
+Example BYO editor:
 
 ```elixir
-defmodule Codex.Tools.ApplyPatch do
-  @moduledoc """
-  File editing via unified diffs.
-  """
+{:ok, _handle} = Codex.Tools.register(Codex.Tools.ApplyPatchTool)
 
-  use Codex.FunctionTool,
-    name: "apply_patch",
-    description: "Apply a unified diff patch to files",
-    parameters: %{
-      patch: %{type: :string, description: "Unified diff content"},
-      base_path: %{type: :string, description: "Base path for relative file paths"}
-    },
-    required: [:patch],
-    handler: &__MODULE__.handle/2
-
-  @behaviour Codex.Tools.ApplyPatch.Editor
-
-  @callback create_file(path :: String.t(), content :: String.t()) ::
-              :ok | {:error, term()}
-  @callback update_file(path :: String.t(), patch :: String.t()) ::
-              :ok | {:error, term()}
-  @callback delete_file(path :: String.t()) ::
-              :ok | {:error, term()}
-
-  def handle(%{"patch" => patch} = args, context) do
-    base_path = args["base_path"] || "."
-    editor = context[:editor] || __MODULE__
-
-    case parse_patch(patch) do
-      {:ok, operations} ->
-        results = Enum.map(operations, &apply_operation(&1, base_path, editor))
-
-        case Enum.find(results, &match?({:error, _}, &1)) do
-          nil -> {:ok, %{applied: length(operations)}}
-          error -> error
-        end
-
-      {:error, _} = error -> error
+context = %{
+  metadata: %{
+    editor: fn %{"patch" => patch}, _context ->
+      # Apply patch here (custom implementation)
+      {:ok, %{accepted: true, bytes: byte_size(patch)}}
     end
-  end
+  }
+}
 
-  defp parse_patch(patch) do
-    # Parse unified diff format
-    # ... implementation ...
-    {:ok, []}
-  end
-
-  defp apply_operation(op, base_path, editor) do
-    # Apply individual operation
-    # ... implementation ...
-    :ok
-  end
-
-  # Default editor implementation
-  @impl true
-  def create_file(path, content), do: File.write(path, content)
-
-  @impl true
-  def update_file(path, patch) do
-    # Apply patch to existing file
-    {:error, :not_implemented}
-  end
-
-  @impl true
-  def delete_file(path), do: File.rm(path)
-end
+Codex.Tools.invoke("apply_patch", %{"patch" => "---\\n+++\\n"}, context)
 ```
 
 ---
 
 ## 4. IMAGE INPUT TYPE (LOW-MEDIUM PRIORITY)
+
+Elixir already supports passing local images to the `codex` CLI via `Codex.Files` staging +
+`Thread.Options.attachments` (translated to `--image` flags). The remaining gap vs the TypeScript SDK
+is API ergonomics: TypeScript supports a per-turn `UserInput[]` union that can inline
+`{type: "local_image", path: ...}` alongside text segments.
 
 ### 4.1 Update Input Type
 
@@ -491,23 +447,9 @@ end
 
 ### 4.2 Handle in Exec
 
-**In**: `lib/codex/exec.ex`
-
-```elixir
-defp build_command(input, opts) do
-  # ... existing code ...
-
-  # Handle image inputs
-  image_flags = case opts[:images] do
-    nil -> []
-    images -> Enum.flat_map(images, fn path -> ["--image", path] end)
-  end
-
-  base_cmd ++ image_flags ++ other_flags
-end
-```
-
----
+No change required for attachments: Elixir already appends `--image` flags for `Codex.Files.Attachment`
+values in `Codex.Exec.attachment_args/1`. This section is only needed if you add a new per-turn image
+input API.
 
 ## 5. REALTIME/VOICE (HIGH PRIORITY - FUTURE)
 
@@ -809,3 +751,11 @@ end
 ---
 
 This implementation guide provides concrete code examples and patterns for implementing the identified gaps. Each section can be tackled independently based on priority.
+
+---
+
+## Review Notes
+
+- Date: 2025-12-14
+- Summary: Corrected recommendations that conflicted with the current Elixir implementation; implemented the highest-impact item (Codex CLI env/flag forwarding) and left remaining work as lifecycle hook wiring + concrete hosted-tool engines (diff/computer/search implementations).
+- Confidence: High for the forwarded CLI items; Medium for future recommendations.

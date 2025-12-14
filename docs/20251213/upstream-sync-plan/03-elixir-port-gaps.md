@@ -7,9 +7,9 @@ states:
 - `openai-agents-python` (`0d2d771..71fa12c`)
 - `codex` / `codex-rs` (`6eeaf46ac..a2c86e5d8`)
 
-## Current Elixir Port State (0.2.2)
+## Current Elixir Port State (0.2.3)
 
-- **Version**: 0.2.2
+- **Version**: 0.2.3
 - **Elixir Source Files**: 46 (`lib/*.ex` and `lib/codex/*.ex`)
 - **Thread + runner APIs**:
   - `Codex.start_thread/2`, `Codex.resume_thread/3`
@@ -35,8 +35,9 @@ states:
 | “last response id” surface | `RunResult.last_response_id` | Not exposed | **Missing** (backend-dependent) |
 
 Notes:
-- The Elixir SDK already models `previous_response_id` and `conversation_id`, but does not currently
-  forward them to the codex subprocess (it stores them in session metadata only).
+- The Elixir SDK models `previous_response_id` and `conversation_id`, but Codex CLI session
+  continuation is performed via `thread_id` + `resume` (no `codex exec` flags for user-supplied
+  chaining identifiers).
 - The upstream agents-python feature relies on access to an OpenAI `response_id`; the Elixir SDK’s
   current `codex exec --experimental-json` transport does not provide one.
 

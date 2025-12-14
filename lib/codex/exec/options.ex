@@ -14,6 +14,7 @@ defmodule Codex.Exec.Options do
             tool_outputs: [],
             tool_failures: [],
             env: %{},
+            clear_env?: nil,
             cancellation_token: nil,
             timeout_ms: nil
 
@@ -27,6 +28,7 @@ defmodule Codex.Exec.Options do
           tool_outputs: [map()],
           tool_failures: [map()],
           env: map(),
+          clear_env?: boolean() | nil,
           cancellation_token: String.t() | nil,
           timeout_ms: pos_integer() | nil
         }
@@ -45,6 +47,7 @@ defmodule Codex.Exec.Options do
     tool_outputs = Map.get(attrs, :tool_outputs, Map.get(attrs, "tool_outputs", []))
     tool_failures = Map.get(attrs, :tool_failures, Map.get(attrs, "tool_failures", []))
     env = Map.get(attrs, :env, Map.get(attrs, "env", %{}))
+    clear_env? = Map.get(attrs, :clear_env?, Map.get(attrs, "clear_env?"))
     cancellation_token = Map.get(attrs, :cancellation_token, Map.get(attrs, "cancellation_token"))
     timeout_ms = Map.get(attrs, :timeout_ms, Map.get(attrs, "timeout_ms"))
 
@@ -54,6 +57,7 @@ defmodule Codex.Exec.Options do
          {:ok, tool_outputs} <- ensure_list(tool_outputs, :tool_outputs),
          {:ok, tool_failures} <- ensure_list(tool_failures, :tool_failures),
          {:ok, env} <- normalize_env(env),
+         {:ok, clear_env?} <- validate_optional_boolean(clear_env?, :clear_env?),
          :ok <- validate_cancellation_token(cancellation_token),
          :ok <- validate_timeout(timeout_ms) do
       {:ok,
@@ -67,6 +71,7 @@ defmodule Codex.Exec.Options do
          tool_outputs: tool_outputs,
          tool_failures: tool_failures,
          env: env,
+         clear_env?: clear_env?,
          cancellation_token: cancellation_token,
          timeout_ms: timeout_ms
        }}
@@ -124,6 +129,10 @@ defmodule Codex.Exec.Options do
   end
 
   defp validate_cancellation_token(token), do: {:error, {:invalid_cancellation_token, token}}
+
+  defp validate_optional_boolean(nil, _field), do: {:ok, nil}
+  defp validate_optional_boolean(value, _field) when is_boolean(value), do: {:ok, value}
+  defp validate_optional_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
 
   defp validate_timeout(nil), do: :ok
   defp validate_timeout(timeout) when is_integer(timeout) and timeout > 0, do: :ok

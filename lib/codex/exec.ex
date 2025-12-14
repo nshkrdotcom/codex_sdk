@@ -16,6 +16,18 @@ defmodule Codex.Exec do
   alias Codex.TransportError
 
   @default_timeout_ms 3_600_000
+  @default_preserved_env_keys ~w(
+    HOME
+    USER
+    LOGNAME
+    PATH
+    LANG
+    LC_ALL
+    TMPDIR
+    CODEX_HOME
+    XDG_CONFIG_HOME
+    XDG_CACHE_HOME
+  )
 
   @type exec_opts :: %{
           optional(:codex_opts) => Options.t(),
@@ -27,6 +39,7 @@ defmodule Codex.Exec do
           optional(:tool_outputs) => [map()],
           optional(:tool_failures) => [map()],
           optional(:env) => map(),
+          optional(:clear_env?) => boolean(),
           optional(:cancellation_token) => String.t(),
           optional(:timeout_ms) => pos_integer()
         }
@@ -187,6 +200,13 @@ defmodule Codex.Exec do
     ["exec", "--experimental-json"] ++
       model_args(codex_opts) ++
       reasoning_effort_args(codex_opts) ++
+      sandbox_args(exec_opts.thread) ++
+      working_directory_args(exec_opts.thread) ++
+      additional_directories_args(exec_opts.thread) ++
+      skip_git_repo_check_args(exec_opts.thread) ++
+      network_access_args(exec_opts.thread) ++
+      ask_for_approval_args(exec_opts.thread) ++
+      web_search_args(exec_opts.thread) ++
       resume_args(exec_opts.thread) ++
       continuation_args(exec_opts.continuation_token) ++
       cancellation_args(exec_opts.cancellation_token) ++
@@ -206,6 +226,89 @@ defmodule Codex.Exec do
   end
 
   defp reasoning_effort_args(_), do: []
+
+  defp sandbox_args(%{thread_opts: %Codex.Thread.Options{} = opts}) do
+    case sandbox_mode(opts.sandbox) do
+      nil -> []
+      mode -> ["--sandbox", mode]
+    end
+  end
+
+  defp sandbox_args(_), do: []
+
+  defp sandbox_mode(:strict), do: "read-only"
+  defp sandbox_mode(:default), do: "workspace-write"
+  defp sandbox_mode(:permissive), do: "danger-full-access"
+  defp sandbox_mode(:read_only), do: "read-only"
+  defp sandbox_mode(:workspace_write), do: "workspace-write"
+  defp sandbox_mode(:danger_full_access), do: "danger-full-access"
+  defp sandbox_mode("read-only"), do: "read-only"
+  defp sandbox_mode("workspace-write"), do: "workspace-write"
+  defp sandbox_mode("danger-full-access"), do: "danger-full-access"
+  defp sandbox_mode(nil), do: nil
+  defp sandbox_mode(value) when is_binary(value), do: value
+  defp sandbox_mode(_), do: nil
+
+  defp working_directory_args(%{thread_opts: %Codex.Thread.Options{working_directory: dir}})
+       when is_binary(dir) and dir != "" do
+    ["--cd", dir]
+  end
+
+  defp working_directory_args(_), do: []
+
+  defp additional_directories_args(%{
+         thread_opts: %Codex.Thread.Options{additional_directories: dirs}
+       })
+       when is_list(dirs) and dirs != [] do
+    Enum.flat_map(dirs, fn
+      dir when is_binary(dir) and dir != "" -> ["--add-dir", dir]
+      _ -> []
+    end)
+  end
+
+  defp additional_directories_args(_), do: []
+
+  defp skip_git_repo_check_args(%{thread_opts: %Codex.Thread.Options{skip_git_repo_check: true}}),
+    do: ["--skip-git-repo-check"]
+
+  defp skip_git_repo_check_args(_), do: []
+
+  defp network_access_args(%{thread_opts: %Codex.Thread.Options{network_access_enabled: value}})
+       when value in [true, false] do
+    ["--config", "sandbox_workspace_write.network_access=#{value}"]
+  end
+
+  defp network_access_args(_), do: []
+
+  defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: nil}}), do: []
+
+  defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: policy}}) do
+    case approval_policy(policy) do
+      nil -> []
+      value -> ["--config", ~s(approval_policy="#{value}")]
+    end
+  end
+
+  defp ask_for_approval_args(_), do: []
+
+  defp approval_policy(:untrusted), do: "untrusted"
+  defp approval_policy(:on_failure), do: "on-failure"
+  defp approval_policy(:on_request), do: "on-request"
+  defp approval_policy(:never), do: "never"
+  defp approval_policy("untrusted"), do: "untrusted"
+  defp approval_policy("on-failure"), do: "on-failure"
+  defp approval_policy("on-request"), do: "on-request"
+  defp approval_policy("never"), do: "never"
+  defp approval_policy(nil), do: nil
+  defp approval_policy(value) when is_binary(value), do: value
+  defp approval_policy(_), do: nil
+
+  defp web_search_args(%{thread_opts: %Codex.Thread.Options{web_search_enabled: value}})
+       when value in [true, false] do
+    ["--config", "features.web_search_request=#{value}"]
+  end
+
+  defp web_search_args(_), do: []
 
   defp resume_args(%{thread_id: thread_id}) when is_binary(thread_id), do: ["resume", thread_id]
   defp resume_args(_), do: []
@@ -235,20 +338,44 @@ defmodule Codex.Exec do
 
   defp attachment_cli_args(_), do: []
 
-  defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env}) do
+  defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env} = exec_opts) do
     base_env =
       []
       |> maybe_put_key("CODEX_API_KEY", opts.api_key)
       |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
+      |> maybe_put_key("OPENAI_BASE_URL", opts.base_url)
       |> maybe_put_key("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "codex_sdk_elixir")
       |> Map.new()
 
-    base_env
-    |> Map.merge(env, fn _key, _base, custom -> custom end)
-    |> Enum.map(fn {key, value} -> {key, value} end)
+    merged =
+      base_env
+      |> Map.merge(env, fn _key, _base, custom -> custom end)
+
+    merged_list = Enum.map(merged, fn {key, value} -> {key, value} end)
+
+    if clear_env?(exec_opts) do
+      preserve = preserved_env()
+      [:clear | preserve ++ merged_list]
+    else
+      merged_list
+    end
   end
 
   defp build_env(_), do: []
+
+  defp clear_env?(%ExecOptions{clear_env?: value}) when is_boolean(value), do: value
+  defp clear_env?(%ExecOptions{}), do: false
+
+  defp preserved_env do
+    @default_preserved_env_keys
+    |> Enum.reduce([], fn key, acc ->
+      case System.get_env(key) do
+        nil -> acc
+        value -> [{key, value} | acc]
+      end
+    end)
+    |> Enum.reverse()
+  end
 
   defp maybe_put_key(env, _key, nil), do: env
   defp maybe_put_key(env, _key, ""), do: env

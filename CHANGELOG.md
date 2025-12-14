@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-12-13
+
+### Added
+- Forwarded Codex CLI execution options via `Codex.Thread.Options`: sandbox mode, working directory, additional writable directories, skip-git-repo-check, web search toggle, approval policy, and workspace-write network access
+- `turn_opts[:clear_env?]` to optionally clear inherited subprocess environment when spawning `codex`
+
+### Changed
+- `OPENAI_BASE_URL` is now set for the `codex` subprocess from `Codex.Options.base_url`
+- Port gap analysis docs updated to reflect the wired Codex CLI surface and erlexec hardening option
+
 ## [0.2.2] - 2025-12-13
 
 ### Added

@@ -5,29 +5,32 @@
 
 ## Executive Summary
 
-The Elixir SDK has successfully ported **~85-90%** of features from both source SDKs. This document identifies the remaining **unported features** that could be added to achieve full feature parity.
+The original estimate (**~85–90%**) overstated parity. The Elixir SDK covers the core agent loop well,
+and it now forwards the main Codex CLI knobs used by the TypeScript SDK (sandbox/cd/add-dir/skip-git,
+base URL, network access, web search, approval policy). Remaining gaps are concentrated in Python
+realtime/voice and in “Python-style” execution knobs that don’t map cleanly to the Codex CLI.
 
 ---
 
 ## 1. FROM CODEX (TypeScript SDK)
 
-### 1.1 FULLY PORTED
+### 1.1 FULLY PORTED / PARTIAL
 
 | Feature | TypeScript | Elixir | Status |
 |---------|-----------|--------|--------|
 | Core Codex class | `Codex` | `Codex` | DONE |
 | Thread management | `Thread` | `Codex.Thread` | DONE |
 | Streaming execution | `runStreamed()` | `run_streamed/3` | DONE |
-| CodexOptions | Full options | `Codex.Options` | DONE |
-| ThreadOptions | All options | `Codex.Thread.Options` | DONE |
-| TurnOptions | Output schema | Supported via turn_opts | DONE |
-| Event types | 10+ event types | `Codex.Events.*` | DONE |
+| CodexOptions | `apiKey`, `baseUrl`, `codexPathOverride`, `env` | `Codex.Options` | PARTIAL (no “replace entire env” mode like TS; base URL is forwarded via `OPENAI_BASE_URL`) |
+| ThreadOptions | model/sandbox/cd/add-dir/skip-git/network/web_search/approval_policy | `Codex.Thread.Options` | DONE (forwarded to `codex exec` via flags/`--config` where applicable) |
+| TurnOptions | output schema + AbortSignal | `turn_opts` | PARTIAL (output schema supported; cancellation differs) |
+| Event types | 8 event types | `Codex.Events.*` | DONE (+ Elixir adds extra event structs) |
 | Item types | All item types | `Codex.Items.*` | DONE |
 | MCP support | MCP tool calls | `Codex.MCP.Client` | DONE |
 | Structured output | JSON schema | Supported | DONE |
 | Process execution | spawn/readline | erlexec | DONE |
-| Platform detection | Binary resolution | Via codex_path | DONE |
-| Abort/cancellation | AbortSignal | cancel/2 modes | DONE |
+| Platform/binary resolution | bundled vendor binary | `Options.codex_path/1` | PARTIAL (no bundled binary; uses `CODEX_PATH`/PATH) |
+| Abort/cancellation | `AbortSignal` | cancellation token + stream cancel | PARTIAL |
 
 ### 1.2 NOT PORTED / GAPS
 
@@ -38,7 +41,7 @@ The Elixir SDK has successfully ported **~85-90%** of features from both source 
 ```typescript
 // TypeScript has:
 - bashSelection.ts - Platform-specific bash variant selection
-- platform.ts - Linux distro detection (Ubuntu, Debian, RHEL, Alpine, etc.)
+- osRelease.ts + bashSelection.ts - Linux distro/version detection for bash selection (Ubuntu/Debian/CentOS/RHEL-family)
 - execve wrapper support for sandboxing
 - Version-aware bash selection for different OS versions
 ```
@@ -51,7 +54,7 @@ The Elixir SDK has successfully ported **~85-90%** of features from both source 
 
 #### 1.2.2 Image Input Handling
 
-**Missing**: Direct local image file support in inputs.
+**Missing**: TypeScript-style typed “mixed input” (`UserInput[]`) that can inline local images per turn.
 
 ```typescript
 // TypeScript supports:
@@ -60,7 +63,8 @@ type UserInput =
   | { type: "local_image"; path: string };
 ```
 
-**Elixir Status**: Not directly exposed - images go through attachments.
+**Elixir Status**: Image passing is supported via `Codex.Files` staging + `Thread.Options.attachments`
+(translated to `codex exec --image ...`), but there is no `UserInput[]`-style API.
 
 **Recommendation**: MEDIUM priority - Add explicit image input type.
 
@@ -73,16 +77,17 @@ type UserInput =
 
 #### 1.2.3 Sandbox Mode Constants
 
-**Missing**: Explicit sandbox mode type with all values documented.
+**Missing**: Nothing (forwarding + mapping implemented). Remaining work is documentation polish only.
 
 ```typescript
 // TypeScript:
 type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 ```
 
-**Elixir Status**: Uses atoms `:default`, `:strict`, `:permissive` - different naming.
+**Elixir Status**: Forwarded to `codex exec --sandbox ...` with a default mapping:
+`:strict → read-only`, `:default → workspace-write`, `:permissive → danger-full-access`.
 
-**Recommendation**: LOW priority - Document the mapping or add aliases.
+**Recommendation**: DONE (mapping + forwarding implemented). Remaining work is documentation polish only.
 
 ---
 
@@ -98,10 +103,10 @@ type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 | Guardrails | Input/Output | `Codex.Guardrail` | DONE |
 | Tool guardrails | Tool-specific | `Codex.ToolGuardrail` | DONE |
 | Run config | `RunConfig` | `Codex.RunConfig` | DONE |
-| Model settings | `ModelSettings` | `Codex.ModelSettings` | DONE |
+| Model settings | `ModelSettings` | `Codex.ModelSettings` | PARTIAL (struct exists; not forwarded to `codex exec`) |
 | Streaming | `RunResultStreaming` | `Codex.RunResultStreaming` | DONE |
 | Session | `Session` protocol | `Codex.Session` behavior | DONE |
-| Memory session | `SQLiteSession` | `Codex.Session.Memory` | PARTIAL |
+| Session implementations | `SQLiteSession` (+ extensions) | `Codex.Session.Memory` | PARTIAL (Elixir has in-memory only; no SQLite/Redis/etc) |
 | Telemetry | Tracing spans | `Codex.Telemetry` + OTEL | DONE |
 | Tool output types | Text/Image/File | `Codex.ToolOutput` | DONE |
 | Usage tracking | `Usage` class | Via events + result | DONE |
@@ -206,11 +211,8 @@ class OpenAIConversationsSession:  # Server-side storage
 
 ```python
 # Python has:
-class LiteLLMProvider:
+class LitellmProvider:
     """100+ model support via LiteLLM"""
-
-class LiteLLMModel:
-    """LiteLLM model wrapper"""
 
 class MultiProvider:
     """Provider aggregation with fallback"""
@@ -227,7 +229,7 @@ class MultiProvider:
 
 #### 2.2.5 HOSTED TOOLS (PARTIAL)
 
-**Missing**: Some hosted tool types not fully implemented.
+**Missing**: Concrete implementations matching Python’s behavior (not just wrappers).
 
 ```python
 # Python has these hosted tools:
@@ -243,16 +245,14 @@ ApplyPatchTool      # File mutation via diffs
 ```
 
 **Elixir Status**:
-- FileSearch: DONE via `Codex.FileSearch`
-- WebSearch: Available via codex binary
-- Others: Not explicitly implemented as standalone tools
+- Wrapper modules exist under `lib/codex/tools/hosted_tools.ex`:
+  `Codex.Tools.{FileSearchTool,WebSearchTool,ComputerTool,HostedMcpTool,CodeInterpreterTool,ImageGenerationTool,ShellTool,ApplyPatchTool}`.
+- These wrappers are callback-driven; they do not implement browser automation, diff application, etc. out of the box.
 
-**Recommendation**: MEDIUM priority. Add explicit wrappers for:
-- `Codex.Tools.WebSearch`
-- `Codex.Tools.CodeInterpreter`
-- `Codex.Tools.ImageGeneration`
-- `Codex.Tools.Computer`
-- `Codex.Tools.ApplyPatch`
+**Recommendation**: MEDIUM priority. Implement missing *engines* behind the wrappers:
+- ApplyPatch: parse/apply diffs (Python has `apply_diff` + `ApplyPatchEditor` operations)
+- Computer: provide an implementation (Python has `Computer`/`AsyncComputer`)
+- Web/File search: provide default implementations (or clearly document “bring your own callback”)
 
 ---
 
@@ -280,7 +280,7 @@ class AsyncComputer:
     """Async variant of Computer"""
 ```
 
-**Elixir Status**: Not implemented.
+**Elixir Status**: Wrapper exists (`Codex.Tools.ComputerTool`) but there is no built-in computer automation implementation equivalent to Python’s `Computer` / `AsyncComputer`.
 
 **Recommendation**: LOW priority unless computer-use is needed. Could add:
 - `Codex.Computer` behavior
@@ -304,7 +304,7 @@ class ApplyPatchEditor(Protocol):
     def delete_file(op: DeleteFileOperation) -> ApplyPatchResult
 ```
 
-**Elixir Status**: Not implemented as standalone tool.
+**Elixir Status**: Wrapper exists (`Codex.Tools.ApplyPatchTool`) but there is no built-in diff parser/applicator.
 
 **Recommendation**: MEDIUM priority. Add:
 - `Codex.Tools.ApplyPatch` - Diff application tool
@@ -335,7 +335,7 @@ class AgentHooks:
     on_tool_end()
 ```
 
-**Elixir Status**: `hooks` field exists in Agent but callback structure not fully defined.
+**Elixir Status**: `Codex.Agent` and `Codex.RunConfig` have `hooks` fields, but they are not invoked in the current runner implementation.
 
 **Recommendation**: MEDIUM priority. Define:
 - `Codex.Hooks` behavior with all callbacks
@@ -376,7 +376,7 @@ ReasoningItem  # Structured reasoning output
 "minimal", "low", "medium", "high"
 ```
 
-**Elixir Status**: PARTIAL - `Codex.Models.reasoning_efforts()` exists but not full integration.
+**Elixir Status**: PARTIAL - `Codex.Options.reasoning_effort` is forwarded to `codex exec` via `--config model_reasoning_effort=...`, but `Codex.ModelSettings` is not forwarded to the CLI today.
 
 **Recommendation**: LOW priority - works through codex binary.
 
@@ -392,9 +392,10 @@ RunConfig.previous_response_id  # Skip redundant input
 RunConfig.auto_previous_response_id  # Auto-enable
 ```
 
-**Elixir Status**: `Codex.RunConfig.previous_response_id` exists - may need verification.
+**Elixir Status**: Codex CLI does not expose `codex exec` flags for user-supplied response chaining.
+The supported “continue” mechanism is `thread_id` + `resume` (which Elixir supports).
 
-**Recommendation**: Verify this is working correctly in Elixir.
+**Recommendation**: Treat `previous_response_id` / `conversation_id` as Python-compat metadata only; use `resume` for Codex CLI continuation.
 
 ---
 
@@ -411,9 +412,9 @@ class OpenAIConversationsSession:
 RunConfig.conversation_id  # Server-side storage
 ```
 
-**Elixir Status**: `Codex.RunConfig.conversation_id` field exists but integration unclear.
+**Elixir Status**: Codex CLI session continuation is performed via `resume` rather than user-supplied conversation ids in `codex exec`.
 
-**Recommendation**: LOW priority - verify integration with codex binary.
+**Recommendation**: LOW priority unless/until the `codex` CLI exposes an explicit conversation-id interface.
 
 ---
 
@@ -538,8 +539,8 @@ Realtime Audio                  -           Y         STUB
 Voice Pipeline                  -           Y         STUB
 Multi-Provider Models           -           Y         -
 Computer Control                -           Y         -
-Response Chaining               -           Y         Y
-Conversation State API          -           Y         PARTIAL
+Response Chaining               -           Y         PARTIAL (metadata-only)
+Conversation State API          -           Y         PARTIAL (metadata-only)
 ```
 
 ---
@@ -547,28 +548,42 @@ Conversation State API          -           Y         PARTIAL
 ## 5. RECOMMENDATIONS
 
 ### Immediate Actions
-1. **Verify** response chaining and conversation_id work correctly
-2. **Document** the sandbox mode mapping (`:default`/`:strict`/`:permissive` ↔ sandbox modes)
-3. **Add** explicit image input type for better ergonomics
+1. **DONE**: TypeScript-style `ThreadOptions` forwarding (sandbox/cd/add-dir/skip-git/network/web_search/approval_policy + `OPENAI_BASE_URL`)
+2. **Document** that Codex CLI continuation is `thread_id` + `resume` (not `previous_response_id`)
+3. **Optionally add** a typed “local image” input API (Elixir already supports `--image` via attachments)
 
 ### Short-Term (Next Release)
 1. **Implement** at least one persistent session backend (ETS or DETS)
-2. **Define** the `Codex.Hooks` behavior formally
-3. **Add** convenience wrappers for hosted tools
+2. **Define + wire** lifecycle hooks (Python’s `RunHooks`/`AgentHooks` equivalents; Elixir fields exist but are unused)
+3. **Ship defaults or document BYO** for hosted tools (wrappers exist; engines are missing)
 
 ### Medium-Term (Future Releases)
 1. **Evaluate** realtime/voice requirements - implement if needed
 2. **Consider** adding Redis/Ecto session adapters
-3. **Add** ApplyPatch tool for file editing workflows
+3. **Implement** diff parsing/application (Python has `apply_diff` + structured patch operations)
 
 ---
 
 ## 6. CONCLUSION
 
-The Elixir Codex SDK has achieved excellent feature parity with both source SDKs. The main gaps are:
+The Elixir Codex SDK is strong for text workflows, but parity is **uneven** across sources:
+- The Python agent loop concepts are largely present (tools/guardrails/handoffs/sessions/streaming), with notable gaps in lifecycle hooks and realtime/voice.
+- The TypeScript SDK is a thin wrapper around Codex CLI flags/env; Elixir now forwards the same major knobs.
+
+The main gaps to close are:
 
 1. **Realtime/Voice** - Intentionally stubbed; implement when needed
-2. **Session backends** - Only in-memory; add persistent options
-3. **Some convenience APIs** - Hosted tool wrappers, hooks, etc.
+2. **Codex CLI option forwarding** - DONE
+3. **Session backends** - Only in-memory; add persistent options
+4. **Lifecycle hooks** - Fields exist; callbacks are not invoked today
+5. **Hosted tool engines** - Wrappers exist; implementations (computer automation, diff application, etc.) are BYO
 
-The SDK is production-ready for all text-based agent workflows. Audio/voice capabilities require additional implementation if needed for specific use cases.
+The SDK is production-ready for text-based agent workflows when the “bring your own hosted tool implementation” model is acceptable.
+
+---
+
+## Review Notes
+
+- Date: 2025-12-14
+- Summary: Corrected overstated “fully ported” claims and implemented Codex CLI option forwarding in Elixir (`OPENAI_BASE_URL`, `--sandbox`, `--cd`, `--add-dir`, `--skip-git-repo-check`, plus `--config` for `approval_policy`, `features.web_search_request`, and `sandbox_workspace_write.network_access`) to match the TypeScript SDK’s behavior. Added an optional `clear_env?` execution switch to harden subprocess environment handling.
+- Confidence: High (forwarding verified against `codex exec --help`; environment semantics verified against erlexec docs/source).
