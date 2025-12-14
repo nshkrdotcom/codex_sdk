@@ -14,25 +14,26 @@ This document specifies the Elixir public API for the multi-transport refactor, 
 ## Module Structure
 
 ```
-lib/codex/
+lib/
 ├── codex.ex                    # Main entry point (unchanged interface)
-├── thread.ex                   # Thread struct + operations (transport-agnostic)
-├── options.ex                  # Codex options (unchanged)
-├── transport.ex                # NEW: Transport behaviour
-├── transport/
-│   ├── exec_jsonl.ex           # NEW: Exec transport (wraps existing Codex.Exec)
-│   └── app_server.ex           # NEW: App-server transport
-├── app_server/
-│   ├── connection.ex           # NEW: Connection GenServer
-│   ├── supervisor.ex           # NEW: Connection supervisor
-│   ├── protocol.ex             # NEW: JSON-RPC encoding/decoding
-│   ├── notification_adapter.ex # NEW: Notification → Event mapping
-│   └── item_adapter.ex         # NEW: ThreadItem → Items mapping
-├── exec.ex                     # Existing (unchanged, but wrapped)
-├── events.ex                   # Existing (extended with new event types)
-├── items.ex                    # Existing (extended with new item types)
-└── approvals/
-    └── hook.ex                 # Existing (unchanged interface)
+└── codex/
+    ├── thread.ex               # Thread struct + operations (transport-agnostic)
+    ├── options.ex              # Codex options (unchanged)
+    ├── transport.ex            # NEW: Transport behaviour
+    ├── transport/
+    │   ├── exec_jsonl.ex       # NEW: Exec transport (wraps existing Codex.Exec)
+    │   └── app_server.ex       # NEW: App-server transport
+    ├── app_server/
+    │   ├── connection.ex           # NEW: Connection GenServer
+    │   ├── supervisor.ex           # NEW: Connection supervisor
+    │   ├── protocol.ex             # NEW: JSON-RPC encoding/decoding
+    │   ├── notification_adapter.ex # NEW: Notification → Event mapping
+    │   └── item_adapter.ex         # NEW: ThreadItem → Items mapping
+    ├── exec.ex                 # Existing (unchanged, but wrapped)
+    ├── events.ex               # Existing (extended with new event types)
+    ├── items.ex                # Existing (extended with new item types)
+    └── approvals/
+        └── hook.ex             # Existing (backwards compatible; may add new decision shapes)
 ```
 
 ---
@@ -81,7 +82,7 @@ end
 ```elixir
 # These continue to work exactly as before
 Codex.start_thread(codex_opts, thread_opts)
-Codex.resume_thread(codex_opts, thread_opts, thread_id)
+Codex.resume_thread(thread_id, codex_opts, thread_opts)
 ```
 
 ### New Option: Transport Selection
@@ -129,8 +130,9 @@ defmodule Codex.AppServer do
 
   @type connection :: pid()
   @type connect_opts :: [
-    timeout: pos_integer(),           # Init handshake timeout (default: 10_000)
+    init_timeout_ms: pos_integer(),   # Init handshake timeout (default: 10_000)
     client_name: String.t(),          # Client identifier (default: "codex_sdk")
+    client_title: String.t(),         # Optional human title (default: nil)
     client_version: String.t()        # Client version (default from mix.exs)
   ]
 
@@ -142,14 +144,15 @@ defmodule Codex.AppServer do
 
   ## Options
 
-  - `:timeout` - Handshake timeout in milliseconds (default: 10,000)
+  - `:init_timeout_ms` - Handshake timeout in milliseconds (default: 10,000)
   - `:client_name` - Name to identify this client (default: "codex_sdk")
+  - `:client_title` - Optional human-readable title
   - `:client_version` - Client version string
 
   ## Examples
 
       {:ok, conn} = Codex.AppServer.connect(codex_opts)
-      {:ok, conn} = Codex.AppServer.connect(codex_opts, timeout: 30_000)
+      {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)
   """
   @spec connect(Codex.Options.t(), connect_opts()) :: {:ok, connection()} | {:error, term()}
   def connect(codex_opts, opts \\ [])
@@ -246,6 +249,10 @@ defmodule Codex.AppServer do
         %{type: :text, text: "Explain this image"},
         %{type: :local_image, path: "/tmp/screenshot.png"}
       ])
+
+  Note: app-server wire input types are `text`, `image`, and `localImage`
+  (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293`). `Codex.AppServer.turn_start/4`
+  should accept snake_case atoms and convert them to the wire format.
 
   ## Options
 
@@ -349,6 +356,16 @@ end
 
 ## Config and Model APIs
 
+Upstream type references:
+- Config: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:356-401` (`ConfigReadParams/Response`, `ConfigValueWriteParams`, `ConfigBatchWriteParams`, `ConfigWriteResponse`)
+- Models: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:722-759` (`ModelListParams/Response`)
+
+Recommended Elixir mapping:
+- `config_read/2`: accept `include_layers: boolean()`; return `%{config: ..., origins: ..., layers: ... | nil}`
+- `config_write/4`: require `merge_strategy: :replace | :upsert` (default `:replace`), optional `file_path`, `expected_version`; return `%{status: ..., version: ..., file_path: ..., overridden_metadata: ... | nil}`
+- `config_batch_write/3`: accept `edits: [%{key_path: ..., value: ..., merge_strategy: ...}]` plus optional `file_path`, `expected_version`; return same shape as `config_write/4`
+- `model_list/2`: accept `cursor` + `limit`; return `%{data: [...], next_cursor: ... | nil}`
+
 ```elixir
 defmodule Codex.AppServer do
   @doc """
@@ -360,14 +377,20 @@ defmodule Codex.AppServer do
   @doc """
   Writes a single configuration value.
   """
-  @spec config_write(connection(), String.t(), term()) :: :ok | {:error, term()}
-  def config_write(conn, key, value)
+  @spec config_write(connection(), String.t(), term(), keyword()) :: {:ok, map()} | {:error, term()}
+  def config_write(conn, key_path, value, opts \\ [])
+
+  @doc """
+  Writes multiple configuration edits in a single operation.
+  """
+  @spec config_batch_write(connection(), [map()], keyword()) :: {:ok, map()} | {:error, term()}
+  def config_batch_write(conn, edits, opts \\ [])
 
   @doc """
   Lists available models.
   """
-  @spec model_list(connection()) :: {:ok, [map()]} | {:error, term()}
-  def model_list(conn)
+  @spec model_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
+  def model_list(conn, opts \\ [])
 end
 ```
 
@@ -455,7 +478,7 @@ end
 
 1. `Codex.start_thread/2` continues to use exec transport by default
 2. `Codex.Thread.run/3` and `run_streamed/3` work unchanged
-3. `Codex.Events` and `Codex.Items` parsing unchanged
+3. Exec JSONL parsing (`Codex.Events` / `Codex.Items`) remains unchanged; app-server adds adapters and new optional fields/types
 4. `Codex.Approvals.Hook` callbacks unchanged
 
 ### Migration Path
@@ -498,12 +521,13 @@ defmodule Codex.AppServer.Error do
   Error returned from app-server operations.
   """
 
-  defexception [:message, :info, :request_id]
+  defexception [:message, :code, :data, :request_id]
 
   @type t :: %__MODULE__{
     message: String.t(),
-    info: String.t() | nil,  # codexErrorInfo value
-    request_id: integer() | nil
+    code: integer() | nil,
+    data: term() | nil,
+    request_id: integer() | String.t() | nil
   }
 end
 

@@ -57,7 +57,7 @@ Deliverables:
   - `item/fileChange/requestApproval`
   (registry: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465`)
 - Route to `Codex.Approvals.Hook.review_command/3` and `review_file/3` (see `lib/codex/approvals/hook.ex:94`).
-- Send JSON-RPC responses to allow/deny.
+- Send JSON-RPC responses using `ApprovalDecision` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`).
 
 Exit criteria:
 - Turns that require approvals succeed under configured policy/hook.
@@ -90,4 +90,3 @@ Blocked by upstream app-server protocol missing the variant:
 Options:
 - Upstream change to app-server protocol (preferred for true parity)
 - SDK emulation by reading skill bodies and injecting as text (behavioral parity, not protocol parity)
-

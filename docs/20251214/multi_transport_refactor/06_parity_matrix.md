@@ -2,7 +2,7 @@
 
 This matrix focuses on *reachable* upstream functionality via either:
 
-- `codex exec --json` (JSONL)
+- `codex exec` JSONL output (`--experimental-json` in `codex_sdk` today)
 - `codex app-server` (JSON-RPC over stdio)
 
 Some functionality exists only in the interactive TUI (core-linked) and is not currently exposed via app-server.
@@ -56,4 +56,3 @@ It does NOT use app-server, only `codex exec`. This means `codex_sdk` achieving 
 For detailed method-by-method implementation planning, see:
 - `10_protocol_mapping_spec.md` - Complete protocol mapping with Elixir API names
 - `09_requirements_and_nongoals.md` - Explicit parity definitions and scope
-
