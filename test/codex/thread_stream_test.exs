@@ -2,9 +2,9 @@ defmodule Codex.ThreadStreamTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
   alias Codex.{Options, RunResultStreaming, Thread}
+  alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
 
   setup do
     {:ok, thread_opts} = ThreadOptions.new(%{})

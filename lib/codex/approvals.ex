@@ -67,73 +67,67 @@ defmodule Codex.Approvals do
     started = System.monotonic_time()
     timeout = Keyword.get(opts, :timeout, 30_000)
 
-    # Call prepare if available
-    context =
-      if function_exported?(module, :prepare, 2) do
-        case module.prepare(event, context) do
-          {:ok, new_context} -> new_context
-          {:error, _} -> context
-        end
-      else
-        context
-      end
+    prepared_context = maybe_prepare_context(module, event, context)
 
-    # Call review_tool
-    case module.review_tool(event, context, opts) do
-      :allow = result ->
-        emit_result_telemetry(result, event, started)
-        result
-
-      {:deny, _reason} = result ->
-        emit_result_telemetry(result, event, started)
-        result
-
-      {:async, ref} ->
-        # Handle async - await if the hook supports it
-        if function_exported?(module, :await, 2) do
-          # Store test_pid in process dictionary for hook to access
-          case module.await(ref, timeout) do
-            {:ok, decision} ->
-              emit_result_telemetry(decision, event, started)
-              decision
-
-            {:error, :timeout} ->
-              emit_timeout_telemetry(event, started)
-              {:deny, "approval timeout"}
-
-            {:error, reason} ->
-              result = {:deny, "approval error: #{inspect(reason)}"}
-              emit_result_telemetry(result, event, started)
-              result
-          end
-        else
-          # Hook doesn't support await, return async
-          {:async, ref}
-        end
-
-      {:async, ref, metadata} ->
-        if function_exported?(module, :await, 2) do
-          case module.await(ref, timeout) do
-            {:ok, decision} ->
-              emit_result_telemetry(decision, event, started)
-              decision
-
-            {:error, :timeout} ->
-              emit_timeout_telemetry(event, started)
-              {:deny, "approval timeout"}
-
-            {:error, reason} ->
-              result = {:deny, "approval error: #{inspect(reason)}"}
-              emit_result_telemetry(result, event, started)
-              result
-          end
-        else
-          {:async, ref, metadata}
-        end
-    end
+    module.review_tool(event, prepared_context, opts)
+    |> handle_review_result(module, event, started, timeout)
   end
 
   defp do_review_tool(_policy_or_hook, _event, _context, _opts), do: :allow
+
+  defp maybe_prepare_context(module, event, context) do
+    if function_exported?(module, :prepare, 2) do
+      case module.prepare(event, context) do
+        {:ok, new_context} -> new_context
+        _ -> context
+      end
+    else
+      context
+    end
+  end
+
+  defp handle_review_result(:allow = result, _module, event, started, _timeout) do
+    emit_result_telemetry(result, event, started)
+    result
+  end
+
+  defp handle_review_result({:deny, _reason} = result, _module, event, started, _timeout) do
+    emit_result_telemetry(result, event, started)
+    result
+  end
+
+  defp handle_review_result({:async, ref} = result, module, event, started, timeout) do
+    maybe_await(module, ref, result, event, started, timeout)
+  end
+
+  defp handle_review_result({:async, ref, _metadata} = result, module, event, started, timeout) do
+    maybe_await(module, ref, result, event, started, timeout)
+  end
+
+  defp maybe_await(module, ref, fallback, event, started, timeout) do
+    if function_exported?(module, :await, 2) do
+      module.await(ref, timeout)
+      |> handle_await_result(event, started)
+    else
+      fallback
+    end
+  end
+
+  defp handle_await_result({:ok, decision}, event, started) do
+    emit_result_telemetry(decision, event, started)
+    decision
+  end
+
+  defp handle_await_result({:error, :timeout}, event, started) do
+    emit_timeout_telemetry(event, started)
+    {:deny, "approval timeout"}
+  end
+
+  defp handle_await_result({:error, reason}, event, started) do
+    result = {:deny, "approval error: #{inspect(reason)}"}
+    emit_result_telemetry(result, event, started)
+    result
+  end
 
   defp emit_requested_telemetry(event) do
     Telemetry.emit(

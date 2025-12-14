@@ -996,11 +996,13 @@ defmodule CollaborationExample do
 end
 ```
 
-### Tool Output Bridging and Auto-Run
+### Tool Output Bridging and Auto-Run (Transport Notes)
 
-Tool outputs captured during an auto-run attempt are automatically replayed to the
-`codex exec` CLI on the next continuation, keeping codex-rs aligned with the Elixir tool
-registry.
+The SDK includes a tool registry and can collect structured tool outputs in fixture-driven runs.
+However, the default transport (`codex exec --experimental-json`) does not currently expose a
+supported mechanism to inject tool outputs back into the CLI. Treat the example below as a
+conceptual demo until a tool-capable transport (e.g. MCP-hosted tools or protocol/app-server) is
+adopted.
 
 ```elixir
 defmodule ToolBridgingExample do
@@ -1020,7 +1022,7 @@ defmodule ToolBridgingExample do
     {:ok, result} =
       Codex.Thread.run_auto(thread, "Ask the math tool to add 4 and 5", max_attempts: 2)
 
-    IO.inspect(result.raw[:tool_outputs], label: "tool outputs sent to codex exec")
+    IO.inspect(result.raw[:tool_outputs], label: "tool outputs captured by SDK")
     IO.inspect(result.thread.pending_tool_outputs, label: "pending outputs after turn")
   end
 end

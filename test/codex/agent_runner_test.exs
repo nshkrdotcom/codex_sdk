@@ -3,14 +3,14 @@ defmodule Codex.AgentRunnerTest do
 
   alias Codex.Agent
   alias Codex.AgentRunner
+  alias Codex.Approvals.StaticPolicy
   alias Codex.Items
   alias Codex.Options
   alias Codex.RunConfig
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
   alias Codex.Tools
-  alias Codex.Approvals.StaticPolicy
 
   describe "Agent.new/1" do
     test "builds agent with defaults and validates inputs" do
@@ -57,6 +57,17 @@ defmodule Codex.AgentRunnerTest do
       refute config.nest_handoff_history
 
       assert {:error, {:invalid_max_turns, 0}} = RunConfig.new(%{max_turns: 0})
+    end
+
+    test "accepts auto_previous_response_id" do
+      assert {:ok, config} = RunConfig.new(%{auto_previous_response_id: true})
+      assert config.auto_previous_response_id
+
+      assert {:ok, config} = RunConfig.new(%{})
+      refute config.auto_previous_response_id
+
+      assert {:error, {:invalid_auto_previous_response_id, "yes"}} =
+               RunConfig.new(%{auto_previous_response_id: "yes"})
     end
   end
 
@@ -114,6 +125,59 @@ defmodule Codex.AgentRunnerTest do
       assert {:error, {:max_turns_exceeded, 2, %{continuation: "cont-auto-run"}}} =
                AgentRunner.run(pending_thread, "Still running", %{max_turns: 2})
     end
+  end
+
+  describe "AgentRunner.run/3 auto_previous_response_id" do
+    test "tracks response_id and chains it between internal turns when enabled" do
+      {script_path, state_file} =
+        FixtureScripts.sequential_fixtures([
+          "thread_auto_run_response_id_step1.jsonl",
+          "thread_auto_run_response_id_step2.jsonl"
+        ])
+
+      on_exit(fn ->
+        File.rm_rf(script_path)
+        File.rm_rf(state_file)
+      end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      handler_id = "auto_previous_response_id_#{System.unique_integer([:positive])}"
+      parent = self()
+
+      :telemetry.attach_many(
+        handler_id,
+        [[:codex, :thread, :start]],
+        &__MODULE__.handle_telemetry/4,
+        %{parent: parent}
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert {:ok, result} =
+               AgentRunner.run(thread, "Hello Codex", %{
+                 run_config: %{auto_previous_response_id: true}
+               })
+
+      assert result.last_response_id == "resp_auto_2"
+
+      assert_receive {:telemetry, [:codex, :thread, :start], first_meta}
+      assert_receive {:telemetry, [:codex, :thread, :start], second_meta}
+
+      refute Map.get(first_meta, :previous_response_id)
+      assert Map.get(second_meta, :previous_response_id) == "resp_auto_1"
+    end
+  end
+
+  def handle_telemetry(event, _measurements, metadata, %{parent: parent}) do
+    send(parent, {:telemetry, event, metadata})
   end
 
   describe "Thread facade" do

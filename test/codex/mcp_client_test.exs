@@ -4,6 +4,8 @@ defmodule Codex.MCPClientTest do
   alias Codex.MCP.Client
   alias Codex.Tools
 
+  @sdk_version to_string(Application.spec(:codex_sdk, :vsn))
+
   defmodule FakeTransport do
     use GenServer
 
@@ -57,7 +59,7 @@ defmodule Codex.MCPClientTest do
 
     transport_ref = {FakeTransport, transport}
 
-    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
     assert Client.capabilities(client) == %{"attachments" => %{}, "tools" => %{}}
 
@@ -81,7 +83,7 @@ defmodule Codex.MCPClientTest do
 
     transport_ref = {FakeTransport, transport}
 
-    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
     assert Client.capabilities(client) == %{
              "tools" => %{"listChanged" => true},
@@ -110,7 +112,7 @@ defmodule Codex.MCPClientTest do
 
     transport_ref = {FakeTransport, transport}
 
-    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
     assert {:ok, tools, cached_client} = Client.list_tools(client)
     assert Enum.map(tools, & &1["name"]) == ["alpha", "beta"]
@@ -135,7 +137,7 @@ defmodule Codex.MCPClientTest do
       ])
 
     transport_ref = {FakeTransport, transport}
-    {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+    {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
     backoffs =
       Agent.start_link(fn -> [] end)
@@ -162,7 +164,7 @@ defmodule Codex.MCPClientTest do
       ])
 
     transport_ref = {FakeTransport, transport}
-    {:ok, client} = Client.handshake(transport_ref, client: "codex", version: "0.2.1")
+    {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
     {:ok, _} =
       Tools.register(Codex.Tools.HostedMcpTool,

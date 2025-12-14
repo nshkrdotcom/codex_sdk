@@ -1,8 +1,9 @@
 defmodule Codex.HostedToolsTest do
   use ExUnit.Case, async: false
 
-  alias Codex.Tools
   alias Codex.Tool
+  alias Codex.Tools
+  alias Codex.Tools.{ApplyPatchTool, ComputerTool, FileSearchTool, ShellTool}
 
   setup do
     Tools.reset!()
@@ -24,11 +25,11 @@ defmodule Codex.HostedToolsTest do
       {:ok, "123456789"}
     end
 
-    assert Codex.Tools.ShellTool.metadata()[:name] == "shell"
-    assert Tool.metadata(Codex.Tools.ShellTool)[:name] == "shell"
+    assert ShellTool.metadata()[:name] == "shell"
+    assert Tool.metadata(ShellTool)[:name] == "shell"
 
     {:ok, handle} =
-      Tools.register(Codex.Tools.ShellTool,
+      Tools.register(ShellTool,
         executor: executor,
         timeout_ms: 1000,
         max_output_bytes: 5
@@ -48,10 +49,10 @@ defmodule Codex.HostedToolsTest do
       {:ok, %{applied: patch}}
     end
 
-    assert Codex.Tools.ApplyPatchTool.metadata()[:name] == "apply_patch"
-    assert Tool.metadata(Codex.Tools.ApplyPatchTool)[:name] == "apply_patch"
+    assert ApplyPatchTool.metadata()[:name] == "apply_patch"
+    assert Tool.metadata(ApplyPatchTool)[:name] == "apply_patch"
 
-    {:ok, handle} = Tools.register(Codex.Tools.ApplyPatchTool, editor: editor)
+    {:ok, handle} = Tools.register(ApplyPatchTool, editor: editor)
 
     assert handle.name == "apply_patch"
     assert {:ok, _} = Tools.lookup("apply_patch")
@@ -63,11 +64,11 @@ defmodule Codex.HostedToolsTest do
   test "computer tool enforces safety hook" do
     deny = fn _args, _ctx -> {:deny, "blocked"} end
 
-    assert Codex.Tools.ComputerTool.metadata()[:name] == "computer"
-    assert Tool.metadata(Codex.Tools.ComputerTool)[:name] == "computer"
+    assert ComputerTool.metadata()[:name] == "computer"
+    assert Tool.metadata(ComputerTool)[:name] == "computer"
 
     {:ok, handle} =
-      Tools.register(Codex.Tools.ComputerTool,
+      Tools.register(ComputerTool,
         safety: deny,
         executor: fn _, _, _ -> {:ok, %{status: :ran}} end
       )
@@ -81,7 +82,7 @@ defmodule Codex.HostedToolsTest do
     allow = fn _args, _ctx -> :ok end
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ComputerTool,
+      Tools.register(ComputerTool,
         name: "computer_allow",
         safety: allow,
         executor: fn _args, _ctx, _meta -> {:ok, %{status: :ran}} end
@@ -99,11 +100,11 @@ defmodule Codex.HostedToolsTest do
       {:ok, %{results: [%{text: args["query"], vector_store_ids: args["vector_store_ids"]}]}}
     end
 
-    assert Codex.Tools.FileSearchTool.metadata()[:name] == "file_search"
-    assert Tool.metadata(Codex.Tools.FileSearchTool)[:name] == "file_search"
+    assert FileSearchTool.metadata()[:name] == "file_search"
+    assert Tool.metadata(FileSearchTool)[:name] == "file_search"
 
     {:ok, handle} =
-      Tools.register(Codex.Tools.FileSearchTool,
+      Tools.register(FileSearchTool,
         searcher: searcher,
         vector_store_ids: ["vs_1"],
         filters: %{"tag" => "docs"}

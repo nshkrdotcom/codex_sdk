@@ -19,6 +19,7 @@ defmodule Codex.RunConfig do
             session_input_callback: nil,
             conversation_id: nil,
             previous_response_id: nil,
+            auto_previous_response_id: false,
             input_guardrails: [],
             output_guardrails: [],
             hooks: nil,
@@ -39,6 +40,7 @@ defmodule Codex.RunConfig do
           session_input_callback: function() | nil,
           conversation_id: String.t() | nil,
           previous_response_id: String.t() | nil,
+          auto_previous_response_id: boolean(),
           input_guardrails: list(),
           output_guardrails: list(),
           hooks: term(),
@@ -73,6 +75,13 @@ defmodule Codex.RunConfig do
     previous_response_id =
       Map.get(attrs, :previous_response_id, Map.get(attrs, "previous_response_id"))
 
+    auto_previous_response_id =
+      Map.get(
+        attrs,
+        :auto_previous_response_id,
+        Map.get(attrs, "auto_previous_response_id", false)
+      )
+
     input_guardrails = Map.get(attrs, :input_guardrails, Map.get(attrs, "input_guardrails", []))
 
     output_guardrails =
@@ -103,6 +112,7 @@ defmodule Codex.RunConfig do
          :ok <- validate_session_callback(session_input_callback),
          :ok <- validate_optional_string(conversation_id, :conversation_id),
          :ok <- validate_optional_string(previous_response_id, :previous_response_id),
+         :ok <- validate_boolean(auto_previous_response_id, :auto_previous_response_id),
          {:ok, input_guardrails} <- ensure_list(input_guardrails, :input_guardrails),
          {:ok, output_guardrails} <- ensure_list(output_guardrails, :output_guardrails),
          {:ok, file_search} <- FileSearch.new(file_search),
@@ -122,6 +132,7 @@ defmodule Codex.RunConfig do
          session_input_callback: session_input_callback,
          conversation_id: conversation_id,
          previous_response_id: previous_response_id,
+         auto_previous_response_id: auto_previous_response_id,
          input_guardrails: input_guardrails,
          output_guardrails: output_guardrails,
          hooks: hooks,

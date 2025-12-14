@@ -5,9 +5,9 @@ defmodule Codex.TracingUsageTest do
   alias Codex.RunConfig
   alias Codex.RunResultStreaming
   alias Codex.Telemetry
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
 
   test "RunConfig accepts tracing metadata and telemetry attributes include them" do
     {:ok, config} =

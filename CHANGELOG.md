@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-12-13
+
+### Added
+- `auto_previous_response_id` run option via `Codex.RunConfig` (forward-compatible; requires backend `response_id` support)
+- `last_response_id` on `Codex.Turn.Result` when the backend surfaces a response identifier
+
+### Changed
+- README/docs now distinguish Elixir-side OTLP exporting from codex-rs `[otel]` config.toml exporting
+
+### Fixed
+- Tool metadata is loaded before registration so hosted tools register under their declared names (e.g. `file_search`)
+- Exec CLI arg compatibility: image attachments now use `--image`, and unsupported `--tool-output/--tool-failure` flags are no longer emitted
+
 ## [0.2.1] - 2025-11-29
 
 ### Added

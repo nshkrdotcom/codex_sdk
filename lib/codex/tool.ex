@@ -17,6 +17,8 @@ defmodule Codex.Tool do
   """
   @spec metadata(module()) :: map()
   def metadata(module) when is_atom(module) do
+    _ = Code.ensure_loaded(module)
+
     if function_exported?(module, :metadata, 0) do
       module.metadata() |> normalise_metadata()
     else

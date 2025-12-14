@@ -8,16 +8,16 @@ defmodule Codex.Thread do
   alias Codex.Approvals
   alias Codex.Error
   alias Codex.Events
-  alias Codex.RunResultStreaming
   alias Codex.GuardrailError
   alias Codex.Items
   alias Codex.Options
   alias Codex.OutputSchemaFile
+  alias Codex.RunResultStreaming
+  alias Codex.Telemetry
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.ToolGuardrail
   alias Codex.ToolOutput
   alias Codex.Tools
-  alias Codex.Telemetry
   alias Codex.Turn.Result
 
   @enforce_keys [:codex_opts, :thread_opts]
@@ -94,6 +94,8 @@ defmodule Codex.Thread do
       |> maybe_put(:trace_id, extract_trace(thread.metadata, :trace_id))
       |> maybe_put(:trace_sensitive, extract_trace(thread.metadata, :trace_sensitive))
       |> maybe_put(:tracing_disabled, extract_trace(thread.metadata, :tracing_disabled))
+      |> maybe_put(:conversation_id, extract_trace(thread.metadata, :conversation_id))
+      |> maybe_put(:previous_response_id, extract_trace(thread.metadata, :previous_response_id))
 
     Telemetry.emit([:codex, :thread, :start], %{system_time: System.system_time()}, meta)
     started_monotonic = System.monotonic_time()
@@ -285,6 +287,7 @@ defmodule Codex.Thread do
 
   defp finalize_turn(thread, %{events: events} = exec_result, opts) do
     {updated_thread, final_response, usage} = reduce_events(thread, events, opts)
+    last_response_id = last_response_id(events)
 
     updated_thread =
       updated_thread
@@ -305,114 +308,161 @@ defmodule Codex.Thread do
       final_response: final_response,
       usage: usage,
       raw: exec_result,
-      attempts: 1
+      attempts: 1,
+      last_response_id: last_response_id
     }
   end
+
+  @doc false
+  @spec last_response_id([Events.t()]) :: String.t() | nil
+  def last_response_id(events) when is_list(events) do
+    Enum.reduce(events, nil, fn
+      %Events.TurnCompleted{response_id: response_id}, _acc
+      when is_binary(response_id) and response_id != "" ->
+        response_id
+
+      _event, acc ->
+        acc
+    end)
+  end
+
+  def last_response_id(_events), do: nil
 
   @doc false
   @spec reduce_events(t(), [Events.t()], map()) :: {t(), term(), map() | nil}
   def reduce_events(thread, events, opts) do
     structured? = Map.get(opts, :structured_output?, false)
 
-    Enum.reduce(events, {thread, nil, thread.usage, thread.continuation_token}, fn event,
-                                                                                   {acc_thread,
-                                                                                    response,
-                                                                                    usage,
-                                                                                    continuation} ->
-      case event do
-        %Events.ThreadStarted{} = started ->
-          labels =
-            case started.metadata do
-              %{"labels" => label_map} -> label_map
-              _ -> acc_thread.labels
-            end
+    {acc_thread, response, usage, continuation} =
+      Enum.reduce(events, {thread, nil, thread.usage, thread.continuation_token}, fn event, acc ->
+        reduce_event(event, acc, structured?)
+      end)
 
-          updated =
-            acc_thread
-            |> maybe_put(:thread_id, started.thread_id)
-            |> Map.put(:metadata, started.metadata || %{})
-            |> Map.put(:labels, labels)
-
-          {updated, response, usage, continuation}
-
-        %Events.TurnContinuation{continuation_token: token} ->
-          updated = Map.put(acc_thread, :continuation_token, token)
-          {updated, response, usage, token}
-
-        %Events.ThreadTokenUsageUpdated{} = usage_event ->
-          updated_usage = apply_usage_update(usage, usage_event)
-
-          updated_thread =
-            acc_thread
-            |> maybe_put(:thread_id, usage_event.thread_id)
-
-          {updated_thread, response, updated_usage, continuation}
-
-        %Events.TurnDiffUpdated{thread_id: thread_id} ->
-          updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
-          {updated_thread, response, usage, continuation}
-
-        %Events.TurnCompaction{thread_id: thread_id, compaction: compaction} ->
-          updated_thread = maybe_put(acc_thread, :thread_id, thread_id)
-          updated_usage = apply_compaction_usage_update(usage, compaction)
-          {updated_thread, response, updated_usage, continuation}
-
-        %Events.ItemAgentMessageDelta{item: item} ->
-          new_response =
-            case item do
-              %{"content" => %{"type" => "text", "text" => text}} ->
-                decode_agent_message(Map.get(item, "id"), text, structured?)
-
-              %{"text" => text} when is_binary(text) ->
-                decode_agent_message(Map.get(item, "id"), text, structured?)
-
-              _ ->
-                response
-            end
-
-          {acc_thread, new_response || response, usage, continuation}
-
-        %Events.ItemCompleted{item: %Items.AgentMessage{text: text} = item} ->
-          decoded_item = maybe_decode_agent_item(item, text, structured?)
-          {acc_thread, decoded_item, usage, continuation}
-
-        %Events.ItemCompleted{} ->
-          {acc_thread, response, usage, continuation}
-
-        %Events.TurnCompleted{} = completed ->
-          new_usage = completed.usage || usage
-
-          new_response =
-            completed.final_response
-            |> decode_final_response(structured?)
-            |> Kernel.||(response)
-
-          new_continuation =
-            if new_response do
-              nil
-            else
-              acc_thread.continuation_token || continuation
-            end
-
-          updated =
-            acc_thread
-            |> maybe_put(:thread_id, completed.thread_id)
-            |> Map.put(:continuation_token, new_continuation)
-
-          {updated, new_response, new_usage, new_continuation}
-
-        _other ->
-          {acc_thread, response, usage, continuation}
-      end
-    end)
-    |> then(fn {acc_thread, response, usage, continuation} ->
-      updated_thread =
-        acc_thread
-        |> Map.put(:continuation_token, continuation)
-
-      {updated_thread, response, usage}
-    end)
+    {Map.put(acc_thread, :continuation_token, continuation), response, usage}
   end
+
+  defp reduce_event(
+         %Events.ThreadStarted{} = started,
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    labels =
+      case started.metadata do
+        %{"labels" => label_map} -> label_map
+        _ -> thread.labels
+      end
+
+    updated =
+      thread
+      |> maybe_put(:thread_id, started.thread_id)
+      |> Map.put(:metadata, started.metadata || %{})
+      |> Map.put(:labels, labels)
+
+    {updated, response, usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.TurnContinuation{continuation_token: token},
+         {thread, response, usage, _continuation},
+         _structured?
+       ) do
+    updated = Map.put(thread, :continuation_token, token)
+    {updated, response, usage, token}
+  end
+
+  defp reduce_event(
+         %Events.ThreadTokenUsageUpdated{} = usage_event,
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    updated_usage = apply_usage_update(usage, usage_event)
+    updated_thread = maybe_put(thread, :thread_id, usage_event.thread_id)
+    {updated_thread, response, updated_usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.TurnDiffUpdated{thread_id: thread_id},
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    {maybe_put(thread, :thread_id, thread_id), response, usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.TurnCompaction{thread_id: thread_id, compaction: compaction},
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    updated_thread = maybe_put(thread, :thread_id, thread_id)
+    updated_usage = apply_compaction_usage_update(usage, compaction)
+    {updated_thread, response, updated_usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.ItemAgentMessageDelta{item: item},
+         {thread, response, usage, continuation},
+         structured?
+       ) do
+    message =
+      case item do
+        %{"content" => %{"type" => "text", "text" => text}} ->
+          decode_agent_message(Map.get(item, "id"), text, structured?)
+
+        %{"text" => text} when is_binary(text) ->
+          decode_agent_message(Map.get(item, "id"), text, structured?)
+
+        _ ->
+          nil
+      end
+
+    {thread, message || response, usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.ItemCompleted{item: %Items.AgentMessage{text: text} = item},
+         {thread, _response, usage, continuation},
+         structured?
+       ) do
+    decoded_item = maybe_decode_agent_item(item, text, structured?)
+    {thread, decoded_item, usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.ItemCompleted{},
+         {thread, response, usage, continuation},
+         _structured?
+       ),
+       do: {thread, response, usage, continuation}
+
+  defp reduce_event(
+         %Events.TurnCompleted{} = completed,
+         {thread, response, usage, continuation},
+         structured?
+       ) do
+    new_usage = completed.usage || usage
+
+    new_response =
+      completed.final_response
+      |> decode_final_response(structured?)
+      |> Kernel.||(response)
+
+    new_continuation =
+      if new_response do
+        nil
+      else
+        thread.continuation_token || continuation
+      end
+
+    updated =
+      thread
+      |> maybe_put(:thread_id, completed.thread_id)
+      |> Map.put(:continuation_token, new_continuation)
+
+    {updated, new_response, new_usage, new_continuation}
+  end
+
+  defp reduce_event(_event, {thread, response, usage, continuation}, _structured?),
+    do: {thread, response, usage, continuation}
 
   defp apply_usage_update(current_usage, %Events.ThreadTokenUsageUpdated{
          usage: usage,
@@ -429,10 +479,7 @@ defmodule Codex.Thread do
 
   def merge_usage(left, right) when is_map(left) and is_map(right) do
     Map.merge(left, right, fn _key, l, r ->
-      cond do
-        is_number(l) and is_number(r) -> l + r
-        true -> r || l
-      end
+      if is_number(l) and is_number(r), do: l + r, else: r || l
     end)
   end
 
@@ -544,10 +591,12 @@ defmodule Codex.Thread do
   end
 
   defp maybe_parse_structured(id, text, true) when is_binary(text) do
-    with {:ok, decoded} <- Jason.decode(text) do
-      %Items.AgentMessage{id: id, text: text, parsed: decoded}
-    else
-      _ -> %Items.AgentMessage{id: id, text: text}
+    case Jason.decode(text) do
+      {:ok, decoded} ->
+        %Items.AgentMessage{id: id, text: text, parsed: decoded}
+
+      _ ->
+        %Items.AgentMessage{id: id, text: text}
     end
   end
 
@@ -576,27 +625,33 @@ defmodule Codex.Thread do
   defp maybe_decode_stream_event(event, _structured?), do: event
 
   defp extract_turn_failure(events) do
+    find_turn_failed_failure(events) ||
+      find_turn_completed_failure(events) ||
+      :ok
+  end
+
+  defp find_turn_failed_failure(events) do
     case Enum.find(events, &match?(%Events.TurnFailed{}, &1)) do
-      %Events.TurnFailed{error: error} ->
-        {:error, Error.normalize(error)}
-
-      nil ->
-        case Enum.find(events, fn
-               %Events.TurnCompleted{status: status}
-               when status in ["failed", :failed, "error"] ->
-                 true
-
-               _ ->
-                 false
-             end) do
-          %Events.TurnCompleted{final_response: response, status: status} ->
-            {:error, Error.normalize(turn_completed_error_payload(response, status))}
-
-          _ ->
-            :ok
-        end
+      %Events.TurnFailed{error: error} -> {:error, Error.normalize(error)}
+      _ -> nil
     end
   end
+
+  defp find_turn_completed_failure(events) do
+    case Enum.find(events, &failed_turn_completed?/1) do
+      %Events.TurnCompleted{final_response: response, status: status} ->
+        {:error, Error.normalize(turn_completed_error_payload(response, status))}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp failed_turn_completed?(%Events.TurnCompleted{status: status})
+       when status in ["failed", :failed, "error"],
+       do: true
+
+  defp failed_turn_completed?(_event), do: false
 
   defp telemetry_result(:ok, true), do: :early_exit
   defp telemetry_result(:ok, false), do: :ok
@@ -852,67 +907,72 @@ defmodule Codex.Thread do
     hooks = Map.get(opts, :hooks, %{})
 
     Enum.reduce_while(tool_events, {:ok, result}, fn event, {:ok, acc_result} ->
-      if handled_tool_call?(acc_result, event) do
-        {:cont, {:ok, acc_result}}
-      else
-        case maybe_invoke_tool(acc_result.thread, event, attempt, guardrails, hooks) do
-          {:ok, output} ->
-            tool_payload = %{call_id: event.call_id, tool_name: event.tool_name, output: output}
-
-            updated_raw =
-              acc_result.raw
-              |> Map.put(
-                :tool_outputs,
-                merge_tool_payload(Map.get(acc_result.raw, :tool_outputs, []), tool_payload)
-              )
-
-            updated_thread =
-              acc_result.thread
-              |> Map.put(
-                :pending_tool_outputs,
-                merge_tool_payload(acc_result.thread.pending_tool_outputs, tool_payload)
-              )
-
-            updated_result = %Result{acc_result | raw: updated_raw, thread: updated_thread}
-
-            {:cont, {:ok, updated_result}}
-
-          {:failure, reason} ->
-            failure_payload = %{
-              call_id: event.call_id,
-              tool_name: event.tool_name,
-              reason: normalize_tool_failure(reason)
-            }
-
-            updated_raw =
-              acc_result.raw
-              |> Map.put(
-                :tool_failures,
-                merge_tool_payload(Map.get(acc_result.raw, :tool_failures, []), failure_payload)
-              )
-
-            updated_thread =
-              acc_result.thread
-              |> Map.put(
-                :pending_tool_failures,
-                merge_tool_payload(
-                  acc_result.thread.pending_tool_failures,
-                  failure_payload
-                )
-              )
-
-            updated_result = %Result{acc_result | raw: updated_raw, thread: updated_thread}
-
-            {:cont, {:ok, updated_result}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
-      end
+      handle_tool_event(acc_result, event, attempt, guardrails, hooks)
     end)
   end
 
   def handle_tool_requests(result, _attempt, _opts), do: {:ok, result}
+
+  defp handle_tool_event(
+         %Result{} = result,
+         %Events.ToolCallRequested{} = event,
+         attempt,
+         guardrails,
+         hooks
+       ) do
+    case handled_tool_call?(result, event) do
+      true ->
+        {:cont, {:ok, result}}
+
+      false ->
+        do_handle_tool_event(result, event, attempt, guardrails, hooks)
+    end
+  end
+
+  defp do_handle_tool_event(
+         %Result{} = result,
+         %Events.ToolCallRequested{} = event,
+         attempt,
+         guardrails,
+         hooks
+       ) do
+    case maybe_invoke_tool(result.thread, event, attempt, guardrails, hooks) do
+      {:ok, output} ->
+        payload = %{call_id: event.call_id, tool_name: event.tool_name, output: output}
+
+        updated =
+          update_result_tool_payload(result, :tool_outputs, :pending_tool_outputs, payload)
+
+        {:cont, {:ok, updated}}
+
+      {:failure, reason} ->
+        payload = %{
+          call_id: event.call_id,
+          tool_name: event.tool_name,
+          reason: normalize_tool_failure(reason)
+        }
+
+        updated =
+          update_result_tool_payload(result, :tool_failures, :pending_tool_failures, payload)
+
+        {:cont, {:ok, updated}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
+  end
+
+  defp update_result_tool_payload(%Result{} = result, raw_key, thread_key, payload) do
+    updated_raw =
+      result.raw
+      |> Map.put(raw_key, merge_tool_payload(Map.get(result.raw, raw_key, []), payload))
+
+    updated_thread =
+      result.thread
+      |> Map.put(thread_key, merge_tool_payload(Map.get(result.thread, thread_key, []), payload))
+
+    %Result{result | raw: updated_raw, thread: updated_thread}
+  end
 
   defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt, guardrails, hooks) do
     context = build_tool_context(thread, event, attempt)

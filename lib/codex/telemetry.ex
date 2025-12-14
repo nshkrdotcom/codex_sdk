@@ -407,17 +407,15 @@ defmodule Codex.Telemetry do
   end
 
   defp maybe_start_exporter({:opentelemetry_exporter, _}) do
-    with :ok <- maybe_start_app(:tls_certificate_check),
-         :ok <- maybe_start_app(:opentelemetry_exporter) do
-      :ok
+    with :ok <- maybe_start_app(:tls_certificate_check) do
+      maybe_start_app(:opentelemetry_exporter)
     end
   end
 
   defp maybe_start_exporter({module, _})
        when module in [:otel_exporter_pid, :otel_exporter_stdout, :otel_exporter_tab] do
-    with :ok <- maybe_start_app(:tls_certificate_check),
-         :ok <- maybe_start_app(:opentelemetry_exporter) do
-      :ok
+    with :ok <- maybe_start_app(:tls_certificate_check) do
+      maybe_start_app(:opentelemetry_exporter)
     end
   end
 

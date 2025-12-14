@@ -7,10 +7,10 @@ defmodule Codex.AgentRunnerStreamedTest do
   alias Codex.Guardrail
   alias Codex.Options
   alias Codex.RunResultStreaming
-  alias Codex.StreamEvent.{AgentUpdated, GuardrailResult, RunItem, RawResponses}
+  alias Codex.StreamEvent.{AgentUpdated, GuardrailResult, RawResponses, RunItem}
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.TestSupport.FixtureScripts
 
   setup do
     {:ok, thread_opts} = ThreadOptions.new(%{})

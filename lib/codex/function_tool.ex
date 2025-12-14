@@ -127,14 +127,15 @@ defmodule Codex.FunctionTool do
     end
   end
 
-  defp exported_handler(module, arity) do
-    if function_exported?(module, :handle, arity) do
-      case arity do
-        2 -> fn args, context -> apply(module, :handle, [args, context]) end
-        1 -> fn args, _context -> apply(module, :handle, [args]) end
-      end
-    else
-      nil
+  defp exported_handler(module, 2) do
+    if function_exported?(module, :handle, 2) do
+      fn args, context -> module.handle(args, context) end
+    end
+  end
+
+  defp exported_handler(module, 1) do
+    if function_exported?(module, :handle, 1) do
+      fn args, _context -> module.handle(args) end
     end
   end
 

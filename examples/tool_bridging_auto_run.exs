@@ -23,8 +23,8 @@ defmodule Examples.ToolBridging do
     {:ok, result} =
       Codex.Thread.run_auto(thread, "Ask the math tool to add 4 and 5", max_attempts: 2)
 
-    IO.inspect(result.raw[:tool_outputs], label: "tool outputs sent to codex exec")
-    IO.inspect(result.raw[:tool_failures], label: "tool failures sent to codex exec")
+    IO.inspect(result.raw[:tool_outputs], label: "tool outputs captured by SDK")
+    IO.inspect(result.raw[:tool_failures], label: "tool failures captured by SDK")
     IO.inspect(result.thread.pending_tool_outputs, label: "pending outputs after turn")
     IO.inspect(result.thread.pending_tool_failures, label: "pending failures after turn")
   end

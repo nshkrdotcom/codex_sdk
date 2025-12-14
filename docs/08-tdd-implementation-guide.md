@@ -88,7 +88,7 @@
 - **Integration Tests**: Tagged `:integration`, using Supertester to orchestrate deterministic Port interactions; rely on fixtures.
 - **Contract Tests**: Compare Python vs Elixir outputs using golden logs; executed nightly or on-demand due to runtime.
 - **Property Tests**: Use StreamData for invariants (event encode/decode, options merging, stream ordering).
-- **Live Tests**: Optional `:live` suite hitting real API; requires manual opt-in via env var.
+- **Live Tests**: Optional `:live` suite hitting the real CLI/API; opt in with `CODEX_TEST_LIVE=true mix test --only live --include live`.
 - **Test Utilities**: Maintain `test/support/` helpers for fixture loading, fake codex binary creation, and telemetry capture.
 - **Coverage & Linting**: Gate merges on `mix coveralls`, `mix credo --strict`, and `mix dialyzer` (post-PLT warmup).
 

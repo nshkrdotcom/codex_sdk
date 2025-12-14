@@ -4,21 +4,21 @@ defmodule Codex.RunResultStreaming do
   cancellation controls.
   """
 
+  alias Codex.RunResultStreaming.Control
   alias Codex.StreamEvent.RunItem
   alias Codex.StreamQueue
-  alias Codex.RunResultStreaming.Control
 
   @enforce_keys [:queue, :control, :start_fun]
   defstruct queue: nil, control: nil, start_fun: nil
 
   @type t :: %__MODULE__{
-          queue: StreamQueue.t(),
+          queue: pid(),
           control: pid(),
           start_fun: (-> any())
         }
 
   @doc false
-  @spec new(StreamQueue.t(), pid(), (-> any())) :: t()
+  @spec new(pid(), pid(), (-> any())) :: t()
   def new(queue, control, start_fun) do
     %__MODULE__{queue: queue, control: control, start_fun: start_fun}
   end

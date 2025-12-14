@@ -72,9 +72,10 @@ defmodule Codex.Options do
     env_path = System.get_env("CODEX_PATH")
 
     path =
-      cond do
-        env_path && env_path != "" -> env_path
-        true -> System.find_executable("codex")
+      if env_path && env_path != "" do
+        env_path
+      else
+        System.find_executable("codex")
       end
 
     case path do

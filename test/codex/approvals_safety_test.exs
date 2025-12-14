@@ -5,11 +5,11 @@ defmodule Codex.ApprovalsSafetyTest do
   alias Codex.Options
   alias Codex.RunResultStreaming
   alias Codex.StreamEvent.{RunItem, ToolApproval}
+  alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Tools
   alias Codex.Tools.ComputerTool
-  alias Codex.TestSupport.FixtureScripts
 
   defmodule MathTool do
     use Codex.Tool, name: "math_tool", description: "adds numbers"

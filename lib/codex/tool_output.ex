@@ -7,16 +7,30 @@ defmodule Codex.ToolOutput do
   """
 
   defmodule Text do
+    @moduledoc """
+    Text tool output.
+
+    Normalizes to an `input_text` map via `Codex.ToolOutput.normalize/1`.
+    """
+
     @enforce_keys [:text]
     defstruct [:text]
 
+    @typedoc "Text tool output."
     @type t :: %__MODULE__{text: String.t()}
   end
 
   defmodule Image do
+    @moduledoc """
+    Image tool output.
+
+    Normalizes to an `input_image` map via `Codex.ToolOutput.normalize/1`.
+    """
+
     @enforce_keys []
     defstruct [:url, :detail, :file_id, :data]
 
+    @typedoc "Image tool output."
     @type t :: %__MODULE__{
             url: String.t(),
             detail: String.t() | nil,
@@ -26,9 +40,16 @@ defmodule Codex.ToolOutput do
   end
 
   defmodule FileContent do
+    @moduledoc """
+    File content tool output.
+
+    Normalizes to an `input_file` map via `Codex.ToolOutput.normalize/1`.
+    """
+
     @enforce_keys []
     defstruct [:file_id, :data, :url, :filename, :mime_type]
 
+    @typedoc "File content tool output."
     @type t :: %__MODULE__{
             file_id: String.t() | nil,
             data: String.t() | nil,

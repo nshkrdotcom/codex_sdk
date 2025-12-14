@@ -63,6 +63,7 @@ defmodule Codex.Events do
 
     defstruct thread_id: nil,
               turn_id: nil,
+              response_id: nil,
               final_response: nil,
               usage: nil,
               status: nil
@@ -70,6 +71,7 @@ defmodule Codex.Events do
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
             turn_id: String.t() | nil,
+            response_id: String.t() | nil,
             final_response: Items.AgentMessage.t() | map() | nil,
             usage: map() | nil,
             status: String.t() | nil
@@ -357,6 +359,7 @@ defmodule Codex.Events do
     %TurnCompleted{
       thread_id: Map.get(map, "thread_id"),
       turn_id: Map.get(map, "turn_id"),
+      response_id: Map.get(map, "response_id"),
       final_response: Map.get(map, "final_response"),
       usage: Map.get(map, "usage"),
       status: Map.get(map, "status")
@@ -510,6 +513,7 @@ defmodule Codex.Events do
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id
     }
+    |> put_optional("response_id", event.response_id)
     |> put_optional("final_response", encode_final_response(event.final_response))
     |> put_optional("usage", event.usage)
     |> put_optional("status", event.status)

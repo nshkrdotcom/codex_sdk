@@ -1,5 +1,9 @@
 defmodule Codex.FileSearch do
-  @moduledoc false
+  @moduledoc """
+  Configuration for file search capabilities in threads and runs.
+
+  File search allows agents to search through uploaded files using vector stores.
+  """
 
   @enforce_keys []
   defstruct vector_store_ids: nil,
