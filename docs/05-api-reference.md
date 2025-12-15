@@ -8,16 +8,32 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 |--------|---------|
 | `Codex` | Main entry point for starting and resuming threads |
 | `Codex.Thread` | Manages conversation threads and turn execution |
+| `Codex.Transport` | Transport behaviour for turn execution |
+| `Codex.AppServer` | Stateful app-server JSON-RPC connection + v2 request APIs |
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
 | `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
-| `Codex.Exec` | GenServer managing codex-rs process lifecycle |
+| `Codex.Exec` | Exec JSONL subprocess wrapper (`codex exec --experimental-json`) |
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
 | `Codex.OutputSchemaFile` | JSON schema file management |
 
 ---
+
+## Transports
+
+The SDK supports both upstream external transports:
+
+- **Exec JSONL (default)**: `codex exec --experimental-json`
+- **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON over stdio)
+
+Select transport per-thread via `Codex.Thread.Options.transport`:
+
+```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+{:ok, thread} = Codex.start_thread(codex_opts, %{transport: {:app_server, conn}})
+```
 
 ## Codex
 
@@ -54,8 +70,7 @@ codex_opts = %Codex.Options{api_key: "sk-..."}
 
 # Start with thread options
 thread_opts = %Codex.Thread.Options{
-  model: "o1",
-  sandbox_mode: :read_only,
+  sandbox: :read_only,
   working_directory: "/path/to/project"
 }
 {:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)

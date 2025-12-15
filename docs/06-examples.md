@@ -19,6 +19,7 @@ Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when prese
 11. [Live Usage & Compaction](#live-usage--compaction)
 12. [Live Exec Controls](#live-exec-controls)
 13. [Live Telemetry Stream](#live-telemetry-stream)
+14. [App-server Transport](#app-server-transport)
 
 ---
 
@@ -1335,6 +1336,34 @@ mix run examples/live_telemetry_stream.exs
 ```
 
 Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
+
+## App-server Transport
+
+App-server (`codex app-server`) is a **stateful, bidirectional** transport that unlocks upstream v2 APIs (threads list/archive/compact, skills/models/config, server-driven approvals, etc.).
+
+See `docs/09-app-server-transport.md` for the complete guide, and run the live scripts:
+
+```bash
+mix run examples/live_app_server_basic.exs
+mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
+mix run examples/live_app_server_approvals.exs
+```
+
+Minimal usage with existing thread APIs:
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{})
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+{:ok, thread} =
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: File.cwd!()
+  })
+
+{:ok, result} = Codex.Thread.run(thread, "List the available skills for this repo")
+IO.inspect(result.final_response, label: "final_response")
+```
 
 ## Testing Patterns
 

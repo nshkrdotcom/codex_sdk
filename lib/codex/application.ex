@@ -11,7 +11,11 @@ defmodule Codex.Application do
     maybe_print_otlp_banner()
     Telemetry.configure()
 
-    Supervisor.start_link([], strategy: :one_for_one, name: Codex.Supervisor)
+    children = [
+      {Codex.AppServer.Supervisor, []}
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one, name: Codex.Supervisor)
   end
 
   defp maybe_print_otlp_banner do

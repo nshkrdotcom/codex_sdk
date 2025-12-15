@@ -313,7 +313,7 @@ App-server enum values serialize as lower camel-case strings (e.g. `InProgress` 
 
 ```
 Client → Server:
-{"id":0,"method":"initialize","params":{"clientInfo":{"name":"codex_sdk","version":"0.2.5"}}}
+{"id":0,"method":"initialize","params":{"clientInfo":{"name":"codex_sdk","version":"0.3.0"}}}
 
 Server → Client:
 {"id":0,"result":{"userAgent":"codex/0.1.0"}}

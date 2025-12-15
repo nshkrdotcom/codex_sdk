@@ -7,6 +7,12 @@ Status legend:
 - ❌ missing
 - 🚫 not applicable on exec JSONL
 
+## Update (2025-12-14)
+
+This matrix was written for the **exec-only** SDK state. As of `codex_sdk` `0.3.0`, the SDK also supports the **app-server** transport (`codex app-server`), and many “transport-blocked” items are now reachable via `Codex.AppServer.*` APIs.
+
+See `docs/20251214/multi_transport_refactor/README.md` for the current parity matrix and protocol mapping.
+
 ## High-signal gaps discovered by validating against the real CLI
 
 Running `codex exec --help` on a real installation shows:

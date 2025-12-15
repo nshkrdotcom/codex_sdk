@@ -100,12 +100,95 @@ defmodule Codex.Events do
     """
 
     @enforce_keys [:diff]
-    defstruct thread_id: nil, turn_id: nil, diff: %{}
+    defstruct thread_id: nil, turn_id: nil, diff: ""
 
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
             turn_id: String.t() | nil,
-            diff: map()
+            diff: String.t() | map()
+          }
+  end
+
+  defmodule TurnPlanUpdated do
+    @moduledoc """
+    Event emitted when the app-server publishes an updated plan for the current turn.
+    """
+
+    @enforce_keys [:plan]
+    defstruct thread_id: nil, turn_id: nil, explanation: nil, plan: []
+
+    @type plan_step_status :: :pending | :in_progress | :completed
+    @type plan_step :: %{step: String.t(), status: plan_step_status()}
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            explanation: String.t() | nil,
+            plan: [plan_step()]
+          }
+  end
+
+  defmodule CommandOutputDelta do
+    @moduledoc """
+    Event delta emitted while a command execution is producing output.
+    """
+
+    @enforce_keys [:item_id, :delta]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, delta: ""
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            delta: String.t()
+          }
+  end
+
+  defmodule ReasoningDelta do
+    @moduledoc """
+    Event delta emitted while reasoning content is streaming.
+    """
+
+    @enforce_keys [:item_id, :delta]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, delta: "", content_index: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            delta: String.t(),
+            content_index: integer() | nil
+          }
+  end
+
+  defmodule ReasoningSummaryDelta do
+    @moduledoc """
+    Event delta emitted while reasoning summary text is streaming.
+    """
+
+    @enforce_keys [:item_id, :delta]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, delta: "", summary_index: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            delta: String.t(),
+            summary_index: integer() | nil
+          }
+  end
+
+  defmodule AppServerNotification do
+    @moduledoc """
+    Lossless wrapper for an app-server notification that is not yet mapped into a typed event.
+    """
+
+    @enforce_keys [:method]
+    defstruct method: nil, params: %{}
+
+    @type t :: %__MODULE__{
+            method: String.t(),
+            params: map()
           }
   end
 
@@ -293,12 +376,17 @@ defmodule Codex.Events do
     TurnCompaction,
     TurnContinuation,
     TurnDiffUpdated,
+    TurnPlanUpdated,
     TurnStarted,
     ToolCallCompleted,
     ToolCallRequested,
     ItemCompleted,
     ItemStarted,
     ItemUpdated,
+    CommandOutputDelta,
+    ReasoningDelta,
+    ReasoningSummaryDelta,
+    AppServerNotification,
     Error,
     TurnFailed
   }
@@ -310,12 +398,17 @@ defmodule Codex.Events do
           | TurnCompleted.t()
           | ThreadTokenUsageUpdated.t()
           | TurnDiffUpdated.t()
+          | TurnPlanUpdated.t()
           | TurnCompaction.t()
           | ItemAgentMessageDelta.t()
           | ItemInputTextDelta.t()
           | ItemCompleted.t()
           | ItemStarted.t()
           | ItemUpdated.t()
+          | CommandOutputDelta.t()
+          | ReasoningDelta.t()
+          | ReasoningSummaryDelta.t()
+          | AppServerNotification.t()
           | Error.t()
           | TurnFailed.t()
           | ToolCallRequested.t()
@@ -380,7 +473,16 @@ defmodule Codex.Events do
     %TurnDiffUpdated{
       thread_id: Map.get(map, "thread_id"),
       turn_id: Map.get(map, "turn_id"),
-      diff: Map.get(map, "diff") || Map.get(map, "delta") || %{}
+      diff: Map.get(map, "diff") || Map.get(map, "delta") || ""
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["turn.plan.updated", "turn/plan/updated"] do
+    %TurnPlanUpdated{
+      thread_id: Map.get(map, "thread_id"),
+      turn_id: Map.get(map, "turn_id"),
+      explanation: Map.get(map, "explanation"),
+      plan: Map.get(map, "plan") || []
     }
   end
 
@@ -536,6 +638,16 @@ defmodule Codex.Events do
     |> put_optional("thread_id", event.thread_id)
     |> put_optional("turn_id", event.turn_id)
     |> put_optional("diff", event.diff)
+  end
+
+  def to_map(%TurnPlanUpdated{} = event) do
+    %{
+      "type" => "turn/plan/updated"
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("explanation", event.explanation)
+    |> put_optional("plan", event.plan)
   end
 
   def to_map(%TurnCompaction{} = event) do

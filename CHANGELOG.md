@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-14
+
+### Added
+- Multi-transport refactor: exec JSONL remains the default, and a new app-server JSON-RPC (stdio) transport is available via `transport: {:app_server, conn}`
+- `Codex.AppServer` connection API plus v2 request wrappers (threads, turns, skills, models, config, review, command exec, feedback, account, MCP)
+- Stateful approval handling for app-server server-initiated requests (`item/*/requestApproval`) with both hook-based auto-approval and manual `respond/3`
+- Typed event/item adapters for core app-server notifications, with lossless passthrough for unknown methods/items
+
+### Changed
+- `turn/diff/updated` now surfaces `diff` as a unified diff string (app-server v2)
+
+### Fixed
+- App-server default subprocess selection and iodata sending for stdio writes
+
 ## [0.2.5] - 2025-12-13
 
 ### Fixed
