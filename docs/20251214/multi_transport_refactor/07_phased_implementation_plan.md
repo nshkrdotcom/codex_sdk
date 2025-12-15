@@ -43,6 +43,10 @@ Goal: map app-server notifications into canonical `Codex.Events` and `Codex.Item
 Deliverables:
 - A notification adapter that converts `{method, params}` into `%Codex.Events{}` via `Codex.Events.parse!/1`.
 - An item adapter that converts app-server v2 `ThreadItem` unions (camelCase) into `Codex.Items` structs (snake_case) via `Codex.Items.parse!/1`.
+- Raw passthrough for unknown notification/item types (do not crash on schema drift).
+- Explicitly handle:
+  - `turn/diff/updated` (`diff` is a unified diff string: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`)
+  - `turn/plan/updated` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1535-1540`)
 
 Exit criteria:
 - `run_turn_streamed/3` yields the same high-level event categories for both exec and app-server.
@@ -58,6 +62,10 @@ Deliverables:
   (registry: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465`)
 - Route to `Codex.Approvals.Hook.review_command/3` and `review_file/3` (see `lib/codex/approvals/hook.ex:94`).
 - Send JSON-RPC responses using `ApprovalDecision` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`).
+- Support the full decision surface for command execution approvals:
+  - `AcceptForSession` (cached by core for the session) (`codex/codex-rs/app-server/src/bespoke_event_handling.rs:1136-1139`, `codex/codex-rs/core/src/tools/sandboxing.rs:52-77`)
+  - `AcceptWithExecpolicyAmendment` (persists to execpolicy) (`codex/codex-rs/core/src/codex.rs:1767-1792`)
+- Provide a manual response path for interactive UIs (subscribe + `Codex.AppServer.respond/3`), in addition to hook-based auto-approval.
 
 Exit criteria:
 - Turns that require approvals succeed under configured policy/hook.

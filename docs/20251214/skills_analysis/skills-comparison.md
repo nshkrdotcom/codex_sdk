@@ -85,7 +85,7 @@ pub struct SkillsManager {
 ### Protocol Integration
 
 ```rust
-// User can explicitly select a skill
+// Core protocol includes a skill selection input (used by the in-process TUI)
 pub enum UserInput {
     Text { text: String },
     Image { image_url: String },
@@ -101,6 +101,9 @@ EventMsg::ListSkillsResponse(ListSkillsResponseEvent {
     skills: Vec<SkillsListEntry>,
 })
 ```
+
+**Important**: External clients cannot currently send `UserInput::Skill`:
+- App-server v2 `UserInput` union omits `Skill` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1289-1293`) and treats extra variants as unreachable (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1311`).
 
 ### Test Coverage
 
@@ -165,22 +168,20 @@ error
 
 **Missing**: All skill-related events and operations.
 
-### Core Protocol Events (Would Need for Skills)
+### App-Server `skills/list` (Recommended for Elixir)
 
-```
-EventMsg::ListSkillsResponse
-Op::ListSkills
-UserInput::Skill
-```
+App-server exposes skills discovery as a request/response method:
+- `skills/list` is a v2 client request (`codex/codex-rs/app-server-protocol/src/protocol/common.rs:124-127`)
+- Response carries per-cwd skill metadata + errors (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:976-1033`)
 
 ### Porting Path
 
 To add skills to Elixir, would need either:
 
-1. **Adopt core/app-server protocol** (Phase 0 decision)
-   - Encode/decode all skill types
-   - Handle Op::ListSkills
-   - Process ListSkillsResponse events
+1. **Add an app-server transport** (recommended)
+   - Speak app-server JSON-RPC over stdio
+   - Implement `skills/list` and decode the response
+   - Expose a first-class Elixir API for listing skills + surfacing per-cwd errors
 
 2. **Extend exec JSONL** (unlikely)
    - Would require upstream changes to codex binary
@@ -188,33 +189,28 @@ To add skills to Elixir, would need either:
 
 ## Porting Requirements (If Proceeding)
 
-### Required New Modules
+### Required New Modules (Recommended)
+
+Keep discovery server-side; implement only types + API wrapper:
 
 ```elixir
 # lib/codex/skills/
-├── skill.ex           # SkillMetadata struct
-├── skill_error.ex     # SkillError struct
-├── skill_scope.ex     # :user | :repo enum
-├── load_outcome.ex    # SkillLoadOutcome struct
-├── loader.ex          # Discovery logic (if client-side)
-└── manager.ex         # SkillsManager GenServer
+├── scope.ex         # :user | :repo
+├── metadata.ex      # SkillMetadata
+├── error_info.ex    # SkillErrorInfo (mirrors upstream)
+├── list_entry.ex    # SkillsListEntry
+└── list_response.ex # SkillsListResponse (data: [SkillsListEntry])
 ```
 
 ### Required Protocol Updates
 
 ```elixir
-# In events.ex - new event type
-defmodule Codex.Events.ListSkillsResponse do
-  use TypedStruct
-  typedstruct do
-    field :skills, [Codex.Skills.ListEntry.t()]
+defmodule Codex.AppServer do
+  # New method wrapper (app-server transport only)
+  def skills_list(conn, opts \\ []) do
+    # send {"method":"skills/list","params":{"cwds":[...]}}
+    # decode {"result":{"data":[...]}}
   end
-end
-
-# In thread.ex or operations module
-def list_skills(cwds \\ []) do
-  # Submit Op::ListSkills
-  # Wait for ListSkillsResponse
 end
 ```
 
@@ -222,13 +218,10 @@ end
 
 | Task | Lines | Complexity |
 |------|-------|------------|
-| Model structs | ~100 | Low |
-| Protocol encoding | ~150 | Medium |
-| Event handling | ~100 | Medium |
-| Manager GenServer | ~200 | Medium |
-| Discovery logic | ~300 | High (if client-side) |
+| Type structs | ~150 | Low |
+| App-server request/response | ~150 | Medium |
 | Tests | ~200 | Medium |
-| **Total** | ~1000+ | Medium-High |
+| **Total** | ~500 | Medium |
 
 ## Recommendation
 
@@ -238,8 +231,8 @@ Skills implementation in Elixir depends on transport:
 - If adopting app-server: implement `skills/list` after the app-server transport refactor (see `docs/20251214/multi_transport_refactor/README.md`).
 
 If proceeding with app-server:
-1. First complete core/app-server protocol adoption
-2. Then port skill types and event handling
-3. Discovery can remain server-side (just handle responses)
+1. First complete the app-server transport refactor (`docs/20251214/multi_transport_refactor/README.md`)
+2. Then implement `skills/list` + types on that transport
+3. Discovery remains server-side (Elixir just decodes response)
 
 The new SkillsManager refactor in Rust actually makes porting easier - skills are now request/response based rather than push-on-startup.

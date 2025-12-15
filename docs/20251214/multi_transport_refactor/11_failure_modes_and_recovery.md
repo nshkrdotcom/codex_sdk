@@ -158,6 +158,8 @@ end
 }
 ```
 
+Note: `id` can be an integer or string (`codex/codex-rs/app-server-protocol/src/jsonrpc_lite.rs:11-17`).
+
 **Recovery**: Return `{:error, %Codex.AppServer.Error{message: msg, code: code, data: data, request_id: id}}`.
 
 ### F9: Malformed Response
@@ -192,7 +194,10 @@ end
 
 **Example**: Future protocol version adds new notification type.
 
-**Recovery**: Log at debug level, discard. Do NOT crash. Forward compatibility is important.
+**Recovery**:
+- Do NOT crash.
+- Preserve and forward the raw `{method, params}` to subscribers (and/or as a raw event wrapper) so consumers can handle new methods immediately.
+- Log at debug level for observability.
 
 ### F12: Malformed Notification Params
 
@@ -200,7 +205,7 @@ end
 
 **Recovery**:
 - Attempt lenient parsing (missing optional fields → defaults)
-- If parsing fails completely, log warning and discard
+- If parsing into a typed event fails completely, forward the raw `{method, params}` unchanged
 - Do NOT fail the connection
 
 ---

@@ -76,7 +76,7 @@ The Rust codex repository has documentation in two locations:
 - Skills are implemented in the upstream `codex` binary behind `features.skills` (default: false).
 - `codex_sdk` can benefit from skills when they’re enabled via `$CODEX_HOME/config.toml` (or equivalent), but the SDK does not currently:
   - expose a first-class skills API (list, select, surface errors),
-  - receive `Op::ListSkills` / `skills/list` responses on the exec JSONL transport.
+  - speak the app-server transport needed to call `skills/list` (or any other app-server request/response method).
 
 **Upstream Doc vs Code Notes**:
 - `codex/docs/skills.md` documents different validation limits (name ≤100, description ≤500), but `codex-rs/core/src/skills/loader.rs` enforces name ≤64 and description ≤1024.
