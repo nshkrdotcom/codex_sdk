@@ -75,6 +75,36 @@ Add an opt-in “managed runtime” story:
   - `codex app-server generate-json-schema` contains required v2 methods (e.g. `skills/list`).
 - `Codex.Options` / docs provide a canonical way to point the SDK at that binary (`codex_path_override`).
 
+## NIF opportunities (Rust helpers without embedding the whole CLI)
+
+Bundling a pinned `codex` binary solves version drift, but it does not directly address performance and ergonomics in the Elixir client. A separate, optional Rust NIF layer can help on “hot paths” while keeping the Codex runtime isolated as a subprocess.
+
+### Good NIF candidates (high leverage, low coupling)
+
+- **Protocol framing + parsing**:
+  - JSONL event decoding and app-server JSON-RPC line framing (partial chunks, multiple messages per chunk).
+  - Faster JSON decode and less BEAM binary churn on high-volume streams.
+- **Schema/capability introspection**:
+  - Parse `codex app-server generate-json-schema` output and answer “is method X supported?” efficiently (with caching).
+  - Improve errors: map server `-32600` “unknown variant” into structured `{:unsupported_method, ...}`.
+- **Strict validation / normalization**:
+  - Validate and normalize app-server payload shapes using upstream Rust protocol types, while preserving unknown fields for forward compatibility.
+- **Utility primitives that need exact upstream fidelity**:
+  - Patch/diff parsing/apply helpers, fuzzy search helpers, or other tooling we want to behave exactly like codex-rs.
+
+### NIF paths that are usually a poor trade
+
+- **Embedding the Codex runtime in-process**:
+  - Running the full Rust CLI/core inside the BEAM via NIF (Tokio runtime, IO, long-lived state) increases crash risk (segfaults take down the VM) and complicates cross-platform builds.
+  - The subprocess boundary is a valuable safety and isolation layer for a tool that runs commands and touches files.
+- **Login/auth UX in NIF**:
+  - Better as explicit CLI flows or documented external steps; security + UX + portability are harder in a NIF.
+
+### Recommended hybrid
+
+- Keep the pinned **subprocess** runtime for correctness and isolation.
+- Add optional NIF(s) for parsing/validation/capability checks where it materially improves throughput and reduces BEAM load.
+
 ## Decision points (choose one distribution strategy)
 
 ### Option A: Download prebuilt binaries (recommended UX)
