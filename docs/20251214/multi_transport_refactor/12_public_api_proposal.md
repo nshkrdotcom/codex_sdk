@@ -319,6 +319,10 @@ defmodule Codex.AppServer do
 
       {:codex_notification, method, params}
 
+  Server-initiated requests (e.g. approvals) are also delivered (so UIs can drive them manually when desired):
+
+      {:codex_request, id, method, params}
+
   ## Options
 
   - `:thread_id` - Only receive notifications for this thread
@@ -339,6 +343,10 @@ defmodule Codex.AppServer do
       receive do
         {:codex_notification, "item/agentMessage/delta", params} ->
           IO.puts(params["delta"])
+
+        {:codex_request, id, "item/commandExecution/requestApproval", params} ->
+          # Decide and respond (see Approval Handling section below)
+          :ok = Codex.AppServer.respond(conn, id, %{decision: "accept"})
       end
   """
   @spec subscribe(connection(), keyword()) :: :ok | {:error, term()}
@@ -349,10 +357,47 @@ defmodule Codex.AppServer do
   """
   @spec unsubscribe(connection()) :: :ok
   def unsubscribe(conn)
+
+  @doc """
+  Responds to a server-initiated request (identified by JSON-RPC `id`).
+
+  This is primarily used for approvals, but is generic for any future server request methods.
+  """
+  @spec respond(connection(), String.t() | integer(), map()) :: :ok | {:error, term()}
+  def respond(conn, id, result)
 end
 ```
 
 ---
+
+## Approval Handling (App-Server)
+
+App-server approvals are **server → client requests** that require a JSON-RPC response:
+
+- Request methods:
+  - `item/commandExecution/requestApproval`
+  - `item/fileChange/requestApproval`
+  (registry: `codex/codex-rs/app-server-protocol/src/protocol/common.rs:465-494`)
+- Response payload is `{"decision": ApprovalDecision}` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1727-1729`, `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1745-1749`).
+
+Recommended SDK approach:
+
+1. **Default (headless)**: use `thread_opts.approval_hook` (`lib/codex/thread/options.ex:13-15`) to auto-respond.
+2. **Interactive UI**: subscribe to `{:codex_request, ...}` messages and respond manually via `Codex.AppServer.respond/3`.
+
+Decision surface to support for command approvals:
+- `"accept"`
+- `"acceptForSession"`
+- `"decline"`
+- `"cancel"`
+- `{"acceptWithExecpolicyAmendment":{"execpolicyAmendment":["cmd","arg"]}}`
+  (evidence: `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:405-414`, `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:481-486`).
+
+`Codex.Approvals.Hook` should be extended in a backwards-compatible way to allow returning:
+- `:allow` (maps to `"accept"`)
+- `{:allow, for_session: true}` (maps to `"acceptForSession"`)
+- `{:allow, execpolicy_amendment: argv}` (maps to `acceptWithExecpolicyAmendment`)
+- `{:deny, reason}` (maps to `"decline"`)
 
 ## Config and Model APIs
 

@@ -13,6 +13,7 @@ Some functionality exists only in the interactive TUI (core-linked) and is not c
 |---|---:|---:|---:|---:|---|
 | Run a turn from text | ✅ | ✅ | ✅ | ✅ | Keep (exec) + add (app-server) |
 | Stream per-item progress | ✅ | ✅ | ✅ | ✅ | Add app-server mapping |
+| Turn diff updates | ❌ | ✅ (`turn/diff/updated`) | ✅ | ❌ | Map to `%Codex.Events.TurnDiffUpdated{diff: String.t()}` |
 | Resume thread by id | ✅ (via CLI args) | ✅ (`thread/resume`) | ✅ | ✅ | Keep + add first-class app-server |
 | Interrupt a running turn | ⚠️ (process kill) | ✅ (`turn/interrupt`) | ✅ | ⚠️ | Implement app-server interrupt |
 | List threads / history UI | ❌ | ✅ (`thread/list`) | ✅ | ❌ | Implement app-server method |

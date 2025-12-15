@@ -18,6 +18,8 @@ Add unit tests for:
 - Normalization:
   - app-server notification → canonical `%Codex.Events{}` mapping
   - app-server thread item → `%Codex.Items{}` mapping
+  - `turn/diff/updated` diff is a **string** (unified diff) (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`)
+  - unknown methods/items are preserved as raw (no crashes)
 
 These tests should not spawn the real codex process; feed recorded JSON lines into the parser.
 
@@ -47,6 +49,9 @@ Write a small set of `@tag :integration` tests that:
 
 Also add one integration test that triggers approval requests, if we can configure codex to request them deterministically.
 
+When feasible, also cover:
+- `AcceptForSession` and `AcceptWithExecpolicyAmendment` wire encoding + server acceptance (command approvals)
+
 ## 4) Schema drift detection
 
 Upstream can generate version-matched schemas:
@@ -64,4 +69,3 @@ For long-term maintainability, consider adding a CI job that:
 ## 5) Keep exec tests intact
 
 Do not weaken the existing exec contract tests; the transport abstraction should be invisible for the default exec backend.
-

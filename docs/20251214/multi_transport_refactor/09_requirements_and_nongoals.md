@@ -86,9 +86,14 @@ The TUI constructs `UserInput::Skill` in-process (`codex/codex-rs/tui/src/chatwi
 
 ### R4: Event Normalization
 
-- App-server notifications MUST be mappable to existing `Codex.Events` structs
-- Where app-server provides strictly more information than exec, normalize to the common subset OR extend Events
-- ThreadItem unions (camelCase in app-server) MUST normalize to `Codex.Items` structs (snake_case)
+- App-server notifications MUST be surfaced **losslessly** to Elixir consumers (at minimum: `{method, params}`).
+- For a defined “core” subset of notifications (P0/P1), notifications MUST be mapped into typed `Codex.Events` structs for ergonomic pattern matching.
+- Unknown/unhandled notification methods MUST NOT crash the connection process; they MUST be forwarded as a raw notification event (forward compatibility).
+- Where app-server provides strictly more information than exec, either:
+  - extend `Codex.Events`/`Codex.Items` to carry the extra fields, or
+  - preserve the extra payload under a `raw` field alongside normalized common fields.
+- ThreadItem unions (camelCase in app-server) MUST normalize to `Codex.Items` structs (snake_case) when possible; unknown item types MUST be preserved as raw.
+- `turn/diff/updated` MUST treat `diff` as a unified diff string (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`).
 
 ### R5: Skills Discovery
 

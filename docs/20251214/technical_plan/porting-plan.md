@@ -7,7 +7,7 @@ The upstream pull (a2c86e5d8..5d77d4db6) introduces a **single major change**: r
 **Impact Assessment**:
 - Skills were already NOT implemented in Elixir
 - New changes make skills MORE portable (request/response vs push)
-- Requires an app-server transport (exec JSONL does not expose `Op::ListSkills` / `skills/list`)
+- Requires an app-server transport to expose `skills/list` (exec JSONL does not expose app-server request/response methods)
 
 **Update (Decision)**:
 - Proceed with an app-server transport refactor (see `docs/20251214/multi_transport_refactor/README.md`)
@@ -17,7 +17,7 @@ The upstream pull (a2c86e5d8..5d77d4db6) introduces a **single major change**: r
 
 ### 1. SkillsManager & Skills System
 
-**Priority**: Medium (blocked on transport)
+**Priority**: Medium (unblocked once app-server transport exists)
 
 **New Rust Components**:
 ```
@@ -30,22 +30,16 @@ codex-rs/core/src/skills/
 └── mod.rs          # Modified - export manager
 ```
 
-**Required Elixir Work** (if proceeding):
-```
-lib/codex/skills/
-├── manager.ex      # GenServer with ETS caching
-├── metadata.ex     # SkillMetadata struct
-├── error.ex        # SkillError struct
-├── scope.ex        # :user | :repo type
-├── load_outcome.ex # SkillLoadOutcome struct
-└── list_entry.ex   # SkillsListEntry struct
-```
+**Recommended Elixir Work**:
+- Do **not** reimplement `SkillsManager`/loader logic in Elixir.
+- Keep skills discovery server-side (in the vendored `codex` runtime) and expose it via app-server `skills/list`.
+- Port only the **data types** needed to represent the response (`SkillScope`, `SkillMetadata`, errors, list entries).
 
-**Estimated Effort**: 500-800 lines
+**Estimated Effort**: 150-300 lines (types + API wrapper), plus whatever app-server transport work is required (tracked in `docs/20251214/multi_transport_refactor/07_phased_implementation_plan.md`).
 
 ### 2. Protocol Types
 
-**Priority**: Medium (blocked on transport)
+**Priority**: Medium (blocked on app-server transport)
 
 **New Rust Types**:
 ```rust
@@ -55,21 +49,16 @@ SkillsListEntry { cwd, skills, errors }
 SkillScope { User, Repo }
 ```
 
-**Required Elixir Work**:
-```elixir
-# In operations module
-def list_skills(cwds \\ [])
+**Required Elixir Work (recommended path)**:
+- Implement app-server `skills/list` (`codex/codex-rs/app-server-protocol/src/protocol/common.rs:124-127`) and decode its response types (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:976-1033`).
+- (Optional) define Elixir structs mirroring:
+  - `SkillScope`
+  - `SkillMetadata`
+  - `SkillErrorInfo`
+  - `SkillsListEntry`
+  - `SkillsListResponse` (with `data: [...]`)
 
-# In events.ex
-defmodule Codex.Events.ListSkillsResponse
-
-# In skills/
-defmodule Codex.Skills.Scope
-defmodule Codex.Skills.Metadata
-defmodule Codex.Skills.ListEntry
-```
-
-**Estimated Effort**: 200-300 lines
+**Estimated Effort**: 200-400 lines (types + decoding + `Codex.AppServer.skills_list/2`)
 
 ### 3. API Changes
 
@@ -81,151 +70,63 @@ The Rust API changes (Codex::spawn signature, etc.) only matter if Elixir adopts
 
 | Component | Transport Required | Current Elixir | Action |
 |-----------|-------------------|----------------|--------|
-| SkillsManager | Core protocol | exec JSONL | Implement via app-server-backed skills/list |
-| Op::ListSkills | Core protocol | exec JSONL | Prefer app-server `skills/list` endpoint |
-| ListSkillsResponse | Core protocol | exec JSONL | Prefer app-server response types |
+| SkillsManager | In-process (Rust) | exec JSONL | Do not port; use upstream runtime |
+| Op::ListSkills | Core protocol | exec JSONL | Do not implement (not reachable); use app-server `skills/list` |
+| ListSkillsResponse | Core protocol | exec JSONL | Do not implement as exec event; decode app-server `skills/list` response |
 | SkillScope enum | Any | None | Port when skills added |
 | SkillMetadata | Any | None | Port when skills added |
 
 ## Recommended Approach
 
-### Option A: Defer All Skills Work (Recommended)
+### Option A: Implement App-Server `skills/list` (Recommended)
 
 **Rationale**:
-1. Skills require core protocol transport
-2. Transport decision is Phase 0 of existing plan
-3. No value in partial implementation
+- Matches upstream external-client surface (app-server v2).
+- Avoids duplicating skills discovery logic (which is non-trivial and already exists in Rust).
+- Enables immediate UX wins: list skills + show per-cwd errors once app-server transport exists.
 
 **Action**:
-- Document the gap
-- Wait for Phase 0 transport decision
-- Port skills after transport is resolved
+1. Complete app-server transport refactor (`docs/20251214/multi_transport_refactor/07_phased_implementation_plan.md`).
+2. Add `Codex.AppServer.skills_list/2` and types.
+3. (Optional) add thin client-side caching (ETS) on top of `skills_list/2` if needed for UX.
 
-### Option B: Port Types Only
-
-**Rationale**:
-- Get type definitions in place
-- Easier integration later
-
-**Downside**:
-- Dead code until transport change
-- May drift from upstream
-
-**Not Recommended**
-
-### Option C: Implement Client-Side Discovery
+### Option B: Port Types Only (Not Recommended)
 
 **Rationale**:
-- Elixir discovers skills itself (no protocol needed)
-- Independent of transport
+- Low-effort scaffolding.
 
 **Downside**:
-- Duplicates Rust logic
-- Different caching strategy
-- Maintenance burden
+- Dead code until app-server transport ships.
+- Higher drift risk than simply decoding the app-server schema.
 
-**Not Recommended**
+### Option C: Implement Client-Side Discovery (Not Recommended)
+
+**Rationale**:
+- Could work without app-server.
+
+**Downside**:
+- Duplicates upstream loader/manager behavior and validation edge cases.
+- Hard to keep in sync (paths, git-root discovery, error reporting, caching semantics).
 
 ## Implementation Plan (If Proceeding)
 
 ### Prerequisites
 
-1. Complete Phase 0 transport decision
-2. If adopting core/app-server protocol:
-   - Implement protocol encoding/decoding
-   - Add event stream handling
-   - Test protocol compatibility
+1. Complete the multi-transport refactor prerequisites:
+   - transport abstraction in `Codex.Thread`
+   - app-server connection + handshake
+   - notification + item adapters
+   (see `docs/20251214/multi_transport_refactor/07_phased_implementation_plan.md`)
 
-### Phase 1: Type Definitions (Day 1)
+### Phase 1: Types + `skills/list` API (1-2 days after app-server transport exists)
 
-```elixir
-# Create lib/codex/skills/ directory
-# Add basic structs without behavior
+1. Add Elixir types mirroring the app-server schema (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:976-1033`).
+2. Implement `Codex.AppServer.skills_list/2` (request/response).
+3. Add minimal integration test(s) tagged `:integration` that call `skills_list/2` against a real `codex app-server` process.
 
-defmodule Codex.Skills.Scope do
-  @type t :: :user | :repo
-end
+### Phase 2: (Optional) Client-side caching (1 day)
 
-defmodule Codex.Skills.Metadata do
-  use TypedStruct
-  typedstruct do
-    field :name, String.t(), enforce: true
-    field :description, String.t(), enforce: true
-    field :path, String.t(), enforce: true
-    field :scope, Codex.Skills.Scope.t(), enforce: true
-  end
-end
-
-defmodule Codex.Skills.Error do
-  use TypedStruct
-  typedstruct do
-    field :path, String.t(), enforce: true
-    field :message, String.t(), enforce: true
-  end
-end
-
-defmodule Codex.Skills.LoadOutcome do
-  use TypedStruct
-  typedstruct do
-    field :skills, [Codex.Skills.Metadata.t()], default: []
-    field :errors, [Codex.Skills.Error.t()], default: []
-  end
-end
-
-defmodule Codex.Skills.ListEntry do
-  use TypedStruct
-  typedstruct do
-    field :cwd, String.t(), enforce: true
-    field :skills, [Codex.Skills.Metadata.t()], default: []
-    field :errors, [Codex.Skills.Error.t()], default: []
-  end
-end
-```
-
-### Phase 2: Event Handling (Day 2)
-
-```elixir
-# Add to events.ex
-defmodule Codex.Events.ListSkillsResponse do
-  use TypedStruct
-  typedstruct do
-    field :skills, [Codex.Skills.ListEntry.t()], default: []
-  end
-end
-
-# Add event parsing in event handler
-def parse_event(%{"type" => "list_skills_response"} = data) do
-  %Codex.Events.ListSkillsResponse{
-    skills: parse_list_entries(data["skills"])
-  }
-end
-```
-
-### Phase 3: Operation Support (Day 3)
-
-```elixir
-# Add to thread.ex or new skills module
-def list_skills(thread, cwds \\ []) do
-  # Submit Op::ListSkills via protocol
-  # Wait for ListSkillsResponse event
-  # Return skills
-end
-```
-
-### Phase 4: Manager (Optional, Day 4-5)
-
-```elixir
-# GenServer with ETS caching (if client-side caching desired)
-defmodule Codex.Skills.Manager do
-  use GenServer
-
-  def skills_for_cwd(cwd) do
-    GenServer.call(__MODULE__, {:skills_for_cwd, cwd})
-  end
-
-  # ... ETS caching implementation
-end
-```
+If the UI calls `skills_list/2` frequently, add an ETS-backed cache keyed by `cwd` in Elixir. Keep it strictly an optimization layer; do not reimplement discovery logic.
 
 ## Testing Strategy
 
@@ -249,14 +150,14 @@ end
 ### Integration Tests
 
 ```elixir
-# test/codex/skills_test.exs
-describe "list_skills/2" do
+# test/codex/app_server/skills_test.exs
+describe "Codex.AppServer.skills_list/2" do
   @tag :integration
   test "returns skills for cwd" do
-    # Requires core protocol connection
-    {:ok, thread} = Codex.start_thread()
-    {:ok, response} = Codex.Skills.list_skills(thread)
-    assert is_list(response.skills)
+    {:ok, opts} = Codex.Options.new(%{api_key: System.fetch_env!("CODEX_API_KEY")})
+    {:ok, conn} = Codex.AppServer.connect(opts)
+    {:ok, %{data: entries}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
+    assert is_list(entries)
   end
 end
 ```
@@ -265,23 +166,21 @@ end
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Transport incompatibility | High | High | Wait for Phase 0 |
+| Transport incompatibility | Medium | High | Follow `docs/20251214/multi_transport_refactor/10_protocol_mapping_spec.md` and keep raw passthrough for unknown methods |
 | Upstream changes | Medium | Low | Track upstream closely |
 | Type drift | Low | Medium | Generate from spec |
-| Caching mismatch | Low | Low | Match Rust behavior |
+| Caching mismatch | Low | Low | Prefer server-side behavior; keep Elixir caching optional and shallow |
 
 ## Timeline
 
 | Phase | Duration | Dependencies |
 |-------|----------|--------------|
-| Phase 0 (Transport) | TBD | Business decision |
-| Phase 1 (Types) | 1 day | Phase 0 complete |
-| Phase 2 (Events) | 1 day | Phase 1 |
-| Phase 3 (Operations) | 1 day | Phase 2 |
-| Phase 4 (Manager) | 2 days | Phase 3 (optional) |
-| Testing | 2 days | All phases |
+| App-server transport refactor | Sprint scope | `docs/20251214/multi_transport_refactor/07_phased_implementation_plan.md` |
+| Skills types + `skills/list` | 1-2 days | App-server transport exists |
+| Optional caching | 1 day | Skills list exists |
+| Testing | 1-2 days | Above |
 
-**Total**: ~7 days after Phase 0 decision
+**Total**: Driven primarily by the app-server transport refactor; skills list itself is small once transport exists.
 
 ## Conclusion
 

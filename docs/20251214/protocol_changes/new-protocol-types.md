@@ -135,7 +135,9 @@ pub struct SessionConfiguredEvent {
 }
 ```
 
-**After**: Field removed. Clients must use `Op::ListSkills` to get skills.
+**After**: Field removed. Clients must explicitly request skills:
+- Core/in-process: `Op::ListSkills`
+- App-server: `skills/list`
 
 ## Migration Guide
 
@@ -209,7 +211,9 @@ These examples reflect the **app-server JSON-RPC** method (`skills/list`), not t
 
 ## Elixir Porting Notes
 
-To support these types in Elixir:
+For `codex_sdk`, the recommended path is to expose skills via **app-server** `skills/list` (request/response), not via the in-process core `Op::ListSkills`/`EventMsg::ListSkillsResponse` types (which are not reachable from exec JSONL).
+
+To support the app-server response types in Elixir:
 
 ```elixir
 # lib/codex/skills/scope.ex
@@ -228,21 +232,30 @@ defmodule Codex.Skills.Metadata do
   end
 end
 
+# lib/codex/skills/error_info.ex
+defmodule Codex.Skills.ErrorInfo do
+  use TypedStruct
+  typedstruct do
+    field :path, String.t(), enforce: true
+    field :message, String.t(), enforce: true
+  end
+end
+
 # lib/codex/skills/list_entry.ex
 defmodule Codex.Skills.ListEntry do
   use TypedStruct
   typedstruct do
     field :cwd, String.t(), enforce: true
     field :skills, [Codex.Skills.Metadata.t()], default: []
-    field :errors, [Codex.Skills.Error.t()], default: []
+    field :errors, [Codex.Skills.ErrorInfo.t()], default: []
   end
 end
 
-# lib/codex/events/list_skills_response.ex
-defmodule Codex.Events.ListSkillsResponse do
+# lib/codex/skills/list_response.ex
+defmodule Codex.Skills.ListResponse do
   use TypedStruct
   typedstruct do
-    field :skills, [Codex.Skills.ListEntry.t()], default: []
+    field :data, [Codex.Skills.ListEntry.t()], default: []
   end
 end
 ```

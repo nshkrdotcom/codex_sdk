@@ -70,20 +70,22 @@ Rough responsibilities:
 
 ### Canonical events
 
-Keep `Codex.Events` as the canonical event surface, and adapt app-server notifications into it.
+Keep `Codex.Events` as the canonical *typed* event surface, and adapt app-server notifications into it **where possible**.
+
+For forward-compatibility, also surface a *lossless* raw notification form for any app-server method we don’t yet model.
 
 This is already partially anticipated:
 - `Codex.Events` accepts both dot and slash variants for some types (see `lib/codex/events.ex:369` and `lib/codex/events.ex:379`).
 
 ### Adapter layer
 
-Add an adapter that converts app-server notifications into maps compatible with `Codex.Events.parse!/1`:
+Add an adapter that converts app-server notifications into maps compatible with `Codex.Events.parse!/1` **when the method is supported**, and otherwise yields a raw notification event without crashing the connection process:
 
 - app-server notification: `{ "method": "turn/started", "params": { ... } }`
 - normalized event map: `%{"type" => "turn.started", ...}`
 - parse into `%Codex.Events.TurnStarted{...}`
 
-Similarly, app-server thread items are camelCase unions; normalize them into the snake_case item maps expected by `Codex.Items.parse!/1` (see `lib/codex/items.ex:219`).
+Similarly, app-server thread items are camelCase unions; normalize them into the snake_case item maps expected by `Codex.Items.parse!/1` (see `lib/codex/items.ex:219`). If an item type is unknown, preserve it as raw instead of raising.
 
 ## Public API shape
 

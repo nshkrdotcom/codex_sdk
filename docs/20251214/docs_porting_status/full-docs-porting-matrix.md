@@ -58,7 +58,7 @@ This document maps every documentation file in the upstream codex repository to 
 | Thread/Turn model | `core/` | `lib/codex/thread.ex` |
 | Agent runner | `core/` | `lib/codex/agent_runner.ex` |
 | Tools system | `core/` | `lib/codex/tools.ex` |
-| Approvals | `core/` | `lib/codex/approvals.ex` |
+| Approvals | `core/` | `lib/codex/approvals.ex` (exec-mode approvals; app-server approvals pending) |
 | Guardrails | `core/` | `lib/codex/guardrail.ex` |
 | Handoffs | `core/` | `lib/codex/handoff.ex` |
 | Events | `protocol/` | `lib/codex/events.ex` |
@@ -80,7 +80,7 @@ This document maps every documentation file in the upstream codex repository to 
 
 | Feature | Blocked By | Priority |
 |---------|-----------|----------|
-| Skills list API (`Op::ListSkills` / `skills/list`) | Transport (core/app-server) | Medium |
+| Skills list API (`skills/list`) | App-server transport missing in Elixir | Medium |
 | Slash commands | CLI-only | N/A |
 | Custom prompts | CLI-only | N/A |
 | Execution policies | CLI-only | Low |
@@ -129,9 +129,9 @@ This document maps every documentation file in the upstream codex repository to 
 | Event | Would Require |
 |-------|--------------|
 | `SessionConfigured` | Core protocol |
-| `ListSkillsResponse` | Core protocol |
-| `ExecApprovalRequest` | Core protocol |
-| `PatchApprovalRequest` | Core protocol |
+| `ListSkillsResponse` | App-server `skills/list` (request/response), not exec JSONL |
+| `ExecApprovalRequest` | App-server server requests (`item/commandExecution/requestApproval`) |
+| `PatchApprovalRequest` | App-server server requests (`item/fileChange/requestApproval`) |
 | `TurnCompaction` | Core protocol |
 
 ## Documentation Gaps to Address

@@ -18,7 +18,7 @@
 - [`skills_analysis/skills-comparison.md`](./skills_analysis/skills-comparison.md)
   - **Key Finding**: Skills were already in Rust codebase, NOT in Elixir
   - Rust implementation: 583 lines, 6 files, fully featured
-  - Elixir implementation: no first-class skills API; `Op::ListSkills`/`skills/list` blocked on transport
+  - Elixir implementation: no first-class skills API today; `skills/list` is blocked on the missing app-server transport (see multi-transport refactor doc set)
   - Detailed comparison and porting requirements
 
 ### 3. Protocol Changes

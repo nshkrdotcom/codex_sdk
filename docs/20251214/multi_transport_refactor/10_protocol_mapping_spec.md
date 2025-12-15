@@ -125,7 +125,7 @@ end
 | `thread/compacted` | `ContextCompacted` | `v2::ContextCompactedNotification` | `%Codex.Events.TurnCompaction{stage: :completed}` | Compatibility shim: map `thread/compacted` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1706-1709`) → `TurnCompaction` with empty `compaction` |
 | `turn/started` | `TurnStarted` | `v2::TurnStartedNotification` | `%Codex.Events.TurnStarted{}` | `threadId`/`turn.id` → `thread_id`/`turn_id` |
 | `turn/completed` | `TurnCompleted` | `v2::TurnCompletedNotification` | `%Codex.Events.TurnCompleted{}` | `turn.status` only; `turn.items` is `[]` except in `thread/resume` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1151-1154`), so compute `final_response` from `item/*` stream and attach usage from latest `thread/tokenUsage/updated` |
-| `turn/diff/updated` | `TurnDiffUpdated` | `v2::TurnDiffUpdatedNotification` | `%Codex.Events.TurnDiffUpdated{}` | App-server `diff` is a unified diff string (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`); update event type accordingly |
+| `turn/diff/updated` | `TurnDiffUpdated` | `v2::TurnDiffUpdatedNotification` | `%Codex.Events.TurnDiffUpdated{}` | App-server `diff` is a unified diff string (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`); update `%Codex.Events.TurnDiffUpdated{diff: String.t()}` (or a backwards-compatible union) |
 | `turn/plan/updated` | `TurnPlanUpdated` | `v2::TurnPlanUpdatedNotification` | **NEW: `%Codex.Events.TurnPlanUpdated{}`** | New event type needed |
 | `item/started` | `ItemStarted` | `v2::ItemStartedNotification` | `%Codex.Events.ItemStarted{}` | Normalize `item` via Items adapter |
 | `item/completed` | `ItemCompleted` | `v2::ItemCompletedNotification` | `%Codex.Events.ItemCompleted{}` | Normalize `item` via Items adapter |
@@ -161,14 +161,14 @@ To reuse `Codex.Events.parse!/1`, implement a notification adapter that:
 - Add new event structs for `TurnPlanUpdated`, reasoning deltas, command output deltas
 - Maintains type safety and pattern matching
 
-**Option B: Preserve as raw maps** (Acceptable for P2/P3 events)
-- Emit events as `{:raw_notification, method, params}`
-- Consumers can pattern match on method string
-- Less code, more flexible, but weaker typing
+**Option B: Preserve as raw notifications** (Required for forward compatibility)
+- Always preserve unknown/unhandled methods as raw (do not crash on drift).
+- Emit raw notifications as `{:codex_notification, method, params}` (subscription API) and/or as a dedicated `Codex.Events` wrapper struct on the streamed events API.
+- Consumers can pattern match on method string while waiting for typed support.
 
 **Recommended hybrid**:
 - P0/P1 notifications → typed `Codex.Events` structs
-- P2/P3 notifications → raw maps with stable shape
+- P2/P3 notifications → start as raw notifications; add typed structs incrementally without breaking consumers
 
 ---
 
@@ -219,8 +219,31 @@ To reuse `Codex.Events.parse!/1`, implement a notification adapter that:
 
 Recommended backwards-compatible hook decision extensions:
 - `{:allow, for_session: true}` → `AcceptForSession`
-- `{:allow, execpolicy_amendment: command_argv}` → `AcceptWithExecpolicyAmendment { execpolicy_amendment }`
-  - Note the wire payload field is `execpolicy_amendment` (Rust field name in `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:409-411`)
+- `{:allow, execpolicy_amendment: command_argv}` → `AcceptWithExecpolicyAmendment`
+  - Wire shape (serde default enum encoding + camelCase): `"decision"` is an *externally tagged* enum:
+    - `"acceptWithExecpolicyAmendment"` key
+    - inner field name `execpolicyAmendment`
+    - value is a JSON array of argv strings (`ExecPolicyAmendment` is `#[serde(transparent)]`)
+  - Evidence: `ApprovalDecision::AcceptWithExecpolicyAmendment { execpolicy_amendment: ExecPolicyAmendment }` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:405-414`) and `ExecPolicyAmendment` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:481-486`)
+
+**Important doc/code mismatch**:
+- `codex/codex-rs/app-server/README.md:340` mentions an `acceptSettings` field, but the v2 protocol response structs only define `decision` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1727-1729`, `codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1745-1749`).
+- Implement against the protocol structs; do not rely on `acceptSettings`.
+
+**Decision semantics (so the SDK can expose the full surface correctly)**:
+- For **command execution approvals**, app-server maps:
+  - `AcceptForSession` → `ReviewDecision::ApprovedForSession` (`codex/codex-rs/app-server/src/bespoke_event_handling.rs:1136-1139`), which core caches for the session (`codex/codex-rs/core/src/tools/sandboxing.rs:52-77`).
+  - `AcceptWithExecpolicyAmendment` → `ReviewDecision::ApprovedExecpolicyAmendment { .. }` (`codex/codex-rs/app-server/src/bespoke_event_handling.rs:1139-1146`), which core persists to execpolicy (`codex/codex-rs/core/src/codex.rs:1767-1792`).
+- For **file change approvals**, app-server currently treats `Accept`, `AcceptForSession`, and `AcceptWithExecpolicyAmendment` equivalently (all approved) (`codex/codex-rs/app-server/src/bespoke_event_handling.rs:1064-1076`).
+
+**Concrete wire examples** (server request `id` echoed back):
+```json
+{"id":7,"result":{"decision":"accept"}}
+{"id":7,"result":{"decision":"acceptForSession"}}
+{"id":7,"result":{"decision":{"acceptWithExecpolicyAmendment":{"execpolicyAmendment":["npm","install"]}}}}
+{"id":7,"result":{"decision":"decline"}}
+{"id":7,"result":{"decision":"cancel"}}
+```
 
 ### Hook Integration Flow
 

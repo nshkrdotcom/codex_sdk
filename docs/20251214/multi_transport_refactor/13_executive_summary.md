@@ -26,6 +26,7 @@ Reviewed all documents in `docs/20251214/multi_transport_refactor/` against upst
 - App-server uses server-initiated JSON-RPC requests (not notifications)
 - Client MUST respond with `ApprovalDecision` enum values (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:402-414`)
 - Async hook patterns (`{:async, ref}`) require careful timeout and response correlation
+- Upstream app-server README still mentions `acceptSettings` on approval responses (`codex/codex-rs/app-server/README.md:340`), but the v2 response structs only define `decision` (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1727-1729`). Implement against protocol structs, not README examples.
 
 **Mitigation**: Added `11_failure_modes_and_recovery.md` with explicit approval flow documentation and timeout handling.
 
@@ -211,9 +212,11 @@ Recommendation: Implement emulation as opt-in, document clearly as "emulation mo
 3. **Thread lifecycle**: Can start, resume, list, archive threads via app-server
 4. **Turn execution**: Can run turns with streaming events
 5. **Approvals**: Can handle approval requests with allow/deny
-6. **Skills**: Can list skills via `skills/list`
-7. **Documentation**: All public APIs documented with examples
-8. **Error handling**: All failure modes from `11_failure_modes_and_recovery.md` handled
+6. **Approvals (full surface)**: Supports `AcceptForSession` + `AcceptWithExecpolicyAmendment` for command approvals (`codex/codex-rs/app-server/src/bespoke_event_handling.rs:1136-1146`)
+7. **Diff**: `turn/diff/updated` emits unified diff string (`codex/codex-rs/app-server-protocol/src/protocol/v2.rs:1524-1530`)
+8. **Skills**: Can list skills via `skills/list`
+9. **Documentation**: All public APIs documented with examples
+10. **Error handling**: All failure modes from `11_failure_modes_and_recovery.md` handled
 
 ---
 
