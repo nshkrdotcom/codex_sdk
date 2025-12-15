@@ -16,6 +16,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
+- **Multi-Transport Support**: Default exec JSONL (`codex exec --experimental-json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`).
 - **Streaming & Structured Output**: Real-time events plus first-class JSON schema handling for deterministic parsing.
 - **File & Attachment Pipeline**: Secure temp file registry, change events, and fixture harvesting helpers.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
@@ -31,7 +32,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.2.5"}
+    {:codex_sdk, "~> 0.3.0"}
   ]
 end
 ```
@@ -92,6 +93,35 @@ IO.inspect(result.items)
 # Continue the conversation
 {:ok, next_result} = Codex.Thread.run(thread, "Give me an example")
 ```
+
+### App-server Transport (Optional)
+
+The SDK defaults to exec JSONL for backwards compatibility. To use the stateful app-server transport:
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{api_key: System.fetch_env!("CODEX_API_KEY")})
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+{:ok, thread} =
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: "/project"
+  })
+
+{:ok, result} = Codex.Thread.run(thread, "List the available skills for this repo")
+
+{:ok, %{data: skills}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
+```
+
+App-server-only APIs include:
+
+- `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_compact/2`
+- `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`
+- `Codex.AppServer.turn_interrupt/3`
+- `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints
+- Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
+
+Note: app-server v2 does not support sending `UserInput::Skill` directly; use `skills/list` and inject skill content as text if you need emulation.
 
 ### Streaming Responses
 
@@ -521,7 +551,14 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.2.5 (Quiet tests + tools registry race fix)
+**Current Version**: 0.3.0 (Multi-transport + app-server parity)
+
+### v0.3.0 Highlights
+
+- Added app-server JSON-RPC stdio transport (`codex app-server`) alongside the existing exec JSONL default
+- Exposed v2 app-server request APIs (threads/turns/skills/models/config/review/command exec/account/MCP)
+- Implemented approval request handling with full `ApprovalDecision` support (including execpolicy amendments)
+- Updated turn diff events (`turn/diff/updated`) to surface unified diff strings
 
 ### v0.2.5 Highlights
 

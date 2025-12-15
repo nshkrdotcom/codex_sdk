@@ -1,0 +1,184 @@
+# App-server Transport (JSON-RPC over stdio)
+
+This guide covers using the **stateful** `codex app-server` transport from Elixir via `Codex.AppServer`.
+
+The SDK supports two external Codex transports:
+
+- **Exec JSONL (default, backwards compatible)**: `codex exec --experimental-json`
+- **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON messages over stdio)
+
+Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive/compact, skills/models/config APIs, server-driven approvals, etc.).
+
+## Prerequisites
+
+- A `codex` CLI install that supports `codex app-server` (run `codex app-server --help`).
+- Auth via either:
+  - `CODEX_API_KEY` / `OPENAI_API_KEY`, or
+  - a Codex CLI login under `CODEX_HOME` (default `~/.codex`).
+
+The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PATH` → `System.find_executable("codex")`.
+
+## Connect / Disconnect
+
+`Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{api_key: System.get_env("CODEX_API_KEY")})
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+# ... use conn ...
+
+:ok = Codex.AppServer.disconnect(conn)
+```
+
+### Client identity
+
+You can identify your application in the handshake:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    client_name: "my_app",
+    client_title: "My App",
+    client_version: "1.2.3"
+  )
+```
+
+## Use app-server as a transport for threads/turns
+
+To keep your existing `Codex.Thread.*` usage but switch the underlying transport, set `transport: {:app_server, conn}` in thread options:
+
+```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+{:ok, thread} =
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: "/path/to/project",
+    ask_for_approval: :untrusted,
+    sandbox: :workspace_write
+  })
+
+{:ok, result} = Codex.Thread.run(thread, "List files and summarize what you see")
+```
+
+Streaming works the same way:
+
+```elixir
+{:ok, stream} = Codex.Thread.run_streamed(thread, "Run tests and report failures")
+Enum.each(stream, &IO.inspect/1)
+```
+
+## Call app-server v2 APIs directly
+
+App-server enables additional APIs that are not available via exec JSONL. Examples:
+
+```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+{:ok, %{data: skills}} = Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"])
+{:ok, %{data: models}} = Codex.AppServer.model_list(conn, limit: 25)
+
+{:ok, %{config: config}} = Codex.AppServer.config_read(conn, include_layers: false)
+{:ok, _} = Codex.AppServer.config_write(conn, ["sandboxPolicy", "mode"], "workspace-write")
+
+{:ok, %{data: threads, next_cursor: cursor}} = Codex.AppServer.thread_list(conn, limit: 10)
+```
+
+See `Codex.AppServer`, Codex.AppServer.Account, and Codex.AppServer.Mcp for the full request surface.
+
+## Notifications and server requests (approvals)
+
+App-server is bidirectional: the server can send notifications at any time, and it can also send **requests** that require a response (approvals).
+
+Subscribe from any process:
+
+```elixir
+:ok = Codex.AppServer.subscribe(conn)
+```
+
+Messages arrive as:
+
+- Notifications: `{:codex_notification, method, params}`
+- Server requests: `{:codex_request, id, method, params}`
+
+You can filter by thread id and/or method list:
+
+```elixir
+:ok = Codex.AppServer.subscribe(conn,
+  thread_id: "thr_123",
+  methods: ["turn/completed", "item/completed", "item/commandExecution/requestApproval"]
+)
+```
+
+### Manual approval handling (UI loop)
+
+When Codex needs approval for a command or file change during a `turn/start`, it sends a server request:
+
+- `item/commandExecution/requestApproval`
+- `item/fileChange/requestApproval`
+
+Respond by echoing the request `id` back with a result payload containing `decision`.
+
+```elixir
+receive do
+  {:codex_request, id, "item/commandExecution/requestApproval", _params} ->
+    :ok = Codex.AppServer.respond(conn, id, %{decision: "accept"})
+end
+```
+
+Supported `decision` values include:
+
+- `"accept"`
+- `"acceptForSession"`
+- `"decline"`
+- `"cancel"`
+- `%{"acceptWithExecpolicyAmendment" => %{"execpolicyAmendment" => ["git", "status"]}}`
+
+Note: request `id` can be an integer or a string.
+
+### Headless auto-approval via `Codex.Approvals.Hook`
+
+When running turns via `Codex.Thread.*`, you can auto-respond to app-server approvals using `approval_hook` on thread options.
+
+Supported hook returns (backwards compatible):
+
+- `:allow` → `"accept"`
+- `{:allow, for_session: true}` → `"acceptForSession"`
+- `{:allow, execpolicy_amendment: ["cmd", "arg"]}` → `"acceptWithExecpolicyAmendment"`
+- `{:deny, reason}` → `"decline"`
+
+## Turn diffs
+
+On app-server, `turn/diff/updated` provides a **unified diff string**. The SDK surfaces it on `Codex.Events.TurnDiffUpdated.diff`.
+
+## Skills caveat
+
+App-server v2 does not support sending `UserInput::Skill` directly today (the union does not include it). Use `skills/list` to discover skills and inject content as text if you need an emulation layer.
+
+## Troubleshooting
+
+### `skills/list` returns `-32600` “unknown variant”
+
+If you see a JSON-RPC error like:
+
+- `code: -32600`
+- `message: "Invalid request: unknown variant `skills/list` ..."`
+
+your installed `codex app-server` is running a protocol version that does not implement `skills/list` yet. Upgrade the Codex CLI and retry.
+
+## Working live examples
+
+Runnable scripts (against a real `codex` install) live under `examples/`:
+
+- `examples/live_app_server_basic.exs`
+- `examples/live_app_server_streaming.exs`
+- `examples/live_app_server_approvals.exs`
+
+Run them with:
+
+```bash
+mix run examples/live_app_server_basic.exs
+mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
+mix run examples/live_app_server_approvals.exs
+```

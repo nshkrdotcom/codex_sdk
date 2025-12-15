@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.2.5"
+  @version "0.3.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -91,6 +91,7 @@ defmodule CodexSdk.MixProject do
         "docs/03-implementation-plan.md",
         "docs/04-testing-strategy.md",
         "docs/05-api-reference.md",
+        "docs/09-app-server-transport.md",
         "docs/06-examples.md",
         "docs/07-python-parity-plan.md",
         "docs/08-tdd-implementation-guide.md",
@@ -116,7 +117,8 @@ defmodule CodexSdk.MixProject do
           "docs/02-architecture.md",
           "docs/03-implementation-plan.md",
           "docs/04-testing-strategy.md",
-          "docs/05-api-reference.md"
+          "docs/05-api-reference.md",
+          "docs/09-app-server-transport.md"
         ],
         Reference: [
           "docs/06-examples.md",

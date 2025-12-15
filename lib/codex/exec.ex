@@ -420,28 +420,31 @@ defmodule Codex.Exec do
   defp maybe_put_env(opts, env), do: [{:env, env} | opts]
 
   defp decode_lines(data) do
-    case String.split(data, "\n", trim: false) do
-      [] ->
-        {[], data, []}
+    {lines, rest} = split_lines(data)
+    {events, non_json} = decode_event_lines(lines)
+    {events, rest, non_json}
+  end
 
-      [single] ->
-        {[], single, []}
+  defp split_lines(data) do
+    parts = String.split(data, "\n", trim: false)
 
-      parts ->
-        {maybe_lines, [last]} = Enum.split(parts, -1)
-
-        {decoded, non_json} =
-          maybe_lines
-          |> Enum.reject(&(&1 == ""))
-          |> Enum.reduce({[], []}, fn line, {events, raw} ->
-            case decode_line(line) do
-              {:ok, event} -> {events ++ [event], raw}
-              {:non_json, raw_line} -> {events, raw ++ [raw_line]}
-            end
-          end)
-
-        {decoded, last, non_json}
+    case parts do
+      [] -> {[], data}
+      [single] -> {[], single}
+      _ -> {Enum.drop(parts, -1), List.last(parts)}
     end
+  end
+
+  defp decode_event_lines(lines) do
+    lines
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reduce({[], []}, fn line, {events, raw} ->
+      case decode_line(line) do
+        {:ok, event} -> {[event | events], raw}
+        {:non_json, raw_line} -> {events, [raw_line | raw]}
+      end
+    end)
+    |> then(fn {events, raw} -> {Enum.reverse(events), Enum.reverse(raw)} end)
   end
 
   defp decode_line(line) do

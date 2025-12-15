@@ -91,6 +91,11 @@ defmodule Codex.Approvals do
     result
   end
 
+  defp handle_review_result({:allow, _opts}, _module, event, started, _timeout) do
+    emit_result_telemetry(:allow, event, started)
+    :allow
+  end
+
   defp handle_review_result({:deny, _reason} = result, _module, event, started, _timeout) do
     emit_result_telemetry(result, event, started)
     result
@@ -114,8 +119,14 @@ defmodule Codex.Approvals do
   end
 
   defp handle_await_result({:ok, decision}, event, started) do
-    emit_result_telemetry(decision, event, started)
-    decision
+    normalized =
+      case decision do
+        {:allow, _opts} -> :allow
+        other -> other
+      end
+
+    emit_result_telemetry(normalized, event, started)
+    normalized
   end
 
   defp handle_await_result({:error, :timeout}, event, started) do

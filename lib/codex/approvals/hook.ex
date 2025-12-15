@@ -17,6 +17,7 @@ defmodule Codex.Approvals.Hook do
 
   Synchronous hooks return:
   - `:allow` - approve the operation
+  - `{:allow, opts}` - approve with additional options (used by app-server approvals)
   - `{:deny, reason}` - deny with a reason string
 
   Asynchronous hooks return:
@@ -57,7 +58,12 @@ defmodule Codex.Approvals.Hook do
   @type event :: map()
   @type context :: map()
   @type opts :: keyword()
-  @type decision :: :allow | {:deny, String.t()}
+  @type allow_opts :: [
+          for_session: boolean(),
+          execpolicy_amendment: [String.t()]
+        ]
+
+  @type decision :: :allow | {:allow, allow_opts()} | {:deny, String.t() | atom()}
   @type async_ref :: reference()
   @type async_result :: {:async, async_ref} | {:async, async_ref, metadata :: map()}
   @type review_result :: decision() | async_result()

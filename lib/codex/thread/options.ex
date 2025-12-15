@@ -9,6 +9,7 @@ defmodule Codex.Thread.Options do
   defstruct metadata: %{},
             labels: %{},
             auto_run: false,
+            transport: :exec,
             approval_policy: nil,
             approval_hook: nil,
             approval_timeout_ms: 30_000,
@@ -22,10 +23,13 @@ defmodule Codex.Thread.Options do
             attachments: [],
             file_search: nil
 
+  @type transport :: :exec | {:app_server, pid()}
+
   @type t :: %__MODULE__{
           metadata: map(),
           labels: map(),
           auto_run: boolean(),
+          transport: transport(),
           approval_policy: module() | nil,
           approval_hook: module() | nil,
           approval_timeout_ms: pos_integer(),
@@ -58,6 +62,7 @@ defmodule Codex.Thread.Options do
     metadata = Map.get(attrs, :metadata, Map.get(attrs, "metadata", %{}))
     labels = Map.get(attrs, :labels, Map.get(attrs, "labels", %{}))
     auto_run = Map.get(attrs, :auto_run, Map.get(attrs, "auto_run", false))
+    transport = Map.get(attrs, :transport, Map.get(attrs, "transport"))
     approval_policy = Map.get(attrs, :approval_policy, Map.get(attrs, "approval_policy"))
     approval_hook = Map.get(attrs, :approval_hook, Map.get(attrs, "approval_hook"))
 
@@ -89,6 +94,7 @@ defmodule Codex.Thread.Options do
          {:ok, labels} <- ensure_map(labels, :labels),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
          {:ok, file_search} <- FileSearch.new(file_search),
+         {:ok, transport} <- normalize_transport(transport),
          {:ok, sandbox} <- normalize_sandbox(sandbox),
          true <- is_boolean(auto_run) or {:error, {:invalid_auto_run, auto_run}},
          :ok <- validate_optional_string(working_directory, :working_directory),
@@ -111,6 +117,7 @@ defmodule Codex.Thread.Options do
          metadata: metadata,
          labels: labels,
          auto_run: auto_run,
+         transport: transport,
          approval_policy: approval_policy,
          approval_hook: approval_hook,
          approval_timeout_ms: approval_timeout_ms,
@@ -156,6 +163,17 @@ defmodule Codex.Thread.Options do
   end
 
   defp normalize_string_list(value, field), do: {:error, {:invalid_list, field, value}}
+
+  defp normalize_transport(nil) do
+    {:ok, Application.get_env(:codex_sdk, :default_transport, :exec)}
+  end
+
+  defp normalize_transport(:exec), do: {:ok, :exec}
+  defp normalize_transport("exec"), do: {:ok, :exec}
+
+  defp normalize_transport({:app_server, pid}) when is_pid(pid), do: {:ok, {:app_server, pid}}
+
+  defp normalize_transport(value), do: {:error, {:invalid_transport, value}}
 
   defp normalize_sandbox(nil), do: {:ok, :default}
   defp normalize_sandbox(:default), do: {:ok, :default}

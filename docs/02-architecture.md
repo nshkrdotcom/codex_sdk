@@ -8,6 +8,20 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 2. **Clean Separation**: Clear boundaries between client API, process management, and IPC
 3. **Robust Error Handling**: Failures are isolated and cleanly propagated
 
+## Transports
+
+`codex_sdk` supports two upstream external transports:
+
+- **Exec JSONL (default)**: spawns `codex exec --experimental-json` and parses JSONL events
+- **App-server JSON-RPC (optional)**: maintains a stateful `codex app-server` subprocess and speaks newline-delimited JSON-RPC over stdio
+
+Transport selection is per-thread via `Codex.Thread.Options.transport`:
+
+```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+{:ok, thread_opts} = Codex.Thread.Options.new(%{transport: {:app_server, conn}})
+```
+
 ## Component Architecture
 
 ### High-Level Component Diagram
@@ -36,14 +50,12 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 │  (Manages turn execution lifecycle)                           │
 └────────────────┬──────────────────────────────────────────────┘
                  │
-                 │ Starts GenServer
+                 │ Transport dispatch
                  ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                   Codex.Exec GenServer                         │
-│  - Spawns codex-rs process                                    │
-│  - Manages Port communication                                 │
-│  - Parses JSONL events                                        │
-│  - Handles process lifecycle                                  │
+│                Codex.Transport (behaviour)                     │
+│  - Exec JSONL: Codex.Exec                                     │
+│  - App-server: Codex.AppServer.Connection                      │
 └────────────────┬──────────────────────────────────────────────┘
                  │
                  │ Port (stdin/stdout)
@@ -96,12 +108,13 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 - Coordinate with Exec GenServer
 - Handle structured output schemas
 
-**State**: Encapsulated in `%Codex.Thread{}` struct
+**State**: Encapsulated in `%Codex.Thread{}` struct (includes transport metadata)
 ```elixir
 defstruct [
   :thread_id,          # String.t() | nil (populated after first turn)
   :codex_opts,         # %Codex.Options{}
-  :thread_opts         # %Codex.Thread.Options{}
+  :thread_opts,        # %Codex.Thread.Options{}
+  :transport           # :exec | {:app_server, pid()}
 ]
 ```
 

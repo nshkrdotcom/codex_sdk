@@ -11,9 +11,12 @@ defmodule Codex.Items do
     CommandExecution,
     Error,
     FileChange,
+    ImageView,
     McpToolCall,
     Reasoning,
+    ReviewMode,
     TodoList,
+    UserMessage,
     WebSearch
   }
 
@@ -22,6 +25,9 @@ defmodule Codex.Items do
           | Reasoning.t()
           | CommandExecution.t()
           | FileChange.t()
+          | UserMessage.t()
+          | ImageView.t()
+          | ReviewMode.t()
           | McpToolCall.t()
           | WebSearch.t()
           | TodoList.t()
@@ -69,9 +75,13 @@ defmodule Codex.Items do
     defstruct id: nil,
               type: :command_execution,
               command: nil,
+              cwd: nil,
+              process_id: nil,
+              command_actions: [],
               aggregated_output: "",
               exit_code: nil,
-              status: :in_progress
+              status: :in_progress,
+              duration_ms: nil
 
     @type status :: :in_progress | :completed | :failed | :declined
 
@@ -79,9 +89,13 @@ defmodule Codex.Items do
             id: String.t() | nil,
             type: :command_execution,
             command: String.t(),
+            cwd: String.t() | nil,
+            process_id: String.t() | nil,
+            command_actions: [map()],
             aggregated_output: String.t(),
             exit_code: integer() | nil,
-            status: status()
+            status: status(),
+            duration_ms: integer() | nil
           }
   end
 
@@ -98,7 +112,12 @@ defmodule Codex.Items do
               status: :completed
 
     @type change_kind :: :add | :delete | :update
-    @type change :: %{path: String.t(), kind: change_kind()}
+    @type change :: %{
+            required(:path) => String.t(),
+            required(:kind) => change_kind(),
+            optional(:diff) => String.t(),
+            optional(:move_path) => String.t() | nil
+          }
 
     @type status :: :in_progress | :completed | :failed | :declined
 
@@ -123,7 +142,8 @@ defmodule Codex.Items do
               arguments: nil,
               result: nil,
               error: nil,
-              status: :in_progress
+              status: :in_progress,
+              duration_ms: nil
 
     @type status :: :in_progress | :completed | :failed
 
@@ -135,7 +155,54 @@ defmodule Codex.Items do
             arguments: map() | list() | nil,
             result: map() | nil,
             error: map() | nil,
-            status: status()
+            status: status(),
+            duration_ms: integer() | nil
+          }
+  end
+
+  defmodule UserMessage do
+    @moduledoc """
+    User-authored message item carrying a list of input blocks.
+    """
+
+    @enforce_keys [:content]
+    defstruct id: nil, type: :user_message, content: []
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :user_message,
+            content: [map()]
+          }
+  end
+
+  defmodule ImageView do
+    @moduledoc """
+    An image view event emitted by the app-server when it renders a local image.
+    """
+
+    @enforce_keys [:path]
+    defstruct id: nil, type: :image_view, path: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :image_view,
+            path: String.t()
+          }
+  end
+
+  defmodule ReviewMode do
+    @moduledoc """
+    Indicates that review mode has been entered or exited.
+    """
+
+    @enforce_keys [:review]
+    defstruct id: nil, type: :review_mode, entered: true, review: ""
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :review_mode,
+            entered: boolean(),
+            review: String.t()
           }
   end
 
@@ -220,6 +287,9 @@ defmodule Codex.Items do
   def parse!(%{"type" => "reasoning"} = map), do: parse_reasoning(map)
   def parse!(%{"type" => "command_execution"} = map), do: parse_command_execution(map)
   def parse!(%{"type" => "file_change"} = map), do: parse_file_change(map)
+  def parse!(%{"type" => "user_message"} = map), do: parse_user_message(map)
+  def parse!(%{"type" => "image_view"} = map), do: parse_image_view(map)
+  def parse!(%{"type" => "review_mode"} = map), do: parse_review_mode(map)
   def parse!(%{"type" => "mcp_tool_call"} = map), do: parse_mcp_tool_call(map)
   def parse!(%{"type" => "web_search"} = map), do: parse_web_search(map)
   def parse!(%{"type" => "todo_list"} = map), do: parse_todo_list(map)
@@ -251,9 +321,13 @@ defmodule Codex.Items do
   def to_map(%CommandExecution{} = item) do
     base_item_map(item, "command_execution")
     |> maybe_put("command", item.command)
+    |> maybe_put("cwd", item.cwd)
+    |> maybe_put("process_id", item.process_id)
+    |> maybe_put("command_actions", item.command_actions)
     |> maybe_put("aggregated_output", item.aggregated_output)
     |> maybe_put("exit_code", item.exit_code)
     |> maybe_put("status", status_to_string(item.status, @command_status_map))
+    |> maybe_put("duration_ms", item.duration_ms)
   end
 
   def to_map(%FileChange{} = item) do
@@ -261,13 +335,31 @@ defmodule Codex.Items do
     |> maybe_put("status", status_to_string(item.status, @file_change_status_map))
     |> maybe_put(
       "changes",
-      Enum.map(item.changes, fn %{path: path, kind: kind} ->
+      Enum.map(item.changes, fn %{path: path, kind: kind} = change ->
         %{
           "path" => path,
           "kind" => kind_to_string(kind, @file_change_kind_map)
         }
+        |> maybe_put("diff", Map.get(change, :diff))
+        |> maybe_put("move_path", Map.get(change, :move_path))
       end)
     )
+  end
+
+  def to_map(%UserMessage{} = item) do
+    base_item_map(item, "user_message")
+    |> maybe_put("content", item.content)
+  end
+
+  def to_map(%ImageView{} = item) do
+    base_item_map(item, "image_view")
+    |> maybe_put("path", item.path)
+  end
+
+  def to_map(%ReviewMode{} = item) do
+    base_item_map(item, "review_mode")
+    |> maybe_put("entered", item.entered)
+    |> maybe_put("review", item.review)
   end
 
   def to_map(%McpToolCall{} = item) do
@@ -278,6 +370,7 @@ defmodule Codex.Items do
     |> maybe_put("result", item.result)
     |> maybe_put("error", item.error)
     |> maybe_put("status", status_to_string(item.status, @mcp_status_map))
+    |> maybe_put("duration_ms", item.duration_ms)
   end
 
   def to_map(%WebSearch{} = item) do
@@ -319,9 +412,13 @@ defmodule Codex.Items do
     %CommandExecution{
       id: get(map, :id),
       command: get(map, :command) || "",
+      cwd: get(map, :cwd),
+      process_id: get(map, :process_id),
+      command_actions: get(map, :command_actions) || [],
       aggregated_output: get(map, :aggregated_output) || "",
       exit_code: get(map, :exit_code),
-      status: parse_status(get(map, :status), @command_status_map, :in_progress)
+      status: parse_status(get(map, :status), @command_status_map, :in_progress),
+      duration_ms: get(map, :duration_ms)
     }
   end
 
@@ -335,9 +432,33 @@ defmodule Codex.Items do
         |> Enum.map(fn change ->
           %{
             path: get(change, :path) || "",
-            kind: parse_kind(get(change, :kind), @file_change_kind_map)
+            kind: parse_kind(get(change, :kind), @file_change_kind_map),
+            diff: get(change, :diff),
+            move_path: get(change, :move_path)
           }
         end)
+    }
+  end
+
+  defp parse_user_message(map) do
+    %UserMessage{
+      id: get(map, :id),
+      content: get(map, :content) || []
+    }
+  end
+
+  defp parse_image_view(map) do
+    %ImageView{
+      id: get(map, :id),
+      path: get(map, :path) || ""
+    }
+  end
+
+  defp parse_review_mode(map) do
+    %ReviewMode{
+      id: get(map, :id),
+      entered: !!get(map, :entered),
+      review: get(map, :review) || ""
     }
   end
 
@@ -349,7 +470,8 @@ defmodule Codex.Items do
       arguments: get(map, :arguments),
       result: get(map, :result),
       error: get(map, :error),
-      status: parse_status(get(map, :status), @mcp_status_map, :in_progress)
+      status: parse_status(get(map, :status), @mcp_status_map, :in_progress),
+      duration_ms: get(map, :duration_ms)
     }
   end
 

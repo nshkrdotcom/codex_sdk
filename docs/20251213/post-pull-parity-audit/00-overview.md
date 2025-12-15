@@ -6,6 +6,15 @@ This directory documents what changed in the two upstream projects we vendor for
 It is intentionally transport-aware: most upstream changes land in components that are **not**
 reachable through the SDK’s current integration path.
 
+## Update (2025-12-14)
+
+As of `codex_sdk` `0.3.0`, the SDK supports **both**:
+
+- exec JSONL (`codex exec --experimental-json`) — default, backwards compatible
+- app-server JSON-RPC over stdio (`codex app-server`) — stateful transport enabling the full v2 request surface (skills/models/config/review/etc.) and server-driven approvals
+
+See `docs/20251214/multi_transport_refactor/README.md` for the parity definition and mapping spec.
+
 ## What “upstream parity” means for this repo
 
 This SDK wraps the upstream **Codex CLI** by running:

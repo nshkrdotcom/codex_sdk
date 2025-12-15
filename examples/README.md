@@ -27,6 +27,9 @@ Prereqs:
 ## Notable live examples
 
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
+- `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
+- `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
+- `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels
 - `examples/live_exec_controls.exs` — demonstrates cancellation/controls on streaming turns
 - `examples/live_tooling_stream.exs` — streams tool calls and approvals

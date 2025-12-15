@@ -29,7 +29,9 @@ defmodule Codex.Thread do
             continuation_token: nil,
             usage: %{},
             pending_tool_outputs: [],
-            pending_tool_failures: []
+            pending_tool_failures: [],
+            transport: :exec,
+            transport_ref: nil
 
   @type t :: %__MODULE__{
           thread_id: String.t() | nil,
@@ -40,12 +42,17 @@ defmodule Codex.Thread do
           continuation_token: String.t() | nil,
           usage: map(),
           pending_tool_outputs: [map()],
-          pending_tool_failures: [map()]
+          pending_tool_failures: [map()],
+          transport: :exec | {:app_server, pid()},
+          transport_ref: reference() | nil
         }
 
   @doc false
   @spec build(Options.t(), ThreadOptions.t(), keyword()) :: t()
   def build(%Options{} = opts, %ThreadOptions{} = thread_opts, extra \\ []) do
+    transport = thread_opts.transport || :exec
+    transport_ref = maybe_monitor_transport(transport)
+
     struct!(
       __MODULE__,
       Keyword.merge(
@@ -58,12 +65,17 @@ defmodule Codex.Thread do
           continuation_token: nil,
           usage: %{},
           pending_tool_outputs: [],
-          pending_tool_failures: []
+          pending_tool_failures: [],
+          transport: transport,
+          transport_ref: transport_ref
         ],
         extra
       )
     )
   end
+
+  defp maybe_monitor_transport({:app_server, pid}) when is_pid(pid), do: Process.monitor(pid)
+  defp maybe_monitor_transport(_), do: nil
 
   @doc """
   Executes a blocking multi-turn run using the agent runner.
@@ -78,6 +90,17 @@ defmodule Codex.Thread do
   @spec run_turn(t(), String.t(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
   def run_turn(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+    case transport_impl(thread) do
+      {:error, _} = error -> error
+      transport -> transport.run_turn(thread, input, turn_opts)
+    end
+  end
+
+  @doc false
+  @spec run_turn_exec_jsonl(t(), String.t(), map() | keyword()) ::
+          {:ok, Result.t()} | {:error, term()}
+  def run_turn_exec_jsonl(%__MODULE__{} = thread, input, turn_opts \\ %{})
+      when is_binary(input) do
     thread = maybe_reset_for_new(thread, input)
     span_token = make_ref()
 
@@ -172,6 +195,17 @@ defmodule Codex.Thread do
   @spec run_turn_streamed(t(), String.t(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
   def run_turn_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+    case transport_impl(thread) do
+      {:error, _} = error -> error
+      transport -> transport.run_turn_streamed(thread, input, turn_opts)
+    end
+  end
+
+  @doc false
+  @spec run_turn_streamed_exec_jsonl(t(), String.t(), map() | keyword()) ::
+          {:ok, Enumerable.t()} | {:error, term()}
+  def run_turn_streamed_exec_jsonl(%__MODULE__{} = thread, input, turn_opts \\ %{})
+      when is_binary(input) do
     thread = maybe_reset_for_new(thread, input)
 
     with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
@@ -207,6 +241,10 @@ defmodule Codex.Thread do
       end
     end
   end
+
+  defp transport_impl(%__MODULE__{transport: :exec}), do: Codex.Transport.ExecJsonl
+  defp transport_impl(%__MODULE__{transport: {:app_server, _pid}}), do: Codex.Transport.AppServer
+  defp transport_impl(%__MODULE__{transport: other}), do: {:error, {:invalid_transport, other}}
 
   @doc """
   Executes an auto-run loop, retrying while a continuation token is present.
