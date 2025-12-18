@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-17
+
+### Breaking Changes
+
+- `Codex.AppServer.thread_compact/2` now returns `{:error, {:unsupported, _}}` - the upstream `thread/compact` API was removed; compaction is now automatic
+
+### Changed
+
+- `Codex.AppServer.Mcp.list_servers/2` now uses `mcpServerStatus/list` method with automatic fallback to legacy `mcpServers/list` for older servers
+- Added `Codex.AppServer.Mcp.list_server_statuses/2` as an alias
+
+### Documentation
+
+- Updated app-server transport guide to reflect removed `thread/compact` API
+- Added skills feature flag prerequisite documentation
+- Added `.codex/` sandbox read-only behavior note
+- Updated config layer schema documentation for `ConfigLayerSource` tagged union
+
 ## [0.3.0] - 2025-12-14
 
 ### Added

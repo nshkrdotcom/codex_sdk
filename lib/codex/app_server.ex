@@ -169,14 +169,21 @@ defmodule Codex.AppServer do
     end
   end
 
-  @spec thread_compact(connection(), String.t()) :: :ok | {:error, term()}
-  def thread_compact(conn, thread_id) when is_pid(conn) and is_binary(thread_id) do
-    case Connection.request(conn, "thread/compact", %{"threadId" => thread_id},
-           timeout_ms: 30_000
-         ) do
-      {:ok, _} -> :ok
-      {:error, _} = error -> error
-    end
+  @doc """
+  Returns an unsupported error. The `thread/compact` API was removed in upstream
+  `codex app-server`. Context compaction now happens automatically server-side.
+
+  ## Deprecation Notice
+
+  This function is retained for API compatibility but will always return an error.
+  Remove calls to this function from your code.
+  """
+  @spec thread_compact(connection(), String.t()) :: {:error, {:unsupported, String.t()}}
+  @deprecated "thread/compact API removed upstream; compaction is now automatic"
+  def thread_compact(_conn, _thread_id) do
+    {:error,
+     {:unsupported,
+      "thread/compact API was removed in upstream codex; context compaction is now automatic server-side"}}
   end
 
   @spec turn_start(connection(), String.t(), String.t() | [map()], keyword()) ::

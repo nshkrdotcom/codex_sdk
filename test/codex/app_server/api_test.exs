@@ -122,4 +122,20 @@ defmodule Codex.AppServer.ApiTest do
 
     assert {:ok, %{"type" => "chatgpt"}} = Task.await(task2, 200)
   end
+
+  describe "thread_compact/2" do
+    test "returns unsupported error for removed API without sending request", %{conn: conn} do
+      task =
+        Task.async(fn ->
+          fun = Function.capture(AppServer, :thread_compact, 2)
+          fun.(conn, "thr_123")
+        end)
+
+      refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 100
+
+      assert {:error, {:unsupported, message}} = Task.await(task, 200)
+      assert message =~ "thread/compact"
+      assert message =~ "removed"
+    end
+  end
 end
