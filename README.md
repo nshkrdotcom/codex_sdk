@@ -17,6 +17,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
 - **Multi-Transport Support**: Default exec JSONL (`codex exec --experimental-json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`).
+- **Upstream Compatibility**: Automatically handles select app-server protocol differences across Codex CLI versions (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events plus first-class JSON schema handling for deterministic parsing.
 - **File & Attachment Pipeline**: Secure temp file registry, change events, and fixture harvesting helpers.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
@@ -32,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.3.0"}
+    {:codex_sdk, "~> 0.4.0"}
   ]
 end
 ```
@@ -110,12 +111,12 @@ The SDK defaults to exec JSONL for backwards compatibility. To use the stateful 
 
 {:ok, result} = Codex.Thread.run(thread, "List the available skills for this repo")
 
-{:ok, %{data: skills}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
+{:ok, %{"data" => skills}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
 ```
 
 App-server-only APIs include:
 
-- `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_compact/2`
+- `Codex.AppServer.thread_list/2`, `thread_archive/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`
 - `Codex.AppServer.turn_interrupt/3`
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints
@@ -551,7 +552,12 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.3.0 (Multi-transport + app-server parity)
+**Current Version**: 0.4.0 (Upstream app-server compatibility updates)
+
+### v0.4.0 Highlights
+
+- `Codex.AppServer.thread_compact/2` is deprecated and now returns `{:error, {:unsupported, _}}` (upstream removed `thread/compact`; compaction is automatic)
+- `Codex.AppServer.Mcp.list_servers/2` now uses `mcpServerStatus/list` with fallback to `mcpServers/list` for older servers
 
 ### v0.3.0 Highlights
 

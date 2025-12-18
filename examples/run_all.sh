@@ -10,6 +10,22 @@ export CODEX_MODEL_DEFAULT="${CODEX_MODEL_DEFAULT:-gpt-5.1-codex-mini}"
 echo "Using model: ${CODEX_MODEL}"
 echo
 
+if [[ -z "${CODEX_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "Warning: No CODEX_API_KEY or OPENAI_API_KEY set"
+  echo "Some examples may fail without authentication"
+  echo
+fi
+
+if [[ -n "${CODEX_PATH:-}" ]]; then
+  if [[ ! -x "${CODEX_PATH}" ]]; then
+    echo "CODEX_PATH is set but is not executable: ${CODEX_PATH}"
+    exit 1
+  fi
+elif ! command -v codex >/dev/null 2>&1; then
+  echo "codex binary not found - skipping examples"
+  exit 0
+fi
+
 examples=(
   "examples/basic_usage.exs"
   "examples/streaming.exs"
@@ -18,6 +34,10 @@ examples=(
   "examples/concurrency_and_collaboration.exs"
   "examples/tool_bridging_auto_run.exs"
   "examples/sandbox_warnings_and_approval_bypass.exs"
+  "examples/live_app_server_basic.exs"
+  "examples/live_app_server_streaming.exs"
+  "examples/live_app_server_approvals.exs"
+  "examples/live_app_server_mcp.exs"
   "examples/live_cli_demo.exs"
   "examples/live_session_walkthrough.exs"
   "examples/live_exec_controls.exs"

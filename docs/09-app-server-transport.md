@@ -7,7 +7,7 @@ The SDK supports two external Codex transports:
 - **Exec JSONL (default, backwards compatible)**: `codex exec --experimental-json`
 - **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON messages over stdio)
 
-Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive/compact, skills/models/config APIs, server-driven approvals, etc.).
+Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive, skills/models/config APIs, server-driven approvals, etc.).
 
 ## Prerequisites
 
@@ -76,16 +76,37 @@ App-server enables additional APIs that are not available via exec JSONL. Exampl
 ```elixir
 {:ok, conn} = Codex.AppServer.connect(codex_opts)
 
-{:ok, %{data: skills}} = Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"])
-{:ok, %{data: models}} = Codex.AppServer.model_list(conn, limit: 25)
+{:ok, %{"data" => skills}} = Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"])
+{:ok, %{"data" => models}} = Codex.AppServer.model_list(conn, limit: 25)
 
-{:ok, %{config: config}} = Codex.AppServer.config_read(conn, include_layers: false)
-{:ok, _} = Codex.AppServer.config_write(conn, ["sandboxPolicy", "mode"], "workspace-write")
+{:ok, %{"config" => config}} = Codex.AppServer.config_read(conn, include_layers: false)
+{:ok, _} = Codex.AppServer.config_write(conn, "features.web_search_request", true)
 
-{:ok, %{data: threads, next_cursor: cursor}} = Codex.AppServer.thread_list(conn, limit: 10)
+{:ok, %{"data" => threads, "nextCursor" => cursor}} = Codex.AppServer.thread_list(conn, limit: 10)
+```
+
+When `include_layers: true`, `config_read/2` returns a `layers` list. Recent Codex versions encode each layer's `name` as a tagged union (`ConfigLayerSource`), for example:
+
+```elixir
+%{
+  "name" => %{"type" => "user", "file" => "/home/me/.codex/config.toml"},
+  "version" => "sha256:…",
+  "config" => %{}
+}
 ```
 
 See `Codex.AppServer`, Codex.AppServer.Account, and Codex.AppServer.Mcp for the full request surface.
+
+## Thread management
+
+Common thread-history operations are exposed via:
+
+- `Codex.AppServer.thread_list/2`
+- `Codex.AppServer.thread_archive/2`
+
+### Removed APIs
+
+- `thread_compact/2` - Removed upstream; compaction is now automatic server-side
 
 ## Notifications and server requests (approvals)
 
@@ -152,9 +173,25 @@ Supported hook returns (backwards compatible):
 
 On app-server, `turn/diff/updated` provides a **unified diff string**. The SDK surfaces it on `Codex.Events.TurnDiffUpdated.diff`.
 
-## Skills caveat
+## Skills
+
+Skills require the experimental feature flag to be enabled in your codex config:
+
+```toml
+# ~/.codex/config.toml
+[features]
+skills = true
+```
+
+Skills can have one of three scopes: `"User"`, `"Repo"`, or `"Public"`.
+
+### Skills caveat
 
 App-server v2 does not support sending `UserInput::Skill` directly today (the union does not include it). Use `skills/list` to discover skills and inject content as text if you need an emulation layer.
+
+## Sandbox Notes
+
+Under `workspace-write` sandbox mode, both `.git/` and `.codex/` directories are automatically marked read-only to prevent privilege escalation.
 
 ## Troubleshooting
 
@@ -174,6 +211,7 @@ Runnable scripts (against a real `codex` install) live under `examples/`:
 - `examples/live_app_server_basic.exs`
 - `examples/live_app_server_streaming.exs`
 - `examples/live_app_server_approvals.exs`
+- `examples/live_app_server_mcp.exs`
 
 Run them with:
 
@@ -181,4 +219,5 @@ Run them with:
 mix run examples/live_app_server_basic.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
 mix run examples/live_app_server_approvals.exs
+mix run examples/live_app_server_mcp.exs
 ```
