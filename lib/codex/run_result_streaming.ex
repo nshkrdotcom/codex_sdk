@@ -45,8 +45,10 @@ defmodule Codex.RunResultStreaming do
 
   @doc """
   Pops the next semantic event from the queue, blocking up to `timeout`.
+
+  Returns `{:error, reason}` if the stream terminates with an error.
   """
-  @spec pop(t(), timeout()) :: {:ok, term()} | :done
+  @spec pop(t(), timeout()) :: {:ok, term()} | {:error, term()} | :done
   def pop(%__MODULE__{} = result, timeout \\ 5_000) do
     ensure_started(result)
     StreamQueue.pop(result.queue, timeout)

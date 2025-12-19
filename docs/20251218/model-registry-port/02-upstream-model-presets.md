@@ -1,7 +1,7 @@
 # Upstream Model Presets Analysis
 
 ## File Location
-`codex-rs/core/src/openai_models/model_presets.rs`
+`codex/codex-rs/core/src/openai_models/model_presets.rs`
 
 ## Key Constants
 
@@ -11,9 +11,16 @@ pub const HIDE_GPT_5_1_CODEX_MAX_MIGRATION_PROMPT_CONFIG: &str =
     "hide_gpt-5.1-codex-max_migration_prompt";
 ```
 
-## Model Presets (Static Registry)
+## How Presets Are Used
 
-### 1. gpt-5.2-codex (NEW DEFAULT)
+- `PRESETS` contains all models, including hidden/deprecated ones.
+- `builtin_model_presets(_)` returns only models with `show_in_picker: true`.
+- Remote models are gated by `features.remote_models` (default `false`). When remote models are disabled, `list_models` uses these presets only.
+- When remote models are enabled, remote `/models` (fallback `models.json`) override presets for overlapping slugs; the presets mainly supply `gpt-5.2-codex` (missing from `models.json`).
+
+## Model Presets (Visible by Default)
+
+### 1. gpt-5.2-codex (ChatGPT Default)
 ```rust
 ModelPreset {
     id: "gpt-5.2-codex",
@@ -30,7 +37,7 @@ ModelPreset {
     is_default: true,
     upgrade: None,
     show_in_picker: true,
-    supported_in_api: false,  // ChatGPT auth only
+    supported_in_api: false,
 }
 ```
 
@@ -58,7 +65,7 @@ ModelPreset {
     display_name: "gpt-5.1-codex-mini",
     description: "Optimized for codex. Cheaper, faster, but less capable.",
     default_reasoning_effort: ReasoningEffort::Medium,
-    supported_reasoning_efforts: [Medium, High],  // Limited options
+    supported_reasoning_efforts: [Medium, High],
     is_default: false,
     upgrade: Some(gpt_52_codex_upgrade()),
     show_in_picker: true,
@@ -66,7 +73,7 @@ ModelPreset {
 }
 ```
 
-### 4. gpt-5.2 (NEW)
+### 4. gpt-5.2
 ```rust
 ModelPreset {
     id: "gpt-5.2",
@@ -82,17 +89,17 @@ ModelPreset {
 }
 ```
 
-### Deprecated Models (Hidden from Picker)
+## Deprecated Presets (Hidden from Picker)
 
-All deprecated models have:
+All deprecated presets have:
 - `show_in_picker: false`
-- `upgrade: Some(gpt_52_codex_upgrade())`
 - `supported_in_api: true`
+- `upgrade: Some(gpt_52_codex_upgrade())`
 
 | Model | Description |
 |-------|-------------|
 | `gpt-5-codex` | Optimized for codex |
-| `gpt-5-codex-mini` | Cheaper, faster, but less capable |
+| `gpt-5-codex-mini` | Optimized for codex. Cheaper, faster, but less capable. |
 | `gpt-5.1-codex` | Optimized for codex |
 | `gpt-5` | Broad world knowledge with strong general reasoning |
 | `gpt-5.1` | Broad world knowledge with strong general reasoning |
@@ -125,16 +132,24 @@ fn gpt_52_codex_upgrade() -> ModelUpgrade {
 | High | Greater reasoning depth for complex problems |
 | XHigh | Extra high reasoning depth for complex problems |
 
-### gpt-5.1-codex-mini / gpt-5-codex-mini
+### gpt-5.2 / gpt-5.1
 | Effort | Description |
 |--------|-------------|
-| Medium | Dynamically adjusts reasoning based on the task |
+| Low | Balances speed with some reasoning; useful for straightforward queries and short explanations |
+| Medium | Provides a solid balance of reasoning depth and latency for general-purpose tasks |
 | High | Maximizes reasoning depth for complex or ambiguous problems |
+| XHigh (gpt-5.2 only) | Extra high reasoning for complex problems |
 
-### gpt-5 / gpt-5-codex / gpt-5.1-codex
+### gpt-5-codex / gpt-5.1-codex
 | Effort | Description |
 |--------|-------------|
 | Low | Fastest responses with limited reasoning |
+| Medium | Dynamically adjusts reasoning based on the task |
+| High | Maximizes reasoning depth for complex or ambiguous problems |
+
+### gpt-5-codex-mini / gpt-5.1-codex-mini
+| Effort | Description |
+|--------|-------------|
 | Medium | Dynamically adjusts reasoning based on the task |
 | High | Maximizes reasoning depth for complex or ambiguous problems |
 
@@ -142,9 +157,9 @@ fn gpt_52_codex_upgrade() -> ModelUpgrade {
 | Effort | Description |
 |--------|-------------|
 | Minimal | Fastest responses with little reasoning |
-| Low | Balances speed with some reasoning |
-| Medium | Solid balance of reasoning depth and latency |
-| High | Maximizes reasoning depth for complex problems |
+| Low | Balances speed with some reasoning; useful for straightforward queries and short explanations |
+| Medium | Provides a solid balance of reasoning depth and latency for general-purpose tasks |
+| High | Maximizes reasoning depth for complex or ambiguous problems |
 
 ## Helper Function
 
@@ -152,7 +167,7 @@ fn gpt_52_codex_upgrade() -> ModelUpgrade {
 pub(super) fn builtin_model_presets(_auth_mode: Option<AuthMode>) -> Vec<ModelPreset> {
     PRESETS
         .iter()
-        .filter(|preset| preset.show_in_picker)  // Only visible models
+        .filter(|preset| preset.show_in_picker)
         .cloned()
         .collect()
 }

@@ -1,25 +1,31 @@
 defmodule Codex.OptionsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Codex.Options
 
   setup do
-    original_model = System.get_env("CODEX_MODEL")
-    original_default = System.get_env("CODEX_MODEL_DEFAULT")
+    env_keys = ~w(CODEX_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME)
 
-    System.delete_env("CODEX_MODEL")
-    System.delete_env("CODEX_MODEL_DEFAULT")
+    original_env =
+      env_keys
+      |> Enum.map(&{&1, System.get_env(&1)})
+      |> Map.new()
+
+    Enum.each(env_keys, &System.delete_env/1)
+
+    tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(tmp_home)
+    System.put_env("CODEX_HOME", tmp_home)
 
     on_exit(fn ->
-      case original_model do
-        nil -> System.delete_env("CODEX_MODEL")
-        value -> System.put_env("CODEX_MODEL", value)
-      end
+      Enum.each(env_keys, fn key ->
+        case Map.fetch!(original_env, key) do
+          nil -> System.delete_env(key)
+          value -> System.put_env(key, value)
+        end
+      end)
 
-      case original_default do
-        nil -> System.delete_env("CODEX_MODEL_DEFAULT")
-        value -> System.put_env("CODEX_MODEL_DEFAULT", value)
-      end
+      File.rm_rf(tmp_home)
     end)
 
     :ok
@@ -45,7 +51,7 @@ defmodule Codex.OptionsTest do
     test "allows API key to be omitted" do
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == nil
-      assert opts.model == "gpt-5.1-codex-max"
+      assert opts.model == "gpt-5.2-codex"
       assert opts.reasoning_effort == :medium
     end
 
@@ -57,6 +63,30 @@ defmodule Codex.OptionsTest do
     end
 
     test "loads API key from CLI auth file when env is absent" do
+      tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_home)
+
+      auth_path = Path.join(tmp_home, "auth.json")
+      File.write!(auth_path, ~s({"OPENAI_API_KEY":"sk-test"}))
+
+      original_env = System.get_env("CODEX_HOME")
+      System.put_env("CODEX_HOME", tmp_home)
+      System.delete_env("CODEX_API_KEY")
+
+      on_exit(fn ->
+        if original_env,
+          do: System.put_env("CODEX_HOME", original_env),
+          else: System.delete_env("CODEX_HOME")
+
+        System.delete_env("CODEX_API_KEY")
+        File.rm_rf(tmp_home)
+      end)
+
+      assert {:ok, opts} = Options.new(%{})
+      assert opts.api_key == "sk-test"
+    end
+
+    test "does not treat chatgpt tokens as api keys" do
       tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_home)
 
@@ -77,7 +107,7 @@ defmodule Codex.OptionsTest do
       end)
 
       assert {:ok, opts} = Options.new(%{})
-      assert opts.api_key == "cli_token"
+      assert opts.api_key == nil
     end
   end
 end

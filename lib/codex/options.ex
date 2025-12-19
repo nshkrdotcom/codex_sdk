@@ -6,6 +6,7 @@ defmodule Codex.Options do
   """
 
   require Bitwise
+  alias Codex.Auth
   alias Codex.Models
 
   @default_base_url "https://api.openai.com/v1"
@@ -30,8 +31,8 @@ defmodule Codex.Options do
   @doc """
   Builds a validated options struct.
 
-  The API key is required. It can be provided directly or via the `CODEX_API_KEY`
-  environment variable.
+  API keys are optional. When omitted, the Codex CLI relies on your existing
+  `codex` login (ChatGPT tokens stored in `auth.json`).
   """
   @spec new(map() | keyword()) :: {:ok, t()} | {:error, term()}
   def new(attrs \\ %{}) do
@@ -41,7 +42,7 @@ defmodule Codex.Options do
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model} <- fetch_model(attrs),
+         {:ok, model} <- fetch_model(attrs, auth_mode_for(api_key)),
          {:ok, reasoning_effort} <- fetch_reasoning_effort(attrs, model) do
       {:ok,
        %__MODULE__{
@@ -89,52 +90,11 @@ defmodule Codex.Options do
   defp add_override_ref(result, _opts), do: result
 
   defp fetch_api_key(attrs) do
-    case pick(attrs, [:api_key, "api_key"], System.get_env("CODEX_API_KEY")) do
-      key when is_binary(key) and key != "" ->
-        {:ok, key}
-
-      _ ->
-        {:ok, fetch_cli_api_key()}
+    case normalize_string(pick(attrs, [:api_key, "api_key"], Auth.api_key())) do
+      nil -> {:ok, nil}
+      key -> {:ok, key}
     end
   end
-
-  defp fetch_cli_api_key do
-    cli_auth_paths()
-    |> Enum.find_value(&read_auth_token/1)
-  end
-
-  defp cli_auth_paths do
-    codex_home =
-      System.get_env("CODEX_HOME") ||
-        Path.join(System.user_home!(), ".codex")
-
-    [
-      Path.join(codex_home, "auth.json"),
-      Path.join(codex_home, ".credentials.json"),
-      Path.join(System.user_home!(), ".config/codex/credentials.json"),
-      Path.join(System.user_home!(), ".config/openai/codex.json"),
-      Path.join(System.user_home!(), ".codex/credentials.json")
-    ]
-    |> Enum.uniq()
-  end
-
-  defp read_auth_token(path) do
-    with true <- File.exists?(path),
-         {:ok, contents} <- File.read(path),
-         {:ok, decoded} <- Jason.decode(contents),
-         token when is_binary(token) and token != "" <- extract_token(decoded) do
-      token
-    else
-      _ -> nil
-    end
-  end
-
-  defp extract_token(%{"OPENAI_API_KEY" => token}), do: token
-  defp extract_token(%{"access_token" => token}), do: token
-
-  defp extract_token(%{"tokens" => %{"access_token" => token}}), do: token
-  defp extract_token(%{"tokens" => %{"token" => token}}), do: token
-  defp extract_token(_), do: nil
 
   defp fetch_base_url(attrs) do
     case pick(attrs, [:base_url, "base_url"], @default_base_url) do
@@ -190,8 +150,8 @@ defmodule Codex.Options do
 
   defp pick(_attrs, [], default), do: default
 
-  defp fetch_model(attrs) do
-    case pick(attrs, [:model, "model"], Models.default_model()) do
+  defp fetch_model(attrs, auth_mode) do
+    case pick(attrs, [:model, "model"], Models.default_model(auth_mode)) do
       nil -> {:ok, nil}
       "" -> {:ok, nil}
       model -> {:ok, model}
@@ -205,4 +165,16 @@ defmodule Codex.Options do
     |> pick([:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"], default)
     |> Models.normalize_reasoning_effort()
   end
+
+  defp auth_mode_for(api_key) when is_binary(api_key) and api_key != "", do: :api
+  defp auth_mode_for(_), do: Auth.infer_auth_mode()
+
+  defp normalize_string(nil), do: nil
+
+  defp normalize_string(value) when is_binary(value) do
+    value = String.trim(value)
+    if value == "", do: nil, else: value
+  end
+
+  defp normalize_string(_), do: nil
 end

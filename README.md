@@ -33,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.0"}
+    {:codex_sdk, "~> 0.4.1"}
   ]
 end
 ```
@@ -65,12 +65,18 @@ For authentication, sign in with your ChatGPT account (this stores credentials f
 codex
 # Select "Sign in with ChatGPT"
 
-Alternatively, set `CODEX_API_KEY` (or `OPENAI_API_KEY`) before starting your BEAM node. The SDK
-automatically falls back to your CLI login if no API key is set, reading tokens from `CODEX_HOME`
-(default `~/.codex/auth.json`) or legacy credential files. If neither an API key nor an authenticated
-CLI session is available, Codex executions will fail with upstream authentication errors—the SDK
-does not perform additional login flows.
+Alternatively, set `CODEX_API_KEY` before starting your BEAM node. The SDK prefers `CODEX_API_KEY`,
+then `auth.json` `OPENAI_API_KEY`, and otherwise falls back to your CLI login tokens stored under
+`CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support). If neither an API
+key nor an authenticated CLI session is available, Codex executions will fail with upstream
+authentication errors—the SDK does not perform additional login flows.
 ```
+
+Model defaults are auth-aware:
+- ChatGPT login: `gpt-5.2-codex` (prefers `codex-auto-balanced` when remote models are enabled and available)
+- API key auth: `gpt-5.1-codex-max`
+
+Remote models are gated behind `features.remote_models = true` in `CODEX_HOME/config.toml`. When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.2-codex` available.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
@@ -209,7 +215,7 @@ mix run examples/basic_usage.exs
 # Streaming patterns (real-time, progressive, stateful)
 mix run examples/streaming.exs progressive
 
-# Live model defaults + compaction/usage handling (requires CODEX_API_KEY)
+# Live model defaults + compaction/usage handling (CLI login or CODEX_API_KEY)
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 
 # Live exec controls (env injection, cancellation token, timeout)
@@ -552,7 +558,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.4.0 (Upstream app-server compatibility updates)
+**Current Version**: 0.4.1 (Model registry port)
+
+### v0.4.1 Highlights
+
+- Auth-aware defaults and new `gpt-5.2` model presets (ChatGPT: `gpt-5.2-codex`, API: `gpt-5.1-codex-max`)
+- Remote model gating behind `features.remote_models`, with bundled `models.json` fallback and upgrade metadata
+- Added reasoning effort normalization for `none` plus richer model metadata helpers
 
 ### v0.4.0 Highlights
 

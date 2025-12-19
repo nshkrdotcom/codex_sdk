@@ -40,7 +40,7 @@
   %{
     id: "gpt-5.1",
     default_reasoning_effort: :medium,
-    tool_enabled?: false,  # <-- No tool support
+    tool_enabled?: false,
     default?: false
   }
 ]
@@ -91,23 +91,32 @@ end
 ## What's Missing vs Upstream
 
 ### Missing Fields Per Model
-1. `description` - Human-readable model description
-2. `display_name` - UI display name
-3. `supported_reasoning_efforts` - List of supported efforts with descriptions
-4. `show_in_picker` - Whether to show in model selection
-5. `supported_in_api` - Whether supported via API key auth
-6. `upgrade` - Model upgrade path info
+
+1. `display_name` and `description`
+2. `supported_reasoning_efforts` (and per-effort descriptions)
+3. `show_in_picker` and `supported_in_api`
+4. `upgrade` metadata with `reasoning_effort_mapping`
+5. Remote-model metadata fields (`visibility`, `priority`, `shell_type`, `truncation_policy`, etc.)
 
 ### Missing Models
-1. `gpt-5.2-codex` - New default model
-2. `gpt-5.2` - New frontier model
-3. `codex-mini-latest` - Mini model variant
-4. `gpt-5` - Base GPT-5 model
-5. `gpt-5-codex` - Original codex model (deprecated)
-6. `gpt-5-codex-mini` - Original mini (deprecated)
 
-### Missing Functionality
-1. Model upgrade/migration support
-2. Per-model reasoning effort options with descriptions
-3. Model visibility controls
-4. Remote model fetching (future)
+1. `gpt-5.2-codex`
+2. `gpt-5.2`
+3. `gpt-5-codex`
+4. `gpt-5-codex-mini`
+5. `gpt-5`
+6. `codex-mini-latest`
+
+### Missing Behavior
+
+1. `ReasoningEffort::None` (Elixir omits `:none`)
+2. Auth-aware defaults (API key vs ChatGPT) and `codex-auto-balanced` override
+3. Auth mode inference (prefer `CODEX_API_KEY` or `auth.json` `openai_api_key`, else ChatGPT tokens)
+4. Remote model list (`/models`) with `models.json` fallback and caching
+5. Feature gating for remote models (`features.remote_models`, default `false` upstream)
+6. Priority-based default selection and show_in_picker filtering
+7. Remote overrides applied to model family config (base instructions, shell type, context window, etc.)
+
+### Potential Mismatches
+
+- `gpt-5.1` is marked `tool_enabled?: false`, but upstream model families configure shell tools for base GPT-5.x models. If the SDK wants to reflect upstream capability, `tool_enabled?` likely needs to be derived from `shell_type` instead of hard-coded.

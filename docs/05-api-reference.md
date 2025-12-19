@@ -1084,21 +1084,27 @@ Global Codex configuration.
 @type t() :: %Codex.Options{
   codex_path_override: String.t() | nil,
   base_url: String.t() | nil,
-  api_key: String.t() | nil
+  api_key: String.t() | nil,
+  telemetry_prefix: [atom()],
+  model: String.t() | nil,
+  reasoning_effort: Codex.Models.reasoning_effort() | nil
 }
 ```
 
 **Fields**:
 - `codex_path_override`: Custom path to codex binary (defaults to system PATH)
 - `base_url`: OpenAI API base URL (defaults to official URL)
-- `api_key`: OpenAI API key (overrides environment variable)
+- `api_key`: OpenAI API key (overrides `CODEX_API_KEY`; optional if CLI login is present)
+- `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
+- `model`: Model override (defaults to `Codex.Models.default_model/0`)
+- `reasoning_effort`: Reasoning effort override (defaults to `Codex.Models.default_reasoning_effort/1`)
 
 **Example**:
 ```elixir
 %Codex.Options{
   codex_path_override: "/custom/path/to/codex",
   base_url: "https://api.openai.com",
-  api_key: System.get_env("OPENAI_API_KEY")
+  api_key: System.get_env("CODEX_API_KEY")
 }
 ```
 

@@ -15,12 +15,12 @@ defmodule Codex.StreamQueue do
     GenServer.cast(queue, {:push, value})
   end
 
-  @spec close(t()) :: :ok
-  def close(queue) when is_pid(queue) do
-    GenServer.cast(queue, :close)
+  @spec close(t(), term()) :: :ok
+  def close(queue, reason \\ :normal) when is_pid(queue) do
+    GenServer.cast(queue, {:close, reason})
   end
 
-  @spec pop(t(), timeout()) :: {:ok, term()} | :done
+  @spec pop(t(), timeout()) :: {:ok, term()} | {:error, term()} | :done
   def pop(queue, timeout \\ 5_000) when is_pid(queue) do
     GenServer.call(queue, :pop, timeout)
   end
@@ -33,6 +33,8 @@ defmodule Codex.StreamQueue do
         case pop(q, :infinity) do
           {:ok, value} -> {[value], q}
           :done -> {:halt, q}
+          {:error, reason} when is_exception(reason) -> raise reason
+          {:error, reason} -> raise RuntimeError, "stream closed with error: #{inspect(reason)}"
         end
       end,
       fn _ -> :ok end
@@ -41,7 +43,7 @@ defmodule Codex.StreamQueue do
 
   @impl true
   def init(:ok) do
-    {:ok, %{queue: :queue.new(), closed?: false, waiters: :queue.new()}}
+    {:ok, %{queue: :queue.new(), closed?: false, waiters: :queue.new(), error: nil}}
   end
 
   @impl true
@@ -56,25 +58,43 @@ defmodule Codex.StreamQueue do
     end
   end
 
-  def handle_cast(:close, %{closed?: true} = state), do: {:noreply, state}
+  def handle_cast({:close, _reason}, %{closed?: true} = state), do: {:noreply, state}
 
-  def handle_cast(:close, %{queue: queue, waiters: waiters} = state) do
-    Enum.each(:queue.to_list(waiters), &GenServer.reply(&1, :done))
-    {:noreply, %{state | closed?: true, waiters: :queue.new(), queue: queue}}
+  def handle_cast({:close, reason}, %{queue: queue, waiters: waiters} = state) do
+    error = close_error(reason)
+    reply = if error, do: {:error, error}, else: :done
+
+    Enum.each(:queue.to_list(waiters), &GenServer.reply(&1, reply))
+    {:noreply, %{state | closed?: true, waiters: :queue.new(), queue: queue, error: error}}
   end
 
   @impl true
-  def handle_call(:pop, from, %{queue: queue, closed?: closed?, waiters: waiters} = state) do
+  def handle_call(:pop, _from, %{queue: queue, closed?: true, error: error} = state) do
+    reply =
+      case error do
+        nil -> :done
+        reason -> {:error, reason}
+      end
+
     case :queue.out(queue) do
       {{:value, value}, remaining} ->
         {:reply, {:ok, value}, %{state | queue: remaining}}
 
       {:empty, _} ->
-        if closed? do
-          {:reply, :done, state}
-        else
-          {:noreply, %{state | waiters: :queue.in(from, waiters)}}
-        end
+        {:reply, reply, state}
     end
   end
+
+  def handle_call(:pop, from, %{queue: queue, closed?: false, waiters: waiters} = state) do
+    case :queue.out(queue) do
+      {{:value, value}, remaining} ->
+        {:reply, {:ok, value}, %{state | queue: remaining}}
+
+      {:empty, _} ->
+        {:noreply, %{state | waiters: :queue.in(from, waiters)}}
+    end
+  end
+
+  defp close_error({:error, reason}), do: reason
+  defp close_error(_), do: nil
 end

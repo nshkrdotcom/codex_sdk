@@ -1,6 +1,3 @@
-System.put_env("CODEX_MODEL", "gpt-5.1-codex-mini")
-System.put_env("CODEX_MODEL_DEFAULT", "gpt-5.1-codex-mini")
-
 alias Codex.{Events, Items, Models, Options, RunResultStreaming, Thread}
 alias Codex.TransportError
 

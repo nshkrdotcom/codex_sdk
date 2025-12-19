@@ -1,7 +1,7 @@
 # Protocol Types for Models
 
 ## File Location
-`codex-rs/protocol/src/openai_models.rs`
+`codex/codex-rs/protocol/src/openai_models.rs`
 
 ## Reasoning Effort
 
@@ -130,13 +130,15 @@ pub struct ModelInfo {
 }
 ```
 
+**Note**: `base_instructions` is populated in `models.json` and can override model prompts when remote models are enabled.
+
 ## Model Visibility
 
 ```rust
 pub enum ModelVisibility {
-    List,  // Show in picker
-    Hide,  // Hide from picker but functional
-    None,  // Completely hidden
+    List,
+    Hide,
+    None,
 }
 ```
 
@@ -228,9 +230,11 @@ impl From<ModelInfo> for ModelPreset {
 }
 ```
 
+**Note**: `ModelPreset::from(ModelInfo)` does not set a default model. `ModelsManager` later picks the highest-priority visible model if none is marked default.
+
 ## App Server Protocol (v2)
 
-The app-server exposes a simplified model list via JSON-RPC:
+The app-server exposes a simplified model list via JSON-RPC.
 
 ### Model (v2)
 ```rust
@@ -250,4 +254,12 @@ pub struct ReasoningEffortOption {
 }
 ```
 
-This is what the Elixir SDK would receive when calling the Codex app-server's model list endpoint.
+### ModelListResponse (v2)
+```rust
+pub struct ModelListResponse {
+    pub data: Vec<Model>,
+    pub next_cursor: Option<String>,
+}
+```
+
+This is the shape returned by the Codex app-server list models endpoint.

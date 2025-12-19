@@ -170,8 +170,7 @@ defmodule Codex.AgentRunner do
         do_run_streamed(state)
 
       {:error, reason} ->
-        StreamQueue.close(state.queue)
-        {:error, reason}
+        close_queue(state.queue, {:error, reason})
     end
   end
 
@@ -305,36 +304,45 @@ defmodule Codex.AgentRunner do
   defp do_run_streamed_with_stream(%State{} = state, stream) do
     hooks = stream_hooks(state)
     structured_output? = structured_output?(state.turn_opts)
-    {events, status} = collect_stream_events(stream, state.queue, state.control)
 
-    {updated_thread, response, usage} =
-      Thread.reduce_events(state.thread, events, %{structured_output?: structured_output?})
+    try do
+      {events, status} = collect_stream_events(stream, state.queue, state.control)
 
-    merged_usage = Thread.merge_usage(state.usage, usage)
-    StreamingControl.put_usage(state.control, merged_usage)
+      {updated_thread, response, usage} =
+        Thread.reduce_events(state.thread, events, %{structured_output?: structured_output?})
 
-    StreamQueue.push(state.queue, %RawResponses{events: events, usage: usage})
+      merged_usage = Thread.merge_usage(state.usage, usage)
+      StreamingControl.put_usage(state.control, merged_usage)
 
-    turn_result =
-      streamed_turn_result(
-        updated_thread,
-        events,
-        response,
-        usage,
-        state.attempt,
-        structured_output?
-      )
+      StreamQueue.push(state.queue, %RawResponses{events: events, usage: usage})
 
-    case status do
-      :cancelled ->
-        close_queue(state.queue, {:ok, turn_result})
-
-      _ ->
-        handle_streamed_continuation(
-          state,
-          turn_result,
-          hooks
+      turn_result =
+        streamed_turn_result(
+          updated_thread,
+          events,
+          response,
+          usage,
+          state.attempt,
+          structured_output?
         )
+
+      case status do
+        :cancelled ->
+          close_queue(state.queue, {:ok, turn_result})
+
+        _ ->
+          handle_streamed_continuation(
+            state,
+            turn_result,
+            hooks
+          )
+      end
+    rescue
+      error ->
+        close_queue(state.queue, {:error, error})
+    catch
+      kind, reason ->
+        close_queue(state.queue, {:error, {kind, reason}})
     end
   end
 
@@ -518,10 +526,27 @@ defmodule Codex.AgentRunner do
 
   defp close_queue(nil, result), do: result
 
+  defp close_queue(queue, {:error, reason} = error) when is_pid(queue) do
+    if stream_error?(reason) do
+      StreamQueue.close(queue, error)
+    else
+      StreamQueue.close(queue)
+    end
+
+    error
+  end
+
   defp close_queue(queue, result) when is_pid(queue) do
     StreamQueue.close(queue)
     result
   end
+
+  defp stream_error?(%Codex.TransportError{}), do: true
+  defp stream_error?(%Codex.ApprovalError{}), do: false
+  defp stream_error?(%Codex.GuardrailError{}), do: false
+  defp stream_error?(%Codex.Error{}), do: false
+  defp stream_error?(reason) when is_exception(reason), do: true
+  defp stream_error?(_reason), do: false
 
   defp collect_stream_events(stream, queue, control) do
     stream

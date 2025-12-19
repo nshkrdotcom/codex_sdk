@@ -5,7 +5,7 @@
 # This script demonstrates how sandbox warnings are deduplicated/normalized
 # (especially on Windows) and how tool calls flagged as pre-approved by policy
 # skip approval hooks. It also supports an optional live Codex run; auth will
-# use CODEX_API_KEY/OPENAI_API_KEY when set, otherwise your Codex CLI login.
+# use CODEX_API_KEY (or auth.json OPENAI_API_KEY) when set, otherwise your Codex CLI login.
 
 Mix.Task.run("app.start")
 
