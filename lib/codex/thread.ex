@@ -207,35 +207,79 @@ defmodule Codex.Thread do
   def run_turn_streamed_exec_jsonl(%__MODULE__{} = thread, input, turn_opts \\ %{})
       when is_binary(input) do
     thread = maybe_reset_for_new(thread, input)
+    span_token = make_ref()
+
+    meta =
+      %{
+        thread_id: thread.thread_id,
+        input: input,
+        originator: :sdk,
+        span_token: span_token
+      }
+      |> maybe_put(:source, extract_source(thread.metadata))
+      |> maybe_put(:workflow, extract_trace(thread.metadata, :workflow))
+      |> maybe_put(:group, extract_trace(thread.metadata, :group))
+      |> maybe_put(:trace_id, extract_trace(thread.metadata, :trace_id))
+      |> maybe_put(:trace_sensitive, extract_trace(thread.metadata, :trace_sensitive))
+      |> maybe_put(:tracing_disabled, extract_trace(thread.metadata, :tracing_disabled))
+      |> maybe_put(:conversation_id, extract_trace(thread.metadata, :conversation_id))
+      |> maybe_put(:previous_response_id, extract_trace(thread.metadata, :previous_response_id))
+
+    started_monotonic = System.monotonic_time()
+    Telemetry.emit([:codex, :thread, :start], %{system_time: System.system_time()}, meta)
 
     with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
       structured_output? = Map.get(exec_meta, :structured_output?, false)
 
-      progress_meta =
-        %{
-          thread_id: thread.thread_id,
-          originator: :sdk,
-          span_token: make_ref()
-        }
-        |> maybe_put(:source, extract_source(thread.metadata))
+      progress_meta = meta
+      initial_context = stream_context_for_thread(thread)
 
       case Codex.Exec.run_stream(input, exec_opts) do
         {:ok, stream} ->
           wrapped =
             Stream.transform(
               stream,
-              fn -> :ok end,
-              fn event, acc ->
+              fn ->
+                %{
+                  meta: meta,
+                  progress_meta: progress_meta,
+                  context: initial_context,
+                  started_monotonic: started_monotonic,
+                  failure: :ok,
+                  early_exit?: false,
+                  completed?: false
+                }
+              end,
+              fn event, state ->
                 decoded = maybe_decode_stream_event(event, structured_output?)
                 emit_progress_event(decoded, progress_meta)
-                {[decoded], acc}
+
+                state =
+                  state
+                  |> update_stream_context(decoded)
+                  |> update_stream_status(decoded)
+
+                {[decoded], state}
               end,
-              fn _ -> cleanup.() end
+              fn state ->
+                cleanup.()
+                maybe_emit_stream_stop(state)
+              end
             )
 
           {:ok, wrapped}
 
         {:error, reason} ->
+          duration = System.monotonic_time() - started_monotonic
+
+          Telemetry.emit(
+            [:codex, :thread, :exception],
+            %{duration: duration, system_time: System.system_time()},
+            merge_metadata(meta, stream_context_for_thread(thread))
+            |> Map.put(:reason, reason)
+            |> Map.put(:result, :error)
+          )
+
           cleanup.()
           {:error, reason}
       end
@@ -816,6 +860,139 @@ defmodule Codex.Thread do
 
   defp extract_thread_context(_events, thread) do
     %{thread_id: thread.thread_id, turn_id: nil, source: extract_source(thread.metadata)}
+  end
+
+  defp stream_context_for_thread(%__MODULE__{} = thread) do
+    %{thread_id: thread.thread_id, turn_id: nil, source: extract_source(thread.metadata)}
+  end
+
+  defp update_stream_context(%{context: context} = state, event) do
+    %{state | context: update_stream_context_for_event(context, event)}
+  end
+
+  defp update_stream_context_for_event(context, %Events.ThreadStarted{
+         thread_id: id,
+         metadata: metadata
+       }) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:source, extract_source(metadata))
+  end
+
+  defp update_stream_context_for_event(context, %Events.TurnStarted{
+         thread_id: id,
+         turn_id: turn_id
+       }) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+  end
+
+  defp update_stream_context_for_event(context, %Events.TurnContinuation{
+         thread_id: id,
+         turn_id: turn_id
+       }) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+  end
+
+  defp update_stream_context_for_event(
+         context,
+         %Events.TurnCompleted{thread_id: id, turn_id: turn_id, usage: usage}
+       ) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+    |> maybe_put(:source, extract_source(usage))
+  end
+
+  defp update_stream_context_for_event(context, %Events.TurnFailed{
+         thread_id: id,
+         turn_id: turn_id
+       }) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+  end
+
+  defp update_stream_context_for_event(
+         context,
+         %Events.ThreadTokenUsageUpdated{thread_id: id, turn_id: turn_id}
+       ) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+  end
+
+  defp update_stream_context_for_event(context, %Events.TurnDiffUpdated{
+         thread_id: id,
+         turn_id: turn_id
+       }) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+  end
+
+  defp update_stream_context_for_event(
+         context,
+         %Events.TurnCompaction{thread_id: id, turn_id: turn_id, compaction: compaction}
+       ) do
+    context
+    |> maybe_put(:thread_id, id)
+    |> maybe_put(:turn_id, turn_id)
+    |> maybe_put(:source, extract_source(compaction))
+  end
+
+  defp update_stream_context_for_event(context, _event), do: context
+
+  defp update_stream_status(state, %Events.TurnFailed{error: error}) do
+    failure =
+      case state.failure do
+        :ok -> {:error, Error.normalize(error)}
+        other -> other
+      end
+
+    %{state | failure: failure, completed?: true}
+  end
+
+  defp update_stream_status(
+         state,
+         %Events.TurnCompleted{status: status, final_response: response} = event
+       ) do
+    failure =
+      cond do
+        state.failure != :ok ->
+          state.failure
+
+        failed_turn_completed?(event) ->
+          {:error, Error.normalize(turn_completed_error_payload(response, status))}
+
+        true ->
+          state.failure
+      end
+
+    early_exit? = state.early_exit? || status in ["early_exit", :early_exit]
+
+    %{state | failure: failure, early_exit?: early_exit?, completed?: true}
+  end
+
+  defp update_stream_status(state, _event), do: state
+
+  defp maybe_emit_stream_stop(%{completed?: false}), do: :ok
+
+  defp maybe_emit_stream_stop(state) do
+    duration = System.monotonic_time() - state.started_monotonic
+
+    Telemetry.emit(
+      [:codex, :thread, :stop],
+      %{duration: duration, system_time: System.system_time()},
+      state.meta
+      |> merge_metadata(state.context)
+      |> Map.put(:result, telemetry_result(state.failure, state.early_exit?))
+      |> maybe_put(:error, failure_meta(state.failure))
+      |> maybe_put(:early_exit?, state.early_exit?)
+    )
   end
 
   defp compaction_token_savings(compaction) do

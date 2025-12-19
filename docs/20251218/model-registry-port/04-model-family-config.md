@@ -1,11 +1,11 @@
 # Model Family Configuration
 
 ## File Location
-`codex-rs/core/src/openai_models/model_family.rs`
+`codex/codex-rs/core/src/openai_models/model_family.rs`
 
 ## Purpose
 
-Model families define per-model capabilities and behavior configurations that affect how Codex interacts with each model type.
+Model families define per-model capabilities and behavior configurations that affect how Codex interacts with each model type. These defaults can be overridden by remote model metadata (see below).
 
 ## ModelFamily Struct
 
@@ -31,9 +31,25 @@ pub struct ModelFamily {
 }
 ```
 
+## Remote Overrides
+
+`ModelFamily::with_remote_overrides` applies remote `ModelInfo` fields when `features.remote_models` is enabled, including:
+
+- `default_reasoning_effort`
+- `shell_type`
+- `base_instructions`
+- `supports_reasoning_summaries`
+- `support_verbosity` / `default_verbosity`
+- `apply_patch_tool_type`
+- `truncation_policy`
+- `supports_parallel_tool_calls`
+- `context_window`
+- `reasoning_summary_format`
+- `experimental_supported_tools`
+
 ## Model Family Definitions
 
-### gpt-5.2-codex (NEW)
+### gpt-5.2-codex
 ```rust
 model_family!(
     slug, slug,
@@ -45,7 +61,7 @@ model_family!(
     supports_parallel_tool_calls: true,
     support_verbosity: false,
     truncation_policy: TruncationPolicy::Tokens(10_000),
-    context_window: Some(272_000),
+    context_window: Some(CONTEXT_WINDOW_272K),
 )
 ```
 
@@ -58,14 +74,30 @@ model_family!(
     base_instructions: GPT_5_1_CODEX_MAX_INSTRUCTIONS.to_string(),
     apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
     shell_type: ConfigShellToolType::ShellCommand,
-    supports_parallel_tool_calls: false,  // Note: different from 5.2-codex
+    supports_parallel_tool_calls: false,
     support_verbosity: false,
     truncation_policy: TruncationPolicy::Tokens(10_000),
-    context_window: Some(272_000),
+    context_window: Some(CONTEXT_WINDOW_272K),
 )
 ```
 
-### gpt-5.2 (Base)
+### gpt-5-codex / gpt-5.1-codex / codex-* (legacy codex family)
+```rust
+model_family!(
+    slug, slug,
+    supports_reasoning_summaries: true,
+    reasoning_summary_format: ReasoningSummaryFormat::Experimental,
+    base_instructions: GPT_5_CODEX_INSTRUCTIONS.to_string(),
+    apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+    shell_type: ConfigShellToolType::ShellCommand,
+    supports_parallel_tool_calls: false,
+    support_verbosity: false,
+    truncation_policy: TruncationPolicy::Tokens(10_000),
+    context_window: Some(CONTEXT_WINDOW_272K),
+)
+```
+
+### gpt-5.2 (base)
 ```rust
 model_family!(
     slug, slug,
@@ -78,23 +110,37 @@ model_family!(
     truncation_policy: TruncationPolicy::Bytes(10_000),
     shell_type: ConfigShellToolType::ShellCommand,
     supports_parallel_tool_calls: true,
-    context_window: Some(272_000),
+    context_window: Some(CONTEXT_WINDOW_272K),
 )
 ```
 
-### gpt-5.1 / gpt-5.1-codex / gpt-5-codex (Older)
+### gpt-5.1 (base)
 ```rust
 model_family!(
-    slug, slug,
+    slug, "gpt-5.1",
     supports_reasoning_summaries: true,
-    reasoning_summary_format: ReasoningSummaryFormat::Experimental,
-    base_instructions: GPT_5_CODEX_INSTRUCTIONS.to_string(),
     apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+    support_verbosity: true,
+    default_verbosity: Some(Verbosity::Low),
+    base_instructions: GPT_5_1_INSTRUCTIONS.to_string(),
+    default_reasoning_effort: Some(ReasoningEffort::Medium),
+    truncation_policy: TruncationPolicy::Bytes(10_000),
     shell_type: ConfigShellToolType::ShellCommand,
-    supports_parallel_tool_calls: false,
-    support_verbosity: false,
-    truncation_policy: TruncationPolicy::Tokens(10_000),
-    context_window: Some(272_000),
+    supports_parallel_tool_calls: true,
+    context_window: Some(CONTEXT_WINDOW_272K),
+)
+```
+
+### gpt-5 (base)
+```rust
+model_family!(
+    slug, "gpt-5",
+    supports_reasoning_summaries: true,
+    needs_special_apply_patch_instructions: true,
+    shell_type: ConfigShellToolType::Default,
+    support_verbosity: true,
+    truncation_policy: TruncationPolicy::Bytes(10_000),
+    context_window: Some(CONTEXT_WINDOW_272K),
 )
 ```
 
@@ -114,41 +160,39 @@ model_family!(
 ### Shell Tool Types
 ```rust
 pub enum ConfigShellToolType {
-    Default,      // Standard shell
-    Local,        // Local-only execution
-    UnifiedExec,  // Unified PTY-backed exec
-    Disabled,     // No shell access
-    ShellCommand, // Shell command tool
+    Default,
+    Local,
+    UnifiedExec,
+    Disabled,
+    ShellCommand,
 }
 ```
 
 ### Apply Patch Tool Types
 ```rust
 pub enum ApplyPatchToolType {
-    Freeform,  // Flexible patch format
-    Function,  // Structured function call
+    Freeform,
+    Function,
 }
 ```
 
 ### Reasoning Summary Formats
 ```rust
 pub enum ReasoningSummaryFormat {
-    None,         // No summaries
-    Experimental, // Experimental format
+    None,
+    Experimental,
 }
 ```
 
 ### Truncation Policies
 ```rust
 pub enum TruncationPolicy {
-    Bytes(i64),   // Truncate by bytes
-    Tokens(i64),  // Truncate by tokens
+    Bytes(i64),
+    Tokens(i64),
 }
 ```
 
 ## Model Instructions Files
-
-Different model families use different instruction prompts:
 
 | Model Family | Instructions File |
 |--------------|-------------------|
@@ -167,6 +211,7 @@ Different model families use different instruction prompts:
 | gpt-5.1-codex-max | 272,000 |
 | gpt-5.2 | 272,000 |
 | gpt-5.1 | 272,000 |
+| gpt-5 | 272,000 |
 | codex-mini-latest | 200,000 |
 | gpt-4.1 | 1,047,576 |
 | gpt-4o | 128,000 |
@@ -174,10 +219,10 @@ Different model families use different instruction prompts:
 
 ## Elixir Implications
 
-For the Elixir SDK, we may want to track:
-1. `context_window` - For token limit calculations
-2. `supports_parallel_tool_calls` - For tool execution
-3. `shell_type` - If implementing shell tools
-4. `apply_patch_tool_type` - If implementing patching
+If the Elixir SDK mirrors model capabilities, it should track:
 
-Most of the model family configuration is internal to the Codex runtime and doesn't directly affect the SDK API surface, but knowing these details helps understand model capabilities.
+1. `context_window` (token limits)
+2. `supports_parallel_tool_calls`
+3. `shell_type` and `apply_patch_tool_type`
+4. `support_verbosity` / `default_verbosity`
+5. `base_instructions` and `reasoning_summary_format` if remote overrides are used

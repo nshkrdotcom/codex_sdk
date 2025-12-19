@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-12-18
+
+### Added
+
+- Auth-aware model defaults (ChatGPT `gpt-5.2-codex`, API `gpt-5.1-codex-max`) with `codex-auto-balanced` preference when remote models are enabled
+- Full model registry port with local presets, upgrade metadata, and reasoning effort normalization including `none`
+- Remote model support behind `features.remote_models`, with bundled `models.json` parsing and cache handling
+
+### Changed
+
+- API key handling now prioritizes `CODEX_API_KEY` and `auth.json` `OPENAI_API_KEY`; ChatGPT tokens no longer populate `api_key`
+- Documentation and examples updated for the new defaults, model list, and remote model behavior
+
 ## [0.4.0] - 2025-12-17
 
 ### Breaking Changes

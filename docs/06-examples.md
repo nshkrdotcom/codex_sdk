@@ -2,7 +2,7 @@
 
 This document provides comprehensive examples demonstrating common use cases and patterns for the Elixir Codex SDK. Runnable counterparts live under `/examples`; each script can be executed with `mix run examples/<name>.exs ...`.
 
-Auth defaults: all examples will use `CODEX_API_KEY`/`OPENAI_API_KEY` when present, otherwise they fall back to your Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
+Auth defaults: all examples prefer `CODEX_API_KEY` (or `auth.json` `OPENAI_API_KEY`) when present; otherwise they fall back to your Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
 
 ## Table of Contents
 
@@ -785,6 +785,8 @@ end
 
 Configure based on environment.
 
+Model defaults are auth-aware and remote model metadata is gated behind `features.remote_models = true` in `CODEX_HOME/config.toml`. When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets.
+
 ```elixir
 defmodule MyApp.Codex do
   def start_thread do
@@ -1286,9 +1288,9 @@ end
 
 ## Live Usage & Compaction
 
-`examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or `OPENAI_API_KEY`) and mirrors the latest defaults:
+`examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or a CLI login) and mirrors the latest defaults:
 
-- Uses the SDK default model (`gpt-5.1-codex-max`) and reasoning effort.
+- Uses the SDK auth-aware default model (ChatGPT: `gpt-5.2-codex`, API: `gpt-5.1-codex-max`) and reasoning effort.
 - Streams events, printing token-usage deltas and turn diffs as they arrive.
 - Captures explicit compaction notifications (including usage deltas) and merges them into the displayed token totals.
 - Prints the final agent response alongside merged usage.

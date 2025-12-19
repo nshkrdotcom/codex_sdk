@@ -3,7 +3,7 @@ defmodule Codex.TelemetryTest do
 
   import ExUnit.CaptureLog
 
-  alias Codex.{Options, Telemetry, Thread}
+  alias Codex.{Options, RunResultStreaming, Telemetry, Thread}
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
 
@@ -37,6 +37,35 @@ defmodule Codex.TelemetryTest do
     thread = Thread.build(codex_opts, thread_opts)
 
     {:ok, _result} = Thread.run(thread, "hi")
+
+    {_m_start, _meta_start} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, metadata -> metadata.input == "hi" end
+      )
+
+    {measurements, metadata} =
+      assert_event([:codex, :thread, :stop],
+        match: fn _e, _m, md -> md.thread_id == "thread_abc123" end
+      )
+
+    assert measurements.duration_ms > 0
+    assert metadata.originator == :sdk
+  end
+
+  test "thread run_streamed emits start and stop events" do
+    script_path =
+      FixtureScripts.cat_fixture("thread_basic.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    {:ok, result} = Thread.run_streamed(thread, "hi")
+
+    result
+    |> RunResultStreaming.raw_events()
+    |> Enum.to_list()
 
     {_m_start, _meta_start} =
       assert_event([:codex, :thread, :start],

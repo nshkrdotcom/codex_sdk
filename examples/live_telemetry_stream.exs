@@ -1,6 +1,3 @@
-System.put_env("CODEX_MODEL", "gpt-5.1-codex-mini")
-System.put_env("CODEX_MODEL_DEFAULT", "gpt-5.1-codex-mini")
-
 alias Codex.{Models, Options, RunResultStreaming, Thread, TransportError}
 
 defmodule LiveTelemetryStream do
@@ -32,6 +29,9 @@ defmodule LiveTelemetryStream do
     Streaming live Codex telemetry (thread/diff/usage/compaction).
     Auth will use CODEX_API_KEY if set, otherwise your Codex CLI login.
     Using model=#{model} reasoning_effort=#{reasoning}.
+    Starting live stream; you should see a thread start notice shortly.
+    Some telemetry (usage/diff/compaction) may only appear at completion, and
+    tool-heavy prompts can take 30-60s.
     """)
 
     attach(handler_id)
@@ -73,6 +73,9 @@ defmodule LiveTelemetryStream do
               acc ->
                 Map.put(acc, :final_response, text)
 
+              %Codex.Events.TurnCompleted{final_response: nil}, acc ->
+                acc
+
               %Codex.Events.TurnCompleted{final_response: other}, acc ->
                 Map.put(acc, :final_response, inspect(other))
 
@@ -93,37 +96,37 @@ defmodule LiveTelemetryStream do
 
   def handle_event([:codex, :thread, :start], _measurements, metadata, _config) do
     IO.puts(
-      "thread start thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} source=#{inspect(metadata.source)}"
+      "thread start thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} source=#{inspect(Map.get(metadata, :source))}"
     )
   end
 
   def handle_event([:codex, :thread, :stop], measurements, metadata, _config) do
     IO.puts(
-      "thread stop thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} result=#{metadata.result || :ok} duration_ms=#{measurements.duration_ms} source=#{inspect(metadata.source)}"
+      "thread stop thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} result=#{Map.get(metadata, :result, :ok)} duration_ms=#{Map.get(measurements, :duration_ms)} source=#{inspect(Map.get(metadata, :source))}"
     )
   end
 
   def handle_event([:codex, :thread, :exception], measurements, metadata, _config) do
     IO.puts(
-      "thread exception thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} duration_ms=#{measurements.duration_ms} reason=#{inspect(metadata.reason)}"
+      "thread exception thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} duration_ms=#{Map.get(measurements, :duration_ms)} reason=#{inspect(Map.get(metadata, :reason))}"
     )
   end
 
   def handle_event([:codex, :thread, :token_usage, :updated], _measurements, metadata, _config) do
     IO.puts(
-      "usage update thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} usage=#{inspect(metadata.usage)} delta=#{inspect(metadata.delta)}"
+      "usage update thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} usage=#{inspect(Map.get(metadata, :usage))} delta=#{inspect(Map.get(metadata, :delta))}"
     )
   end
 
   def handle_event([:codex, :turn, :diff, :updated], _measurements, metadata, _config) do
     IO.puts(
-      "diff update thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} diff=#{inspect(metadata.diff)}"
+      "diff update thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} diff=#{inspect(Map.get(metadata, :diff))}"
     )
   end
 
   def handle_event([:codex, :turn, :compaction, stage], measurements, metadata, _config) do
     IO.puts(
-      "compaction #{stage} thread_id=#{metadata.thread_id || "-"} turn_id=#{metadata.turn_id || "-"} token_savings=#{measurements[:token_savings] || "-"} compaction=#{inspect(metadata.compaction)}"
+      "compaction #{stage} thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} token_savings=#{Map.get(measurements, :token_savings) || "-"} compaction=#{inspect(Map.get(metadata, :compaction))}"
     )
   end
 
@@ -162,6 +165,14 @@ defmodule LiveTelemetryStream do
 
   defp unwrap!({:error, reason}, label),
     do: Mix.raise("Failed to build #{label}: #{inspect(reason)}")
+
+  defp value(metadata, key) do
+    case Map.fetch(metadata, key) do
+      {:ok, nil} -> "-"
+      {:ok, value} -> value
+      :error -> "-"
+    end
+  end
 end
 
 LiveTelemetryStream.main(System.argv())

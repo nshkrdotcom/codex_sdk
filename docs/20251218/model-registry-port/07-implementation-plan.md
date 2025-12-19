@@ -1,9 +1,14 @@
 # Implementation Plan
 
-## Phase 1: Update Type Definitions
+## Phase 1: Types and Enums
 
-### Step 1.1: Add new types to models.ex
+### Step 1.1: Extend reasoning effort type
+```elixir
+@type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
+@reasoning_efforts [:none, :minimal, :low, :medium, :high, :xhigh]
+```
 
+### Step 1.2: Add preset and upgrade types
 ```elixir
 @type reasoning_effort_preset :: %{
   effort: reasoning_effort(),
@@ -12,239 +17,101 @@
 
 @type model_upgrade :: %{
   id: String.t(),
+  reasoning_effort_mapping: %{reasoning_effort() => reasoning_effort()} | nil,
   migration_config_key: String.t(),
   model_link: String.t() | nil,
   upgrade_copy: String.t() | nil
 }
-```
 
-### Step 1.2: Update model type
-
-```elixir
-@type model :: %{
+@type model_preset :: %{
   id: String.t(),
+  model: String.t(),
   display_name: String.t(),
   description: String.t(),
   default_reasoning_effort: reasoning_effort(),
   supported_reasoning_efforts: [reasoning_effort_preset()],
-  tool_enabled?: boolean(),
-  default?: boolean(),
+  is_default: boolean(),
+  upgrade: model_upgrade() | nil,
   show_in_picker: boolean(),
-  supported_in_api: boolean(),
-  upgrade: model_upgrade() | nil
+  supported_in_api: boolean()
 }
 ```
 
-### Step 1.3: Update reasoning_effort type
+### Step 1.3: Add ModelInfo type if remote models are implemented
+Mirror `codex/codex-rs/protocol/src/openai_models.rs` (see `06-port-requirements.md`).
 
-Add `:none` to the reasoning effort type:
+## Phase 2: Local Presets (Default Behavior)
 
-```elixir
-@type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
-@reasoning_efforts [:none, :minimal, :low, :medium, :high, :xhigh]
-```
+### Step 2.1: Add local presets
+Populate `@local_presets` using the 4 entries in `model_presets.rs`:
+- `gpt-5.2-codex`
+- `gpt-5.1-codex-max`
+- `gpt-5.1-codex-mini`
+- `gpt-5.2`
 
-## Phase 2: Update Model Registry
+### Step 2.2: Add shared upgrade metadata
+Define `@gpt_52_codex_upgrade` for reuse in local presets.
 
-### Step 2.1: Update @default_model
+## Phase 3: Remote Models (Optional but Upstream-Complete)
 
-```elixir
-@default_model "gpt-5.2-codex"
-```
+### Step 3.1: Load `models.json`
+Parse `codex/codex-rs/core/models.json` into `ModelInfo` structs.
 
-### Step 2.2: Add GPT-5.2-codex (new default)
+### Step 3.2: Convert to ModelPreset
+Implement `model_info_to_preset/1` following `ModelPreset::from(ModelInfo)`.
 
-```elixir
-%{
-  id: "gpt-5.2-codex",
-  display_name: "gpt-5.2-codex",
-  description: "Latest frontier agentic coding model.",
-  default_reasoning_effort: :medium,
-  supported_reasoning_efforts: [
-    %{effort: :low, description: "Fast responses with lighter reasoning"},
-    %{effort: :medium, description: "Balances speed and reasoning depth for everyday tasks"},
-    %{effort: :high, description: "Greater reasoning depth for complex problems"},
-    %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
-  ],
-  tool_enabled?: true,
-  default?: true,
-  show_in_picker: true,
-  supported_in_api: false,
-  upgrade: nil
-}
-```
+### Step 3.3: Gate by feature flag
+Only use remote models when `features.remote_models` is enabled (default false upstream).
+Skip the network fetch when auth mode is API key; keep bundled `models.json`.
 
-### Step 2.3: Add GPT-5.2
+## Phase 4: Merge, Filter, Defaults
 
-```elixir
-%{
-  id: "gpt-5.2",
-  display_name: "gpt-5.2",
-  description: "Latest frontier model with improvements across knowledge, reasoning and coding",
-  default_reasoning_effort: :medium,
-  supported_reasoning_efforts: [
-    %{effort: :low, description: "Balances speed with some reasoning; useful for straightforward queries"},
-    %{effort: :medium, description: "Provides a solid balance of reasoning depth and latency"},
-    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"},
-    %{effort: :xhigh, description: "Extra high reasoning for complex problems"}
-  ],
-  tool_enabled?: false,
-  default?: false,
-  show_in_picker: true,
-  supported_in_api: true,
-  upgrade: @gpt_52_codex_upgrade
-}
-```
+### Step 4.0: Infer auth mode
+Prefer API key when `CODEX_API_KEY` or `auth.json` `openai_api_key` is present; otherwise use ChatGPT tokens.
 
-### Step 2.4: Update existing models
+### Step 4.1: Merge remote + local
+- Sort remote models by priority (ascending)
+- Convert to presets
+- Add local presets for missing slugs (notably `gpt-5.2-codex`)
 
-Update all existing models with:
-- `display_name` field
-- `description` field
-- `supported_reasoning_efforts` list
-- `show_in_picker` field
-- `supported_in_api` field
-- `upgrade` field (pointing to gpt-5.2-codex)
-- Set `default?: false` for gpt-5.1-codex-max
+### Step 4.2: Filter by visibility and auth
+- `show_in_picker == true`
+- API auth requires `supported_in_api == true`
 
-### Step 2.5: Add deprecated models
+### Step 4.3: Default selection
+If no preset has `is_default`, mark the first model as default.
 
-Add hidden models for backwards compatibility:
-- `gpt-5-codex`
-- `gpt-5-codex-mini`
-- `gpt-5.1-codex`
-- `gpt-5`
-- `gpt-5.1`
+### Step 4.4: Auth-aware default model
+Update `default_model/0` to select:
+- ChatGPT auth -> `gpt-5.2-codex`
+- API key auth -> `gpt-5.1-codex-max`
+- Prefer `codex-auto-balanced` when remote models include it and ChatGPT auth is active
 
-## Phase 3: Add New Functions
+## Phase 5: Public Helpers
 
-### Step 3.1: Add list_visible/0
+Add or update:
+- `list_visible/1` (auth-aware filtering)
+- `supported_reasoning_efforts/1`
+- `supported_in_api?/1`
+- `get_upgrade/1`
+- `display_name/1` and `description/1`
 
-```elixir
-@spec list_visible() :: [model()]
-def list_visible do
-  @models |> Enum.filter(& &1.show_in_picker)
-end
-```
+## Phase 6: Tests
 
-### Step 3.2: Add get_upgrade/1
-
-```elixir
-@spec get_upgrade(String.t()) :: model_upgrade() | nil
-def get_upgrade(model_id) do
-  model_id
-  |> normalize_model()
-  |> find_model()
-  |> Map.get(:upgrade)
-end
-```
-
-### Step 3.3: Add supported_reasoning_efforts/1
-
-```elixir
-@spec supported_reasoning_efforts(String.t()) :: [reasoning_effort_preset()]
-def supported_reasoning_efforts(model_id) do
-  model_id
-  |> normalize_model()
-  |> find_model()
-  |> Map.get(:supported_reasoning_efforts, [])
-end
-```
-
-### Step 3.4: Add supported_in_api?/1
-
-```elixir
-@spec supported_in_api?(String.t()) :: boolean()
-def supported_in_api?(model_id) do
-  model_id
-  |> normalize_model()
-  |> find_model()
-  |> Map.get(:supported_in_api, false)
-end
-```
-
-### Step 3.5: Add description/1 and display_name/1
-
-```elixir
-@spec description(String.t()) :: String.t() | nil
-def description(model_id) do
-  model_id
-  |> normalize_model()
-  |> find_model()
-  |> Map.get(:description)
-end
-
-@spec display_name(String.t()) :: String.t() | nil
-def display_name(model_id) do
-  model_id
-  |> normalize_model()
-  |> find_model()
-  |> Map.get(:display_name)
-end
-```
-
-## Phase 4: Update find_model/1
-
-Update to return a more complete default for unknown models:
-
-```elixir
-defp find_model(model) do
-  Enum.find(@models, fn m -> m.id == model end) ||
-    %{
-      id: model,
-      display_name: model,
-      description: nil,
-      default_reasoning_effort: nil,
-      supported_reasoning_efforts: [],
-      tool_enabled?: false,
-      default?: false,
-      show_in_picker: false,
-      supported_in_api: false,
-      upgrade: nil
-    }
-end
-```
-
-## Phase 5: Define Shared Upgrade Module Attribute
-
-```elixir
-@gpt_52_codex_upgrade %{
-  id: "gpt-5.2-codex",
-  migration_config_key: "gpt-5.2-codex",
-  model_link: "https://openai.com/index/introducing-gpt-5-2-codex",
-  upgrade_copy: "Codex is now powered by gpt-5.2-codex, our latest frontier agentic coding model. It is smarter and faster than its predecessors and capable of long-running project-scale work."
-}
-```
-
-## Testing Checklist
-
-- [ ] `list/0` returns all models including new ones
-- [ ] `list_visible/0` returns only models with `show_in_picker: true`
-- [ ] `default_model/0` returns `"gpt-5.2-codex"` by default
-- [ ] `default_model/0` respects environment variable overrides
-- [ ] `default_reasoning_effort/1` works for all models
-- [ ] `tool_enabled?/1` returns correct values
-- [ ] `get_upgrade/1` returns upgrade info for models with upgrades
-- [ ] `supported_reasoning_efforts/1` returns correct effort lists
-- [ ] `supported_in_api?/1` returns `false` for `gpt-5.2-codex`
-- [ ] `normalize_reasoning_effort/1` handles `:none`
-- [ ] Unknown models return sensible defaults
+- Validate API vs ChatGPT `list_models` output (match upstream expectations)
+- Confirm auth-aware default model selection
+- Ensure `:none` reasoning effort is accepted
+- Verify upgrade metadata and reasoning effort mapping
 
 ## Breaking Changes
 
-### Potentially Breaking
-1. Default model changes from `gpt-5.1-codex-max` to `gpt-5.2-codex`
-2. Model type now has required fields (`display_name`, `description`, etc.)
-
-### Mitigations
-1. Keep `@default_model` overridable via environment variables
-2. Use `Map.get/3` with defaults when accessing new fields to maintain backwards compatibility
-3. Add `list_visible/0` rather than changing `list/0` behavior
+1. Default model becomes auth-aware (ChatGPT vs API)
+2. Model preset type gains additional required fields
+3. Optional remote models introduce priority-based defaults and extra visible models
 
 ## Rollout Strategy
 
-1. **Phase 1**: Add new types and fields (backwards compatible)
-2. **Phase 2**: Add new models to registry
-3. **Phase 3**: Add new helper functions
-4. **Phase 4**: Update default model to `gpt-5.2-codex`
-5. **Phase 5**: Update documentation and changelog
+1. Add types + local presets (backwards compatible)
+2. Introduce auth-aware defaults
+3. Add remote models support (feature-flagged)
+4. Expand helper APIs and tests

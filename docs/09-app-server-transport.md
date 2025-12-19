@@ -13,7 +13,7 @@ Use app-server when you need upstream v2 APIs that are not exposed via exec JSON
 
 - A `codex` CLI install that supports `codex app-server` (run `codex app-server --help`).
 - Auth via either:
-  - `CODEX_API_KEY` / `OPENAI_API_KEY`, or
+  - `CODEX_API_KEY` (or `auth.json` `OPENAI_API_KEY`), or
   - a Codex CLI login under `CODEX_HOME` (default `~/.codex`).
 
 The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PATH` → `System.find_executable("codex")`.

@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.4.1"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -181,7 +181,7 @@ defmodule CodexSdk.MixProject do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib config mix.exs README.md CHANGELOG.md docs LICENSE assets examples),
+      files: ~w(lib config priv mix.exs README.md CHANGELOG.md docs LICENSE assets examples),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

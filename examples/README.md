@@ -2,7 +2,7 @@
 
 All examples run with `mix run` from the repository root. The `live_*.exs` scripts hit the live Codex CLI (no mocks, no extra API-key setup required if you are already logged in).
 
-By default, `./examples/run_all.sh` sets `CODEX_MODEL=gpt-5.1-codex-mini` so every example uses the same model (override by exporting `CODEX_MODEL` before running).
+By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). Auth-aware defaults are `gpt-5.2-codex` for ChatGPT login and `gpt-5.1-codex-max` for API keys.
 
 ## Running everything
 

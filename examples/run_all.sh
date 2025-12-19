@@ -5,14 +5,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export CODEX_MODEL="${CODEX_MODEL:-gpt-5.1-codex-mini}"
-export CODEX_MODEL_DEFAULT="${CODEX_MODEL_DEFAULT:-gpt-5.1-codex-mini}"
+export CODEX_MODEL_DEFAULT="${CODEX_MODEL_DEFAULT:-${CODEX_MODEL}}"
 
-echo "Using model: ${CODEX_MODEL}"
+echo "Using model override: ${CODEX_MODEL}"
+echo "Auth-aware defaults: chatgpt=gpt-5.2-codex api=gpt-5.1-codex-max"
 echo
 
-if [[ -z "${CODEX_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "Warning: No CODEX_API_KEY or OPENAI_API_KEY set"
-  echo "Some examples may fail without authentication"
+if [[ -z "${CODEX_API_KEY:-}" ]]; then
+  echo "Warning: No CODEX_API_KEY set (CLI login required for live examples)"
   echo
 fi
 

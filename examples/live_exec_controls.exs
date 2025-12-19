@@ -3,8 +3,8 @@ Mix.Task.run("app.start")
 defmodule CodexExamples.LiveExecControls do
   @moduledoc """
   Demonstrates live codex execution with per-turn env injection, cancellation tokens,
-  and custom timeouts. Auth will use CODEX_API_KEY/OPENAI_API_KEY when set, otherwise
-  your Codex CLI login.
+  and custom timeouts. Auth will use CODEX_API_KEY (or auth.json OPENAI_API_KEY) when set,
+  otherwise your Codex CLI login.
   """
 
   @default_prompt "List three repo files, then print the value of CODEX_DEMO_ENV via a safe shell command."
