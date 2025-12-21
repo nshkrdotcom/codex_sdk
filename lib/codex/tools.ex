@@ -22,6 +22,12 @@ defmodule Codex.Tools do
           }
   end
 
+  @type tool_info :: %{
+          name: String.t(),
+          module: module(),
+          metadata: map()
+        }
+
   @doc """
   Registers a tool module with optional overrides.
 
@@ -57,13 +63,13 @@ defmodule Codex.Tools do
   @doc """
   Deregisters a tool using the handle returned from `register/2`.
   """
-  @spec deregister(Handle.t()) :: :ok | {:error, term()}
+  @spec deregister(Handle.t()) :: :ok
   def deregister(%Handle{} = handle), do: Registry.deregister(handle)
 
   @doc """
   Looks up a registered tool by name.
   """
-  @spec lookup(String.t()) :: {:ok, map()} | {:error, term()}
+  @spec lookup(String.t()) :: {:ok, tool_info()} | {:error, :not_found}
   def lookup(name) when is_binary(name), do: Registry.lookup(name)
 
   @doc """

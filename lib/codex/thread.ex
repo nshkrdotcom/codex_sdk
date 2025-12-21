@@ -630,8 +630,6 @@ defmodule Codex.Thread do
     fetch_map_value(map, key) || fetch_map_value(map, to_string(key))
   end
 
-  defp get_usage_map(_map, _key), do: nil
-
   defp fetch_map_value(map, key) do
     case Map.fetch(map, key) do
       {:ok, value} when is_map(value) -> value
@@ -747,8 +745,6 @@ defmodule Codex.Thread do
     Enum.each(events, &emit_progress_event(&1, meta))
   end
 
-  defp emit_progress_events(_events, _meta), do: :ok
-
   defp emit_progress_event(%Events.ThreadTokenUsageUpdated{} = event, meta) do
     Telemetry.emit(
       [:codex, :thread, :token_usage, :updated],
@@ -856,10 +852,6 @@ defmodule Codex.Thread do
           acc
       end
     )
-  end
-
-  defp extract_thread_context(_events, thread) do
-    %{thread_id: thread.thread_id, turn_id: nil, source: extract_source(thread.metadata)}
   end
 
   defp stream_context_for_thread(%__MODULE__{} = thread) do
@@ -1341,8 +1333,6 @@ defmodule Codex.Thread do
       normalize_call_id(payload) == call_id
     end)
   end
-
-  defp handled_tool_call?(_result, _event), do: false
 
   defp merge_tool_payload(existing, payload) do
     normalized_id = normalize_call_id(payload)

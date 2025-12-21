@@ -134,8 +134,6 @@ defmodule Codex.Options do
       {:ok, path}
     else
       {:error, _} = error -> error
-      false -> {:error, {:codex_binary_missing, path}}
-      error when is_atom(error) -> {:error, error}
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.4.1"
+  @version "0.4.2"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -27,8 +27,7 @@ defmodule CodexSdk.MixProject do
       dialyzer: [
         plt_add_apps: [:mix],
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-        flags: [:error_handling, :underspecs],
-        ignore_warnings: ".dialyzer_ignore.exs"
+        flags: [:error_handling, :underspecs]
       ]
     ]
   end
@@ -185,7 +184,6 @@ defmodule CodexSdk.MixProject do
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
-        "Online documentation" => "https://hexdocs.pm/codex_sdk",
         "OpenAI Codex" => "https://github.com/openai/codex"
       },
       maintainers: ["nshkrdotcom"],
