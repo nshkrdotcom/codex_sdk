@@ -222,8 +222,6 @@ defmodule Codex.Exec do
     end
   end
 
-  defp build_command(_), do: {:error, :missing_options}
-
   defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts) do
     ["exec", "--experimental-json"] ++
       model_args(codex_opts) ++
@@ -270,9 +268,12 @@ defmodule Codex.Exec do
   defp sandbox_mode(:read_only), do: "read-only"
   defp sandbox_mode(:workspace_write), do: "workspace-write"
   defp sandbox_mode(:danger_full_access), do: "danger-full-access"
+  defp sandbox_mode(:external_sandbox), do: "external-sandbox"
+  defp sandbox_mode({:external_sandbox, _network_access}), do: "external-sandbox"
   defp sandbox_mode("read-only"), do: "read-only"
   defp sandbox_mode("workspace-write"), do: "workspace-write"
   defp sandbox_mode("danger-full-access"), do: "danger-full-access"
+  defp sandbox_mode("external-sandbox"), do: "external-sandbox"
   defp sandbox_mode(nil), do: nil
   defp sandbox_mode(value) when is_binary(value), do: value
   defp sandbox_mode(_), do: nil
@@ -300,6 +301,18 @@ defmodule Codex.Exec do
     do: ["--skip-git-repo-check"]
 
   defp skip_git_repo_check_args(_), do: []
+
+  defp network_access_args(%{
+         thread_opts: %Codex.Thread.Options{sandbox: {:external_sandbox, network_access}}
+       }) do
+    # For external_sandbox, network_access is part of the sandbox policy
+    # and is passed via config
+    case network_access do
+      :enabled -> ["--config", "sandbox_external.network_access=true"]
+      :restricted -> ["--config", "sandbox_external.network_access=false"]
+      _ -> []
+    end
+  end
 
   defp network_access_args(%{thread_opts: %Codex.Thread.Options{network_access_enabled: value}})
        when value in [true, false] do
@@ -396,8 +409,6 @@ defmodule Codex.Exec do
     end
   end
 
-  defp build_env(_), do: []
-
   defp clear_env?(%ExecOptions{clear_env?: value}) when is_boolean(value), do: value
   defp clear_env?(%ExecOptions{}), do: false
 
@@ -467,14 +478,14 @@ defmodule Codex.Exec do
   defp iodata_to_binary(data) when is_binary(data), do: data
   defp iodata_to_binary(data), do: IO.iodata_to_binary(data)
 
-  defp normalize_exit_status(raw_status) do
+  defp normalize_exit_status(raw_status) when is_integer(raw_status) do
     case :exec.status(raw_status) do
-      {:exit_status, code} -> code
       {:status, code} -> code
-      {:signal, signal, _core?} -> {:signal, signal}
-      other -> other
+      {:signal, signal, _core?} -> 128 + :exec.signal_to_int(signal)
     end
   rescue
     _ -> raw_status
   end
+
+  defp normalize_exit_status(raw_status), do: raw_status
 end

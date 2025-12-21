@@ -33,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.1"}
+    {:codex_sdk, "~> 0.4.2"}
   ]
 end
 ```
@@ -558,7 +558,14 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.4.1 (Model registry port)
+**Current Version**: 0.4.2 (Upstream sync: constraints, external sandbox)
+
+### v0.4.2 Highlights
+
+- New `:external_sandbox` mode for containerized environments with network access control
+- Internal constraint system for validated configuration values (aligned with upstream)
+- Updated model presets from upstream (32 commits synced)
+- Skills now support `short_description` and `:admin` scope (pass-through from CLI)
 
 ### v0.4.1 Highlights
 

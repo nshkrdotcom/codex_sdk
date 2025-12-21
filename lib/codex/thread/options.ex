@@ -25,6 +25,19 @@ defmodule Codex.Thread.Options do
 
   @type transport :: :exec | {:app_server, pid()}
 
+  @type network_access :: :enabled | :restricted
+
+  @type sandbox ::
+          :default
+          | :strict
+          | :permissive
+          | :read_only
+          | :workspace_write
+          | :danger_full_access
+          | :external_sandbox
+          | {:external_sandbox, network_access()}
+          | String.t()
+
   @type t :: %__MODULE__{
           metadata: map(),
           labels: map(),
@@ -33,14 +46,7 @@ defmodule Codex.Thread.Options do
           approval_policy: module() | nil,
           approval_hook: module() | nil,
           approval_timeout_ms: pos_integer(),
-          sandbox:
-            :default
-            | :strict
-            | :permissive
-            | :read_only
-            | :workspace_write
-            | :danger_full_access
-            | String.t(),
+          sandbox: sandbox(),
           working_directory: String.t() | nil,
           additional_directories: [String.t()],
           skip_git_repo_check: boolean(),
@@ -182,9 +188,16 @@ defmodule Codex.Thread.Options do
   defp normalize_sandbox(:read_only), do: {:ok, :read_only}
   defp normalize_sandbox(:workspace_write), do: {:ok, :workspace_write}
   defp normalize_sandbox(:danger_full_access), do: {:ok, :danger_full_access}
+  defp normalize_sandbox(:external_sandbox), do: {:ok, :external_sandbox}
+  defp normalize_sandbox({:external_sandbox, :enabled}), do: {:ok, {:external_sandbox, :enabled}}
+
+  defp normalize_sandbox({:external_sandbox, :restricted}),
+    do: {:ok, {:external_sandbox, :restricted}}
+
   defp normalize_sandbox("read-only"), do: {:ok, :read_only}
   defp normalize_sandbox("workspace-write"), do: {:ok, :workspace_write}
   defp normalize_sandbox("danger-full-access"), do: {:ok, :danger_full_access}
+  defp normalize_sandbox("external-sandbox"), do: {:ok, :external_sandbox}
 
   defp normalize_sandbox(value) when is_binary(value) do
     # Accept arbitrary strings for forward compatibility with the upstream CLI, but

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2025-12-20
+
+### Added
+
+- Internal `Constrained` module for wrapping configuration values with validation constraints
+- Internal `ConstraintError` exception for reporting constraint violations
+- `:external_sandbox` sandbox mode for containerized/external sandbox environments
+- `{:external_sandbox, :enabled | :restricted}` tuple variant with explicit network access control
+- Support for `:admin` skill scope (reads from `/etc/codex`) - pass-through from CLI
+- Support for `short_description` field in skill metadata - pass-through from CLI
+
+### Changed
+
+- Updated bundled `priv/models.json` to upstream (commits d7ae342ff..987dd7fde)
+- Model presets updated:
+  - `gpt-5.1-codex-max`: priority 0 → 1, now upgrades to `gpt-5.2-codex`
+  - `gpt-5.1-codex-mini`: visibility `:list` → `:hide` (hidden by default)
+  - `gpt-5.1-codex`: visibility now `:hide`
+  - `gpt-5.1`: now upgrades to `gpt-5.2-codex`
+
+### Fixed
+
+- Normalize signal-based exits to conventional shell exit codes (`128 + signal`) when reporting `Codex.TransportError`
+
+### Documentation
+
+- Added `docs/20251220/` directory with comprehensive porting plan and validation
+
+### Internal
+
+- Synced with upstream codex-rs commits d7ae342ff..987dd7fde (32 commits)
+- Added constraint system aligned with upstream `Constrained<T>` type
+
 ## [0.4.1] - 2025-12-18
 
 ### Added
