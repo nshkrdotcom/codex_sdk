@@ -12,11 +12,11 @@ defmodule Examples.Concurrency do
           {:ok, thread} = Codex.start_thread()
 
           prompt = """
-          Analyze the file path `#{file}` for potential issues based on common Elixir patterns.
-          Be explicit about uncertainty (you do not have the file contents). Keep it to 4 bullets.
+          Analyze `#{file}` for potential issues based on common Elixir patterns.
+          Read the file contents if you need them, and keep it to 4 bullets.
           """
 
-          case Codex.Thread.run(thread, prompt, %{timeout_ms: 45_000}) do
+          case Codex.Thread.run(thread, prompt, %{timeout_ms: 90_000}) do
             {:ok, result} -> {file, render(result.final_response)}
             {:error, reason} -> {file, "FAILED: #{inspect(reason)}"}
           end
@@ -59,7 +59,12 @@ defmodule Examples.Concurrency do
 
   def collaboration(file) do
     {:ok, analyzer} = Codex.start_thread()
-    {:ok, analysis} = Codex.Thread.run(analyzer, "Analyze #{file} for potential issues.")
+
+    {:ok, analysis} =
+      Codex.Thread.run(
+        analyzer,
+        "Analyze #{file} for potential issues. Read the file contents if needed."
+      )
 
     {:ok, security} = Codex.start_thread()
 
@@ -67,7 +72,7 @@ defmodule Examples.Concurrency do
       Codex.Thread.run(
         security,
         """
-        Review this code for security issues:
+        Review #{file} for security issues. Read the file contents if needed.
 
         Analysis: #{render(analysis.final_response)}
         """
@@ -79,7 +84,7 @@ defmodule Examples.Concurrency do
       Codex.Thread.run(
         performance,
         """
-        Review this code for performance issues:
+        Review #{file} for performance issues. Read the file contents if needed.
 
         Analysis: #{render(analysis.final_response)}
         """

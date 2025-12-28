@@ -6,6 +6,8 @@ defmodule Codex.ModelsTest do
   setup do
     env_keys = ~w(CODEX_MODEL OPENAI_DEFAULT_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME)
 
+    original_system_path = Application.get_env(:codex_sdk, :system_config_path)
+
     original_env =
       env_keys
       |> Enum.map(&{&1, System.get_env(&1)})
@@ -17,6 +19,12 @@ defmodule Codex.ModelsTest do
     File.mkdir_p!(tmp_home)
     System.put_env("CODEX_HOME", tmp_home)
 
+    Application.put_env(
+      :codex_sdk,
+      :system_config_path,
+      Path.join(tmp_home, "system_config.toml")
+    )
+
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
@@ -24,6 +32,11 @@ defmodule Codex.ModelsTest do
           value -> System.put_env(key, value)
         end
       end)
+
+      case original_system_path do
+        nil -> Application.delete_env(:codex_sdk, :system_config_path)
+        value -> Application.put_env(:codex_sdk, :system_config_path, value)
+      end
 
       File.rm_rf(tmp_home)
     end)
@@ -132,11 +145,25 @@ defmodule Codex.ModelsTest do
     assert Models.tool_enabled?("gpt-5.1")
   end
 
+  test "parse_client_version supports string and array formats" do
+    assert Models.parse_client_version([1, 2, 3]) == {1, 2, 3}
+    assert Models.parse_client_version("0.60.0") == {0, 60, 0}
+    assert Models.parse_client_version("0.60.0-alpha.1") == {0, 60, 0}
+    assert Models.parse_client_version("invalid") == {0, 0, 0}
+  end
+
   defp with_temp_codex_home(fun) when is_function(fun, 1) do
     tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
     original_home = System.get_env("CODEX_HOME")
+    original_system_path = Application.get_env(:codex_sdk, :system_config_path)
     File.mkdir_p!(tmp_home)
     System.put_env("CODEX_HOME", tmp_home)
+
+    Application.put_env(
+      :codex_sdk,
+      :system_config_path,
+      Path.join(tmp_home, "system_config.toml")
+    )
 
     try do
       fun.(tmp_home)
@@ -144,6 +171,11 @@ defmodule Codex.ModelsTest do
       case original_home do
         nil -> System.delete_env("CODEX_HOME")
         value -> System.put_env("CODEX_HOME", value)
+      end
+
+      case original_system_path do
+        nil -> Application.delete_env(:codex_sdk, :system_config_path)
+        value -> Application.put_env(:codex_sdk, :system_config_path, value)
       end
 
       File.rm_rf(tmp_home)

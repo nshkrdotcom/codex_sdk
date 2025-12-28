@@ -1,7 +1,7 @@
 # Covers ADR-006, ADR-007 (MCP hosted tool + session resume)
 Mix.Task.run("app.start")
 
-alias Codex.{AgentRunner, RunConfig, Tools}
+alias Codex.{AgentRunner, Events, RunConfig, Tools}
 alias Codex.Agent, as: CodexAgent
 alias Codex.Items.AgentMessage
 
@@ -87,21 +87,19 @@ defmodule CodexExamples.LiveMcpAndSessions do
     IO.puts("MCP tools (filtered): #{inspect(Enum.map(tools, & &1["name"]))}")
 
     {:ok, _} =
-      Tools.register(Codex.Tools.HostedMcpTool,
+      Codex.Tools.HostedMcpTool
+      |> Tools.register(
         name: "hosted_mcp",
-        metadata: %{
-          client: client,
-          tool: "stub.echo",
-          retries: 1,
-          backoff: &mcp_backoff/1
-        }
+        client: client,
+        tool: "stub.echo",
+        retries: 1,
+        backoff: &mcp_backoff/1
       )
 
     {:ok, agent} =
       CodexAgent.new(%{
         name: "McpSessionAgent",
-        instructions:
-          "Use hosted_mcp (stub.echo) once to mirror the request, then answer concisely. Keep the session id in mind.",
+        instructions: "Answer concisely. Use hosted_mcp only if it is available and helpful.",
         tools: ["hosted_mcp"],
         reset_tool_choice: true
       })
@@ -124,6 +122,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
 
     {:ok, first} = AgentRunner.run(thread, prompt1, %{agent: agent, run_config: run_config})
     IO.puts("First response: #{render_response(first.final_response)}")
+    maybe_demo_tool_invocation(first.events)
 
     resume_config =
       RunConfig.new(%{
@@ -148,13 +147,30 @@ defmodule CodexExamples.LiveMcpAndSessions do
 
   defp parse_prompts([]) do
     {
-      "Ask hosted_mcp to echo a short note about sessions.",
-      "Resume the same session and ask for a one-line reminder."
+      "Give me a short note about sessions.",
+      "Resume the same session and give a one-line reminder."
     }
   end
 
   defp parse_prompts([first | rest]) do
     {first, Enum.join(rest, " ")}
+  end
+
+  defp maybe_demo_tool_invocation(events) do
+    tool_events =
+      Enum.filter(
+        events,
+        &(match?(%Events.ToolCallRequested{}, &1) or match?(%Events.ToolCallCompleted{}, &1))
+      )
+
+    if tool_events == [] do
+      IO.puts("No MCP tool calls observed; invoking hosted_mcp directly.")
+
+      case Tools.invoke("hosted_mcp", %{"note" => "session demo"}, %{}) do
+        {:ok, output} -> IO.puts("hosted_mcp output: #{inspect(output)}")
+        {:error, reason} -> IO.puts("hosted_mcp error: #{inspect(reason)}")
+      end
+    end
   end
 
   defp render_response(%AgentMessage{text: text}), do: text

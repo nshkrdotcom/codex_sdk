@@ -2,7 +2,7 @@ defmodule Codex.ErrorTest do
   use ExUnit.Case, async: true
 
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.{Options, Thread, TransportError}
+  alias Codex.{Error, Options, Thread, TransportError}
 
   test "non-zero codex exit returns transport error" do
     script_body = """
@@ -20,6 +20,20 @@ defmodule Codex.ErrorTest do
     thread = Thread.build(codex_opts, thread_opts)
 
     assert {:error, %TransportError{exit_status: 21}} = Thread.run(thread, "failure test")
+  end
+
+  test "normalize/1 preserves additional error details" do
+    payload = %{
+      "message" => "stream failed",
+      "additional_details" => "upstream timeout",
+      "codex_error_info" => %{"code" => "rate_limit"}
+    }
+
+    error = Error.normalize(payload)
+
+    assert error.message == "stream failed"
+    assert error.details.additional_details == "upstream timeout"
+    assert error.details.codex_error_info == %{"code" => "rate_limit"}
   end
 
   defp temp_script(contents) do

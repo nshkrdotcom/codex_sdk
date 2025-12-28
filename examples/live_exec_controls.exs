@@ -104,6 +104,7 @@ defmodule CodexExamples.LiveExecControls do
   end
 
   defp print_event(%Codex.Events.TurnCompleted{usage: usage, status: status}) do
+    status = status || "completed"
     IO.puts("[turn.completed] status=#{inspect(status)} usage=#{inspect(usage)}")
   end
 

@@ -96,7 +96,7 @@ defmodule LiveTelemetryStream do
 
   def handle_event([:codex, :thread, :start], _measurements, metadata, _config) do
     IO.puts(
-      "thread start thread_id=#{value(metadata, :thread_id)} turn_id=#{value(metadata, :turn_id)} source=#{inspect(Map.get(metadata, :source))}"
+      "thread start thread_id=#{value_or_pending(metadata, :thread_id)} turn_id=#{value_or_pending(metadata, :turn_id)} source=#{inspect(Map.get(metadata, :source))}"
     )
   end
 
@@ -171,6 +171,14 @@ defmodule LiveTelemetryStream do
       {:ok, nil} -> "-"
       {:ok, value} -> value
       :error -> "-"
+    end
+  end
+
+  defp value_or_pending(metadata, key) do
+    case Map.fetch(metadata, key) do
+      {:ok, nil} -> "pending"
+      {:ok, value} -> value
+      :error -> "pending"
     end
   end
 end

@@ -71,14 +71,30 @@ defmodule LiveUsageAndCompaction do
       usage: %{},
       compactions: [],
       diffs: [],
-      final_response: nil
+      final_response: nil,
+      thread_id: nil,
+      turn_id: nil
     }
+  end
+
+  defp handle_event(%Events.ThreadStarted{thread_id: thread_id}, state) do
+    %{state | thread_id: thread_id || state.thread_id}
+  end
+
+  defp handle_event(%Events.TurnStarted{turn_id: turn_id} = event, state) do
+    %{state | turn_id: turn_id || state.turn_id, thread_id: event.thread_id || state.thread_id}
   end
 
   defp handle_event(%Events.ThreadTokenUsageUpdated{} = event, state) do
     usage = merge_usage(state.usage, event.usage, event.delta)
-    IO.puts("Usage update (#{context(event.thread_id, event.turn_id)}): #{inspect(usage)}")
-    %{state | usage: usage}
+    IO.puts("Usage update (#{context(event.thread_id, event.turn_id, state)}): #{inspect(usage)}")
+
+    %{
+      state
+      | usage: usage,
+        thread_id: event.thread_id || state.thread_id,
+        turn_id: event.turn_id || state.turn_id
+    }
   end
 
   defp handle_event(%Events.TurnCompaction{} = event, state) do
@@ -90,20 +106,32 @@ defmodule LiveUsageAndCompaction do
       )
 
     IO.puts(
-      "Compaction #{event.stage} (#{context(event.thread_id, event.turn_id)}): #{inspect(event.compaction)}"
+      "Compaction #{event.stage} (#{context(event.thread_id, event.turn_id, state)}): #{inspect(event.compaction)}"
     )
 
-    %{state | usage: usage, compactions: [event | state.compactions]}
+    %{
+      state
+      | usage: usage,
+        compactions: [event | state.compactions],
+        thread_id: event.thread_id || state.thread_id,
+        turn_id: event.turn_id || state.turn_id
+    }
   end
 
   defp handle_event(%Events.TurnDiffUpdated{diff: diff} = event, state) do
-    IO.puts("Turn diff (#{context(event.thread_id, event.turn_id)}): #{inspect(diff)}")
-    %{state | diffs: [diff | state.diffs]}
+    IO.puts("Turn diff (#{context(event.thread_id, event.turn_id, state)}): #{inspect(diff)}")
+
+    %{
+      state
+      | diffs: [diff | state.diffs],
+        thread_id: event.thread_id || state.thread_id,
+        turn_id: event.turn_id || state.turn_id
+    }
   end
 
   defp handle_event(%Events.ItemCompleted{item: %Items.AgentMessage{text: text}}, state) do
     IO.puts("\nAgent message:\n#{text}\n")
-    state
+    %{state | final_response: text}
   end
 
   defp handle_event(
@@ -114,20 +142,33 @@ defmodule LiveUsageAndCompaction do
     merged_usage = merge_usage(state.usage, usage, nil)
 
     IO.puts(
-      "Turn completed (#{context(event.thread_id, event.turn_id)}), usage=#{inspect(merged_usage)}"
+      "Turn completed (#{context(event.thread_id, event.turn_id, state)}), usage=#{inspect(merged_usage)}"
     )
 
-    %{state | final_response: text, usage: merged_usage}
+    %{
+      state
+      | final_response: text,
+        usage: merged_usage,
+        thread_id: event.thread_id || state.thread_id,
+        turn_id: event.turn_id || state.turn_id
+    }
   end
 
   defp handle_event(%Events.TurnCompleted{final_response: other, usage: usage} = event, state) do
     merged_usage = merge_usage(state.usage, usage, nil)
+    final_response = if is_nil(other), do: state.final_response, else: inspect(other)
 
     IO.puts(
-      "Turn completed (#{context(event.thread_id, event.turn_id)}), usage=#{inspect(merged_usage)}"
+      "Turn completed (#{context(event.thread_id, event.turn_id, state)}), usage=#{inspect(merged_usage)}"
     )
 
-    %{state | final_response: inspect(other), usage: merged_usage}
+    %{
+      state
+      | final_response: final_response,
+        usage: merged_usage,
+        thread_id: event.thread_id || state.thread_id,
+        turn_id: event.turn_id || state.turn_id
+    }
   end
 
   defp handle_event(_other, state), do: state
@@ -179,8 +220,13 @@ defmodule LiveUsageAndCompaction do
       Map.get(compaction, :usageDelta)
   end
 
-  defp context(thread_id, turn_id) do
-    ["thread", thread_id || "?", "turn", turn_id || "?"]
+  defp context(thread_id, turn_id, state) do
+    [
+      "thread",
+      thread_id || state.thread_id || "pending",
+      "turn",
+      turn_id || state.turn_id || "pending"
+    ]
     |> Enum.chunk_every(2)
     |> Enum.map_join(" ", fn [label, id] -> "#{label}=#{id}" end)
   end

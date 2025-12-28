@@ -31,7 +31,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
     prompt =
       case argv do
         [] ->
-          "Call attachment_echo once and file_search for 'docs parity'. Return a tiny summary."
+          "Give a tiny summary of this repository."
 
         values ->
           Enum.join(values, " ")
@@ -43,14 +43,12 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
 
     {:ok, _} =
       Tools.register(CodexExamples.AttachmentEchoTool,
-        metadata: %{attachment: attachment}
+        attachment: attachment
       )
 
     {:ok, _} =
-      Tools.register(Codex.Tools.FileSearchTool,
-        name: "file_search",
-        metadata: file_search_metadata()
-      )
+      Codex.Tools.FileSearchTool
+      |> Tools.register(Keyword.merge([name: "file_search"], file_search_options()))
 
     {:ok, file_search} =
       FileSearch.new(%{
@@ -62,8 +60,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
     {:ok, agent} =
       Agent.new(%{
         name: "AttachmentAgent",
-        instructions:
-          "Use attachment_echo to return the staged files (dedupe outputs) and call file_search once with the provided filters. Keep the final summary short.",
+        instructions: "Provide a short summary. Use hosted tools only if they are available.",
         tools: ["attachment_echo", "file_search"],
         reset_tool_choice: true
       })
@@ -96,7 +93,13 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
 
     case AgentRunner.run(thread, prompt, %{agent: agent, run_config: run_config}) do
       {:ok, result} ->
-        print_outputs(result.raw[:tool_outputs] || [])
+        tool_outputs = result.raw[:tool_outputs] || []
+        print_outputs(tool_outputs)
+
+        if tool_outputs == [] do
+          demo_tool_invocations()
+        end
+
         IO.puts("Usage: #{inspect(result.thread.usage || %{})}")
         IO.puts("Final response: #{render_response(result.final_response)}")
 
@@ -118,8 +121,8 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
     Codex.Files.stage(path, name: "demo_attachment.png")
   end
 
-  defp file_search_metadata do
-    %{
+  defp file_search_options do
+    [
       searcher: fn args, _context, _metadata ->
         {:ok,
          %{
@@ -129,7 +132,21 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
            ]
          }}
       end
-    }
+    ]
+  end
+
+  defp demo_tool_invocations do
+    IO.puts("No tool calls observed; invoking tools locally.")
+
+    case Tools.invoke("attachment_echo", %{}, %{}) do
+      {:ok, output} -> IO.puts("attachment_echo output: #{inspect(output)}")
+      {:error, reason} -> IO.puts("attachment_echo error: #{inspect(reason)}")
+    end
+
+    case Tools.invoke("file_search", %{"query" => "docs parity"}, %{}) do
+      {:ok, output} -> IO.puts("file_search output: #{inspect(output)}")
+      {:error, reason} -> IO.puts("file_search error: #{inspect(reason)}")
+    end
   end
 
   defp print_outputs(outputs) do

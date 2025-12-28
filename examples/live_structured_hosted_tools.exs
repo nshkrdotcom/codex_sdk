@@ -34,7 +34,7 @@ defmodule CodexExamples.LiveStructuredHostedTools do
     prompt =
       case argv do
         [] ->
-          "Call the structured_bundle tool for \"codex repo\", run one safe shell echo, and include the file_search context."
+          "Summarize this repository in one or two sentences."
 
         values ->
           Enum.join(values, " ")
@@ -44,28 +44,24 @@ defmodule CodexExamples.LiveStructuredHostedTools do
     {:ok, _} = Tools.register(CodexExamples.StructuredBundleTool)
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ShellTool, name: "hosted_shell", metadata: shell_metadata())
+      Codex.Tools.ShellTool
+      |> Tools.register(Keyword.merge([name: "hosted_shell"], shell_options()))
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ApplyPatchTool,
-        name: "apply_patch",
-        metadata: apply_patch_metadata()
-      )
+      Codex.Tools.ApplyPatchTool
+      |> Tools.register(Keyword.merge([name: "apply_patch"], apply_patch_options()))
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ComputerTool, name: "computer", metadata: computer_metadata())
+      Codex.Tools.ComputerTool
+      |> Tools.register(Keyword.merge([name: "computer"], computer_options()))
 
     {:ok, _} =
-      Tools.register(Codex.Tools.FileSearchTool,
-        name: "file_search",
-        metadata: file_search_metadata()
-      )
+      Codex.Tools.FileSearchTool
+      |> Tools.register(Keyword.merge([name: "file_search"], file_search_options()))
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ImageGenerationTool,
-        name: "image_generation",
-        metadata: image_metadata()
-      )
+      Codex.Tools.ImageGenerationTool
+      |> Tools.register(Keyword.merge([name: "image_generation"], image_options()))
 
     {:ok, file_search} =
       FileSearch.new(%{
@@ -77,8 +73,7 @@ defmodule CodexExamples.LiveStructuredHostedTools do
     {:ok, agent} =
       Agent.new(%{
         name: "StructuredHostAgent",
-        instructions:
-          "Use structured_bundle first. If you need a quick command output, call hosted_shell with a single echo. Mention file_search configuration briefly.",
+        instructions: "Provide a short summary. Use hosted tools only if they are available.",
         tools: [
           "structured_bundle",
           "hosted_shell",
@@ -116,7 +111,13 @@ defmodule CodexExamples.LiveStructuredHostedTools do
 
     case AgentRunner.run(thread, prompt, %{agent: agent, run_config: run_config}) do
       {:ok, result} ->
-        print_tool_outputs(result.raw[:tool_outputs] || [])
+        tool_outputs = result.raw[:tool_outputs] || []
+        print_tool_outputs(tool_outputs)
+
+        if tool_outputs == [] do
+          demo_tool_invocations()
+        end
+
         IO.puts("Usage: #{inspect(result.thread.usage || %{})}")
         IO.puts("Final response:\n#{render_response(result.final_response)}")
 
@@ -133,13 +134,27 @@ defmodule CodexExamples.LiveStructuredHostedTools do
     end)
   end
 
+  defp demo_tool_invocations do
+    IO.puts("No tool calls observed; invoking hosted tools locally.")
+    invoke_tool("structured_bundle", %{"topic" => "codex repo"})
+    invoke_tool("hosted_shell", %{"command" => "echo ok"})
+    invoke_tool("file_search", %{"query" => "docs"})
+  end
+
+  defp invoke_tool(name, args) do
+    case Tools.invoke(name, args, %{}) do
+      {:ok, output} -> IO.puts("Tool #{name} output: #{inspect(output)}")
+      {:error, reason} -> IO.puts("Tool #{name} error: #{inspect(reason)}")
+    end
+  end
+
   defp render_response(%AgentMessage{text: text}), do: text
   defp render_response(%{"text" => text}), do: text
   defp render_response(nil), do: "<no response>"
   defp render_response(other), do: inspect(other)
 
-  defp shell_metadata do
-    %{
+  defp shell_options do
+    [
       executor: fn %{"command" => command}, _context ->
         {:ok, %{"command" => command, "stdout" => "simulated shell: #{command}"}}
       end,
@@ -147,19 +162,19 @@ defmodule CodexExamples.LiveStructuredHostedTools do
         if String.contains?(command, "rm"), do: {:deny, "blocked dangerous command"}, else: :allow
       end,
       max_output_bytes: 400
-    }
+    ]
   end
 
-  defp apply_patch_metadata do
-    %{
+  defp apply_patch_options do
+    [
       editor: fn %{"patch" => patch}, _context ->
         {:ok, %{"applied" => String.slice(patch, 0, 60)}}
       end
-    }
+    ]
   end
 
-  defp computer_metadata do
-    %{
+  defp computer_options do
+    [
       safety: fn args, _context, _metadata ->
         action = Map.get(args, "action", "")
 
@@ -172,11 +187,11 @@ defmodule CodexExamples.LiveStructuredHostedTools do
       executor: fn args, _context ->
         {:ok, %{"action" => Map.get(args, "action", "noop"), "status" => "simulated"}}
       end
-    }
+    ]
   end
 
-  defp file_search_metadata do
-    %{
+  defp file_search_options do
+    [
       searcher: fn args, _context, _metadata ->
         {:ok,
          %{
@@ -184,16 +199,16 @@ defmodule CodexExamples.LiveStructuredHostedTools do
            "results" => [%{"title" => "demo result", "score" => 0.99}]
          }}
       end
-    }
+    ]
   end
 
-  defp image_metadata do
-    %{
+  defp image_options do
+    [
       generator: fn args, _context, _metadata ->
         {:ok,
          %{"prompt" => Map.get(args, "prompt"), "url" => "https://example.com/generated.png"}}
       end
-    }
+    ]
   end
 
   defp fetch_codex_path! do

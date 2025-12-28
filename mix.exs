@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.4.2"
+  @version "0.4.3"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -50,7 +50,7 @@ defmodule CodexSdk.MixProject do
       {:opentelemetry_exporter, "~> 1.6"},
 
       # Testing
-      {:supertester, "~> 0.2.1", only: :test},
+      {:supertester, "~> 0.4.0", only: :test},
       {:mox, "~> 1.0", only: :test},
       {:stream_data, "~> 1.0", only: :test},
 

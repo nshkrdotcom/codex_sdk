@@ -6,9 +6,15 @@ defmodule Codex.AppServer.NotificationAdapter do
 
   @spec to_event(String.t(), map() | nil) :: {:ok, Events.t()}
   def to_event("error", %{} = params) do
+    error = Map.get(params, "error") || %{}
+
     {:ok,
      %Events.Error{
-       message: get_in(params, ["error", "message"]) || "",
+       message: Map.get(error, "message") || "",
+       additional_details:
+         Map.get(error, "additionalDetails") || Map.get(error, "additional_details"),
+       codex_error_info: Map.get(error, "codexErrorInfo") || Map.get(error, "codex_error_info"),
+       will_retry: Map.get(params, "willRetry") || Map.get(params, "will_retry"),
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: fetch(params, "turnId", "turn_id")
      }}

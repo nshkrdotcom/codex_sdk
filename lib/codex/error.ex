@@ -47,6 +47,13 @@ defmodule Codex.Error do
     type = fetch_value(payload, ["type", :type])
     status = fetch_value(payload, ["status", :status])
     retry_after = fetch_value(payload, ["retry_after", :retry_after])
+
+    additional_details =
+      fetch_value(payload, ["additional_details", "additionalDetails", :additional_details])
+
+    codex_error_info =
+      fetch_value(payload, ["codex_error_info", "codexErrorInfo", :codex_error_info])
+
     details = fetch_value(payload, ["details", :details]) || %{}
 
     kind = classify_kind(code, type, message)
@@ -57,6 +64,8 @@ defmodule Codex.Error do
         type: type,
         status: status,
         retry_after: retry_after,
+        additional_details: additional_details,
+        codex_error_info: codex_error_info,
         details: details,
         raw: payload
       }

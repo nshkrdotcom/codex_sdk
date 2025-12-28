@@ -65,7 +65,8 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
     {:ok, _} = Tools.register(CodexExamples.GuardedCalcTool)
 
     {:ok, _} =
-      Tools.register(Codex.Tools.ShellTool, name: "guarded_shell", metadata: shell_metadata(opts))
+      Codex.Tools.ShellTool
+      |> Tools.register(Keyword.merge([name: "guarded_shell"], shell_options(opts)))
 
     {:ok, helper_agent} =
       Agent.new(%{
@@ -93,7 +94,7 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
       Agent.new(%{
         name: "GuardedAgent",
         instructions:
-          "Call guarded_shell once with the provided command, then give a short status update. Use handoff_guard only if you need help tightening wording.",
+          "Provide a short status update about guardrails and approvals for this run. Use handoff_guard only if you need help tightening wording.",
         tools: ["guarded_shell", "guarded_calc"],
         handoffs: [handoff],
         tool_use_behavior: tool_use_behavior,
@@ -271,8 +272,8 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
     )
   end
 
-  defp shell_metadata(opts) do
-    %{
+  defp shell_options(opts) do
+    [
       executor: fn %{"command" => command}, _context ->
         {:ok, %{"command" => command, "stdout" => "simulated shell: #{command}"}}
       end,
@@ -284,11 +285,11 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
         end
       end,
       max_output_bytes: 400
-    }
+    ]
   end
 
-  defp build_prompt([], command, tripwire?) do
-    base = "Call guarded_shell with `#{command}` then report guardrail status."
+  defp build_prompt([], _command, tripwire?) do
+    base = "Provide a short status update about guardrails and approvals for this run."
     if tripwire?, do: base <> " Mention tripwire to trigger the guardrails.", else: base
   end
 

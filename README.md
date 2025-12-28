@@ -33,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.2"}
+    {:codex_sdk, "~> 0.4.3"}
   ]
 end
 ```
@@ -76,7 +76,7 @@ Model defaults are auth-aware:
 - ChatGPT login: `gpt-5.2-codex` (prefers `codex-auto-balanced` when remote models are enabled and available)
 - API key auth: `gpt-5.1-codex-max`
 
-Remote models are gated behind `features.remote_models = true` in `CODEX_HOME/config.toml`. When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.2-codex` available.
+Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.2-codex` available.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
@@ -558,7 +558,13 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.4.2 (Upstream sync: constraints, external sandbox)
+**Current Version**: 0.4.3 (Upstream sync: error details + config layering)
+
+### v0.4.3 Highlights
+
+- App-server error notifications now surface `additional_details` and retry metadata
+- Remote model gating now honors system/user/project config layering
+- Bundled `models.json` synced to latest upstream format
 
 ### v0.4.2 Highlights
 

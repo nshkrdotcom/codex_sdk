@@ -785,7 +785,7 @@ end
 
 Configure based on environment.
 
-Model defaults are auth-aware and remote model metadata is gated behind `features.remote_models = true` in `CODEX_HOME/config.toml`. When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets.
+Model defaults are auth-aware and remote model metadata is gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets.
 
 ```elixir
 defmodule MyApp.Codex do

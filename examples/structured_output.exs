@@ -17,12 +17,18 @@ defmodule Examples.StructuredOutput do
       {:ok, result} ->
         case TurnResult.json(result) do
           {:ok, data} ->
+            issues = data["issues"] || []
+
             IO.puts("Overall score: #{data["overall_score"]}/100")
             IO.puts("\nIssues:")
 
-            Enum.each(data["issues"], fn issue ->
-              IO.puts("  [#{String.upcase(issue["severity"])}] #{issue["description"]}")
-            end)
+            if Enum.empty?(issues) do
+              IO.puts("  (none reported)")
+            else
+              Enum.each(issues, fn issue ->
+                IO.puts("  [#{String.upcase(issue["severity"])}] #{issue["description"]}")
+              end)
+            end
 
           {:error, reason} ->
             IO.puts("Failed to decode structured output: #{inspect(reason)}")

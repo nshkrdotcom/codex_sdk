@@ -10,8 +10,7 @@ defmodule CodexExamples.LiveMultiTurnRunner do
   @moduledoc false
 
   @default_prompt """
-  Use the repo_fact tool before you answer. If you want help tightening the reply, delegate once to the helper handoff.
-  Keep the final answer to one or two sentences.
+  Summarize this repository in one or two sentences.
   """
 
   defmodule RepoFactTool do
@@ -62,7 +61,7 @@ defmodule CodexExamples.LiveMultiTurnRunner do
       Agent.new(%{
         name: "Planner",
         instructions:
-          "Always call repo_fact before answering. Optionally use handoff_helper if the note needs to be condensed.",
+          "You may use repo_fact if it is available before answering. Optionally use handoff_helper if the note needs to be condensed.",
         tools: ["repo_fact"],
         handoffs: [handoff],
         tool_use_behavior: tool_behavior,
@@ -108,17 +107,23 @@ defmodule CodexExamples.LiveMultiTurnRunner do
   end
 
   defp summarize_events(events) do
-    events
-    |> Enum.filter(
-      &(match?(%Events.ToolCallRequested{}, &1) or match?(%Events.ToolCallCompleted{}, &1))
-    )
-    |> Enum.each(fn
+    tool_events =
+      Enum.filter(
+        events,
+        &(match?(%Events.ToolCallRequested{}, &1) or match?(%Events.ToolCallCompleted{}, &1))
+      )
+
+    Enum.each(tool_events, fn
       %Events.ToolCallRequested{tool_name: name, call_id: id, requires_approval: req?} ->
         IO.puts("Tool requested: #{name} (call_id=#{id}, requires_approval=#{req?})")
 
       %Events.ToolCallCompleted{tool_name: name, call_id: id, output: output} ->
         IO.puts("Tool completed: #{name} (call_id=#{id}) output=#{inspect(output)}")
     end)
+
+    if tool_events == [] do
+      IO.puts("No tool calls observed; custom tools may be unavailable in exec mode.")
+    end
 
     case Enum.find(events, &match?(%Events.TurnContinuation{}, &1)) do
       %Events.TurnContinuation{continuation_token: token, reason: reason} ->

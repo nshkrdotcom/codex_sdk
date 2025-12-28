@@ -37,6 +37,17 @@ defmodule Codex do
     end
   end
 
+  @doc """
+  Lists session files persisted by the Codex CLI.
+
+  Returns entries parsed from `~/.codex/sessions` by default.
+  """
+  @spec list_sessions(keyword()) ::
+          {:ok, [Codex.Sessions.session_entry()]} | {:error, term()}
+  def list_sessions(opts \\ []) do
+    Codex.Sessions.list_sessions(opts)
+  end
+
   defp normalize_options(%Options{} = opts), do: {:ok, opts}
   defp normalize_options(opts), do: Options.new(opts)
 

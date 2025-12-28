@@ -11,15 +11,21 @@ defmodule Examples.Conversation do
     {:ok, result1} =
       Codex.Thread.run(thread, "I have a GenServer that crashes when I call {:stop, reason}.")
 
+    thread = result1.thread
+
     IO.puts("Agent: #{render(result1.final_response)}")
 
     {:ok, result2} =
       Codex.Thread.run(thread, "Can you show me how to handle that message correctly?")
 
+    thread = result2.thread
+
     IO.puts("\nAgent: #{render(result2.final_response)}")
 
     {:ok, result3} =
       Codex.Thread.run(thread, "What if I need to clean up resources before stopping?")
+
+    thread = result3.thread
 
     IO.puts("\nAgent: #{render(result3.final_response)}")
     IO.puts("\nThread ID: #{thread.thread_id}")
@@ -37,6 +43,7 @@ defmodule Examples.Conversation do
   def save_and_resume_demo do
     {:ok, thread} = Codex.start_thread()
     {:ok, result1} = Codex.Thread.run(thread, "Remember the number 42 for me.")
+    thread = result1.thread
 
     IO.puts("Agent: #{render(result1.final_response)}")
 

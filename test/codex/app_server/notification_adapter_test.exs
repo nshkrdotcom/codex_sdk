@@ -92,6 +92,29 @@ defmodule Codex.AppServer.NotificationAdapterTest do
              ]
     end
 
+    test "maps error notifications with additional details" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "willRetry" => true,
+        "error" => %{
+          "message" => "Reconnecting...",
+          "additionalDetails" => "upstream timeout",
+          "codexErrorInfo" => %{"code" => "rate_limit"}
+        }
+      }
+
+      assert {:ok,
+              %Events.Error{
+                message: "Reconnecting...",
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                additional_details: "upstream timeout",
+                will_retry: true,
+                codex_error_info: %{"code" => "rate_limit"}
+              }} = NotificationAdapter.to_event("error", params)
+    end
+
     test "passes unknown notifications through as raw events" do
       params = %{"threadId" => "thr_1", "foo" => "bar"}
 

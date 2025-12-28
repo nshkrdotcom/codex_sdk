@@ -291,12 +291,20 @@ defmodule Codex.Events do
     """
 
     @enforce_keys [:message]
-    defstruct message: nil, thread_id: nil, turn_id: nil
+    defstruct message: nil,
+              thread_id: nil,
+              turn_id: nil,
+              additional_details: nil,
+              codex_error_info: nil,
+              will_retry: nil
 
     @type t :: %__MODULE__{
             message: String.t(),
             thread_id: String.t() | nil,
-            turn_id: String.t() | nil
+            turn_id: String.t() | nil,
+            additional_details: String.t() | nil,
+            codex_error_info: map() | nil,
+            will_retry: boolean() | nil
           }
   end
 
@@ -533,7 +541,10 @@ defmodule Codex.Events do
     %Error{
       message: Map.get(map, "message"),
       thread_id: Map.get(map, "thread_id"),
-      turn_id: Map.get(map, "turn_id")
+      turn_id: Map.get(map, "turn_id"),
+      additional_details: Map.get(map, "additional_details") || Map.get(map, "additionalDetails"),
+      codex_error_info: Map.get(map, "codex_error_info") || Map.get(map, "codexErrorInfo"),
+      will_retry: Map.get(map, "will_retry") || Map.get(map, "willRetry")
     }
   end
 
@@ -711,6 +722,9 @@ defmodule Codex.Events do
     }
     |> put_optional("thread_id", event.thread_id)
     |> put_optional("turn_id", event.turn_id)
+    |> put_optional("additional_details", event.additional_details)
+    |> put_optional("codex_error_info", event.codex_error_info)
+    |> put_optional("will_retry", event.will_retry)
   end
 
   def to_map(%TurnFailed{} = event) do

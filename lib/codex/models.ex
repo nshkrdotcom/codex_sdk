@@ -4,6 +4,7 @@ defmodule Codex.Models do
   """
 
   alias Codex.Auth
+  alias Codex.Config.LayerStack
 
   @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
 
@@ -312,12 +313,15 @@ defmodule Codex.Models do
 
   If auth_mode is :api, only include supported_in_api models.
   """
+  @spec list_visible() :: [model_preset()]
   @spec list_visible(:api | :chatgpt) :: [model_preset()]
-  def list_visible(auth_mode \\ :api) do
+  @spec list_visible(:api | :chatgpt, keyword()) :: [model_preset()]
+  def list_visible(auth_mode \\ :api, opts \\ []) do
+    cwd = config_cwd_from_opts(opts)
     auth_mode = normalize_auth_mode(auth_mode)
 
     auth_mode
-    |> available_presets()
+    |> available_presets(cwd)
     |> filter_visible_models(auth_mode)
     |> ensure_default()
   end
@@ -482,10 +486,10 @@ defmodule Codex.Models do
     |> Enum.any?(&(&1.model == @codex_auto_balanced))
   end
 
-  defp available_presets(auth_mode) do
+  defp available_presets(auth_mode, cwd) do
     remote_models =
       auth_mode
-      |> remote_models()
+      |> remote_models(cwd)
       |> Enum.sort_by(& &1.priority)
       |> Enum.map(&model_info_to_preset/1)
 
@@ -530,7 +534,7 @@ defmodule Codex.Models do
 
     all_presets =
       Auth.infer_auth_mode()
-      |> available_presets()
+      |> available_presets(default_cwd())
 
     Enum.find(all_presets, fn preset ->
       preset.id == normalized || preset.model == normalized
@@ -555,7 +559,7 @@ defmodule Codex.Models do
   defp shell_type_for_model(model_id, auth_mode) do
     remote =
       auth_mode
-      |> remote_models()
+      |> remote_models(default_cwd())
       |> Enum.find(&(&1.slug == model_id))
 
     case remote do
@@ -570,16 +574,37 @@ defmodule Codex.Models do
   defp normalize_auth_mode("chatgpt"), do: :chatgpt
   defp normalize_auth_mode(_), do: :api
 
-  defp remote_models(:api) do
-    if remote_models_enabled?() do
+  defp config_cwd_from_opts(opts) when is_list(opts) do
+    Keyword.get(opts, :cwd) || Keyword.get(opts, :working_directory) || default_cwd()
+  end
+
+  defp config_cwd_from_opts(opts) when is_map(opts) do
+    Map.get(opts, :cwd) ||
+      Map.get(opts, "cwd") ||
+      Map.get(opts, :working_directory) ||
+      Map.get(opts, "working_directory") ||
+      default_cwd()
+  end
+
+  defp config_cwd_from_opts(_), do: default_cwd()
+
+  defp default_cwd do
+    case File.cwd() do
+      {:ok, cwd} -> cwd
+      _ -> nil
+    end
+  end
+
+  defp remote_models(:api, cwd) do
+    if remote_models_enabled?(cwd) do
       load_models_json()
     else
       []
     end
   end
 
-  defp remote_models(:chatgpt) do
-    if remote_models_enabled?() do
+  defp remote_models(:chatgpt, cwd) do
+    if remote_models_enabled?(cwd) do
       case load_models_cache() do
         {:ok, models} -> models
         :miss -> fetch_or_load_models()
@@ -607,72 +632,8 @@ defmodule Codex.Models do
     end
   end
 
-  defp remote_models_enabled? do
-    config_path = Path.join(Auth.codex_home(), "config.toml")
-
-    case File.read(config_path) do
-      {:ok, contents} -> parse_remote_models_flag(contents)
-      _ -> false
-    end
-  end
-
-  defp parse_remote_models_flag(contents) do
-    contents
-    |> String.split(~r/\R/)
-    |> Enum.reduce({nil, false}, &process_toml_line/2)
-    |> elem(1)
-  end
-
-  defp process_toml_line(line, {section, flag}) do
-    line = strip_comment(line)
-
-    cond do
-      line == "" -> {section, flag}
-      section_header?(line) -> {parse_section_header(line), flag}
-      section == "features" -> {section, parse_remote_models_value(line, flag)}
-      true -> {section, flag}
-    end
-  end
-
-  defp section_header?(line) do
-    String.starts_with?(line, "[") && String.ends_with?(line, "]")
-  end
-
-  defp parse_section_header(line) do
-    line
-    |> String.trim_leading("[")
-    |> String.trim_trailing("]")
-    |> String.trim()
-  end
-
-  defp parse_remote_models_value(line, current_flag) do
-    with [key, value] <- String.split(line, "=", parts: 2),
-         "remote_models" <- String.trim(key),
-         bool when is_boolean(bool) <- parse_bool(value) do
-      bool
-    else
-      _ -> current_flag
-    end
-  end
-
-  defp strip_comment(line) do
-    line
-    |> String.split("#", parts: 2)
-    |> List.first()
-    |> String.split(";", parts: 2)
-    |> List.first()
-    |> String.trim()
-  end
-
-  defp parse_bool(value) do
-    value
-    |> String.trim()
-    |> String.downcase()
-    |> case do
-      "true" -> true
-      "false" -> false
-      _ -> nil
-    end
+  defp remote_models_enabled?(cwd) do
+    LayerStack.remote_models_enabled?(Auth.codex_home(), cwd)
   end
 
   defp load_models_json do
@@ -907,12 +868,35 @@ defmodule Codex.Models do
 
   defp parse_visibility(_), do: :none
 
-  defp parse_client_version([major, minor, patch])
-       when is_integer(major) and is_integer(minor) and is_integer(patch) do
+  @doc false
+  @spec parse_client_version(term()) :: client_version()
+  def parse_client_version([major, minor, patch])
+      when is_integer(major) and is_integer(minor) and is_integer(patch) do
     {major, minor, patch}
   end
 
-  defp parse_client_version(_), do: {0, 0, 0}
+  def parse_client_version(value) when is_binary(value) do
+    version =
+      value
+      |> String.split("-", parts: 2)
+      |> List.first()
+
+    case String.split(version, ".", parts: 3) do
+      [major, minor, patch] ->
+        with {major, ""} <- Integer.parse(major),
+             {minor, ""} <- Integer.parse(minor),
+             {patch, ""} <- Integer.parse(patch) do
+          {major, minor, patch}
+        else
+          _ -> {0, 0, 0}
+        end
+
+      _ ->
+        {0, 0, 0}
+    end
+  end
+
+  def parse_client_version(_), do: {0, 0, 0}
 
   defp parse_verbosity(value) when is_binary(value) do
     case String.downcase(value) do

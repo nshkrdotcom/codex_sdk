@@ -7,12 +7,22 @@ defmodule Codex.LiveAppServerTest do
   @moduletag :live
   @moduletag timeout: 120_000
 
-  setup do
-    if live_enabled?() do
+  @skip_reason "Live tests are opt-in. Run with CODEX_TEST_LIVE=true mix test --only live --include live (requires codex CLI + auth)."
+
+  @live_enabled System.get_env("CODEX_TEST_LIVE")
+                |> to_string()
+                |> String.downcase()
+                |> then(&(&1 in ["1", "true", "yes"]))
+
+  if not @live_enabled do
+    @moduletag skip: @skip_reason
+  end
+
+  setup_all do
+    if @live_enabled do
       ensure_real_app_server_available()
     else
-      {:skip,
-       "Live tests are opt-in. Run with CODEX_TEST_LIVE=true mix test --only live --include live (requires codex CLI + auth)."}
+      :ok
     end
   end
 
@@ -53,18 +63,13 @@ defmodule Codex.LiveAppServerTest do
     assert Enum.any?(events, &match?(%Codex.Events.TurnCompleted{}, &1))
   end
 
-  defp live_enabled? do
-    System.get_env("CODEX_TEST_LIVE")
-    |> to_string()
-    |> String.downcase()
-    |> then(&(&1 in ["1", "true", "yes"]))
-  end
-
   defp ensure_real_app_server_available do
     with {:ok, path} <- resolve_codex_path(),
          :ok <- reject_fixture_script(path),
          :ok <- ensure_app_server_supported(path) do
       verify_codex_version(path)
+    else
+      {:error, reason} -> raise reason
     end
   end
 
@@ -74,20 +79,20 @@ defmodule Codex.LiveAppServerTest do
         {:ok, path}
 
       _ ->
-        {:skip, "Unable to locate the `codex` CLI. Install it or set CODEX_PATH."}
+        {:error, "Unable to locate the `codex` CLI. Install it or set CODEX_PATH."}
     end
   end
 
   defp fetch_codex_path! do
     case resolve_codex_path() do
       {:ok, path} -> path
-      {:skip, reason} -> raise reason
+      {:error, reason} -> raise reason
     end
   end
 
   defp reject_fixture_script(path) when is_binary(path) do
     if fixture_script?(path) do
-      {:skip,
+      {:error,
        "Resolved `codex` CLI to a fixture script at #{inspect(path)}. Unset CODEX_PATH and ensure a real codex binary is on PATH."}
     else
       :ok
@@ -100,7 +105,7 @@ defmodule Codex.LiveAppServerTest do
     if status == 0 do
       :ok
     else
-      {:skip,
+      {:error,
        "`codex app-server` is not available. Upgrade via `npm install -g @openai/codex` and retry."}
     end
   end
@@ -110,14 +115,14 @@ defmodule Codex.LiveAppServerTest do
 
     cond do
       status != 0 ->
-        {:skip,
+        {:error,
          "Unable to run `codex --version` via #{inspect(path)} (exit #{status}): #{inspect(output)}"}
 
       String.contains?(output, "codex") ->
         :ok
 
       true ->
-        {:skip, "Unexpected `codex --version` output from #{inspect(path)}: #{inspect(output)}"}
+        {:error, "Unexpected `codex --version` output from #{inspect(path)}: #{inspect(output)}"}
     end
   end
 
