@@ -19,6 +19,8 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 codex_sdk-*.tar
 
+codex_sdk-*/
+
 # Temporary files, for example, from tests.
 /tmp/
 

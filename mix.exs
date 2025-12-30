@@ -70,37 +70,6 @@ defmodule CodexSdk.MixProject do
   end
 
   defp docs do
-    design_docs =
-      "docs/design/*.md"
-      |> Path.wildcard()
-      |> Enum.sort()
-
-    phase_docs =
-      "docs/20251018/**/*.md"
-      |> Path.wildcard()
-      |> Enum.sort()
-
-    extras =
-      [
-        "README.md",
-        "LICENSE",
-        "CHANGELOG.md",
-        "docs/01.md",
-        "docs/02-architecture.md",
-        "docs/03-implementation-plan.md",
-        "docs/04-testing-strategy.md",
-        "docs/05-api-reference.md",
-        "docs/09-app-server-transport.md",
-        "docs/06-examples.md",
-        "docs/07-python-parity-plan.md",
-        "docs/08-tdd-implementation-guide.md",
-        "docs/fixtures.md",
-        "docs/observability-runbook.md",
-        "docs/python-parity-checklist.md"
-      ]
-      |> Enum.concat(design_docs)
-      |> Enum.concat(phase_docs)
-
     [
       main: "readme",
       name: "Codex SDK",
@@ -109,7 +78,23 @@ defmodule CodexSdk.MixProject do
       homepage_url: @source_url,
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
-      extras: extras,
+      extras: [
+        "README.md",
+        "LICENSE",
+        "CHANGELOG.md",
+        "docs/01.md",
+        "docs/02-architecture.md",
+        "docs/03-implementation-plan.md",
+        "docs/04-testing-strategy.md",
+        "docs/05-api-reference.md",
+        "docs/06-examples.md",
+        "docs/07-python-parity-plan.md",
+        "docs/08-tdd-implementation-guide.md",
+        "docs/09-app-server-transport.md",
+        "docs/fixtures.md",
+        "docs/observability-runbook.md",
+        "docs/python-parity-checklist.md"
+      ],
       groups_for_extras: [
         Introduction: ["README.md", "docs/01.md"],
         "Getting Started": [
@@ -128,8 +113,6 @@ defmodule CodexSdk.MixProject do
           "docs/python-parity-checklist.md",
           "LICENSE"
         ],
-        Design: design_docs,
-        "Implementation Phases": phase_docs,
         Changelog: ["CHANGELOG.md"]
       ],
       groups_for_modules: [
@@ -176,11 +159,28 @@ defmodule CodexSdk.MixProject do
     ]
   end
 
+  @package_docs ~w(
+    docs/01.md
+    docs/02-architecture.md
+    docs/03-implementation-plan.md
+    docs/04-testing-strategy.md
+    docs/05-api-reference.md
+    docs/06-examples.md
+    docs/07-python-parity-plan.md
+    docs/08-tdd-implementation-guide.md
+    docs/09-app-server-transport.md
+    docs/fixtures.md
+    docs/observability-runbook.md
+    docs/python-parity-checklist.md
+  )
+
   defp package do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib config priv mix.exs README.md CHANGELOG.md docs LICENSE assets examples),
+      files:
+        ~w(lib config priv mix.exs README.md CHANGELOG.md LICENSE assets examples) ++
+          @package_docs,
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
