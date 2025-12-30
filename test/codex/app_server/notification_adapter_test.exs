@@ -92,6 +92,143 @@ defmodule Codex.AppServer.NotificationAdapterTest do
              ]
     end
 
+    test "maps reasoning summary part added notifications" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "itemId" => "reason_1",
+        "summaryIndex" => 2
+      }
+
+      assert {:ok,
+              %Events.ReasoningSummaryPartAdded{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                item_id: "reason_1",
+                summary_index: 2
+              }} =
+               NotificationAdapter.to_event("item/reasoning/summaryPartAdded", params)
+    end
+
+    test "maps file change output deltas" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "itemId" => "patch_1",
+        "delta" => "patching..."
+      }
+
+      assert {:ok,
+              %Events.FileChangeOutputDelta{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                item_id: "patch_1",
+                delta: "patching..."
+              }} = NotificationAdapter.to_event("item/fileChange/outputDelta", params)
+    end
+
+    test "maps terminal interaction notifications" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "itemId" => "cmd_1",
+        "processId" => "proc_1",
+        "stdin" => "y\n"
+      }
+
+      assert {:ok,
+              %Events.TerminalInteraction{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                item_id: "cmd_1",
+                process_id: "proc_1",
+                stdin: "y\n"
+              }} =
+               NotificationAdapter.to_event("item/commandExecution/terminalInteraction", params)
+    end
+
+    test "maps MCP tool call progress notifications" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "itemId" => "mcp_1",
+        "message" => "Downloading..."
+      }
+
+      assert {:ok,
+              %Events.McpToolCallProgress{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                item_id: "mcp_1",
+                message: "Downloading..."
+              }} = NotificationAdapter.to_event("item/mcpToolCall/progress", params)
+    end
+
+    test "maps account and auth notifications" do
+      assert {:ok, %Events.AccountUpdated{auth_mode: "apiKey"}} =
+               NotificationAdapter.to_event("account/updated", %{"authMode" => "apiKey"})
+
+      assert {:ok,
+              %Events.AccountLoginCompleted{
+                login_id: "login_1",
+                success: true,
+                error: nil
+              }} =
+               NotificationAdapter.to_event("account/login/completed", %{
+                 "loginId" => "login_1",
+                 "success" => true,
+                 "error" => nil
+               })
+    end
+
+    test "maps account rate limit updates" do
+      params = %{"rateLimits" => %{"primary" => %{"remaining" => 10}}}
+
+      assert {:ok, %Events.AccountRateLimitsUpdated{rate_limits: %{"primary" => _}}} =
+               NotificationAdapter.to_event("account/rateLimits/updated", params)
+    end
+
+    test "maps MCP OAuth completion and Windows warnings" do
+      assert {:ok,
+              %Events.McpServerOauthLoginCompleted{
+                name: "mcp_server",
+                success: true,
+                error: nil
+              }} =
+               NotificationAdapter.to_event("mcpServer/oauthLogin/completed", %{
+                 "name" => "mcp_server",
+                 "success" => true,
+                 "error" => nil
+               })
+
+      assert {:ok,
+              %Events.WindowsWorldWritableWarning{
+                sample_paths: ["C:/tmp"],
+                extra_count: 2,
+                failed_scan: false
+              }} =
+               NotificationAdapter.to_event("windows/worldWritableWarning", %{
+                 "samplePaths" => ["C:/tmp"],
+                 "extraCount" => 2,
+                 "failedScan" => false
+               })
+    end
+
+    test "maps turn completed error payloads" do
+      params = %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "failed", "error" => %{"message" => "boom"}}
+      }
+
+      assert {:ok,
+              %Events.TurnCompleted{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                status: "failed",
+                error: %{"message" => "boom"}
+              }} = NotificationAdapter.to_event("turn/completed", params)
+    end
+
     test "maps error notifications with additional details" do
       params = %{
         "threadId" => "thr_1",

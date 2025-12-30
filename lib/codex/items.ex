@@ -56,12 +56,14 @@ defmodule Codex.Items do
     """
 
     @enforce_keys [:text]
-    defstruct id: nil, type: :reasoning, text: nil
+    defstruct id: nil, type: :reasoning, text: nil, summary: [], content: []
 
     @type t :: %__MODULE__{
             id: String.t() | nil,
             type: :reasoning,
-            text: String.t()
+            text: String.t(),
+            summary: [String.t()],
+            content: [String.t()]
           }
   end
 
@@ -316,6 +318,8 @@ defmodule Codex.Items do
   def to_map(%Reasoning{} = item) do
     base_item_map(item, "reasoning")
     |> maybe_put("text", item.text)
+    |> maybe_put("summary", item.summary)
+    |> maybe_put("content", item.content)
   end
 
   def to_map(%CommandExecution{} = item) do
@@ -402,9 +406,14 @@ defmodule Codex.Items do
   end
 
   defp parse_reasoning(map) do
+    summary = normalize_reasoning_part(get(map, :summary))
+    content = normalize_reasoning_part(get(map, :content))
+
     %Reasoning{
       id: get(map, :id),
-      text: get(map, :text) || ""
+      text: get(map, :text) || join_reasoning_text(summary, content) || "",
+      summary: summary,
+      content: content
     }
   end
 
@@ -502,6 +511,28 @@ defmodule Codex.Items do
       id: get(map, :id),
       message: get(map, :message) || ""
     }
+  end
+
+  defp normalize_reasoning_part(nil), do: []
+  defp normalize_reasoning_part(list) when is_list(list), do: Enum.map(list, &to_string/1)
+  defp normalize_reasoning_part(value) when is_binary(value), do: [value]
+  defp normalize_reasoning_part(value), do: [to_string(value)]
+
+  defp join_reasoning_text(summary, content) do
+    parts =
+      []
+      |> maybe_concat_lines(summary)
+      |> maybe_concat_lines(content)
+
+    if parts == [] do
+      nil
+    else
+      Enum.join(parts, "\n")
+    end
+  end
+
+  defp maybe_concat_lines(parts, lines) when is_list(lines) do
+    parts ++ Enum.map(lines, &to_string/1)
   end
 
   defp base_item_map(item, type) do

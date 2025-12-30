@@ -21,6 +21,11 @@ defmodule Codex.AppServer.ApprovalDecisionTest do
                ApprovalDecision.from_hook({:allow, execpolicy_amendment: ["npm", "install"]})
     end
 
+    test "encodes grant root approvals as acceptForSession" do
+      assert "acceptForSession" ==
+               ApprovalDecision.from_hook({:allow, grant_root: "/tmp"})
+    end
+
     test "encodes deny decision as decline" do
       assert "decline" == ApprovalDecision.from_hook({:deny, "nope"})
     end

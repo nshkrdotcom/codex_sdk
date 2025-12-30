@@ -24,6 +24,31 @@ defmodule Codex.EventsTest do
       end
     end
 
+    test "parses turn.completed with error payloads" do
+      event =
+        Events.parse!(%{
+          "type" => "turn.completed",
+          "thread_id" => "thread_error",
+          "turn_id" => "turn_error",
+          "status" => "failed",
+          "error" => %{"message" => "boom"}
+        })
+
+      assert %Events.TurnCompleted{
+               thread_id: "thread_error",
+               turn_id: "turn_error",
+               status: "failed",
+               error: %{"message" => "boom"}
+             } = event
+
+      assert %{
+               "type" => "turn.completed",
+               "thread_id" => "thread_error",
+               "turn_id" => "turn_error",
+               "error" => %{"message" => "boom"}
+             } = Events.to_map(event)
+    end
+
     test "parses item.started and item.updated events into typed structs" do
       started =
         Events.parse!(%{

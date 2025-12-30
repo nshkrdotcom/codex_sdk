@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread_progress","metadata":{}}
+{"type":"turn.started","turn_id":"turn_progress","thread_id":"thread_progress"}
+{"type":"thread.tokenUsage.updated","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":0,"total_tokens":1}}
+{"type":"turn.completed","turn_id":"turn_progress","thread_id":"thread_progress","final_response":{"type":"text","text":"done"},"usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"total_tokens":2}}

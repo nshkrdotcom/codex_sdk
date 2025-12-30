@@ -103,6 +103,10 @@ defmodule Codex.AppServer do
         "developerInstructions",
         fetch_any(params, [:developer_instructions, "developer_instructions"])
       )
+      |> Params.put_optional(
+        "experimentalRawEvents",
+        fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
+      )
 
     Connection.request(conn, "thread/start", wire_params, timeout_ms: 30_000)
   end
@@ -143,6 +147,10 @@ defmodule Codex.AppServer do
       |> Params.put_optional(
         "developerInstructions",
         fetch_any(params, [:developer_instructions, "developer_instructions"])
+      )
+      |> Params.put_optional(
+        "experimentalRawEvents",
+        fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
       )
 
     Connection.request(conn, "thread/resume", wire_params, timeout_ms: 30_000)
@@ -202,9 +210,12 @@ defmodule Codex.AppServer do
         |> Keyword.get(:approval_policy)
         |> Params.ask_for_approval()
       )
-      |> Params.put_optional("sandboxPolicy", Keyword.get(opts, :sandbox_policy))
+      |> Params.put_optional(
+        "sandboxPolicy",
+        opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
+      )
       |> Params.put_optional("model", Keyword.get(opts, :model))
-      |> Params.put_optional("effort", Keyword.get(opts, :effort))
+      |> Params.put_optional("effort", opts |> Keyword.get(:effort) |> Params.reasoning_effort())
       |> Params.put_optional("summary", Keyword.get(opts, :summary))
 
     Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
@@ -321,6 +332,27 @@ defmodule Codex.AppServer do
       end
 
     Connection.request(conn, "command/exec", params, timeout_ms: request_timeout_ms)
+  end
+
+  @doc """
+  Writes stdin to a running command execution session.
+  """
+  @spec command_write_stdin(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def command_write_stdin(conn, process_id, stdin, opts \\ [])
+      when is_pid(conn) and is_binary(process_id) and is_binary(stdin) and is_list(opts) do
+    params =
+      %{
+        "processId" => process_id,
+        "stdin" => stdin
+      }
+      |> Params.put_optional("threadId", Keyword.get(opts, :thread_id))
+      |> Params.put_optional("turnId", Keyword.get(opts, :turn_id))
+      |> Params.put_optional("itemId", Keyword.get(opts, :item_id))
+      |> Params.put_optional("yieldTimeMs", Keyword.get(opts, :yield_time_ms))
+      |> Params.put_optional("maxOutputTokens", Keyword.get(opts, :max_output_tokens))
+
+    Connection.request(conn, "command/writeStdin", params, timeout_ms: 30_000)
   end
 
   @spec feedback_upload(connection(), keyword()) :: {:ok, map()} | {:error, term()}

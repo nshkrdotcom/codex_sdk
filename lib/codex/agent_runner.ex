@@ -52,7 +52,7 @@ defmodule Codex.AgentRunner do
 
     @type t :: %__MODULE__{
             thread: Thread.t(),
-            input: String.t(),
+            input: String.t() | [map()],
             agent: Agent.t(),
             run_config: RunConfig.t(),
             guardrails: map(),
@@ -66,9 +66,12 @@ defmodule Codex.AgentRunner do
           }
   end
 
-  @spec run(Thread.t(), String.t(), map() | keyword()) ::
+  @spec run(Thread.t(), String.t() | [map()], map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
-  def run(%Thread{} = thread, input, opts \\ %{}) when is_binary(input) do
+  def run(thread, input, opts \\ %{})
+
+  def run(%Thread{} = thread, input, opts)
+      when is_binary(input) or is_list(input) do
     {agent_opts, run_config_opts, turn_opts, backoff} = normalize_opts(opts)
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
@@ -113,9 +116,14 @@ defmodule Codex.AgentRunner do
     end
   end
 
-  @spec run_streamed(Thread.t(), String.t(), map() | keyword()) ::
+  def run(%Thread{}, input, _opts), do: {:error, {:invalid_input, input}}
+
+  @spec run_streamed(Thread.t(), String.t() | [map()], map() | keyword()) ::
           {:ok, RunResultStreaming.t()} | {:error, term()}
-  def run_streamed(%Thread{} = thread, input, opts \\ %{}) when is_binary(input) do
+  def run_streamed(thread, input, opts \\ %{})
+
+  def run_streamed(%Thread{} = thread, input, opts)
+      when is_binary(input) or is_list(input) do
     {agent_opts, run_config_opts, turn_opts, backoff} = normalize_opts(opts)
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
@@ -153,6 +161,8 @@ defmodule Codex.AgentRunner do
       {:ok, RunResultStreaming.new(queue, control, start_fun)}
     end
   end
+
+  def run_streamed(%Thread{}, input, _opts), do: {:error, {:invalid_input, input}}
 
   defp stream_run(%State{} = state) do
     emit_agent_update(state.queue, state.agent, state.run_config)
@@ -893,9 +903,9 @@ defmodule Codex.AgentRunner do
 
   defp apply_session_callback(fun, input, history) when is_function(fun) do
     case safe_session_callback(fun, input, history) do
-      {:ok, new_input} -> new_input
-      {:ok, new_input, _ctx} -> new_input
-      value when is_binary(value) -> value
+      {:ok, new_input} when is_binary(new_input) or is_list(new_input) -> new_input
+      {:ok, new_input, _ctx} when is_binary(new_input) or is_list(new_input) -> new_input
+      value when is_binary(value) or is_list(value) -> value
       _ -> input
     end
   end

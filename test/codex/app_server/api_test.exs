@@ -59,6 +59,40 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "turn_start/4 encodes sandbox policy overrides", %{conn: conn, os_pid: os_pid} do
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi",
+          sandbox_policy: %{
+            type: :workspace_write,
+            writable_roots: ["/tmp"],
+            network_access: true
+          }
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert %{
+             "type" => "workspaceWrite",
+             "writableRoots" => ["/tmp"],
+             "networkAccess" => true
+           } = params["sandboxPolicy"]
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
   test "config_write/4 encodes merge strategy and key_path", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->
@@ -84,6 +118,36 @@ defmodule Codex.AppServer.ApiTest do
          "overriddenMetadata" => nil
        })}
     )
+
+    assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
+  end
+
+  test "command_write_stdin/4 encodes process and stdin payloads", %{conn: conn, os_pid: os_pid} do
+    task =
+      Task.async(fn ->
+        AppServer.command_write_stdin(conn, "proc_1", "y\n",
+          thread_id: "thr_1",
+          turn_id: "turn_1",
+          item_id: "item_1",
+          yield_time_ms: 120,
+          max_output_tokens: 64
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "command/writeStdin", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["processId"] == "proc_1"
+    assert params["stdin"] == "y\n"
+    assert params["threadId"] == "thr_1"
+    assert params["turnId"] == "turn_1"
+    assert params["itemId"] == "item_1"
+    assert params["yieldTimeMs"] == 120
+    assert params["maxOutputTokens"] == 64
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "ok"})})
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end

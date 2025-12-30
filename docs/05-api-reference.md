@@ -84,12 +84,12 @@ Resumes an existing conversation thread from its persisted session.
 
 **Signature**:
 ```elixir
-@spec resume_thread(String.t(), Codex.Options.t(), Codex.Thread.Options.t()) ::
+@spec resume_thread(String.t() | :last, Codex.Options.t(), Codex.Thread.Options.t()) ::
   {:ok, Codex.Thread.t()} | {:error, term()}
 ```
 
 **Parameters**:
-- `thread_id`: ID of the thread to resume (from `~/.codex/sessions`)
+- `thread_id`: ID of the thread to resume (from `~/.codex/sessions`) or `:last` for the most recent session
 - `codex_opts` (optional): Global Codex options
 - `thread_opts` (optional): Thread-specific options
 
@@ -101,6 +101,9 @@ Resumes an existing conversation thread from its persisted session.
 ```elixir
 # Resume with thread ID
 {:ok, thread} = Codex.resume_thread("thread_abc123")
+
+# Resume the most recent session
+{:ok, thread} = Codex.resume_thread(:last)
 
 # Resume with custom options
 codex_opts = %Codex.Options{base_url: "https://custom.api"}
@@ -177,13 +180,13 @@ Executes a multi-turn run and returns the complete result (blocking mode). Inter
 
 **Signature**:
 ```elixir
-@spec run(t(), String.t(), map() | keyword()) ::
+@spec run(t(), String.t() | [map()], map() | keyword()) ::
   {:ok, Codex.Turn.Result.t()} | {:error, term()}
 ```
 
 **Parameters**:
 - `thread`: Thread struct from `Codex.start_thread/2` or `Codex.resume_thread/3`
-- `input`: Prompt or instruction for the agent
+- `input`: Prompt text or app-server `UserInput` blocks (text/image/localImage)
 - `opts` (optional): Per-turn options (e.g., `output_schema`, `env`, `attachments`) plus runner settings (`:agent`, `:run_config`, or `:max_turns`)
 
 **Returns**:
@@ -231,6 +234,7 @@ IO.inspect(data["key_points"])
 - Accumulates events and usage across turns
 - Invokes registered tools automatically when codex requests them
 - Thread struct is updated with thread_id after first turn; subsequent calls reuse it for context
+- App-server transport accepts `UserInput` block lists; exec JSONL requires text input
 
 ---
 
@@ -241,13 +245,13 @@ Executes a turn and returns a streaming result wrapper. Semantic events are expo
 
 **Signature**:
 ```elixir
-@spec run_streamed(t(), String.t(), map() | keyword()) ::
+@spec run_streamed(t(), String.t() | [map()], map() | keyword()) ::
   {:ok, Codex.RunResultStreaming.t()} | {:error, term()}
 ```
 
 **Parameters**:
 - `thread`: Thread struct
-- `input`: Prompt or instruction
+- `input`: Prompt text or app-server `UserInput` blocks
 - `opts` (optional): Turn-specific options plus optional runner settings (`:agent`, `:run_config`)
 
 **Returns**:
@@ -360,6 +364,23 @@ end
 ## Codex.Exec
 
 GenServer that manages the `codex-rs` process lifecycle. This module is typically used internally by `Codex.Thread`, but can be used directly for advanced use cases.
+
+Additional exec helpers:
+
+- `Codex.Exec.review/2` and `Codex.Exec.review_stream/2` run `codex exec review` with a review target (uncommitted, base branch, commit, or custom prompt).
+- Thread/turn options like `profile`, `oss`, `local_provider`, `full_auto`, `dangerously_bypass_approvals_and_sandbox`, `output_last_message`, and `color` are forwarded as CLI flags.
+- `config_overrides` maps to `-c key=value` overrides (TOML parsing on the codex side).
+- `Codex.resume_thread(:last)` maps to `codex exec resume --last`.
+
+Example:
+
+```elixir
+{:ok, result} =
+  Codex.Exec.review({:base_branch, "main"}, %{
+    codex_opts: codex_opts,
+    timeout_ms: 300_000
+  })
+```
 
 ---
 
@@ -677,6 +698,9 @@ Emitted when a turn completes successfully.
 - `type`: Always `:turn_completed`
 - `usage`: Token usage statistics
 
+App-server `turn/completed` notifications also carry `status` and `error`; the SDK exposes them on
+`Codex.Events.TurnCompleted`.
+
 **Usage Type**:
 ```elixir
 @type usage() :: %Codex.Events.Usage{
@@ -752,7 +776,23 @@ Diff metadata streamed alongside turn progress.
 @type t() :: %Codex.Events.TurnDiffUpdated{
   thread_id: String.t() | nil,
   turn_id: String.t() | nil,
-  diff: map()
+  diff: map() | String.t()
+}
+```
+
+---
+
+#### `TurnPlanUpdated`
+
+Plan metadata streamed from the app-server.
+
+**Type**:
+```elixir
+@type t() :: %Codex.Events.TurnPlanUpdated{
+  thread_id: String.t() | nil,
+  turn_id: String.t() | nil,
+  explanation: String.t() | nil,
+  plan: [%{step: String.t(), status: :pending | :in_progress | :completed}]
 }
 ```
 
@@ -773,6 +813,16 @@ Signals that Codex compacted a turn's history, often to trim token usage.
 ```
 
 ---
+
+#### App-server delta events
+
+The app-server transport emits additional typed deltas:
+
+- `Codex.Events.CommandOutputDelta` and `Codex.Events.FileChangeOutputDelta` for streaming tool output
+- `Codex.Events.TerminalInteraction` for interactive stdin writes
+- `Codex.Events.ReasoningSummaryDelta`, `Codex.Events.ReasoningSummaryPartAdded`, and `Codex.Events.ReasoningDelta` for reasoning streams
+- `Codex.Events.McpToolCallProgress` for MCP tool progress messages
+- `Codex.Events.AccountUpdated`, `Codex.Events.AccountRateLimitsUpdated`, `Codex.Events.AccountLoginCompleted`, `Codex.Events.McpServerOauthLoginCompleted`, and `Codex.Events.WindowsWorldWritableWarning` for account/system updates
 
 #### `Error`
 
@@ -884,16 +934,22 @@ Agent's reasoning summary.
 @type t() :: %Codex.Items.Reasoning{
   id: String.t(),
   type: :reasoning,
-  text: String.t()
+  text: String.t(),
+  summary: [String.t()],
+  content: [String.t()]
 }
 ```
+
+`summary` captures structured reasoning summaries; `content` holds raw reasoning blocks when available.
 
 **Example**:
 ```elixir
 %Codex.Items.Reasoning{
   id: "reasoning_1",
   type: :reasoning,
-  text: "To fix this issue, I need to first understand the error, then locate the relevant code..."
+  text: "To fix this issue, I need to first understand the error, then locate the relevant code...",
+  summary: ["Understand the error", "Locate the code"],
+  content: ["Raw reasoning chunk"]
 }
 ```
 
@@ -1120,12 +1176,43 @@ Thread-specific configuration.
   metadata: map(),
   labels: map(),
   auto_run: boolean(),
+  transport: :exec | {:app_server, pid()},
   approval_policy: module() | nil,
   approval_hook: module() | nil,
   approval_timeout_ms: pos_integer(),
-  sandbox: :default | :strict | :permissive,
+  sandbox:
+    :default
+    | :strict
+    | :permissive
+    | :read_only
+    | :workspace_write
+    | :danger_full_access
+    | :external_sandbox
+    | {:external_sandbox, :enabled | :restricted}
+    | String.t(),
+  sandbox_policy: map() | atom() | nil,
+  working_directory: String.t() | nil,
+  additional_directories: [String.t()],
+  skip_git_repo_check: boolean(),
+  network_access_enabled: boolean() | nil,
+  web_search_enabled: boolean(),
+  ask_for_approval: atom() | String.t() | nil,
   attachments: [map()],
-  file_search: Codex.FileSearch.t() | nil
+  file_search: Codex.FileSearch.t() | nil,
+  profile: String.t() | nil,
+  oss: boolean(),
+  local_provider: String.t() | nil,
+  full_auto: boolean(),
+  dangerously_bypass_approvals_and_sandbox: boolean(),
+  output_last_message: String.t() | nil,
+  color: :auto | :always | :never | String.t() | nil,
+  config_overrides: [String.t() | {String.t() | atom(), term()}],
+  model: String.t() | nil,
+  model_provider: String.t() | nil,
+  config: map() | nil,
+  base_instructions: String.t() | nil,
+  developer_instructions: String.t() | nil,
+  experimental_raw_events: boolean()
 }
 ```
 
@@ -1133,17 +1220,36 @@ Thread-specific configuration.
 - `metadata`: Arbitrary per-thread metadata stored on the thread and passed to tool contexts (commonly includes `:tool_context` or approval hints)
 - `labels`: Optional label map merged with server metadata
 - `auto_run`: Enable CLI-driven auto-run (default: false)
+- `transport`: `:exec` or `{:app_server, pid()}` for JSON-RPC transport
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
-- `sandbox`: Sandbox hint (`:default`, `:strict`, `:permissive`)
+- `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
+- `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
+- `working_directory`: Working directory passed to codex (`--cd` / `cwd`)
+- `additional_directories`: Extra writable roots (`--add-dir`)
+- `skip_git_repo_check`: Allow running outside a Git repo
+- `network_access_enabled`: Workspace-write network access override for exec (`--config sandbox_workspace_write.network_access=...`)
+- `web_search_enabled`: Enable web search (`--config features.web_search_request=...`)
+- `ask_for_approval`: Approval policy hint for app-server turns
 - `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
+- `profile`: Config profile name (`--profile`)
+- `oss` / `local_provider`: OSS provider flags (`--oss`, `--local-provider`)
+- `full_auto` / `dangerously_bypass_approvals_and_sandbox`: Execution-mode shortcuts (mutually exclusive)
+- `output_last_message`: File path for `--output-last-message`
+- `color`: Output color mode (`--color`)
+- `config_overrides`: Generic `-c key=value` overrides (strings or `{key, value}` pairs)
+- `model` / `model_provider`: App-server thread model overrides
+- `config`: App-server config override map
+- `base_instructions` / `developer_instructions`: App-server instruction overrides
+- `experimental_raw_events`: App-server raw response item toggle
 
 **Example**:
 ```elixir
 %Codex.Thread.Options{
   metadata: %{tool_context: %{project: "docs"}},
   attachments: [%Codex.Files.Attachment{...}],
-  file_search: %{vector_store_ids: ["vs_default"], include_search_results: true}
+  file_search: %{vector_store_ids: ["vs_default"], include_search_results: true},
+  config_overrides: ["features.web_search_request=true"]
 }
 ```
 
@@ -1156,12 +1262,23 @@ Turn-specific configuration passed as a map or keyword list.
 **Type**:
 ```elixir
 @type t() :: %{
-  optional(:output_schema) => map() | nil
+  optional(:output_schema) => map() | nil,
+  optional(:config_overrides) => map() | keyword() | [String.t()] | nil,
+  optional(:sandbox_policy) => map() | atom() | nil,
+  optional(:model) => String.t() | nil,
+  optional(:approval_policy) => atom() | String.t() | nil,
+  optional(:cwd) => String.t() | nil,
+  optional(:effort) => atom() | String.t() | nil,
+  optional(:summary) => atom() | String.t() | nil
 }
 ```
 
 **Fields**:
 - `output_schema`: JSON schema for structured output (nil for natural language)
+- `config_overrides`: Exec `-c key=value` overrides (strings or key/value pairs)
+- `sandbox_policy`: App-server sandbox policy override
+- `model` / `approval_policy` / `cwd`: App-server per-turn overrides
+- `effort` / `summary`: App-server reasoning overrides
 
 **Example**:
 ```elixir

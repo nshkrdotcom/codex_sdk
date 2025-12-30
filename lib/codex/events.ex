@@ -66,7 +66,8 @@ defmodule Codex.Events do
               response_id: nil,
               final_response: nil,
               usage: nil,
-              status: nil
+              status: nil,
+              error: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
@@ -74,7 +75,8 @@ defmodule Codex.Events do
             response_id: String.t() | nil,
             final_response: Items.AgentMessage.t() | map() | nil,
             usage: map() | nil,
-            status: String.t() | nil
+            status: String.t() | nil,
+            error: map() | nil
           }
   end
 
@@ -144,6 +146,39 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule FileChangeOutputDelta do
+    @moduledoc """
+    Event delta emitted while a file change stream is producing output.
+    """
+
+    @enforce_keys [:item_id, :delta]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, delta: ""
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            delta: String.t()
+          }
+  end
+
+  defmodule TerminalInteraction do
+    @moduledoc """
+    Event emitted when stdin is written to an interactive command execution.
+    """
+
+    @enforce_keys [:item_id]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, process_id: nil, stdin: ""
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            process_id: String.t() | nil,
+            stdin: String.t()
+          }
+  end
+
   defmodule ReasoningDelta do
     @moduledoc """
     Event delta emitted while reasoning content is streaming.
@@ -175,6 +210,108 @@ defmodule Codex.Events do
             item_id: String.t(),
             delta: String.t(),
             summary_index: integer() | nil
+          }
+  end
+
+  defmodule ReasoningSummaryPartAdded do
+    @moduledoc """
+    Event emitted when a new reasoning summary part is added.
+    """
+
+    @enforce_keys [:item_id, :summary_index]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, summary_index: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            summary_index: integer()
+          }
+  end
+
+  defmodule McpToolCallProgress do
+    @moduledoc """
+    Progress message emitted while an MCP tool call is running.
+    """
+
+    @enforce_keys [:item_id, :message]
+    defstruct thread_id: nil, turn_id: nil, item_id: nil, message: ""
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item_id: String.t(),
+            message: String.t()
+          }
+  end
+
+  defmodule McpServerOauthLoginCompleted do
+    @moduledoc """
+    Event emitted when an MCP server OAuth login completes.
+    """
+
+    @enforce_keys [:name, :success]
+    defstruct name: nil, success: false, error: nil
+
+    @type t :: %__MODULE__{
+            name: String.t(),
+            success: boolean(),
+            error: String.t() | nil
+          }
+  end
+
+  defmodule AccountUpdated do
+    @moduledoc """
+    Event emitted when account authentication state changes.
+    """
+
+    defstruct auth_mode: nil
+
+    @type t :: %__MODULE__{
+            auth_mode: String.t() | nil
+          }
+  end
+
+  defmodule AccountRateLimitsUpdated do
+    @moduledoc """
+    Event emitted when account rate limits are updated.
+    """
+
+    @enforce_keys [:rate_limits]
+    defstruct rate_limits: %{}
+
+    @type t :: %__MODULE__{
+            rate_limits: map()
+          }
+  end
+
+  defmodule AccountLoginCompleted do
+    @moduledoc """
+    Event emitted when account login completes.
+    """
+
+    @enforce_keys [:success]
+    defstruct login_id: nil, success: false, error: nil
+
+    @type t :: %__MODULE__{
+            login_id: String.t() | nil,
+            success: boolean(),
+            error: String.t() | nil
+          }
+  end
+
+  defmodule WindowsWorldWritableWarning do
+    @moduledoc """
+    Event emitted when world-writable Windows paths are detected.
+    """
+
+    @enforce_keys [:sample_paths, :extra_count, :failed_scan]
+    defstruct sample_paths: [], extra_count: 0, failed_scan: false
+
+    @type t :: %__MODULE__{
+            sample_paths: [String.t()],
+            extra_count: non_neg_integer(),
+            failed_scan: boolean()
           }
   end
 
@@ -392,9 +529,18 @@ defmodule Codex.Events do
     ItemStarted,
     ItemUpdated,
     CommandOutputDelta,
+    FileChangeOutputDelta,
+    TerminalInteraction,
     ReasoningDelta,
     ReasoningSummaryDelta,
+    ReasoningSummaryPartAdded,
     AppServerNotification,
+    McpToolCallProgress,
+    McpServerOauthLoginCompleted,
+    AccountUpdated,
+    AccountRateLimitsUpdated,
+    AccountLoginCompleted,
+    WindowsWorldWritableWarning,
     Error,
     TurnFailed
   }
@@ -414,9 +560,18 @@ defmodule Codex.Events do
           | ItemStarted.t()
           | ItemUpdated.t()
           | CommandOutputDelta.t()
+          | FileChangeOutputDelta.t()
+          | TerminalInteraction.t()
           | ReasoningDelta.t()
           | ReasoningSummaryDelta.t()
+          | ReasoningSummaryPartAdded.t()
           | AppServerNotification.t()
+          | McpToolCallProgress.t()
+          | McpServerOauthLoginCompleted.t()
+          | AccountUpdated.t()
+          | AccountRateLimitsUpdated.t()
+          | AccountLoginCompleted.t()
+          | WindowsWorldWritableWarning.t()
           | Error.t()
           | TurnFailed.t()
           | ToolCallRequested.t()
@@ -463,7 +618,8 @@ defmodule Codex.Events do
       response_id: Map.get(map, "response_id"),
       final_response: Map.get(map, "final_response"),
       usage: Map.get(map, "usage"),
-      status: Map.get(map, "status")
+      status: Map.get(map, "status"),
+      error: Map.get(map, "error")
     }
   end
 
@@ -630,6 +786,7 @@ defmodule Codex.Events do
     |> put_optional("final_response", encode_final_response(event.final_response))
     |> put_optional("usage", event.usage)
     |> put_optional("status", event.status)
+    |> put_optional("error", event.error)
   end
 
   def to_map(%ThreadTokenUsageUpdated{} = event) do
@@ -713,6 +870,120 @@ defmodule Codex.Events do
     }
     |> put_optional("thread_id", event.thread_id)
     |> put_optional("turn_id", event.turn_id)
+  end
+
+  def to_map(%CommandOutputDelta{} = event) do
+    %{
+      "type" => "item/commandExecution/outputDelta",
+      "item_id" => event.item_id,
+      "delta" => event.delta
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+  end
+
+  def to_map(%FileChangeOutputDelta{} = event) do
+    %{
+      "type" => "item/fileChange/outputDelta",
+      "item_id" => event.item_id,
+      "delta" => event.delta
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+  end
+
+  def to_map(%TerminalInteraction{} = event) do
+    %{
+      "type" => "item/commandExecution/terminalInteraction",
+      "item_id" => event.item_id,
+      "process_id" => event.process_id,
+      "stdin" => event.stdin
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+  end
+
+  def to_map(%ReasoningDelta{} = event) do
+    %{
+      "type" => "item/reasoning/textDelta",
+      "item_id" => event.item_id,
+      "delta" => event.delta
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("content_index", event.content_index)
+  end
+
+  def to_map(%ReasoningSummaryDelta{} = event) do
+    %{
+      "type" => "item/reasoning/summaryTextDelta",
+      "item_id" => event.item_id,
+      "delta" => event.delta
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("summary_index", event.summary_index)
+  end
+
+  def to_map(%ReasoningSummaryPartAdded{} = event) do
+    %{
+      "type" => "item/reasoning/summaryPartAdded",
+      "item_id" => event.item_id
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("summary_index", event.summary_index)
+  end
+
+  def to_map(%McpToolCallProgress{} = event) do
+    %{
+      "type" => "item/mcpToolCall/progress",
+      "item_id" => event.item_id,
+      "message" => event.message
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+  end
+
+  def to_map(%McpServerOauthLoginCompleted{} = event) do
+    %{
+      "type" => "mcpServer/oauthLogin/completed",
+      "name" => event.name,
+      "success" => event.success
+    }
+    |> put_optional("error", event.error)
+  end
+
+  def to_map(%AccountUpdated{} = event) do
+    %{
+      "type" => "account/updated"
+    }
+    |> put_optional("auth_mode", event.auth_mode)
+  end
+
+  def to_map(%AccountRateLimitsUpdated{} = event) do
+    %{
+      "type" => "account/rateLimits/updated",
+      "rate_limits" => event.rate_limits
+    }
+  end
+
+  def to_map(%AccountLoginCompleted{} = event) do
+    %{
+      "type" => "account/login/completed",
+      "success" => event.success
+    }
+    |> put_optional("login_id", event.login_id)
+    |> put_optional("error", event.error)
+  end
+
+  def to_map(%WindowsWorldWritableWarning{} = event) do
+    %{
+      "type" => "windows/worldWritableWarning",
+      "sample_paths" => event.sample_paths,
+      "extra_count" => event.extra_count,
+      "failed_scan" => event.failed_scan
+    }
   end
 
   def to_map(%Error{} = event) do

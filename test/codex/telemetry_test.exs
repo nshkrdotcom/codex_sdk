@@ -52,6 +52,30 @@ defmodule Codex.TelemetryTest do
     assert metadata.originator == :sdk
   end
 
+  test "thread telemetry preserves explicit false trace flags" do
+    script_path =
+      FixtureScripts.cat_fixture("thread_basic.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+
+    thread =
+      Thread.build(codex_opts, thread_opts,
+        metadata: %{trace_sensitive: false, tracing_disabled: false}
+      )
+
+    {:ok, _result} = Thread.run(thread, "trace flags")
+
+    {_m_start, meta_start} =
+      assert_event([:codex, :thread, :start],
+        match: fn _e, _m, metadata -> metadata.input == "trace flags" end
+      )
+
+    assert Map.fetch!(meta_start, :trace_sensitive) == false
+    assert Map.fetch!(meta_start, :tracing_disabled) == false
+  end
+
   test "thread run_streamed emits start and stop events" do
     script_path =
       FixtureScripts.cat_fixture("thread_basic.jsonl")
@@ -79,6 +103,41 @@ defmodule Codex.TelemetryTest do
 
     assert measurements.duration_ms > 0
     assert metadata.originator == :sdk
+  end
+
+  test "streamed progress events include thread and turn context" do
+    script_path =
+      FixtureScripts.cat_fixture("thread_progress_no_ids.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    handler_id = "telemetry-progress-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler_id,
+      [:codex, :thread, :token_usage, :updated],
+      &__MODULE__.collect_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    {:ok, result} = Thread.run_streamed(thread, "progress")
+
+    result
+    |> RunResultStreaming.raw_events()
+    |> Enum.to_list()
+
+    {_measurements, metadata} =
+      assert_event([:codex, :thread, :token_usage, :updated],
+        match: fn _e, _m, md -> md.thread_id == "thread_progress" end
+      )
+
+    assert metadata.thread_id == "thread_progress"
+    assert metadata.turn_id == "turn_progress"
   end
 
   test "thread telemetry captures ids and source metadata" do

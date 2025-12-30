@@ -8,12 +8,14 @@ defmodule Codex.Transport.AppServer do
   alias Codex.AppServer.Connection
   alias Codex.AppServer.NotificationAdapter
   alias Codex.Events
+  alias Codex.Models
+  alias Codex.Options
   alias Codex.Thread
   alias Codex.Turn.Result
 
   @impl true
   def run_turn(%Thread{transport: {:app_server, _pid}} = thread, input, turn_opts)
-      when is_binary(input) do
+      when is_binary(input) or is_list(input) do
     with {:ok, stream} <- run_turn_streamed(thread, input, turn_opts) do
       events = Enum.to_list(stream)
 
@@ -41,14 +43,14 @@ defmodule Codex.Transport.AppServer do
 
   @impl true
   def run_turn_streamed(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts)
-      when is_binary(input) and is_pid(conn) do
+      when (is_binary(input) or is_list(input)) and is_pid(conn) do
     turn_opts = normalize_turn_opts(turn_opts)
 
     :ok = Connection.subscribe(conn)
 
     with {:ok, thread_id, started_event, thread_start_raw} <- ensure_thread(conn, thread),
          {:ok, turn_id, turn_started_event, turn_start_raw} <-
-           start_turn(conn, thread_id, input, turn_opts) do
+           start_turn(conn, thread, thread_id, input, turn_opts) do
       thread = %Thread{thread | thread_id: thread_id}
 
       stream =
@@ -101,10 +103,10 @@ defmodule Codex.Transport.AppServer do
   end
 
   defp ensure_thread(conn, %Thread{} = thread) do
-    params = thread_start_params(thread)
+    params = thread_start_params(thread, :start)
 
     if is_binary(thread.thread_id) and thread.thread_id != "" do
-      resume_thread(conn, thread.thread_id, params)
+      resume_thread(conn, thread.thread_id, thread_start_params(thread, :resume))
     else
       start_thread(conn, params)
     end
@@ -137,20 +139,43 @@ defmodule Codex.Transport.AppServer do
     end
   end
 
-  defp thread_start_params(%Thread{} = thread) do
+  defp thread_start_params(%Thread{} = thread, mode) do
+    config =
+      thread.thread_opts.config
+      |> normalize_config()
+      |> maybe_apply_reasoning_effort(thread, mode)
+
+    model =
+      thread.thread_opts.model ||
+        default_model(thread, mode)
+
     %{}
+    |> maybe_put(:model, model)
+    |> maybe_put(:model_provider, thread.thread_opts.model_provider)
     |> maybe_put(:working_directory, thread.thread_opts.working_directory)
     |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
     |> maybe_put(:sandbox, thread.thread_opts.sandbox)
+    |> maybe_put(:config, config)
+    |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
+    |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
+    |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
   end
 
-  defp start_turn(conn, thread_id, input, turn_opts) do
+  defp start_turn(conn, %Thread{} = thread, thread_id, input, turn_opts) do
+    sandbox_policy = fetch_opt(turn_opts, :sandbox_policy) || thread.thread_opts.sandbox_policy
+
+    approval_policy =
+      fetch_opt(turn_opts, :approval_policy) || thread.thread_opts.ask_for_approval
+
+    model = fetch_opt(turn_opts, :model) || thread.thread_opts.model
+    cwd = fetch_opt(turn_opts, :cwd) || thread.thread_opts.working_directory
+
     opts =
       []
-      |> maybe_put_kw(:cwd, fetch_opt(turn_opts, :cwd))
-      |> maybe_put_kw(:model, fetch_opt(turn_opts, :model))
-      |> maybe_put_kw(:approval_policy, fetch_opt(turn_opts, :approval_policy))
-      |> maybe_put_kw(:sandbox_policy, fetch_opt(turn_opts, :sandbox_policy))
+      |> maybe_put_kw(:cwd, cwd)
+      |> maybe_put_kw(:model, model)
+      |> maybe_put_kw(:approval_policy, approval_policy)
+      |> maybe_put_kw(:sandbox_policy, sandbox_policy)
       |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
       |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
 
@@ -200,6 +225,46 @@ defmodule Codex.Transport.AppServer do
         {:halt, state}
     end
   end
+
+  defp normalize_config(nil), do: nil
+  defp normalize_config(%{} = config) when map_size(config) == 0, do: nil
+  defp normalize_config(%{} = config), do: config
+  defp normalize_config(_), do: nil
+
+  defp maybe_apply_reasoning_effort(
+         config,
+         %Thread{codex_opts: %Options{reasoning_effort: nil}},
+         _mode
+       ),
+       do: config
+
+  defp maybe_apply_reasoning_effort(
+         config,
+         %Thread{codex_opts: %Options{reasoning_effort: effort}},
+         :start
+       ) do
+    config = config || %{}
+
+    if has_reasoning_effort?(config) do
+      config
+    else
+      Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))
+    end
+  end
+
+  defp maybe_apply_reasoning_effort(config, _thread, _mode), do: config
+
+  defp has_reasoning_effort?(%{} = config) do
+    Map.has_key?(config, "model_reasoning_effort") ||
+      Map.has_key?(config, :model_reasoning_effort)
+  end
+
+  defp default_model(%Thread{codex_opts: %Options{model: model}}, :start)
+       when is_binary(model) and model != "" do
+    model
+  end
+
+  defp default_model(_thread, _mode), do: nil
 
   defp request_matches?(%{thread_id: thread_id, turn_id: turn_id}, _id, method, params)
        when is_binary(method) and is_map(params) do

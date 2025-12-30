@@ -120,12 +120,14 @@ defstruct [
 
 **Key Functions**:
 ```elixir
-@spec run(t(), String.t(), Codex.Turn.Options.t()) ::
+@spec run(t(), String.t() | [map()], Codex.Turn.Options.t()) ::
   {:ok, Codex.Turn.Result.t()} | {:error, term()}
 
-@spec run_streamed(t(), String.t(), Codex.Turn.Options.t()) ::
+@spec run_streamed(t(), String.t() | [map()], Codex.Turn.Options.t()) ::
   {:ok, Enumerable.t()} | {:error, term()}
 ```
+
+App-server transport accepts `UserInput` block lists (text/image/localImage); exec JSONL expects text input.
 
 **Execution Flow** (Blocking Mode):
 1. Create output schema file if needed

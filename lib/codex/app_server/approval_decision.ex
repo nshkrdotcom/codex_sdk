@@ -11,6 +11,9 @@ defmodule Codex.AppServer.ApprovalDecision do
       Keyword.get(opts, :for_session, false) ->
         "acceptForSession"
 
+      Keyword.get(opts, :grant_root) not in [nil, false] ->
+        "acceptForSession"
+
       execpolicy_amendment = Keyword.get(opts, :execpolicy_amendment) ->
         %{
           "acceptWithExecpolicyAmendment" => %{

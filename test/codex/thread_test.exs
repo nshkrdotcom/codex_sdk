@@ -2,10 +2,50 @@ defmodule Codex.ThreadTest do
   use ExUnit.Case, async: true
 
   alias Codex.Events
-  alias Codex.{Error, Items, Options, RunResultStreaming, Thread, Tools}
+
+  alias Codex.{
+    Error,
+    GuardrailError,
+    Items,
+    Options,
+    RunResultStreaming,
+    Thread,
+    ToolGuardrail,
+    Tools
+  }
+
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Turn.Result, as: TurnResult
+
+  describe "thread options validation" do
+    test "rejects conflicting auto flags" do
+      assert {:error, :conflicting_auto_flags} ==
+               ThreadOptions.new(%{
+                 full_auto: true,
+                 dangerously_bypass_approvals_and_sandbox: true
+               })
+    end
+  end
+
+  describe "build/3" do
+    test "does not monitor app_server transports" do
+      pid = spawn(fn -> Process.sleep(:infinity) end)
+      on_exit(fn -> Process.exit(pid, :kill) end)
+
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      {:ok, thread_opts} = ThreadOptions.new(%{transport: {:app_server, pid}})
+
+      {:monitors, before_monitors} = Process.info(self(), :monitors)
+
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:monitors, after_monitors} = Process.info(self(), :monitors)
+
+      assert after_monitors == before_monitors
+      assert thread.transport_ref == nil
+    end
+  end
 
   describe "run/3" do
     test "returns turn result and updates thread metadata" do
@@ -575,6 +615,37 @@ defmodule Codex.ThreadTest do
       assert String.contains?(raw_args, "resume thread_resume"),
              "expected resume subcommand in args: #{inspect(raw_args)}"
     end
+
+    test "resumes most recent conversation using resume --last" do
+      capture_path =
+        Path.join(
+          System.tmp_dir!(),
+          "codex_exec_resume_last_args_#{System.unique_integer([:positive])}"
+        )
+
+      script_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      {:ok, thread} = Codex.resume_thread(:last, codex_opts, thread_opts)
+
+      {:ok, _result} = Thread.run(thread, "continue")
+
+      raw_args = capture_path |> File.read!() |> String.trim()
+
+      assert String.contains?(raw_args, "resume --last"),
+             "expected resume --last in args: #{inspect(raw_args)}"
+    end
   end
 
   describe "turn failures" do
@@ -682,7 +753,7 @@ defmodule Codex.ThreadTest do
     def metadata, do: %{name: "dedup_tool", description: "noop"}
 
     @impl true
-    def invoke(_args, %{metadata: %{parent: parent}}) do
+    def invoke(_args, %{thread: %{thread_opts: %{metadata: %{parent: parent}}}}) do
       send(parent, :tool_invoked)
       {:ok, %{"status" => "ok"}}
     end
@@ -726,6 +797,129 @@ defmodule Codex.ThreadTest do
 
       assert updated.raw.tool_outputs == [existing]
       assert updated.thread.pending_tool_outputs == [existing]
+      refute_receive :tool_invoked
+    end
+
+    test "invokes distinct tool calls when call_id is missing", %{thread: thread} do
+      event_one = %Events.ToolCallRequested{
+        thread_id: "thread_nil",
+        turn_id: "turn_nil",
+        call_id: nil,
+        tool_name: "dedup_tool",
+        arguments: %{"value" => 1}
+      }
+
+      event_two = %Events.ToolCallRequested{
+        thread_id: "thread_nil",
+        turn_id: "turn_nil",
+        call_id: nil,
+        tool_name: "dedup_tool",
+        arguments: %{"value" => 2}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event_one, event_two],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      assert {:ok, updated} = Thread.handle_tool_requests(result, 1, %{})
+
+      assert_receive :tool_invoked
+      assert_receive :tool_invoked
+      refute_receive :tool_invoked
+
+      assert length(updated.raw.tool_outputs) == 2
+    end
+
+    test "returns guardrail errors when tool guardrail handlers raise", %{thread: thread} do
+      guardrail =
+        ToolGuardrail.new(
+          name: "boom_guardrail",
+          handler: fn _event, _payload, _context -> raise "boom" end
+        )
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_guardrail",
+        turn_id: "turn_guardrail",
+        call_id: "call_guardrail",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      assert {:error, %GuardrailError{guardrail: "boom_guardrail", stage: :tool_input}} =
+               Thread.handle_tool_requests(result, 1, %{tool_input: [guardrail]})
+
+      refute_receive :tool_invoked
+    end
+
+    test "returns guardrail errors when tool guardrail hooks raise", %{thread: thread} do
+      guardrail =
+        ToolGuardrail.new(
+          name: "hook_guardrail",
+          handler: fn _event, _payload, _context -> :ok end
+        )
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_guardrail",
+        turn_id: "turn_guardrail",
+        call_id: "call_guardrail",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      hooks = %{
+        on_guardrail: fn _stage, _guardrail, _result, _message -> raise "hook boom" end
+      }
+
+      assert {:error, %GuardrailError{guardrail: "hook_guardrail", stage: :tool_input}} =
+               Thread.handle_tool_requests(result, 1, %{tool_input: [guardrail], hooks: hooks})
+
+      refute_receive :tool_invoked
+    end
+
+    test "returns approval hook errors without crashing", %{thread: thread} do
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_approval",
+        turn_id: "turn_approval",
+        call_id: "call_approval",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      hooks = %{
+        on_approval: fn _event, _decision, _reason -> raise "approval boom" end
+      }
+
+      assert {:error, %Error{kind: :approval_hook_failed}} =
+               Thread.handle_tool_requests(result, 1, %{hooks: hooks})
+
       refute_receive :tool_invoked
     end
   end

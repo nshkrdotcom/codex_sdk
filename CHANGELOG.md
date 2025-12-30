@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2025-12-29
+
+### Added
+
+- App-server `UserInput` list support for `Codex.Thread.run/3` and `run_streamed/3` (text/image/localImage)
+- Thread/turn app-server params for model/provider/config/instructions, sandbox_policy, and experimental raw events, with defaults for model + reasoning effort
+- Typed app-server notifications for reasoning summaries/deltas, command/file output deltas, terminal interaction, MCP progress, and account updates
+- Exec CLI parity flags (`--profile`, `--oss`, `--local-provider`, `--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, `--output-last-message`, `--color`)
+- Generic `-c key=value` config overrides, exec review wrapper, and resume --last support
+- Grant-root approval handling for file changes and `Codex.AppServer.command_write_stdin/4`
+
+### Changed
+
+- Reasoning items now preserve `summary`/`content` structure instead of flattened text
+- App-server `turn.error` payloads are surfaced on `Codex.Events.TurnCompleted`
+
+### Fixed
+
+- Streamed turn failures now handle non-text `final_response` payloads without crashing and include `turn.error` details when present
+- Structured `/new` input blocks now reset conversation state for app-server/exec turn runs and streams
+- Tool guardrail and approval hook exceptions are surfaced as errors instead of crashing the turn
+- Progress telemetry metadata now merges even when base metadata is nil
+
+### Documentation
+
+- Updated README and API reference for new input types, exec flags, and app-server deltas
+
 ## [0.4.3] - 2025-12-27
 
 ### Added

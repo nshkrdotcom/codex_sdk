@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"thread_failed_1","metadata":{}}
+{"type":"turn.started","turn_id":"turn_failed_1","thread_id":"thread_failed_1"}
+{"type":"turn.completed","turn_id":"turn_failed_1","thread_id":"thread_failed_1","status":"failed","final_response":{"detail":"failure payload"},"error":{"message":"turn failed","type":"failed"}}

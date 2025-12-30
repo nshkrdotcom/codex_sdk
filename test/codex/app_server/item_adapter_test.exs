@@ -54,6 +54,21 @@ defmodule Codex.AppServer.ItemAdapterTest do
               }} = ItemAdapter.to_item(item)
     end
 
+    test "maps reasoning into Items.Reasoning with structured summary/content" do
+      item = %{
+        "type" => "reasoning",
+        "id" => "reason_1",
+        "summary" => ["Summary line"],
+        "content" => ["Detail line 1", "Detail line 2"]
+      }
+
+      assert {:ok, %Items.Reasoning{id: "reason_1", summary: summary, content: content}} =
+               ItemAdapter.to_item(item)
+
+      assert summary == ["Summary line"]
+      assert content == ["Detail line 1", "Detail line 2"]
+    end
+
     test "maps fileChange into Items.FileChange preserving diffs" do
       item = %{
         "type" => "fileChange",

@@ -21,10 +21,15 @@ defmodule Codex.AppServer.ItemAdapter do
   end
 
   def to_item(%{"type" => "reasoning"} = item) do
+    summary = normalize_reasoning_part(Map.get(item, "summary"))
+    content = normalize_reasoning_part(Map.get(item, "content"))
+
     {:ok,
      %Items.Reasoning{
        id: Map.get(item, "id"),
-       text: join_reasoning_text(Map.get(item, "summary"), Map.get(item, "content"))
+       text: join_reasoning_text(summary, content) || "",
+       summary: summary,
+       content: content
      }}
   end
 
@@ -144,6 +149,11 @@ defmodule Codex.AppServer.ItemAdapter do
 
   defp normalize_status(_), do: :in_progress
 
+  defp normalize_reasoning_part(nil), do: []
+  defp normalize_reasoning_part(list) when is_list(list), do: Enum.map(list, &to_string/1)
+  defp normalize_reasoning_part(value) when is_binary(value), do: [value]
+  defp normalize_reasoning_part(value), do: [to_string(value)]
+
   defp join_reasoning_text(summary, content) do
     parts =
       []
@@ -151,7 +161,7 @@ defmodule Codex.AppServer.ItemAdapter do
       |> maybe_concat_lines(content)
 
     if parts == [] do
-      ""
+      nil
     else
       Enum.join(parts, "\n")
     end
@@ -160,8 +170,6 @@ defmodule Codex.AppServer.ItemAdapter do
   defp maybe_concat_lines(parts, lines) when is_list(lines) do
     parts ++ Enum.map(lines, &to_string/1)
   end
-
-  defp maybe_concat_lines(parts, _lines), do: parts
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

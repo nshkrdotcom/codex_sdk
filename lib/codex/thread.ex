@@ -14,6 +14,7 @@ defmodule Codex.Thread do
   alias Codex.OutputSchemaFile
   alias Codex.RunResultStreaming
   alias Codex.Telemetry
+  alias Codex.Thread.Backoff
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.ToolGuardrail
   alias Codex.ToolOutput
@@ -26,6 +27,7 @@ defmodule Codex.Thread do
             thread_opts: nil,
             metadata: %{},
             labels: %{},
+            resume: nil,
             continuation_token: nil,
             usage: %{},
             pending_tool_outputs: [],
@@ -39,6 +41,7 @@ defmodule Codex.Thread do
           thread_opts: ThreadOptions.t(),
           metadata: map(),
           labels: map(),
+          resume: :last | nil,
           continuation_token: String.t() | nil,
           usage: map(),
           pending_tool_outputs: [map()],
@@ -51,7 +54,6 @@ defmodule Codex.Thread do
   @spec build(Options.t(), ThreadOptions.t(), keyword()) :: t()
   def build(%Options{} = opts, %ThreadOptions{} = thread_opts, extra \\ []) do
     transport = thread_opts.transport || :exec
-    transport_ref = maybe_monitor_transport(transport)
 
     struct!(
       __MODULE__,
@@ -62,39 +64,52 @@ defmodule Codex.Thread do
           thread_opts: thread_opts,
           metadata: %{},
           labels: %{},
+          resume: nil,
           continuation_token: nil,
           usage: %{},
           pending_tool_outputs: [],
           pending_tool_failures: [],
           transport: transport,
-          transport_ref: transport_ref
+          transport_ref: nil
         ],
         extra
       )
     )
   end
 
-  defp maybe_monitor_transport({:app_server, pid}) when is_pid(pid), do: Process.monitor(pid)
-  defp maybe_monitor_transport(_), do: nil
+  @type user_input_block :: map()
+  @type user_input :: String.t() | [user_input_block()]
 
   @doc """
   Executes a blocking multi-turn run using the agent runner.
   """
-  @spec run(t(), String.t(), map() | keyword()) ::
+  @spec run(t(), user_input(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
-  def run(%__MODULE__{} = thread, input, opts \\ %{}) when is_binary(input) do
+  def run(thread, input, opts \\ %{})
+
+  def run(%__MODULE__{} = thread, input, opts)
+      when is_binary(input) or is_list(input) do
     AgentRunner.run(thread, input, opts)
   end
 
+  def run(%__MODULE__{}, input, _opts), do: {:error, {:invalid_input, input}}
+
   @doc false
-  @spec run_turn(t(), String.t(), map() | keyword()) ::
+  @spec run_turn(t(), user_input(), map() | keyword()) ::
           {:ok, Result.t()} | {:error, term()}
-  def run_turn(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+  def run_turn(thread, input, turn_opts \\ %{})
+
+  def run_turn(%__MODULE__{} = thread, input, turn_opts)
+      when is_binary(input) or is_list(input) do
+    thread = maybe_reset_for_new(thread, input)
+
     case transport_impl(thread) do
       {:error, _} = error -> error
       transport -> transport.run_turn(thread, input, turn_opts)
     end
   end
+
+  def run_turn(%__MODULE__{}, input, _turn_opts), do: {:error, {:invalid_input, input}}
 
   @doc false
   @spec run_turn_exec_jsonl(t(), String.t(), map() | keyword()) ::
@@ -185,34 +200,122 @@ defmodule Codex.Thread do
 
   The stream is lazy; events will not be produced until enumerated.
   """
-  @spec run_streamed(t(), String.t(), map() | keyword()) ::
+  @spec run_streamed(t(), user_input(), map() | keyword()) ::
           {:ok, RunResultStreaming.t()} | {:error, term()}
-  def run_streamed(%__MODULE__{} = thread, input, opts \\ %{}) when is_binary(input) do
+  def run_streamed(thread, input, opts \\ %{})
+
+  def run_streamed(%__MODULE__{} = thread, input, opts)
+      when is_binary(input) or is_list(input) do
     AgentRunner.run_streamed(thread, input, opts)
   end
 
+  def run_streamed(%__MODULE__{}, input, _opts), do: {:error, {:invalid_input, input}}
+
   @doc false
-  @spec run_turn_streamed(t(), String.t(), map() | keyword()) ::
+  @spec run_turn_streamed(t(), user_input(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
-  def run_turn_streamed(%__MODULE__{} = thread, input, turn_opts \\ %{}) when is_binary(input) do
+  def run_turn_streamed(thread, input, turn_opts \\ %{})
+
+  def run_turn_streamed(%__MODULE__{} = thread, input, turn_opts)
+      when is_binary(input) or is_list(input) do
+    thread = maybe_reset_for_new(thread, input)
+
     case transport_impl(thread) do
       {:error, _} = error -> error
       transport -> transport.run_turn_streamed(thread, input, turn_opts)
     end
   end
 
+  def run_turn_streamed(%__MODULE__{}, input, _turn_opts), do: {:error, {:invalid_input, input}}
+
   @doc false
   @spec run_turn_streamed_exec_jsonl(t(), String.t(), map() | keyword()) ::
           {:ok, Enumerable.t()} | {:error, term()}
   def run_turn_streamed_exec_jsonl(%__MODULE__{} = thread, input, turn_opts \\ %{})
       when is_binary(input) do
-    thread = maybe_reset_for_new(thread, input)
+    turn_opts_map = Map.new(turn_opts)
+    schema = Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
+
+    with {:ok, encoded_schema} <- OutputSchemaFile.encode(schema) do
+      stream =
+        Stream.resource(
+          fn ->
+            %{
+              phase: :init,
+              thread: thread,
+              input: input,
+              turn_opts: turn_opts_map,
+              encoded_schema: encoded_schema,
+              meta: nil,
+              progress_meta: nil,
+              context: nil,
+              started_monotonic: nil,
+              failure: :ok,
+              early_exit?: false,
+              completed?: false,
+              cleanup: nil,
+              structured_output?: false,
+              exec_stream: nil,
+              exec_continuation: nil
+            }
+          end,
+          &next_streamed_exec_event/1,
+          &after_streamed_exec/1
+        )
+
+      {:ok, stream}
+    end
+  end
+
+  defp next_streamed_exec_event(%{phase: :init} = state) do
+    case start_streamed_exec(state) do
+      {:ok, started_state} -> next_streamed_exec_event(started_state)
+      {:error, reason, _state} -> raise_stream_error(reason)
+    end
+  end
+
+  defp next_streamed_exec_event(%{phase: :running} = state) do
+    case next_exec_event(state) do
+      {:halt, halted_state} ->
+        {:halt, halted_state}
+
+      {[event], updated_state} ->
+        decoded = maybe_decode_stream_event(event, updated_state.structured_output?)
+
+        state_with_context = update_stream_context(updated_state, decoded)
+
+        progress_meta =
+          state_with_context.progress_meta
+          |> merge_metadata(state_with_context.context)
+
+        emit_progress_event(decoded, progress_meta)
+
+        next_state = update_stream_status(state_with_context, decoded)
+
+        {[decoded], next_state}
+    end
+  end
+
+  defp after_streamed_exec(state) do
+    maybe_cleanup_stream(state)
+    maybe_emit_stream_stop(state)
+  end
+
+  defp maybe_cleanup_stream(%{cleanup: cleanup}) when is_function(cleanup, 0) do
+    cleanup.()
+    :ok
+  end
+
+  defp maybe_cleanup_stream(_), do: :ok
+
+  defp start_streamed_exec(state) do
+    thread = maybe_reset_for_new(state.thread, state.input)
     span_token = make_ref()
 
     meta =
       %{
         thread_id: thread.thread_id,
-        input: input,
+        input: state.input,
         originator: :sdk,
         span_token: span_token
       }
@@ -228,63 +331,111 @@ defmodule Codex.Thread do
     started_monotonic = System.monotonic_time()
     Telemetry.emit([:codex, :thread, :start], %{system_time: System.system_time()}, meta)
 
-    with {:ok, exec_opts, cleanup, exec_meta} <- build_exec_options(thread, turn_opts) do
-      structured_output? = Map.get(exec_meta, :structured_output?, false)
+    progress_meta = meta
+    initial_context = stream_context_for_thread(thread)
 
-      progress_meta = meta
-      initial_context = stream_context_for_thread(thread)
+    case build_exec_options_from_encoded(thread, state.turn_opts, state.encoded_schema) do
+      {:ok, exec_opts, cleanup, exec_meta} ->
+        structured_output? = Map.get(exec_meta, :structured_output?, false)
 
-      case Codex.Exec.run_stream(input, exec_opts) do
-        {:ok, stream} ->
-          wrapped =
-            Stream.transform(
-              stream,
-              fn ->
-                %{
-                  meta: meta,
-                  progress_meta: progress_meta,
-                  context: initial_context,
-                  started_monotonic: started_monotonic,
-                  failure: :ok,
-                  early_exit?: false,
-                  completed?: false
-                }
-              end,
-              fn event, state ->
-                decoded = maybe_decode_stream_event(event, structured_output?)
-                emit_progress_event(decoded, progress_meta)
+        case Codex.Exec.run_stream(state.input, exec_opts) do
+          {:ok, exec_stream} ->
+            {:ok,
+             %{
+               state
+               | phase: :running,
+                 thread: thread,
+                 meta: meta,
+                 progress_meta: progress_meta,
+                 context: initial_context,
+                 started_monotonic: started_monotonic,
+                 cleanup: cleanup,
+                 structured_output?: structured_output?,
+                 exec_stream: exec_stream,
+                 exec_continuation: nil
+             }}
 
-                state =
-                  state
-                  |> update_stream_context(decoded)
-                  |> update_stream_status(decoded)
+          {:error, reason} ->
+            duration = System.monotonic_time() - started_monotonic
 
-                {[decoded], state}
-              end,
-              fn state ->
-                cleanup.()
-                maybe_emit_stream_stop(state)
-              end
+            Telemetry.emit(
+              [:codex, :thread, :exception],
+              %{duration: duration, system_time: System.system_time()},
+              merge_metadata(meta, initial_context)
+              |> Map.put(:reason, reason)
+              |> Map.put(:result, :error)
             )
 
-          {:ok, wrapped}
+            cleanup.()
 
-        {:error, reason} ->
-          duration = System.monotonic_time() - started_monotonic
+            {:error, reason,
+             %{
+               state
+               | phase: :error,
+                 thread: thread,
+                 meta: meta,
+                 progress_meta: progress_meta,
+                 context: initial_context,
+                 started_monotonic: started_monotonic,
+                 cleanup: nil
+             }}
+        end
 
-          Telemetry.emit(
-            [:codex, :thread, :exception],
-            %{duration: duration, system_time: System.system_time()},
-            merge_metadata(meta, stream_context_for_thread(thread))
-            |> Map.put(:reason, reason)
-            |> Map.put(:result, :error)
-          )
-
-          cleanup.()
-          {:error, reason}
-      end
+      {:error, reason} ->
+        {:error, reason,
+         %{
+           state
+           | phase: :error,
+             thread: thread,
+             meta: meta,
+             progress_meta: progress_meta,
+             context: initial_context,
+             started_monotonic: started_monotonic
+         }}
     end
   end
+
+  defp next_exec_event(%{exec_stream: exec_stream, exec_continuation: nil} = state) do
+    case reduce_one(exec_stream) do
+      {:ok, event, continuation} ->
+        {[event], %{state | exec_continuation: continuation}}
+
+      :done ->
+        {:halt, state}
+    end
+  end
+
+  defp next_exec_event(%{exec_continuation: continuation} = state) do
+    case resume_one(continuation) do
+      {:ok, event, next_continuation} ->
+        {[event], %{state | exec_continuation: next_continuation}}
+
+      :done ->
+        {:halt, state}
+    end
+  end
+
+  defp reduce_one(enumerable) do
+    case Enumerable.reduce(enumerable, {:cont, nil}, &suspend_one/2) do
+      {:suspended, event, continuation} -> {:ok, event, continuation}
+      {:done, nil} -> :done
+      {:halted, nil} -> :done
+    end
+  end
+
+  defp resume_one(continuation) when is_function(continuation, 1) do
+    case continuation.({:cont, nil}) do
+      {:suspended, event, next_continuation} -> {:ok, event, next_continuation}
+      {:done, nil} -> :done
+      {:halted, nil} -> :done
+    end
+  end
+
+  defp suspend_one(event, _acc), do: {:suspend, event}
+
+  @spec raise_stream_error(term()) :: no_return()
+  defp raise_stream_error(%{__exception__: true} = exception), do: raise(exception)
+  defp raise_stream_error(reason), do: raise(RuntimeError, inspect(reason))
 
   defp transport_impl(%__MODULE__{transport: :exec}), do: Codex.Transport.ExecJsonl
   defp transport_impl(%__MODULE__{transport: {:app_server, _pid}}), do: Codex.Transport.AppServer
@@ -320,55 +471,70 @@ defmodule Codex.Thread do
   end
 
   defp default_backoff(attempt) when attempt >= 1 do
-    exponent = attempt - 1
-    delay = trunc(:math.pow(2, exponent))
-    Process.sleep(delay * 100)
+    Backoff.sleep(attempt)
   end
+
+  defp default_backoff(_attempt), do: :ok
 
   defp build_exec_options(thread, turn_opts) do
     turn_opts_map = Map.new(turn_opts)
     schema = Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
 
-    with {:ok, schema_path, cleanup} <- OutputSchemaFile.create(schema) do
-      env = Map.get(turn_opts_map, :env, Map.get(turn_opts_map, "env"))
-      clear_env? = Map.get(turn_opts_map, :clear_env?, Map.get(turn_opts_map, "clear_env?"))
-
-      cancellation_token =
-        Map.get(turn_opts_map, :cancellation_token, Map.get(turn_opts_map, "cancellation_token"))
-
-      timeout_ms = Map.get(turn_opts_map, :timeout_ms, Map.get(turn_opts_map, "timeout_ms"))
-
-      filtered_turn_opts =
-        turn_opts_map
-        |> Map.delete(:output_schema)
-        |> Map.delete("output_schema")
-        |> Map.delete(:env)
-        |> Map.delete("env")
-        |> Map.delete(:clear_env?)
-        |> Map.delete("clear_env?")
-        |> Map.delete(:cancellation_token)
-        |> Map.delete("cancellation_token")
-        |> Map.delete(:timeout_ms)
-        |> Map.delete("timeout_ms")
-
-      exec_opts =
-        %{
-          codex_opts: thread.codex_opts,
-          thread: thread,
-          turn_opts: filtered_turn_opts,
-          continuation_token: thread.continuation_token,
-          attachments: thread.thread_opts.attachments,
-          tool_outputs: thread.pending_tool_outputs,
-          tool_failures: thread.pending_tool_failures
-        }
-        |> maybe_put(:output_schema_path, schema_path)
-        |> maybe_put(:env, env)
-        |> maybe_put(:clear_env?, clear_env?)
-        |> maybe_put(:cancellation_token, cancellation_token)
-        |> maybe_put(:timeout_ms, timeout_ms)
-
-      {:ok, exec_opts, cleanup, %{structured_output?: not is_nil(schema)}}
+    with {:ok, encoded_schema} <- OutputSchemaFile.encode(schema),
+         {:ok, schema_path, cleanup} <- OutputSchemaFile.create_encoded(encoded_schema) do
+      build_exec_options_with_schema(thread, turn_opts_map, schema_path, cleanup)
     end
+  end
+
+  defp build_exec_options_from_encoded(thread, turn_opts_map, encoded_schema) do
+    with {:ok, schema_path, cleanup} <- OutputSchemaFile.create_encoded(encoded_schema) do
+      build_exec_options_with_schema(thread, turn_opts_map, schema_path, cleanup)
+    end
+  end
+
+  defp build_exec_options_with_schema(thread, turn_opts_map, schema_path, cleanup) do
+    env = Map.get(turn_opts_map, :env, Map.get(turn_opts_map, "env"))
+    clear_env? = Map.get(turn_opts_map, :clear_env?, Map.get(turn_opts_map, "clear_env?"))
+
+    cancellation_token =
+      Map.get(turn_opts_map, :cancellation_token, Map.get(turn_opts_map, "cancellation_token"))
+
+    timeout_ms = Map.get(turn_opts_map, :timeout_ms, Map.get(turn_opts_map, "timeout_ms"))
+
+    filtered_turn_opts =
+      turn_opts_map
+      |> Map.delete(:output_schema)
+      |> Map.delete("output_schema")
+      |> Map.delete(:env)
+      |> Map.delete("env")
+      |> Map.delete(:clear_env?)
+      |> Map.delete("clear_env?")
+      |> Map.delete(:cancellation_token)
+      |> Map.delete("cancellation_token")
+      |> Map.delete(:timeout_ms)
+      |> Map.delete("timeout_ms")
+
+    exec_opts =
+      %{
+        codex_opts: thread.codex_opts,
+        thread: thread,
+        turn_opts: filtered_turn_opts,
+        continuation_token: thread.continuation_token,
+        attachments: thread.thread_opts.attachments,
+        tool_outputs: thread.pending_tool_outputs,
+        tool_failures: thread.pending_tool_failures
+      }
+      |> maybe_put(:output_schema_path, schema_path)
+      |> maybe_put(:env, env)
+      |> maybe_put(:clear_env?, clear_env?)
+      |> maybe_put(:cancellation_token, cancellation_token)
+      |> maybe_put(:timeout_ms, timeout_ms)
+
+    exec_meta = %{
+      structured_output?: not is_nil(schema_path)
+    }
+
+    {:ok, exec_opts, cleanup, exec_meta}
   end
 
   defp finalize_turn(thread, %{events: events} = exec_result, opts) do
@@ -637,14 +803,27 @@ defmodule Codex.Thread do
     end
   end
 
+  defp fetch_metadata_value(metadata, key) when is_map(metadata) do
+    case Map.fetch(metadata, key) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(metadata, to_string(key))
+    end
+  end
+
   defp extract_source(metadata) when is_map(metadata) do
-    Map.get(metadata, :source) || Map.get(metadata, "source")
+    case fetch_metadata_value(metadata, :source) do
+      {:ok, value} -> value
+      :error -> nil
+    end
   end
 
   defp extract_source(_metadata), do: nil
 
   defp extract_trace(metadata, key) when is_map(metadata) do
-    Map.get(metadata, key) || Map.get(metadata, to_string(key))
+    case fetch_metadata_value(metadata, key) do
+      {:ok, value} -> value
+      :error -> nil
+    end
   end
 
   defp extract_trace(_metadata, _key), do: nil
@@ -723,8 +902,8 @@ defmodule Codex.Thread do
 
   defp find_turn_completed_failure(events) do
     case Enum.find(events, &failed_turn_completed?/1) do
-      %Events.TurnCompleted{final_response: response, status: status} ->
-        {:error, Error.normalize(turn_completed_error_payload(response, status))}
+      %Events.TurnCompleted{final_response: response, status: status, error: error} ->
+        {:error, Error.normalize(turn_completed_error_payload(response, status, error))}
 
       _ ->
         nil
@@ -797,6 +976,9 @@ defmodule Codex.Thread do
     meta
     |> merge_metadata(updates)
   end
+
+  defp merge_metadata(nil, right) when is_map(right), do: right
+  defp merge_metadata(left, nil) when is_map(left), do: left
 
   defp merge_metadata(left, right) when is_map(left) and is_map(right) do
     Map.merge(left, right, fn _key, original, updated ->
@@ -950,7 +1132,7 @@ defmodule Codex.Thread do
 
   defp update_stream_status(
          state,
-         %Events.TurnCompleted{status: status, final_response: response} = event
+         %Events.TurnCompleted{status: status, final_response: response, error: error} = event
        ) do
     failure =
       cond do
@@ -958,7 +1140,7 @@ defmodule Codex.Thread do
           state.failure
 
         failed_turn_completed?(event) ->
-          {:error, Error.normalize(turn_completed_error_payload(response, status))}
+          {:error, Error.normalize(turn_completed_error_payload(response, status, error || %{}))}
 
         true ->
           state.failure
@@ -990,7 +1172,10 @@ defmodule Codex.Thread do
   defp compaction_token_savings(compaction) do
     case compaction do
       %{} ->
-        Map.get(compaction, :token_savings) || Map.get(compaction, "token_savings")
+        case fetch_metadata_value(compaction, :token_savings) do
+          {:ok, value} -> value
+          :error -> nil
+        end
 
       _ ->
         nil
@@ -1037,12 +1222,50 @@ defmodule Codex.Thread do
     String.trim(input) == "/new"
   end
 
+  defp new_command?(input) when is_list(input) do
+    case input do
+      [block | _rest] -> new_command_block?(block)
+      _ -> false
+    end
+  end
+
+  defp new_command?(_input), do: false
+
+  defp new_command_block?(%{"type" => "text"} = block),
+    do: new_command_text(Map.get(block, "text"))
+
+  defp new_command_block?(%{type: :text} = block),
+    do: new_command_text(Map.get(block, :text))
+
+  defp new_command_block?(%{type: "text"} = block),
+    do: new_command_text(Map.get(block, :text) || Map.get(block, "text"))
+
+  defp new_command_block?(%{"text" => text} = block) do
+    if Map.has_key?(block, "type"), do: false, else: new_command_text(text)
+  end
+
+  defp new_command_block?(%{text: text} = block) do
+    if Map.has_key?(block, :type) or Map.has_key?(block, "type"),
+      do: false,
+      else: new_command_text(text)
+  end
+
+  defp new_command_block?(text) when is_binary(text), do: new_command_text(text)
+  defp new_command_block?(_block), do: false
+
+  defp new_command_text(text) when is_binary(text) do
+    String.trim(text) == "/new"
+  end
+
+  defp new_command_text(_text), do: false
+
   defp reset_conversation(%__MODULE__{} = thread) do
     %__MODULE__{
       thread
       | thread_id: nil,
         metadata: %{},
         labels: %{},
+        resume: nil,
         continuation_token: nil,
         usage: %{},
         pending_tool_outputs: [],
@@ -1050,19 +1273,26 @@ defmodule Codex.Thread do
     }
   end
 
-  defp turn_completed_error_payload(%Items.AgentMessage{text: text}, status),
+  defp turn_completed_error_payload(_response, _status, %{} = error) when map_size(error) > 0,
+    do: error
+
+  defp turn_completed_error_payload(%Items.AgentMessage{text: text}, status, _error)
+       when is_binary(text),
+       do: %{"message" => text, "type" => status}
+
+  defp turn_completed_error_payload(%{"text" => text}, status, _error) when is_binary(text),
     do: %{"message" => text, "type" => status}
 
-  defp turn_completed_error_payload(%{"text" => text}, status) when is_binary(text),
+  defp turn_completed_error_payload(%{text: text}, status, _error) when is_binary(text),
     do: %{"message" => text, "type" => status}
 
-  defp turn_completed_error_payload(%{text: text}, status) when is_binary(text),
-    do: %{"message" => text, "type" => status}
-
-  defp turn_completed_error_payload(response, status) when is_map(response),
+  defp turn_completed_error_payload(response, status, _error) when is_map(response),
     do: Map.put(response, "type", status)
 
-  defp turn_completed_error_payload(response, status),
+  defp turn_completed_error_payload(nil, status, _error),
+    do: %{"message" => "turn failed", "type" => status}
+
+  defp turn_completed_error_payload(response, status, _error),
     do: %{"message" => to_string(response), "type" => status}
 
   defp merge_file_search_metadata(metadata, nil), do: metadata
@@ -1149,7 +1379,12 @@ defmodule Codex.Thread do
        ) do
     case maybe_invoke_tool(result.thread, event, attempt, guardrails, hooks) do
       {:ok, output} ->
-        payload = %{call_id: event.call_id, tool_name: event.tool_name, output: output}
+        payload = %{
+          call_id: event.call_id,
+          tool_name: event.tool_name,
+          arguments: event.arguments,
+          output: output
+        }
 
         updated =
           update_result_tool_payload(result, :tool_outputs, :pending_tool_outputs, payload)
@@ -1160,6 +1395,7 @@ defmodule Codex.Thread do
         payload = %{
           call_id: event.call_id,
           tool_name: event.tool_name,
+          arguments: event.arguments,
           reason: normalize_tool_failure(reason)
         }
 
@@ -1189,43 +1425,41 @@ defmodule Codex.Thread do
     context = build_tool_context(thread, event, attempt)
 
     with :ok <-
-           run_tool_guardrails(:input, guardrails.input, event, event.arguments, context, hooks) do
-      # Prefer approval_hook over approval_policy
-      policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
-      timeout = thread.thread_opts.approval_timeout_ms || 30_000
+           run_tool_guardrails(:input, guardrails.input, event, event.arguments, context, hooks),
+         :ok <- approve_tool(thread, event, context, hooks),
+         {:ok, output} <- invoke_tool(event, context),
+         :ok <- run_tool_guardrails(:output, guardrails.output, event, output, context, hooks) do
+      {:ok, output}
+    end
+  end
 
-      case Approvals.review_tool(policy_or_hook, event, context, timeout: timeout) do
-        :allow ->
-          notify_approval(hooks, event, :allow, nil)
+  defp approve_tool(thread, %Events.ToolCallRequested{} = event, context, hooks) do
+    policy_or_hook = thread.thread_opts.approval_hook || thread.thread_opts.approval_policy
+    timeout = thread.thread_opts.approval_timeout_ms || 30_000
 
-          case Tools.invoke(event.tool_name, event.arguments, context) do
-            {:ok, output} ->
-              normalized_output = ToolOutput.normalize(output)
+    case Approvals.review_tool(policy_or_hook, event, context, timeout: timeout) do
+      :allow ->
+        notify_approval(hooks, event, :allow, nil)
 
-              with :ok <-
-                     run_tool_guardrails(
-                       :output,
-                       guardrails.output,
-                       event,
-                       normalized_output,
-                       context,
-                       hooks
-                     ) do
-                {:ok, normalized_output}
-              end
+      {:deny, reason} ->
+        case notify_approval(hooks, event, :deny, reason) do
+          :ok -> {:error, ApprovalError.new(event.tool_name, reason)}
+          {:error, error} -> {:error, error}
+        end
+    end
+  end
 
-            {:error, reason} ->
-              {:failure,
-               Error.new(:tool_failure, "tool #{event.tool_name} failed", %{
-                 tool: event.tool_name,
-                 reason: reason
-               })}
-          end
+  defp invoke_tool(%Events.ToolCallRequested{} = event, context) do
+    case Tools.invoke(event.tool_name, event.arguments, context) do
+      {:ok, output} ->
+        {:ok, ToolOutput.normalize(output)}
 
-        {:deny, reason} ->
-          notify_approval(hooks, event, :deny, reason)
-          {:error, ApprovalError.new(event.tool_name, reason)}
-      end
+      {:error, reason} ->
+        {:failure,
+         Error.new(:tool_failure, "tool #{event.tool_name} failed", %{
+           tool: event.tool_name,
+           reason: reason
+         })}
     end
   end
 
@@ -1265,20 +1499,62 @@ defmodule Codex.Thread do
     context = Map.put(context, :event, event)
 
     Enum.reduce_while(guardrails, :ok, fn guardrail, :ok ->
-      case ToolGuardrail.run(guardrail, event, payload, context) do
-        :ok ->
-          notify_tool_guardrail(hooks, stage, guardrail, :ok, nil)
-          {:cont, :ok}
-
-        {:reject, message} ->
-          notify_tool_guardrail(hooks, stage, guardrail, :reject, message)
-          {:halt, {:error, guardrail_error(stage, guardrail, :reject, message)}}
-
-        {:tripwire, message} ->
-          notify_tool_guardrail(hooks, stage, guardrail, :tripwire, message)
-          {:halt, {:error, guardrail_error(stage, guardrail, :tripwire, message)}}
+      case run_tool_guardrail(stage, guardrail, event, payload, context, hooks) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp run_tool_guardrail(stage, guardrail, event, payload, context, hooks) do
+    stage
+    |> safe_tool_guardrail_run(guardrail, event, payload, context)
+    |> handle_tool_guardrail_result(stage, guardrail, hooks)
+  end
+
+  defp handle_tool_guardrail_result({:error, reason}, _stage, _guardrail, _hooks),
+    do: {:error, reason}
+
+  defp handle_tool_guardrail_result({:ok, :ok}, stage, guardrail, hooks) do
+    case notify_tool_guardrail(hooks, stage, guardrail, :ok, nil) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp handle_tool_guardrail_result({:ok, {:reject, message}}, stage, guardrail, hooks) do
+    handle_tool_guardrail_failure(stage, guardrail, hooks, :reject, message)
+  end
+
+  defp handle_tool_guardrail_result({:ok, {:tripwire, message}}, stage, guardrail, hooks) do
+    handle_tool_guardrail_failure(stage, guardrail, hooks, :tripwire, message)
+  end
+
+  defp handle_tool_guardrail_failure(stage, guardrail, hooks, type, message) do
+    case notify_tool_guardrail(hooks, stage, guardrail, type, message) do
+      :ok -> {:error, guardrail_error(stage, guardrail, type, message)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp safe_tool_guardrail_run(stage, guardrail, event, payload, context) do
+    {:ok, ToolGuardrail.run(guardrail, event, payload, context)}
+  rescue
+    exception ->
+      {:error,
+       guardrail_exception_error(
+         stage,
+         guardrail,
+         "guardrail handler raised: #{Exception.message(exception)}"
+       )}
+  catch
+    kind, reason ->
+      {:error,
+       guardrail_exception_error(
+         stage,
+         guardrail,
+         "guardrail handler #{kind}: #{inspect(reason)}"
+       )}
   end
 
   defp guardrail_error(stage, guardrail, type, message) do
@@ -1290,9 +1566,30 @@ defmodule Codex.Thread do
     }
   end
 
+  defp guardrail_exception_error(stage, guardrail, message) do
+    guardrail_error(stage, guardrail, :tripwire, message)
+  end
+
   defp notify_tool_guardrail(%{on_guardrail: fun}, stage, guardrail, result, message)
        when is_function(fun, 4) do
     fun.(stage, guardrail, result, message)
+    :ok
+  rescue
+    exception ->
+      {:error,
+       guardrail_exception_error(
+         stage,
+         guardrail,
+         "guardrail hook raised: #{Exception.message(exception)}"
+       )}
+  catch
+    kind, reason ->
+      {:error,
+       guardrail_exception_error(
+         stage,
+         guardrail,
+         "guardrail hook #{kind}: #{inspect(reason)}"
+       )}
   end
 
   defp notify_tool_guardrail(_hooks, _stage, _guardrail, _result, _message), do: :ok
@@ -1300,9 +1597,23 @@ defmodule Codex.Thread do
   defp notify_approval(%{on_approval: fun}, event, decision, reason)
        when is_function(fun, 3) do
     fun.(event, decision, reason)
+    :ok
+  rescue
+    exception ->
+      {:error, approval_hook_error(event, Exception.message(exception))}
+  catch
+    kind, value ->
+      {:error, approval_hook_error(event, "#{kind}: #{inspect(value)}")}
   end
 
   defp notify_approval(_hooks, _event, _decision, _reason), do: :ok
+
+  defp approval_hook_error(event, message) do
+    Error.new(:approval_hook_failed, "approval hook failed: #{message}", %{
+      tool: Map.get(event, :tool_name) || Map.get(event, "tool_name"),
+      call_id: Map.get(event, :call_id) || Map.get(event, "call_id")
+    })
+  end
 
   defp normalize_tool_failure(%Codex.Error{} = error) do
     details =
@@ -1323,28 +1634,63 @@ defmodule Codex.Thread do
   defp normalize_tool_failure(value), do: %{message: inspect(value)}
 
   defp handled_tool_call?(%Result{} = result, %Events.ToolCallRequested{} = event) do
-    call_id = normalize_call_id(event.call_id || Map.get(event, :call_id))
+    key = tool_call_key(event)
 
-    outputs = Map.get(result.raw, :tool_outputs, []) ++ result.thread.pending_tool_outputs
+    if is_nil(key) do
+      false
+    else
+      outputs = Map.get(result.raw, :tool_outputs, []) ++ result.thread.pending_tool_outputs
 
-    failures = Map.get(result.raw, :tool_failures, []) ++ result.thread.pending_tool_failures
+      failures = Map.get(result.raw, :tool_failures, []) ++ result.thread.pending_tool_failures
 
-    Enum.any?(outputs ++ failures, fn payload ->
-      normalize_call_id(payload) == call_id
-    end)
+      Enum.any?(outputs ++ failures, fn payload ->
+        tool_call_key(payload) == key
+      end)
+    end
   end
 
   defp merge_tool_payload(existing, payload) do
-    normalized_id = normalize_call_id(payload)
+    key = tool_call_key(payload)
 
     existing
     |> List.wrap()
-    |> Enum.reject(&(normalize_call_id(&1) == normalized_id && not is_nil(normalized_id)))
+    |> Enum.reject(&(not is_nil(key) and tool_call_key(&1) == key))
     |> Kernel.++([payload])
   end
 
+  defp tool_call_key(%Events.ToolCallRequested{} = event) do
+    call_id = normalize_call_id(event.call_id || Map.get(event, :call_id))
+
+    if call_id do
+      {:call_id, call_id}
+    else
+      fallback_tool_key(event.tool_name, event.arguments)
+    end
+  end
+
+  defp tool_call_key(%{} = payload) do
+    call_id = normalize_call_id(payload)
+
+    if call_id do
+      {:call_id, call_id}
+    else
+      tool_name = Map.get(payload, :tool_name) || Map.get(payload, "tool_name")
+      arguments = Map.get(payload, :arguments) || Map.get(payload, "arguments")
+      fallback_tool_key(tool_name, arguments)
+    end
+  end
+
+  defp tool_call_key(_), do: nil
+
+  defp fallback_tool_key(tool_name, arguments) when is_binary(tool_name) do
+    {:fallback, :erlang.phash2({tool_name, arguments})}
+  end
+
+  defp fallback_tool_key(_tool_name, _arguments), do: nil
+
   defp normalize_call_id(%{call_id: id}), do: normalize_call_id(id)
   defp normalize_call_id(%{"call_id" => id}), do: normalize_call_id(id)
+  defp normalize_call_id(nil), do: nil
   defp normalize_call_id(id) when is_atom(id), do: Atom.to_string(id)
   defp normalize_call_id(id) when is_binary(id), do: id
   defp normalize_call_id(_), do: nil

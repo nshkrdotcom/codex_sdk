@@ -17,6 +17,9 @@ defmodule Examples.StructuredOutput do
       {:ok, result} ->
         case TurnResult.json(result) do
           {:ok, data} ->
+            IO.puts("Structured output:")
+            IO.inspect(data, label: "structured_output")
+
             issues = data["issues"] || []
 
             IO.puts("Overall score: #{data["overall_score"]}/100")

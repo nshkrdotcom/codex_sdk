@@ -24,6 +24,9 @@ defmodule Codex.Approvals.Hook do
   - `{:async, ref}` - defer decision, will call `c:await/2` later
   - `{:async, ref, metadata}` - defer decision with additional metadata
 
+  `{:allow, opts}` supports `:grant_root` to grant file-change approvals for the
+  session when requested by the app-server.
+
   ## Example
 
       defmodule MyApp.SlackApprovalHook do
@@ -60,7 +63,8 @@ defmodule Codex.Approvals.Hook do
   @type opts :: keyword()
   @type allow_opts :: [
           for_session: boolean(),
-          execpolicy_amendment: [String.t()]
+          execpolicy_amendment: [String.t()],
+          grant_root: String.t() | Path.t()
         ]
 
   @type decision :: :allow | {:allow, allow_opts()} | {:deny, String.t() | atom()}

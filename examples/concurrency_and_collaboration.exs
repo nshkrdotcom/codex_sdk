@@ -6,46 +6,52 @@ defmodule Examples.Concurrency do
   @moduledoc false
 
   def parallel_analysis(files) do
+    files = Enum.take(files, 2)
+    timeout_ms = 20_000
+    {:ok, supervisor} = Task.Supervisor.start_link()
+
     tasks =
       Enum.map(files, fn file ->
-        Task.async(fn ->
-          {:ok, thread} = Codex.start_thread()
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
 
-          prompt = """
-          Analyze `#{file}` for potential issues based on common Elixir patterns.
-          Read the file contents if you need them, and keep it to 4 bullets.
-          """
+          prompt =
+            "Give 2 quick risk notes you'd flag for a module like #{file} based only on its path/name. " <>
+              "Do not read the file or run shell commands; if you need to assume, say so."
 
-          case Codex.Thread.run(thread, prompt, %{timeout_ms: 90_000}) do
+          case Codex.Thread.run(thread, prompt, %{timeout_ms: timeout_ms, max_turns: 1}) do
             {:ok, result} -> {file, render(result.final_response)}
             {:error, reason} -> {file, "FAILED: #{inspect(reason)}"}
           end
         end)
       end)
 
-    await_many_with_progress(tasks, timeout_ms: 180_000, tick_ms: 5_000, label: "parallel")
+    await_many_with_progress(tasks, timeout_ms: 60_000, tick_ms: 5_000, label: "parallel")
     |> Enum.each(fn {file, response} ->
       IO.puts("\n#{file}:\n#{response}")
     end)
   end
 
   def map_reduce(items) do
+    timeout_ms = 20_000
+    {:ok, supervisor} = Task.Supervisor.start_link()
+
     responses =
       items
       |> Enum.map(fn item ->
-        Task.async(fn ->
-          {:ok, thread} = Codex.start_thread()
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
           prompt = "Process #{item} and summarise it succinctly (1-2 sentences)."
 
-          case Codex.Thread.run(thread, prompt, %{timeout_ms: 45_000}) do
+          case Codex.Thread.run(thread, prompt, %{timeout_ms: timeout_ms, max_turns: 1}) do
             {:ok, result} -> render(result.final_response)
             {:error, reason} -> "FAILED: #{inspect(reason)}"
           end
         end)
       end)
-      |> await_many_with_progress(timeout_ms: 180_000, tick_ms: 5_000, label: "map-reduce")
+      |> await_many_with_progress(timeout_ms: 60_000, tick_ms: 5_000, label: "map-reduce")
 
-    {:ok, thread} = Codex.start_thread()
+    {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
 
     prompt = """
     Summarise these analyses into a concise checklist:
@@ -53,44 +59,49 @@ defmodule Examples.Concurrency do
     #{Enum.join(responses, "\n\n---\n\n")}
     """
 
-    {:ok, result} = Codex.Thread.run(thread, prompt)
+    {:ok, result} = Codex.Thread.run(thread, prompt, %{timeout_ms: timeout_ms, max_turns: 1})
     IO.puts("\nSummary:\n#{render(result.final_response)}")
   end
 
   def collaboration(file) do
-    {:ok, analyzer} = Codex.start_thread()
+    timeout_ms = 20_000
+    {:ok, analyzer} = Codex.start_thread(%{reasoning_effort: :low})
 
     {:ok, analysis} =
       Codex.Thread.run(
         analyzer,
-        "Analyze #{file} for potential issues. Read the file contents if needed."
+        "Analyze #{file} for potential issues based only on its path/name. " <>
+          "Do not read the file or run shell commands; if you need to assume, say so.",
+        %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, security} = Codex.start_thread()
+    {:ok, security} = Codex.start_thread(%{reasoning_effort: :low})
 
     {:ok, security_review} =
       Codex.Thread.run(
         security,
         """
-        Review #{file} for security issues. Read the file contents if needed.
+        Review #{file} for security issues based only on the prior analysis. Do not read the file.
 
         Analysis: #{render(analysis.final_response)}
-        """
+        """,
+        %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, performance} = Codex.start_thread()
+    {:ok, performance} = Codex.start_thread(%{reasoning_effort: :low})
 
     {:ok, perf_review} =
       Codex.Thread.run(
         performance,
         """
-        Review #{file} for performance issues. Read the file contents if needed.
+        Review #{file} for performance issues based only on the prior analysis. Do not read the file.
 
         Analysis: #{render(analysis.final_response)}
-        """
+        """,
+        %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, synthesizer} = Codex.start_thread()
+    {:ok, synthesizer} = Codex.start_thread(%{reasoning_effort: :low})
 
     prompt = """
     Synthesize these reviews into actionable recommendations:
@@ -102,7 +113,7 @@ defmodule Examples.Concurrency do
     #{render(perf_review.final_response)}
     """
 
-    {:ok, result} = Codex.Thread.run(synthesizer, prompt)
+    {:ok, result} = Codex.Thread.run(synthesizer, prompt, %{timeout_ms: timeout_ms, max_turns: 1})
 
     IO.puts("\nFinal Recommendations:")
     IO.puts(render(result.final_response))
@@ -117,38 +128,57 @@ defmodule Examples.Concurrency do
     label = Keyword.get(opts, :label, "tasks")
 
     start = System.monotonic_time(:millisecond)
-    do_await_many_with_progress(tasks, start, timeout_ms, tick_ms, label)
+    pending = MapSet.new(tasks)
+    do_await_many_with_progress(tasks, pending, %{}, start, timeout_ms, tick_ms, label)
   end
 
-  defp do_await_many_with_progress(tasks, start_ms, timeout_ms, tick_ms, label) do
+  defp do_await_many_with_progress(tasks, pending, results, start_ms, timeout_ms, tick_ms, label) do
     remaining_ms = timeout_ms - (System.monotonic_time(:millisecond) - start_ms)
 
     if remaining_ms <= 0 do
-      Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
-      raise "Timed out waiting for #{label} tasks (#{timeout_ms}ms)"
-    end
+      Enum.each(pending, &Task.shutdown(&1, :brutal_kill))
 
-    wait_ms = min(tick_ms, remaining_ms)
+      results =
+        Enum.reduce(pending, results, fn task, acc ->
+          Map.put(acc, task, {:exit, :timeout})
+        end)
 
-    yielded =
-      tasks
-      |> Task.yield_many(wait_ms)
-      |> Enum.map(fn {task, res} ->
-        {task, res || Task.yield(task, 0)}
-      end)
-
-    if Enum.all?(yielded, fn {_task, res} -> res != nil end) do
-      Enum.map(yielded, fn
-        {_task, {:ok, value}} -> value
-        {_task, {:exit, reason}} -> raise "Task failed: #{inspect(reason)}"
-      end)
+      done = length(tasks) - MapSet.size(pending)
+      IO.puts("… #{label} timed out (#{timeout_ms}ms) [#{done}/#{length(tasks)}]")
+      collect_results(tasks, results)
     else
-      elapsed_s = div(System.monotonic_time(:millisecond) - start_ms, 1000)
-      done = Enum.count(yielded, fn {_task, res} -> res != nil end)
-      total = length(yielded)
-      IO.puts("… #{label} still running (#{elapsed_s}s) [#{done}/#{total}]")
-      do_await_many_with_progress(tasks, start_ms, timeout_ms, tick_ms, label)
+      wait_ms = min(tick_ms, remaining_ms)
+
+      {pending, results} =
+        pending
+        |> MapSet.to_list()
+        |> Task.yield_many(wait_ms)
+        |> Enum.reduce({pending, results}, fn {task, res}, {pending, results} ->
+          case res do
+            nil -> {pending, results}
+            _ -> {MapSet.delete(pending, task), Map.put(results, task, res)}
+          end
+        end)
+
+      if MapSet.size(pending) == 0 do
+        collect_results(tasks, results)
+      else
+        elapsed_s = div(System.monotonic_time(:millisecond) - start_ms, 1000)
+        done = length(tasks) - MapSet.size(pending)
+        IO.puts("… #{label} still running (#{elapsed_s}s) [#{done}/#{length(tasks)}]")
+        do_await_many_with_progress(tasks, pending, results, start_ms, timeout_ms, tick_ms, label)
+      end
     end
+  end
+
+  defp collect_results(tasks, results) do
+    Enum.map(tasks, fn task ->
+      case Map.get(results, task) do
+        {:ok, value} -> value
+        {:exit, reason} -> "FAILED: #{inspect(reason)}"
+        nil -> "FAILED: :timeout"
+      end
+    end)
   end
 end
 
@@ -182,5 +212,5 @@ case System.argv() do
     """)
 
   _ ->
-    Examples.Concurrency.parallel_analysis(["lib/codex/thread.ex"])
+    Examples.Concurrency.parallel_analysis(["lib/codex/thread.ex", "lib/codex/exec.ex"])
 end

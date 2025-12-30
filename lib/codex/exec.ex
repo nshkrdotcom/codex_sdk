@@ -59,6 +59,21 @@ defmodule Codex.Exec do
   end
 
   @doc """
+  Runs `codex exec review` and accumulates all emitted events.
+  """
+  @spec review(term(), exec_opts()) :: {:ok, map()} | {:error, term()}
+  def review(target, opts) do
+    with {:ok, exec_opts} <- ExecOptions.new(opts),
+         :ok <- ensure_erlexec_started(),
+         {:ok, command_args} <- review_args(target),
+         {:ok, command} <- build_command(exec_opts, command_args),
+         {:ok, state} <- start_process(command, exec_opts),
+         :ok <- send_prompt(state, "") do
+      collect_events(state)
+    end
+  end
+
+  @doc """
   Returns a lazy stream of events. The underlying process starts on first
   enumeration and stops automatically when the stream halts.
   """
@@ -66,10 +81,23 @@ defmodule Codex.Exec do
   def run_stream(input, opts) when is_binary(input) do
     with {:ok, exec_opts} <- ExecOptions.new(opts),
          :ok <- ensure_erlexec_started(),
-         {:ok, command} <- build_command(exec_opts),
-         {:ok, state} <- start_process(command, exec_opts),
-         :ok <- send_prompt(state, input) do
-      {:ok, build_stream(state)}
+         {:ok, command} <- build_command(exec_opts) do
+      starter = fn -> start_process(command, exec_opts) end
+      {:ok, build_stream(starter, input)}
+    end
+  end
+
+  @doc """
+  Returns a lazy stream of events for `codex exec review`.
+  """
+  @spec review_stream(term(), exec_opts()) :: {:ok, Enumerable.t()} | {:error, term()}
+  def review_stream(target, opts) do
+    with {:ok, exec_opts} <- ExecOptions.new(opts),
+         :ok <- ensure_erlexec_started(),
+         {:ok, command_args} <- review_args(target),
+         {:ok, command} <- build_command(exec_opts, command_args) do
+      starter = fn -> start_process(command, exec_opts) end
+      {:ok, build_stream(starter, "")}
     end
   end
 
@@ -157,13 +185,31 @@ defmodule Codex.Exec do
     end
   end
 
-  defp build_stream(state) do
+  defp build_stream(starter, input) when is_function(starter, 0) and is_binary(input) do
     Stream.resource(
-      fn -> state end,
-      &next_stream_chunk/1,
+      fn ->
+        case starter.() do
+          {:ok, state} ->
+            :ok = send_prompt(state, input)
+            state
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end,
+      &next_stream_chunk_safe/1,
       &safe_stop/1
     )
   end
+
+  defp next_stream_chunk_safe({:error, reason}) do
+    raise TransportError.new(-1,
+            message: "failed to start codex exec stream",
+            stderr: inspect(reason)
+          )
+  end
+
+  defp next_stream_chunk_safe(state), do: next_stream_chunk(state)
 
   defp next_stream_chunk(%{done?: true} = state), do: {:halt, state}
 
@@ -199,6 +245,7 @@ defmodule Codex.Exec do
     end
   end
 
+  defp safe_stop({:error, _reason}), do: :ok
   defp safe_stop(%{pid: nil}), do: :ok
 
   defp safe_stop(%{pid: pid}) do
@@ -214,17 +261,26 @@ defmodule Codex.Exec do
   defp resolve_timeout_ms(%ExecOptions{timeout_ms: nil}), do: @default_timeout_ms
   defp resolve_timeout_ms(%ExecOptions{timeout_ms: timeout_ms}), do: timeout_ms
 
-  defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
+  defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts, command_args \\ nil) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
-      args = build_args(exec_opts)
+      args = build_args(exec_opts, command_args)
       command = Enum.map([binary_path | args], &to_charlist/1)
       {:ok, command}
     end
   end
 
-  defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts) do
+  defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts, command_args) do
+    command_args = command_args || command_args_for_run(exec_opts)
+
     ["exec", "--experimental-json"] ++
+      profile_args(exec_opts) ++
+      oss_args(exec_opts) ++
+      local_provider_args(exec_opts) ++
+      full_auto_args(exec_opts) ++
+      dangerously_bypass_args(exec_opts) ++
       model_args(codex_opts) ++
+      color_args(exec_opts) ++
+      output_last_message_args(exec_opts) ++
       reasoning_effort_args(codex_opts) ++
       sandbox_args(exec_opts.thread) ++
       working_directory_args(exec_opts.thread) ++
@@ -233,11 +289,51 @@ defmodule Codex.Exec do
       network_access_args(exec_opts.thread) ++
       ask_for_approval_args(exec_opts.thread) ++
       web_search_args(exec_opts.thread) ++
-      resume_args(exec_opts.thread) ++
+      command_args ++
       continuation_args(exec_opts.continuation_token) ++
       cancellation_args(exec_opts.cancellation_token) ++
       attachment_args(exec_opts.attachments) ++
-      schema_args(exec_opts.output_schema_path)
+      schema_args(exec_opts.output_schema_path) ++
+      config_override_args(exec_opts)
+  end
+
+  defp command_args_for_run(%ExecOptions{} = exec_opts) do
+    resume_args(exec_opts.thread)
+  end
+
+  defp profile_args(exec_opts) do
+    case exec_opt(exec_opts, :profile) do
+      value when is_binary(value) and value != "" -> ["--profile", value]
+      _ -> []
+    end
+  end
+
+  defp oss_args(exec_opts) do
+    case exec_opt(exec_opts, :oss) do
+      true -> ["--oss"]
+      _ -> []
+    end
+  end
+
+  defp local_provider_args(exec_opts) do
+    case exec_opt(exec_opts, :local_provider) do
+      value when is_binary(value) and value != "" -> ["--local-provider", value]
+      _ -> []
+    end
+  end
+
+  defp full_auto_args(exec_opts) do
+    case exec_opt(exec_opts, :full_auto) do
+      true -> ["--full-auto"]
+      _ -> []
+    end
+  end
+
+  defp dangerously_bypass_args(exec_opts) do
+    case exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox) do
+      true -> ["--dangerously-bypass-approvals-and-sandbox"]
+      _ -> []
+    end
   end
 
   defp model_args(%Options{model: model}) when is_binary(model) and model != "" do
@@ -245,6 +341,23 @@ defmodule Codex.Exec do
   end
 
   defp model_args(_), do: []
+
+  defp color_args(exec_opts) do
+    case exec_opt(exec_opts, :color) do
+      :auto -> ["--color", "auto"]
+      :always -> ["--color", "always"]
+      :never -> ["--color", "never"]
+      value when is_binary(value) and value != "" -> ["--color", value]
+      _ -> []
+    end
+  end
+
+  defp output_last_message_args(exec_opts) do
+    case exec_opt(exec_opts, :output_last_message) do
+      value when is_binary(value) and value != "" -> ["--output-last-message", value]
+      _ -> []
+    end
+  end
 
   defp reasoning_effort_args(%Options{reasoning_effort: effort}) when not is_nil(effort) do
     stringified = Models.reasoning_effort_to_string(effort)
@@ -352,6 +465,7 @@ defmodule Codex.Exec do
   defp web_search_args(_), do: []
 
   defp resume_args(%{thread_id: thread_id}) when is_binary(thread_id), do: ["resume", thread_id]
+  defp resume_args(%{resume: :last}), do: ["resume", "--last"]
   defp resume_args(_), do: []
 
   defp continuation_args(token) when is_binary(token) and token != "",
@@ -378,6 +492,83 @@ defmodule Codex.Exec do
   end
 
   defp attachment_cli_args(_), do: []
+
+  defp config_override_args(exec_opts) do
+    thread_overrides = thread_config_overrides(exec_opts)
+    turn_overrides = turn_config_overrides(exec_opts)
+
+    (thread_overrides ++ turn_overrides)
+    |> Enum.flat_map(&config_override_arg/1)
+  end
+
+  defp config_override_arg({key, value}) do
+    ["--config", "#{key}=#{encode_override_value(value)}"]
+  end
+
+  defp config_override_arg(value) when is_binary(value) and value != "" do
+    ["--config", value]
+  end
+
+  defp config_override_arg(_), do: []
+
+  defp thread_config_overrides(%ExecOptions{
+         thread: %{thread_opts: %Codex.Thread.Options{} = opts}
+       }) do
+    List.wrap(Map.get(opts, :config_overrides, []))
+  end
+
+  defp thread_config_overrides(_), do: []
+
+  defp turn_config_overrides(%ExecOptions{turn_opts: %{} = opts}) do
+    opts
+    |> fetch_turn_opt(:config_overrides)
+    |> normalize_config_overrides()
+  end
+
+  defp normalize_config_overrides(nil), do: []
+
+  defp normalize_config_overrides(%{} = overrides) do
+    Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp normalize_config_overrides(overrides) when is_list(overrides) do
+    cond do
+      Keyword.keyword?(overrides) ->
+        Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+
+      Enum.all?(overrides, &is_binary/1) ->
+        overrides
+
+      Enum.all?(overrides, &match?({_, _}, &1)) ->
+        Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+
+      true ->
+        []
+    end
+  end
+
+  defp normalize_config_overrides(_), do: []
+
+  defp encode_override_value(value) when is_binary(value), do: inspect(value)
+  defp encode_override_value(value) when is_boolean(value), do: to_string(value)
+
+  defp encode_override_value(value) when is_integer(value) or is_float(value),
+    do: to_string(value)
+
+  defp encode_override_value(value) when is_list(value) do
+    "[" <> Enum.map_join(value, ",", &encode_override_value/1) <> "]"
+  end
+
+  defp encode_override_value(%{} = value) do
+    "{" <>
+      Enum.map_join(value, ",", fn {key, entry} ->
+        "#{encode_override_key(key)}=#{encode_override_value(entry)}"
+      end) <> "}"
+  end
+
+  defp encode_override_value(value), do: inspect(value)
+
+  defp encode_override_key(key), do: inspect(to_string(key))
 
   defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env} = exec_opts) do
     base_env =
@@ -488,4 +679,74 @@ defmodule Codex.Exec do
   end
 
   defp normalize_exit_status(raw_status), do: raw_status
+
+  defp review_args(:uncommitted_changes), do: {:ok, ["review", "--uncommitted"]}
+  defp review_args({:uncommitted_changes}), do: {:ok, ["review", "--uncommitted"]}
+
+  defp review_args({:base_branch, branch}) when is_binary(branch) and branch != "" do
+    {:ok, ["review", "--base", branch]}
+  end
+
+  defp review_args({:commit, sha}) when is_binary(sha) and sha != "" do
+    {:ok, ["review", "--commit", sha]}
+  end
+
+  defp review_args({:commit, sha, title}) when is_binary(sha) and sha != "" do
+    args =
+      ["review", "--commit", sha]
+      |> maybe_append_title(title)
+
+    {:ok, args}
+  end
+
+  defp review_args({:custom, instructions}) when is_binary(instructions) do
+    instructions = String.trim(instructions)
+
+    if instructions == "" do
+      {:error, {:invalid_review_target, instructions}}
+    else
+      {:ok, ["review", instructions]}
+    end
+  end
+
+  defp review_args(instructions) when is_binary(instructions) do
+    review_args({:custom, instructions})
+  end
+
+  defp review_args(other), do: {:error, {:invalid_review_target, other}}
+
+  defp maybe_append_title(args, title) when is_binary(title) and title != "" do
+    args ++ ["--title", title]
+  end
+
+  defp maybe_append_title(args, _title), do: args
+
+  defp exec_opt(%ExecOptions{} = exec_opts, key) when is_atom(key) do
+    case fetch_turn_opt(exec_opts.turn_opts, key) do
+      nil -> fetch_thread_opt(exec_opts.thread, key)
+      value -> value
+    end
+  end
+
+  defp fetch_turn_opt(%{} = opts, key) when is_atom(key) do
+    case Map.fetch(opts, key) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        case Map.fetch(opts, Atom.to_string(key)) do
+          {:ok, value} -> value
+          :error -> nil
+        end
+    end
+  end
+
+  defp fetch_thread_opt(%{thread_opts: %Codex.Thread.Options{} = opts}, key) when is_atom(key) do
+    case Map.fetch(opts, key) do
+      {:ok, value} -> value
+      :error -> nil
+    end
+  end
+
+  defp fetch_thread_opt(_thread, _key), do: nil
 end

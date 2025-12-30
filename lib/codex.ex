@@ -26,11 +26,22 @@ defmodule Codex do
 
   @doc """
   Resumes an existing thread with the given `thread_id`.
+
+  Pass `:last` to resume the most recent recorded session (equivalent to
+  `codex exec resume --last`).
   """
-  @spec resume_thread(String.t(), start_opts(), thread_opts()) ::
+  @spec resume_thread(String.t() | :last, start_opts(), thread_opts()) ::
           {:ok, Thread.t()} | {:error, term()}
   def resume_thread(thread_id, opts \\ %{}, thread_opts \\ %{})
-      when is_binary(thread_id) do
+
+  def resume_thread(:last, opts, thread_opts) do
+    with {:ok, codex_opts} <- normalize_options(opts),
+         {:ok, thread_opts} <- normalize_thread_options(thread_opts) do
+      {:ok, Thread.build(codex_opts, thread_opts, resume: :last)}
+    end
+  end
+
+  def resume_thread(thread_id, opts, thread_opts) when is_binary(thread_id) do
     with {:ok, codex_opts} <- normalize_options(opts),
          {:ok, thread_opts} <- normalize_thread_options(thread_opts) do
       {:ok, Thread.build(codex_opts, thread_opts, thread_id: thread_id)}

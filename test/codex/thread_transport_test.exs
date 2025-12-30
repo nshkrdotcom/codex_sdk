@@ -33,7 +33,7 @@ defmodule Codex.ThreadTransportTest do
       thread = Thread.build(codex_opts, thread_opts)
 
       assert thread.transport == {:app_server, self()}
-      assert is_reference(thread.transport_ref)
+      assert thread.transport_ref == nil
     end
   end
 end

@@ -13,18 +13,35 @@ defmodule Codex.OutputSchemaFile do
   no file is created and the return path is `nil`.
   """
   @spec create(term()) :: {:ok, String.t() | nil, (-> :ok)} | {:error, term()}
-  def create(nil), do: {:ok, nil, fn -> :ok end}
-
   def create(schema) do
-    with {:ok, encoded} <- Jason.encode(schema) do
-      path =
-        System.tmp_dir!()
-        |> Path.join(@schema_prefix <> "_" <> unique_id() <> ".json")
-
-      File.write!(path, encoded)
-
-      {:ok, path, fn -> cleanup_file(path) end}
+    case encode(schema) do
+      {:ok, encoded} -> create_encoded(encoded)
+      {:error, _} = error -> error
     end
+  end
+
+  @doc false
+  @spec encode(term()) :: {:ok, String.t() | nil} | {:error, term()}
+  def encode(nil), do: {:ok, nil}
+
+  def encode(schema) do
+    Jason.encode(schema)
+  rescue
+    error -> {:error, error}
+  end
+
+  @doc false
+  @spec create_encoded(String.t() | nil) :: {:ok, String.t() | nil, (-> :ok)} | {:error, term()}
+  def create_encoded(nil), do: {:ok, nil, fn -> :ok end}
+
+  def create_encoded(encoded) when is_binary(encoded) do
+    path =
+      System.tmp_dir!()
+      |> Path.join(@schema_prefix <> "_" <> unique_id() <> ".json")
+
+    File.write!(path, encoded)
+
+    {:ok, path, fn -> cleanup_file(path) end}
   rescue
     error -> {:error, error}
   end

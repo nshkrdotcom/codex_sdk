@@ -16,9 +16,9 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
-- **Multi-Transport Support**: Default exec JSONL (`codex exec --experimental-json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`).
-- **Upstream Compatibility**: Automatically handles select app-server protocol differences across Codex CLI versions (e.g. MCP list method rename fallbacks).
-- **Streaming & Structured Output**: Real-time events plus first-class JSON schema handling for deterministic parsing.
+- **Multi-Transport Support**: Default exec JSONL (`codex exec --experimental-json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
+- **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color, config overrides, review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
+- **Streaming & Structured Output**: Real-time events plus reasoning summary/content preservation and typed app-server deltas.
 - **File & Attachment Pipeline**: Secure temp file registry, change events, and fixture harvesting helpers.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
 - **Tooling & MCP Integration**: Built-in registry for Codex tool manifests and MCP client helpers.
@@ -33,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.3"}
+    {:codex_sdk, "~> 0.4.4"}
   ]
 end
 ```
@@ -120,11 +120,25 @@ The SDK defaults to exec JSONL for backwards compatibility. To use the stateful 
 {:ok, %{"data" => skills}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
 ```
 
+Multi-modal input is supported on app-server transport:
+
+```elixir
+input = [
+  %{type: :text, text: "Explain this screenshot"},
+  %{type: :local_image, path: "/tmp/screenshot.png"}
+]
+
+{:ok, result} = Codex.Thread.run(thread, input)
+```
+
+Note: exec JSONL transport still accepts text input only; list inputs return `{:error, {:unsupported_input, :exec}}`.
+
 App-server-only APIs include:
 
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`
 - `Codex.AppServer.turn_interrupt/3`
+- `Codex.AppServer.command_write_stdin/4` (interactive command stdin)
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
@@ -258,6 +272,13 @@ thread_id = "thread_abc123"
 {:ok, result} = Codex.Thread.run(thread, "Continue from where we left off")
 ```
 
+Resume the most recent session (equivalent to `codex exec resume --last`):
+
+```elixir
+{:ok, thread} = Codex.resume_thread(:last)
+{:ok, result} = Codex.Thread.run(thread, "Continue from where we left off")
+```
+
 ### Configuration Options
 
 ```elixir
@@ -354,6 +375,9 @@ decisions emit telemetry so you can audit approvals externally.
 Codex respects upstream safe-command markers: tool events flagged with `requires_approval: false`
 bypass approval gating automatically, keeping low-risk workspace actions fast while still blocking
 requests that require review.
+
+For app-server file-change approvals, hooks can return `{:allow, grant_root: "/path"}` to accept
+the proposed root for the current session.
 
 Tool-call events can also arrive pre-approved via `approved_by_policy` (or `approved`) from the
 CLI; the SDK mirrors that bypass and skips hooks while still emitting telemetry. Sandbox warnings
@@ -558,7 +582,14 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.4.3 (Upstream sync: error details + config layering)
+**Current Version**: 0.4.4 (Upstream parity: app-server inputs + exec flags)
+
+### v0.4.4 Highlights
+
+- App-server `UserInput` lists (text/image/localImage), full thread/turn params, and sandbox policies
+- Typed app-server notifications for terminal interaction, reasoning summaries, and output deltas
+- Exec parity: profile/OSS/full-auto/color/output-last-message flags, generic `-c` overrides, review wrapper, resume --last
+- Reasoning items now preserve `summary`/`content` structure instead of flattened text
 
 ### v0.4.3 Highlights
 

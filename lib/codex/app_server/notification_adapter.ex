@@ -69,7 +69,8 @@ defmodule Codex.AppServer.NotificationAdapter do
      %Events.TurnCompleted{
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: Map.get(turn, "id"),
-       status: normalize_turn_status(Map.get(turn, "status"))
+       status: normalize_turn_status(Map.get(turn, "status")),
+       error: Map.get(turn, "error")
      }}
   end
 
@@ -132,6 +133,16 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("item/reasoning/summaryPartAdded", %{} = params) do
+    {:ok,
+     %Events.ReasoningSummaryPartAdded{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       item_id: fetch(params, "itemId", "item_id") || "",
+       summary_index: Map.get(params, "summaryIndex")
+     }}
+  end
+
   def to_event("item/commandExecution/outputDelta", %{} = params) do
     {:ok,
      %Events.CommandOutputDelta{
@@ -139,6 +150,78 @@ defmodule Codex.AppServer.NotificationAdapter do
        turn_id: fetch(params, "turnId", "turn_id"),
        item_id: fetch(params, "itemId", "item_id") || "",
        delta: Map.get(params, "delta") || ""
+     }}
+  end
+
+  def to_event("item/commandExecution/terminalInteraction", %{} = params) do
+    {:ok,
+     %Events.TerminalInteraction{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       item_id: fetch(params, "itemId", "item_id") || "",
+       process_id: Map.get(params, "processId"),
+       stdin: Map.get(params, "stdin") || ""
+     }}
+  end
+
+  def to_event("item/fileChange/outputDelta", %{} = params) do
+    {:ok,
+     %Events.FileChangeOutputDelta{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       item_id: fetch(params, "itemId", "item_id") || "",
+       delta: Map.get(params, "delta") || ""
+     }}
+  end
+
+  def to_event("item/mcpToolCall/progress", %{} = params) do
+    {:ok,
+     %Events.McpToolCallProgress{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       item_id: fetch(params, "itemId", "item_id") || "",
+       message: Map.get(params, "message") || ""
+     }}
+  end
+
+  def to_event("mcpServer/oauthLogin/completed", %{} = params) do
+    {:ok,
+     %Events.McpServerOauthLoginCompleted{
+       name: Map.get(params, "name") || "",
+       success: Map.get(params, "success") || false,
+       error: Map.get(params, "error")
+     }}
+  end
+
+  def to_event("account/updated", %{} = params) do
+    {:ok,
+     %Events.AccountUpdated{
+       auth_mode: Map.get(params, "authMode") || Map.get(params, "auth_mode")
+     }}
+  end
+
+  def to_event("account/login/completed", %{} = params) do
+    {:ok,
+     %Events.AccountLoginCompleted{
+       login_id: Map.get(params, "loginId") || Map.get(params, "login_id"),
+       success: Map.get(params, "success") || false,
+       error: Map.get(params, "error")
+     }}
+  end
+
+  def to_event("account/rateLimits/updated", %{} = params) do
+    {:ok,
+     %Events.AccountRateLimitsUpdated{
+       rate_limits: Map.get(params, "rateLimits") || Map.get(params, "rate_limits") || %{}
+     }}
+  end
+
+  def to_event("windows/worldWritableWarning", %{} = params) do
+    {:ok,
+     %Events.WindowsWorldWritableWarning{
+       sample_paths: Map.get(params, "samplePaths") || [],
+       extra_count: Map.get(params, "extraCount") || 0,
+       failed_scan: Map.get(params, "failedScan") || false
      }}
   end
 
