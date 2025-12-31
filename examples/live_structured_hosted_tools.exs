@@ -56,7 +56,7 @@ defmodule CodexExamples.LiveStructuredHostedTools do
       |> Tools.register(Keyword.merge([name: "computer"], computer_options()))
 
     {:ok, _} =
-      Codex.Tools.FileSearchTool
+      Codex.Tools.VectorStoreSearchTool
       |> Tools.register(Keyword.merge([name: "file_search"], file_search_options()))
 
     {:ok, _} =
@@ -155,10 +155,13 @@ defmodule CodexExamples.LiveStructuredHostedTools do
 
   defp shell_options do
     [
-      executor: fn %{"command" => command}, _context ->
+      # Executor receives (args_map, context, metadata) or (args_map, context)
+      executor: fn %{"command" => command}, _context, _metadata ->
         {:ok, %{"command" => command, "stdout" => "simulated shell: #{command}"}}
       end,
-      approval: fn %{"command" => command}, _context, _metadata ->
+      # Approval receives (command_string, context, metadata) or (command_string, context)
+      # Note: first arg is the command STRING, not the args map
+      approval: fn command, _context, _metadata ->
         if String.contains?(command, "rm"), do: {:deny, "blocked dangerous command"}, else: :allow
       end,
       max_output_bytes: 400

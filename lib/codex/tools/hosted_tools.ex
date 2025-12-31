@@ -95,85 +95,6 @@ defmodule Codex.Tools.Hosted do
   end
 end
 
-defmodule Codex.Tools.ShellTool do
-  @moduledoc """
-  Hosted shell executor tool with optional approval and output truncation hooks.
-  """
-
-  @behaviour Codex.Tool
-
-  alias Codex.Tools.Hosted
-
-  @impl true
-  def metadata do
-    %{
-      name: "shell",
-      description: "Execute shell commands",
-      schema: %{
-        "type" => "object",
-        "properties" => %{"command" => %{"type" => "string"}},
-        "required" => ["command"],
-        "additionalProperties" => false
-      }
-    }
-  end
-
-  @impl true
-  def invoke(args, context) do
-    metadata = Map.get(context, :metadata, %{})
-    timeout = Hosted.metadata_value(metadata, :timeout_ms)
-    max_bytes = Hosted.metadata_value(metadata, :max_output_bytes)
-    merged_context = Map.put(context, :timeout_ms, timeout)
-
-    with :ok <- Hosted.check_approval(metadata, args, merged_context),
-         {:ok, executor} <- Hosted.require_callback(metadata, :executor) do
-      case Hosted.safe_call(executor, args, merged_context, metadata) do
-        {:ok, output} -> {:ok, Hosted.maybe_truncate_output(output, max_bytes)}
-        {:error, reason} -> {:error, reason}
-        other -> {:ok, Hosted.maybe_truncate_output(other, max_bytes)}
-      end
-    end
-  end
-end
-
-defmodule Codex.Tools.ApplyPatchTool do
-  @moduledoc """
-  Hosted apply_patch editor hook.
-  """
-
-  @behaviour Codex.Tool
-
-  alias Codex.Tools.Hosted
-
-  @impl true
-  def metadata do
-    %{
-      name: "apply_patch",
-      description: "Apply a textual patch",
-      schema: %{
-        "type" => "object",
-        "properties" => %{"patch" => %{"type" => "string"}},
-        "required" => ["patch"],
-        "additionalProperties" => false
-      }
-    }
-  end
-
-  @impl true
-  def invoke(args, context) do
-    metadata = Map.get(context, :metadata, %{})
-
-    with :ok <- Hosted.check_approval(metadata, args, context),
-         {:ok, editor} <- Hosted.require_callback(metadata, :editor) do
-      case Hosted.safe_call(editor, args, context, metadata) do
-        {:ok, result} -> {:ok, result}
-        {:error, reason} -> {:error, reason}
-        other -> {:ok, other}
-      end
-    end
-  end
-end
-
 defmodule Codex.Tools.ComputerTool do
   @moduledoc """
   Hosted computer action tool with safety callback.
@@ -227,9 +148,33 @@ defmodule Codex.Tools.ComputerTool do
   defp run_safety_check(_other, _args, _context, _metadata), do: :ok
 end
 
-defmodule Codex.Tools.FileSearchTool do
+defmodule Codex.Tools.VectorStoreSearchTool do
   @moduledoc """
-  Hosted file search tool.
+  Hosted vector store search tool for searching indexed documents.
+
+  This tool integrates with OpenAI's vector store file search capabilities,
+  allowing searches across indexed documents with optional filtering and ranking.
+
+  ## Options
+
+  Options can be passed during registration or via context metadata:
+
+    * `:searcher` - Required callback function to execute the search
+    * `:vector_store_ids` - List of vector store IDs to search
+    * `:filters` - Search filters to apply
+    * `:ranking_options` - Options for result ranking
+    * `:include_search_results` - Whether to include full search results
+
+  ## Usage
+
+      searcher = fn args, _ctx, _meta ->
+        {:ok, %{results: [%{text: args["query"]}]}}
+      end
+
+      {:ok, _} = Codex.Tools.register(VectorStoreSearchTool,
+        searcher: searcher,
+        vector_store_ids: ["vs_123"]
+      )
   """
 
   @behaviour Codex.Tool
@@ -239,8 +184,8 @@ defmodule Codex.Tools.FileSearchTool do
   @impl true
   def metadata do
     %{
-      name: "file_search",
-      description: "Search indexed documents",
+      name: "vector_store_search",
+      description: "Search indexed documents in vector stores",
       schema: %{
         "type" => "object",
         "properties" => %{
@@ -317,42 +262,8 @@ defmodule Codex.Tools.FileSearchTool do
   defp maybe_put_arg(map, key, value), do: Map.put(map, key, value)
 end
 
-defmodule Codex.Tools.WebSearchTool do
-  @moduledoc """
-  Hosted web search tool.
-  """
-
-  @behaviour Codex.Tool
-
-  alias Codex.Tools.Hosted
-
-  @impl true
-  def metadata do
-    %{
-      name: "web_search",
-      description: "Search the web",
-      schema: %{
-        "type" => "object",
-        "properties" => %{"query" => %{"type" => "string"}},
-        "required" => ["query"],
-        "additionalProperties" => false
-      }
-    }
-  end
-
-  @impl true
-  def invoke(args, context) do
-    metadata = Map.get(context, :metadata, %{})
-
-    with {:ok, searcher} <- Hosted.require_callback(metadata, :searcher) do
-      case Hosted.safe_call(searcher, args, context, metadata) do
-        {:ok, result} -> {:ok, result}
-        {:error, reason} -> {:error, reason}
-        other -> {:ok, other}
-      end
-    end
-  end
-end
+# WebSearchTool is now defined in lib/codex/tools/web_search_tool.ex
+# with support for Tavily, Serper, and mock providers
 
 defmodule Codex.Tools.ImageGenerationTool do
   @moduledoc """

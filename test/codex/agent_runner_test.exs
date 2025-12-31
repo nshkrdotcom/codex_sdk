@@ -334,7 +334,9 @@ defmodule Codex.AgentRunnerTest do
         {:ok, %{results: [%{text: args["query"]}]}}
       end
 
-      {:ok, _} = Tools.register(Codex.Tools.FileSearchTool, searcher: searcher)
+      # Register under the legacy name "file_search" for fixture compatibility
+      {:ok, _} =
+        Tools.register(Codex.Tools.VectorStoreSearchTool, name: "file_search", searcher: searcher)
 
       {script_path, state_file} =
         FixtureScripts.sequential_fixtures([

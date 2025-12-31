@@ -47,7 +47,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
       )
 
     {:ok, _} =
-      Codex.Tools.FileSearchTool
+      Codex.Tools.VectorStoreSearchTool
       |> Tools.register(Keyword.merge([name: "file_search"], file_search_options()))
 
     {:ok, file_search} =

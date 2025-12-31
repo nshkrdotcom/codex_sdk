@@ -275,13 +275,18 @@ defmodule Codex.Events do
   defmodule AccountRateLimitsUpdated do
     @moduledoc """
     Event emitted when account rate limits are updated.
+
+    Contains current rate limit information from the API, including
+    limits, remaining quota, and reset times.
     """
 
     @enforce_keys [:rate_limits]
-    defstruct rate_limits: %{}
+    defstruct rate_limits: %{}, thread_id: nil, turn_id: nil
 
     @type t :: %__MODULE__{
-            rate_limits: map()
+            rate_limits: map(),
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil
           }
   end
 
@@ -966,6 +971,8 @@ defmodule Codex.Events do
       "type" => "account/rateLimits/updated",
       "rate_limits" => event.rate_limits
     }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
   end
 
   def to_map(%AccountLoginCompleted{} = event) do

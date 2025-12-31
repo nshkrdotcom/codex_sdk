@@ -472,7 +472,8 @@ Hosted capabilities mirror the Python SDK wrappers and are exposed as tool modul
 - `Codex.Tools.ShellTool` — runs shell commands via a provided `:executor`, supports `:timeout_ms`, `:max_output_bytes`, and optional `:approval` hooks
 - `Codex.Tools.ApplyPatchTool` — routes patches to a custom `:editor` callback
 - `Codex.Tools.ComputerTool` — performs computer actions guarded by a `:safety` callback and optional approval hook, delegated to an `:executor`
-- `Codex.Tools.FileSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs (plus ranking options and `include_search_results` pulled from thread/run `file_search` config)
+- `Codex.Tools.FileSearchTool` — searches local files by glob pattern and content, with case-insensitive and max results options
+- `Codex.Tools.VectorStoreSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs (plus ranking options and `include_search_results` pulled from thread/run `file_search` config)
 - `Codex.Tools.ImageGenerationTool` / `Codex.Tools.CodeInterpreterTool` — call provided `:generator` / `:runner` callbacks
 
 Defaults for hosted file search can be set on `Thread.Options.file_search` or `RunConfig.file_search`; request arguments supplied by the model still win.

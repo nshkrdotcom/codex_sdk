@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2025-12-30
+
+### Added
+
+- Shell hosted tool with `Codex.Tools.ShellTool` for executing shell commands
+- Built-in default executor using erlexec for real command execution
+- Command timeout support with configurable `:timeout_ms` option (default: 60s)
+- Output truncation with configurable `:max_output_bytes` option (default: 10KB)
+- Working directory support via `cwd` argument or `:cwd` option
+- Approval integration for shell commands via `:approval` callback
+- Custom executor support for testing and mocking shell behavior
+- MCP tool discovery with `Codex.MCP.Client.list_tools/2` and `qualify?: true` option
+- Tool name qualification with `mcp__<server>__<tool>` format matching upstream Rust implementation
+- Tool name truncation with SHA1 hash suffix for names exceeding 64 characters
+- `qualify_tool_name/2` public function for standalone tool name qualification
+- `server_name` option for `Codex.MCP.Client.handshake/2` to enable qualified tool names
+- Allow/deny list filtering for MCP tools via `:allow` and `:deny` options
+- Tool caching with configurable bypass via `cache?: false`
+- Duplicate qualified name deduplication (skips duplicates like upstream)
+- MCP tool invocation with `Codex.MCP.Client.call_tool/4`
+- ApplyPatch hosted tool with `Codex.Tools.ApplyPatchTool`
+- Unified diff parsing and application for file create/modify/delete operations
+- Dry-run support for patch validation without file modification
+- Approval integration for file modifications via `:approval` callback
+- Exponential backoff retry logic for MCP calls (default 3 retries, 100ms base delay, 5s max)
+- Approval integration for MCP tool calls via `:approval` callback option
+- Timeout control for MCP tool calls via `:timeout_ms` option (default 60s)
+- Comprehensive retry module `Codex.Retry` with configurable backoff strategies
+- Support for exponential, linear, constant, and custom backoff strategies
+- Jitter support for retry delays to prevent thundering herd
+- Customizable retry predicates via `:retry_if` option
+- `on_retry` callbacks for logging and observability
+- Stream retry support via `Codex.Retry.with_stream_retry/2`
+- `Codex.TransportError` now includes `retryable?` field for automatic retry classification
+- Telemetry events for MCP tool invocation:
+  - `[:codex, :mcp, :tool_call, :start]` - When a tool call begins
+  - `[:codex, :mcp, :tool_call, :success]` - On successful completion
+  - `[:codex, :mcp, :tool_call, :failure]` - On failure after retries exhausted
+- Rate limit detection with `Codex.RateLimit.detect/1` for automatic rate limit identification
+- Rate limit handling with configurable backoff via `Codex.RateLimit.with_rate_limit_handling/2`
+- Retry-After header parsing supporting both map and list header formats
+- Rate limit telemetry events (`[:codex, :rate_limit, :rate_limited]`)
+- Configurable rate limit delays via `:rate_limit_default_delay_ms`, `:rate_limit_max_delay_ms`, and `:rate_limit_multiplier`
+- `Codex.Error.rate_limit/2` constructor for creating rate limit errors with retry hints
+- `Codex.Error.rate_limit?/1` predicate for checking if an error is a rate limit error
+- `Codex.Error.retry_after_ms/1` for extracting retry-after hints from errors
+- `retry_after_ms` field on `Codex.Error` struct for rate limit retry hints
+- FileSearch hosted tool with `Codex.Tools.FileSearchTool` for local filesystem search
+- Glob pattern matching for file discovery (`**/*.ex`, `*.{ex,exs}`, etc.)
+- Content search with regex support for finding text within files
+- Case-sensitive/insensitive search modes via `case_sensitive` option
+- Configurable result limits via `max_results` option (default: 100)
+- Renamed `FileSearchTool` (vector store) to `VectorStoreSearchTool` for clarity
+- WebSearch hosted tool with `Codex.Tools.WebSearchTool` for performing web searches
+- Support for Tavily and Serper search providers via `:provider` option
+- Mock provider for testing without API keys (`:provider => :mock`)
+- HTTP client abstraction with `Codex.HTTPClient` for testability
+- Custom searcher callback support for backwards compatibility and flexibility
+- Configurable max results via `max_results` argument or `:max_results` option
+
+### Changed
+
+- `Codex.MCP.Client` struct now includes `server_name` field for tool qualification
+- `call_tool/4` now uses exponential backoff by default
+- `call_tool/4` default retries changed from 0 to 3 for improved resilience
+- `Codex.Retry.retryable?/1` now recognizes `Codex.Error` with `:rate_limit` kind as retryable
+- `Codex.Events.AccountRateLimitsUpdated` now includes optional `thread_id` and `turn_id` fields
+
+### Fixed
+
+### Documentation
+
+- Added MCP Tool Discovery section to README with qualification examples
+- Updated `Codex.MCP.Client` module documentation with tool name qualification details
+- Added comprehensive `call_tool/4` documentation with examples for retries, backoff, approval, and telemetry
+
 ## [0.4.4] - 2025-12-29
 
 ### Added

@@ -1,11 +1,32 @@
 defmodule Codex.Error do
   @moduledoc """
   Base error struct for Codex failures.
+
+  ## Error Kinds
+
+    * `:rate_limit` - API rate limit exceeded
+    * `:sandbox_assessment_failed` - Sandbox assessment failed
+    * `:unknown` - Unclassified error
+
+  ## Rate Limit Handling
+
+  Rate limit errors may include a `retry_after_ms` hint extracted from
+  the API response. Use `retry_after_ms/1` to access this value.
   """
 
-  defexception [:message, :kind, :details]
+  defexception [:message, :kind, :details, :retry_after_ms]
 
-  @type t :: %__MODULE__{message: String.t(), kind: atom(), details: map()}
+  @type kind ::
+          :rate_limit
+          | :sandbox_assessment_failed
+          | :unknown
+
+  @type t :: %__MODULE__{
+          message: String.t(),
+          kind: kind(),
+          details: map(),
+          retry_after_ms: non_neg_integer() | nil
+        }
 
   @doc """
   Normalizes raw error payloads into `%Codex.Error{}` structs.
@@ -34,8 +55,69 @@ defmodule Codex.Error do
 
   @spec new(atom(), String.t(), map()) :: t()
   def new(kind, message, details \\ %{}) do
-    %__MODULE__{kind: kind, message: message, details: details}
+    %__MODULE__{kind: kind, message: message, details: details, retry_after_ms: nil}
   end
+
+  @doc """
+  Creates a rate limit error with optional retry-after hint.
+
+  ## Options
+
+    * `:retry_after_ms` - Suggested delay before retry in milliseconds
+    * `:details` - Additional error details map
+
+  ## Examples
+
+      iex> error = Codex.Error.rate_limit("Rate limit exceeded", retry_after_ms: 30_000)
+      iex> error.kind
+      :rate_limit
+      iex> error.retry_after_ms
+      30_000
+  """
+  @spec rate_limit(String.t(), keyword()) :: t()
+  def rate_limit(message, opts \\ []) do
+    retry_after = Keyword.get(opts, :retry_after_ms)
+    details = Keyword.get(opts, :details, %{})
+
+    %__MODULE__{
+      kind: :rate_limit,
+      message: message,
+      details: details,
+      retry_after_ms: retry_after
+    }
+  end
+
+  @doc """
+  Checks if error is a rate limit error.
+
+  ## Examples
+
+      iex> error = Codex.Error.rate_limit("Rate limited")
+      iex> Codex.Error.rate_limit?(error)
+      true
+      iex> Codex.Error.rate_limit?(%Codex.Error{kind: :unknown, message: "Other"})
+      false
+  """
+  @spec rate_limit?(t() | term()) :: boolean()
+  def rate_limit?(%__MODULE__{kind: :rate_limit}), do: true
+  def rate_limit?(_), do: false
+
+  @doc """
+  Extracts retry-after hint from error if present.
+
+  Returns the delay in milliseconds, or `nil` if not available.
+
+  ## Examples
+
+      iex> error = Codex.Error.rate_limit("Rate limited", retry_after_ms: 60_000)
+      iex> Codex.Error.retry_after_ms(error)
+      60_000
+      iex> Codex.Error.retry_after_ms(%Codex.Error{kind: :unknown, message: "Other"})
+      nil
+  """
+  @spec retry_after_ms(t()) :: non_neg_integer() | nil
+  def retry_after_ms(%__MODULE__{retry_after_ms: ms}) when is_integer(ms) and ms > 0, do: ms
+  def retry_after_ms(_), do: nil
 
   defp normalize_map(payload) do
     message =
@@ -72,8 +154,31 @@ defmodule Codex.Error do
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
       |> Map.new()
 
-    new(kind, message, detail_map)
+    retry_after_ms = parse_retry_after_ms(retry_after, status)
+
+    %__MODULE__{
+      kind: kind,
+      message: message,
+      details: detail_map,
+      retry_after_ms: retry_after_ms
+    }
   end
+
+  defp parse_retry_after_ms(nil, _status), do: nil
+
+  defp parse_retry_after_ms(retry_after, _status) when is_integer(retry_after) do
+    # Assume seconds if < 1000, otherwise milliseconds
+    if retry_after < 1000, do: retry_after * 1000, else: retry_after
+  end
+
+  defp parse_retry_after_ms(retry_after, _status) when is_binary(retry_after) do
+    case Integer.parse(retry_after) do
+      {seconds, _} -> seconds * 1000
+      :error -> nil
+    end
+  end
+
+  defp parse_retry_after_ms(_, _), do: nil
 
   defp fetch_value(map, [key | rest]) do
     case Map.get(map, key) do

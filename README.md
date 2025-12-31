@@ -33,7 +33,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.4"}
+    {:codex_sdk, "~> 0.4.5"}
   ]
 end
 ```
@@ -401,6 +401,219 @@ thread_opts =
 Query `Codex.Files.metrics/0` for staging stats, force cleanup with `Codex.Files.force_cleanup/0`,
 and leverage `scripts/harvest_python_fixtures.py` to import parity fixtures from the Python SDK.
 
+### MCP Tool Discovery
+
+The SDK provides MCP client helpers for discovering and invoking tools from MCP servers:
+
+```elixir
+# Connect to an MCP server with handshake
+{:ok, client} = Codex.MCP.Client.handshake(
+  {MyTransport, transport_state},
+  client: "codex-elixir",
+  version: "0.1.0",
+  server_name: "my_server"
+)
+
+# List tools with filtering
+{:ok, tools, client} = Codex.MCP.Client.list_tools(client,
+  allow: ["read_file", "write_file"],
+  deny: ["dangerous_tool"]
+)
+
+# List tools with qualified names (mcp__server__tool format)
+{:ok, tools, client} = Codex.MCP.Client.list_tools(client, qualify?: true)
+
+# Each tool includes:
+# - "name" - original tool name
+# - "qualified_name" - fully qualified name (e.g., "mcp__my_server__read_file")
+# - "server_name" - server identifier
+```
+
+Tool name qualification follows the OpenAI convention (`^[a-zA-Z0-9_-]+$`). Names exceeding
+64 characters are truncated with a SHA1 hash suffix for disambiguation:
+
+```elixir
+Codex.MCP.Client.qualify_tool_name("server1", "tool_a")
+#=> "mcp__server1__tool_a"
+
+# Long names are truncated with SHA1 suffix
+Codex.MCP.Client.qualify_tool_name("srv", String.duplicate("a", 80))
+#=> 64-character string with SHA1 hash suffix
+```
+
+Results are cached by default; bypass with `cache?: false`. See `Codex.MCP.Client` for
+full documentation and `examples/live_mcp_and_sessions.exs` for a runnable demo.
+
+### Shell Hosted Tool
+
+The SDK provides a fully-featured shell command execution tool with approval integration,
+timeout handling, and output truncation:
+
+```elixir
+alias Codex.Tools
+alias Codex.Tools.ShellTool
+
+# Register with default settings (60s timeout, 10KB max output)
+{:ok, _} = Tools.register(ShellTool)
+
+# Execute a simple command
+{:ok, result} = Tools.invoke("shell", %{"command" => "ls -la"}, %{})
+# => %{"output" => "...", "exit_code" => 0, "success" => true}
+
+# With working directory
+{:ok, result} = Tools.invoke("shell", %{"command" => "pwd", "cwd" => "/tmp"}, %{})
+
+# With custom timeout and output limits
+{:ok, _} = Tools.register(ShellTool,
+  timeout_ms: 30_000,
+  max_output_bytes: 5000
+)
+
+# With approval callback for sensitive commands
+approval = fn cmd, _ctx ->
+  if String.contains?(cmd, "rm"), do: {:deny, "rm not allowed"}, else: :ok
+end
+
+{:ok, _} = Tools.register(ShellTool, approval: approval)
+{:error, {:approval_denied, "rm not allowed"}} =
+  Tools.invoke("shell", %{"command" => "rm file"}, %{})
+```
+
+For testing, provide a custom executor:
+
+```elixir
+mock_executor = fn %{"command" => cmd}, _ctx, _meta ->
+  {:ok, %{"output" => "mocked: #{cmd}", "exit_code" => 0}}
+end
+
+{:ok, _} = Tools.register(ShellTool, executor: mock_executor)
+```
+
+See `examples/shell_tool.exs` for a complete demonstration.
+
+### FileSearch Hosted Tool
+
+The SDK provides a local filesystem search tool with glob pattern matching and
+content search capabilities:
+
+```elixir
+alias Codex.Tools
+alias Codex.Tools.FileSearchTool
+
+# Register with default settings
+{:ok, _} = Tools.register(FileSearchTool)
+
+# Find all Elixir files recursively
+{:ok, result} = Tools.invoke("file_search", %{"pattern" => "lib/**/*.ex"}, %{})
+# => %{"count" => 42, "files" => [%{"path" => "lib/foo.ex"}, ...]}
+
+# Search file content with regex
+{:ok, result} = Tools.invoke("file_search", %{
+  "pattern" => "**/*.ex",
+  "content" => "defmodule"
+}, %{})
+# => %{"count" => 10, "files" => [%{"path" => "lib/foo.ex", "matches" => [...]}]}
+
+# Case-insensitive content search
+{:ok, result} = Tools.invoke("file_search", %{
+  "pattern" => "**/*.ex",
+  "content" => "ERROR",
+  "case_sensitive" => false
+}, %{})
+
+# Limit results
+{:ok, result} = Tools.invoke("file_search", %{
+  "pattern" => "**/*",
+  "max_results" => 20
+}, %{})
+
+# Custom base path
+{:ok, _} = Tools.register(FileSearchTool, base_path: "/project")
+```
+
+Supported glob patterns:
+- `*.ex` - All `.ex` files in base directory
+- `**/*.ex` - All `.ex` files recursively
+- `lib/**/*.{ex,exs}` - All Elixir files under lib/
+- `test/*_test.exs` - All test files in test/
+
+See `examples/file_search_tool.exs` for more examples.
+
+### MCP Tool Invocation
+
+Invoke tools on MCP servers with built-in retry logic, approval callbacks, and telemetry:
+
+```elixir
+# Basic invocation with default retries (3) and exponential backoff
+{:ok, result} = Codex.MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
+
+# Custom retry and timeout settings
+{:ok, result} = Codex.MCP.Client.call_tool(client, "fetch", %{"url" => url},
+  retries: 5,
+  timeout_ms: 30_000,
+  backoff: fn attempt -> Process.sleep(attempt * 200) end
+)
+
+# With approval callback (for sensitive operations)
+{:ok, result} = Codex.MCP.Client.call_tool(client, "write_file", args,
+  approval: fn tool, args, context ->
+    if authorized?(context.user, tool), do: :ok, else: {:deny, "unauthorized"}
+  end,
+  context: %{user: current_user}
+)
+```
+
+Telemetry events are emitted for observability:
+- `[:codex, :mcp, :tool_call, :start]` - When a call begins
+- `[:codex, :mcp, :tool_call, :success]` - On successful completion
+- `[:codex, :mcp, :tool_call, :failure]` - On failure after retries exhausted
+
+### Retry Logic
+
+The SDK provides comprehensive retry utilities via `Codex.Retry` for handling transient failures:
+
+```elixir
+alias Codex.Retry
+
+# Basic retry with defaults (4 attempts, exponential backoff, 200ms base delay)
+{:ok, result} = Retry.with_retry(fn -> make_api_call() end)
+
+# Custom configuration
+{:ok, result} = Retry.with_retry(
+  fn -> risky_operation() end,
+  max_attempts: 5,
+  base_delay_ms: 100,
+  max_delay_ms: 5_000,
+  strategy: :exponential,
+  jitter: true,
+  on_retry: fn attempt, error ->
+    Logger.warning("Retry #{attempt}: #{inspect(error)}")
+  end
+)
+
+# Different backoff strategies
+Retry.with_retry(fun, strategy: :linear)      # 100, 200, 300, 400ms...
+Retry.with_retry(fun, strategy: :constant)    # 100, 100, 100, 100ms...
+Retry.with_retry(fun, strategy: :exponential) # 100, 200, 400, 800ms... (default)
+
+# Custom backoff function
+Retry.with_retry(fun, strategy: fn attempt -> attempt * 50 end)
+
+# Custom retry predicate
+Retry.with_retry(fun, retry_if: fn
+  :my_transient_error -> true
+  _ -> false
+end)
+
+# Stream retry (retries entire stream creation on failure)
+stream = Retry.with_stream_retry(fn -> make_streaming_request() end)
+Enum.each(stream, &process_item/1)
+```
+
+Default retryable errors include: `:timeout`, `:econnrefused`, `:econnreset`, `:closed`,
+`:nxdomain`, 5xx HTTP errors, 429 rate limits, stream errors, and `Codex.TransportError`
+with `retryable?: true`. See `examples/retry_example.exs` for more patterns.
+
 ### Telemetry & OTLP Exporting
 
 OpenTelemetry exporting is disabled by default. To ship traces/metrics to a collector, set
@@ -582,7 +795,7 @@ HexDocs hosts the complete documentation set referenced in `mix.exs`:
 
 ## Project Status
 
-**Current Version**: 0.4.4 (Upstream parity: app-server inputs + exec flags)
+**Current Version**: 0.4.5 (Gap analysis implementation: tools, retry, rate limiting)
 
 ### v0.4.4 Highlights
 

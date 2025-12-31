@@ -30,3 +30,4 @@ codex_sdk-*/
 
 # Dialyzer PLTs
 /priv/plts/
+/logs/

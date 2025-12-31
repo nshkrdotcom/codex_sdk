@@ -80,11 +80,42 @@ defmodule CodexExamples.LiveMcpAndSessions do
     {:ok, client} =
       Codex.MCP.Client.handshake({CodexExamples.StubMcpTransport, transport},
         client: "codex-elixir-demo",
-        version: "0.1.0"
+        version: "0.1.0",
+        server_name: "stub_server"
       )
 
+    # Demonstrate tool discovery with filtering and qualification
     {:ok, tools, client} = Codex.MCP.Client.list_tools(client, allow: ["stub.echo"])
     IO.puts("MCP tools (filtered): #{inspect(Enum.map(tools, & &1["name"]))}")
+
+    # Show qualified tool names (mcp__server__tool format)
+    {:ok, qualified_tools, _} = Codex.MCP.Client.list_tools(client, qualify?: true)
+
+    IO.puts(
+      "MCP tools (qualified): #{inspect(Enum.map(qualified_tools, & &1["qualified_name"]))}"
+    )
+
+    # Demonstrate direct tool invocation with call_tool/4
+    IO.puts("\n--- Direct MCP Tool Invocation ---")
+
+    # Invocation with retry and approval callback
+    demo_result =
+      Codex.MCP.Client.call_tool(client, "stub.echo", %{"message" => "Hello from call_tool!"},
+        retries: 2,
+        backoff: &mcp_backoff/1,
+        approval: fn tool, args, _ctx ->
+          IO.puts("Approval check for tool=#{tool} args=#{inspect(args)}")
+          :ok
+        end,
+        context: %{user: "demo_user"}
+      )
+
+    case demo_result do
+      {:ok, result} -> IO.puts("call_tool success: #{inspect(result)}")
+      {:error, reason} -> IO.puts("call_tool error: #{inspect(reason)}")
+    end
+
+    IO.puts("---\n")
 
     {:ok, _} =
       Codex.Tools.HostedMcpTool
