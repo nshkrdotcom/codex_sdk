@@ -2,9 +2,9 @@ defmodule Codex.ErrorTest do
   use ExUnit.Case, async: true
 
   alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.{Error, Options, Thread, TransportError}
+  alias Codex.{Error, Options, Thread}
 
-  test "non-zero codex exit returns transport error" do
+  test "non-zero codex exit normalizes into Codex.Error" do
     script_body = """
     #!/usr/bin/env bash
     exit 21
@@ -19,7 +19,8 @@ defmodule Codex.ErrorTest do
     {:ok, thread_opts} = ThreadOptions.new(%{})
     thread = Thread.build(codex_opts, thread_opts)
 
-    assert {:error, %TransportError{exit_status: 21}} = Thread.run(thread, "failure test")
+    assert {:error, {:exec_failed, %Error{} = error}} = Thread.run(thread, "failure test")
+    assert error.details[:exit_status] == 21
   end
 
   test "normalize/1 preserves additional error details" do

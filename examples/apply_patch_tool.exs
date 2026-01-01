@@ -1,7 +1,7 @@
 # Example: Using the ApplyPatch Hosted Tool
 #
 # This example demonstrates how to use the ApplyPatch tool to apply
-# unified diff patches to files, including:
+# *** Begin Patch edits to files, including:
 # - Creating new files
 # - Modifying existing files
 # - Deleting files
@@ -29,15 +29,15 @@ try do
   IO.puts("=== Example 1: Create a new file ===")
 
   create_patch = """
-  --- /dev/null
-  +++ b/hello.txt
-  @@ -0,0 +1,3 @@
+  *** Begin Patch
+  *** Add File: hello.txt
   +Hello, World!
   +This is a new file
   +Created by ApplyPatch
+  *** End Patch
   """
 
-  args = %{"patch" => create_patch, "base_path" => tmp_dir}
+  args = %{"input" => create_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
   IO.puts("Result: #{inspect(result)}")
@@ -49,17 +49,18 @@ try do
   IO.puts("=== Example 2: Modify an existing file ===")
 
   modify_patch = """
-  --- a/hello.txt
-  +++ b/hello.txt
-  @@ -1,3 +1,4 @@
+  *** Begin Patch
+  *** Update File: hello.txt
+  @@
    Hello, World!
   -This is a new file
   +This is a modified file
   +With an extra line
    Created by ApplyPatch
+  *** End Patch
   """
 
-  args = %{"patch" => modify_patch, "base_path" => tmp_dir}
+  args = %{"input" => modify_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
   IO.puts("Result: #{inspect(result)}")
@@ -71,13 +72,13 @@ try do
   IO.puts("=== Example 3: Dry-run validation ===")
 
   dangerous_patch = """
-  --- /dev/null
-  +++ b/dangerous.txt
-  @@ -0,0 +1 @@
+  *** Begin Patch
+  *** Add File: dangerous.txt
   +This file would be created
+  *** End Patch
   """
 
-  args = %{"patch" => dangerous_patch, "base_path" => tmp_dir}
+  args = %{"input" => dangerous_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{dry_run: true})
 
   IO.puts("Dry run result: #{inspect(result)}")
@@ -88,10 +89,10 @@ try do
   IO.puts("=== Example 4: Approval callback ===")
 
   review_patch = """
-  --- /dev/null
-  +++ b/reviewed.txt
-  @@ -0,0 +1 @@
+  *** Begin Patch
+  *** Add File: reviewed.txt
   +This change was reviewed
+  *** End Patch
   """
 
   # Approval that inspects changes
@@ -106,7 +107,7 @@ try do
     :ok
   end
 
-  args = %{"patch" => review_patch, "base_path" => tmp_dir}
+  args = %{"input" => review_patch, "base_path" => tmp_dir}
   context = %{metadata: %{approval: approval_callback}}
   {:ok, result} = ApplyPatchTool.invoke(args, context)
 
@@ -117,17 +118,17 @@ try do
   IO.puts("=== Example 5: Denied approval ===")
 
   denied_patch = """
-  --- /dev/null
-  +++ b/secret.txt
-  @@ -0,0 +1 @@
+  *** Begin Patch
+  *** Add File: secret.txt
   +This should not be created
+  *** End Patch
   """
 
   deny_callback = fn _changes, _ctx ->
     {:deny, "Files named 'secret' are not allowed"}
   end
 
-  args = %{"patch" => denied_patch, "base_path" => tmp_dir}
+  args = %{"input" => denied_patch, "base_path" => tmp_dir}
   context = %{metadata: %{approval: deny_callback}}
   result = ApplyPatchTool.invoke(args, context)
 
@@ -139,17 +140,17 @@ try do
   IO.puts("=== Example 6: Create nested directories ===")
 
   nested_patch = """
-  --- /dev/null
-  +++ b/src/lib/utils/helper.ex
-  @@ -0,0 +1,5 @@
+  *** Begin Patch
+  *** Add File: src/lib/utils/helper.ex
   +defmodule Helper do
   +  def greet(name) do
   +    "Hello, \#{name}!"
   +  end
   +end
+  *** End Patch
   """
 
-  args = %{"patch" => nested_patch, "base_path" => tmp_dir}
+  args = %{"input" => nested_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
   IO.puts("Result: #{inspect(result)}")
@@ -168,13 +169,12 @@ try do
   |> Enum.each(&IO.puts("  #{Path.relative_to(&1, tmp_dir)}"))
 
   delete_patch = """
-  --- a/reviewed.txt
-  +++ /dev/null
-  @@ -1 +0,0 @@
-  -This change was reviewed
+  *** Begin Patch
+  *** Delete File: reviewed.txt
+  *** End Patch
   """
 
-  args = %{"patch" => delete_patch, "base_path" => tmp_dir}
+  args = %{"input" => delete_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
   IO.puts("\nResult: #{inspect(result)}")
@@ -185,21 +185,17 @@ try do
   IO.puts("=== Example 8: Multiple file changes ===")
 
   multi_patch = """
-  --- /dev/null
-  +++ b/file1.txt
-  @@ -0,0 +1 @@
+  *** Begin Patch
+  *** Add File: file1.txt
   +File 1 content
-  --- /dev/null
-  +++ b/file2.txt
-  @@ -0,0 +1 @@
+  *** Add File: file2.txt
   +File 2 content
-  --- /dev/null
-  +++ b/file3.txt
-  @@ -0,0 +1 @@
+  *** Add File: file3.txt
   +File 3 content
+  *** End Patch
   """
 
-  args = %{"patch" => multi_patch, "base_path" => tmp_dir}
+  args = %{"input" => multi_patch, "base_path" => tmp_dir}
   {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
   IO.puts("Result: #{inspect(result)}")

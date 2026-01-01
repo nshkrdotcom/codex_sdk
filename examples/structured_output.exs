@@ -93,6 +93,20 @@ defmodule Examples.StructuredOutput do
     }
   end
 
+  defp print_transport_error(prefix, {:exec_failed, %Codex.Error{} = err}),
+    do: print_transport_error(prefix, err)
+
+  defp print_transport_error(prefix, {:turn_failed, %Codex.Error{} = err}),
+    do: print_transport_error(prefix, err)
+
+  defp print_transport_error(prefix, %Codex.Error{} = err) do
+    IO.puts("#{prefix}: codex failed (#{err.message}).")
+
+    if is_map(err.details) and map_size(err.details) > 0 do
+      IO.inspect(err.details, label: "details")
+    end
+  end
+
   defp print_transport_error(prefix, %Codex.TransportError{} = err) do
     IO.puts("#{prefix}: codex failed (exit_status=#{err.exit_status}).")
 

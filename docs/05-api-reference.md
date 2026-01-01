@@ -10,10 +10,12 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Thread` | Manages conversation threads and turn execution |
 | `Codex.Transport` | Transport behaviour for turn execution |
 | `Codex.AppServer` | Stateful app-server JSON-RPC connection + v2 request APIs |
+| `Codex.AppServer.V1` | Legacy app-server compatibility helpers for v1 conversation APIs |
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
 | `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
-| `Codex.Exec` | Exec JSONL subprocess wrapper (`codex exec --experimental-json`) |
+| `Codex.Exec` | Exec JSONL subprocess wrapper (`codex exec --json`) |
+| `Codex.Sessions` | Session file utilities plus apply/undo helpers |
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
@@ -25,7 +27,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 
 The SDK supports both upstream external transports:
 
-- **Exec JSONL (default)**: `codex exec --experimental-json`
+- **Exec JSONL (default)**: `codex exec --json`
 - **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON over stdio)
 
 Select transport per-thread via `Codex.Thread.Options.transport`:
@@ -34,6 +36,9 @@ Select transport per-thread via `Codex.Thread.Options.transport`:
 {:ok, conn} = Codex.AppServer.connect(codex_opts)
 {:ok, thread} = Codex.start_thread(codex_opts, %{transport: {:app_server, conn}})
 ```
+
+For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
+conversation APIs.
 
 ## Codex
 
@@ -135,7 +140,7 @@ Build via `Codex.Agent.new/1` with maps, keyword lists, or an existing struct.
 
 ### `Codex.RunConfig`
 
-Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, `auto_previous_response_id: false`, optional `model` override, tracing metadata (`workflow`, `group`, `trace_id`, `trace_include_sensitive_data`, `tracing_disabled`), guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer. The optional `file_search` field seeds hosted file search calls with `vector_store_ids`, `filters`, `ranking_options`, and `include_search_results` (run-level values override thread defaults). `conversation_id` and `previous_response_id` are recorded on thread metadata and used for future chaining; when `auto_previous_response_id` is enabled and a backend emits `response_id`, the runner updates `previous_response_id` automatically (currently `nil` on `codex exec --experimental-json`).
+Per-run overrides built with `Codex.RunConfig.new/1`. Defaults: `max_turns: 10`, `nest_handoff_history: true`, `auto_previous_response_id: false`, optional `model` override, tracing metadata (`workflow`, `group`, `trace_id`, `trace_include_sensitive_data`, `tracing_disabled`), guardrail placeholders, and a `call_model_input_filter` hook slot (not yet wired). Validation ensures `max_turns` is a positive integer. The optional `file_search` field seeds hosted file search calls with `vector_store_ids`, `filters`, `ranking_options`, and `include_search_results` (run-level values override thread defaults). `conversation_id` and `previous_response_id` are recorded on thread metadata and used for future chaining; when `auto_previous_response_id` is enabled and a backend emits `response_id`, the runner updates `previous_response_id` automatically (currently `nil` on `codex exec --json`).
 
 ### `Codex.AgentRunner`
 
@@ -384,9 +389,48 @@ Example:
 
 ---
 
+## Codex.Sessions
+
+Utilities for inspecting CLI session files and replaying Codex diffs locally.
+
+### `list_sessions/1`
+
+Lists session entries from `~/.codex/sessions` (or a custom `:sessions_dir`). Each entry includes
+`metadata` for unrecognized fields so new upstream metadata is preserved.
+
+```elixir
+{:ok, sessions} = Codex.Sessions.list_sessions()
+```
+
+### `apply/2`
+
+Applies a unified diff string or a list of file change items using `git apply`.
+
+```elixir
+{:ok, result} = Codex.Sessions.apply(diff, cwd: "/path/to/repo")
+```
+
+Options:
+- `:cwd` — repository root (defaults to current directory)
+- `:timeout_ms` — command timeout (default: 60s)
+- `:preflight` / `:dry_run` — validate without applying changes
+
+### `undo/2`
+
+Restores a ghost snapshot using a `%Codex.Items.GhostSnapshot{}` or raw ghost commit map:
+
+```elixir
+{:ok, result} = Codex.Sessions.undo(ghost_snapshot, cwd: "/path/to/repo")
+```
+
+The helper restores tracked files and removes untracked files created after the snapshot,
+while preserving preexisting untracked paths recorded in the snapshot metadata.
+
+---
+
 ## Codex.Tools
 
-The tool registry keeps parity with Python's decorator-based tooling API. Tools can be registered dynamically and invoked automatically during auto-run cycles when the agent requests an external capability.
+The tool registry supports a Python-style, decorator-inspired tooling API. Tools can be registered dynamically and invoked automatically during auto-run cycles when the agent requests an external capability.
 
 ### `register/2`
 
@@ -411,7 +455,7 @@ Context includes the current thread struct, event metadata, and any custom entri
 
 ### `deregister/1`
 
-Removes a registered tool. Typically used in tests or when dynamically unloading capabilities.
+Removes a registered tool.
 
 ### `metrics/0`
 
@@ -421,7 +465,7 @@ Returns an in-memory snapshot of invocation counters per tool.
 @spec metrics() :: %{optional(String.t()) => %{success: non_neg_integer(), failure: non_neg_integer(), last_latency_ms: non_neg_integer(), total_latency_ms: non_neg_integer(), last_error: term() | nil}}
 ```
 
-Useful for integration tests or lightweight observability without relying on external telemetry backends.
+Useful for lightweight observability without relying on external telemetry backends.
 
 ### `reset_metrics/0`
 
@@ -431,7 +475,7 @@ Clears all accumulated metrics.
 @spec reset_metrics() :: :ok
 ```
 
-Intended primarily for test setup/teardown routines.
+Clears accumulated metrics for fresh tracking.
 
 ### Telemetry
 
@@ -469,14 +513,19 @@ Tools may return structured outputs using `%Codex.ToolOutput.Text{}`, `%Codex.To
 
 Hosted capabilities mirror the Python SDK wrappers and are exposed as tool modules:
 
-- `Codex.Tools.ShellTool` — runs shell commands via a provided `:executor`, supports `:timeout_ms`, `:max_output_bytes`, and optional `:approval` hooks
-- `Codex.Tools.ApplyPatchTool` — routes patches to a custom `:editor` callback
+- `Codex.Tools.ShellTool` — runs argv-style shell commands (`command: ["bash", "-lc", "..."]`), supports `workdir`, `timeout_ms`, `max_output_bytes`, and optional `:approval` hooks (legacy string commands are still accepted)
+- `Codex.Tools.ShellCommandTool` — runs string shell scripts (`command: "ls -la"`), supports `login`, `workdir`, and `timeout_ms` under the `shell_command` tool name
+- `Codex.Tools.WriteStdinTool` — writes to unified exec sessions (app-server transport only), requires `session_id`
+- `Codex.Tools.ApplyPatchTool` — applies `*** Begin Patch` edits via `input` and preserves unified diff fallback via `patch` (add/delete/update/move + dry-run)
+- `Codex.Tools.ViewImageTool` — attaches local images as `input_image` outputs, gated by `features.view_image_tool` or `Thread.Options.view_image_tool_enabled`
 - `Codex.Tools.ComputerTool` — performs computer actions guarded by a `:safety` callback and optional approval hook, delegated to an `:executor`
 - `Codex.Tools.FileSearchTool` — searches local files by glob pattern and content, with case-insensitive and max results options
-- `Codex.Tools.VectorStoreSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs (plus ranking options and `include_search_results` pulled from thread/run `file_search` config)
+- `Codex.Tools.VectorStoreSearchTool` / `Codex.Tools.WebSearchTool` — dispatch search calls through a `:searcher` callback while carrying configured filters/vector store IDs (plus ranking options and `include_search_results` pulled from thread/run `file_search` config); `web_search` requests are gated by `features.web_search_request`
 - `Codex.Tools.ImageGenerationTool` / `Codex.Tools.CodeInterpreterTool` — call provided `:generator` / `:runner` callbacks
 
 Defaults for hosted file search can be set on `Thread.Options.file_search` or `RunConfig.file_search`; request arguments supplied by the model still win.
+
+SDK-only extensions (not present in the upstream codex CLI): `ComputerTool`, `VectorStoreSearchTool`, `ImageGenerationTool`, and `CodeInterpreterTool`.
 
 Register them like any other tool, passing callbacks in registration metadata:
 
@@ -496,9 +545,9 @@ Staging and attachment helpers that keep file workflows deterministic.
 
 - `stage/2` — copies a source file into the staging directory, returning `%Codex.Files.Attachment{}` with checksum, size, and persistence metadata.
 - `attach/2` — appends a staged attachment to `Codex.Thread.Options`, deduplicating by checksum.
-- `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files during tests.
+- `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files.
 
-On the exec JSONL transport (`codex exec --experimental-json`), attachments are forwarded as images via repeated `--image <path>` flags. The upstream exec CLI does not currently support arbitrary non-image file attachments.
+On the exec JSONL transport (`codex exec --json`), attachments are forwarded as images via repeated `--image <path>` flags. The upstream exec CLI does not currently support arbitrary non-image file attachments.
 Returning a `%Codex.Files.Attachment{}` from a tool (or passing one to `Codex.ToolOutput.normalize/1`) yields an `input_file` payload with the checksum as `file_id` and the staged contents base64-encoded.
 
 ---
@@ -514,19 +563,55 @@ Realtime and voice APIs from the Python SDK are not yet available in Elixir. The
 Provides a lightweight approval policy used to gate tool invocations or sandbox-sensitive operations.
 
 - `allow/1` — always approves (`StaticPolicy.allow(reason: "optional")`).
-- `deny/1` — always denies with a custom reason, used in tests to emulate blocked flows.
+- `deny/1` — always denies with a custom reason.
 - `review_tool/3` — invoked by `Codex.Thread.run_auto/3` to determine whether a requested tool may execute.
 
 ---
 
 ## Codex.MCP.Client
 
-Thin client for performing capability handshake with MCP-compatible servers.
+JSON-RPC client for MCP-compatible servers (stdio or streamable HTTP).
 
-- `handshake/2` — sends a handshake request (`{"type": "handshake"}`) and records advertised capabilities.
+- `initialize/2` — sends `initialize`, records advertised capabilities, then emits `notifications/initialized`.
+- `handshake/2` — backwards-compatible alias for `initialize/2`.
 - `capabilities/1` — returns the negotiated capability list used to seed the tool registry.
-- `list_tools/2` — fetches tool metadata, caches responses by default, and supports `allow`/`deny`/`filter` options plus `cache?: false` to bypass cached entries.
-- `call_tool/4` — invokes a tool with `retries`/`backoff` and optional `approval` callback.
+- `list_tools/2` — fetches tool metadata via `tools/list`, caches responses by default, and supports `allow`/`deny`/`filter` options plus `cache?: false` to bypass cached entries.
+- `list_resources/2` — fetches resources via `resources/list`.
+- `list_prompts/2` — fetches prompts via `prompts/list`.
+- `call_tool/4` — invokes a tool via `tools/call` with `retries`/`backoff` and optional `approval` callback.
+
+### MCP transports
+
+- `Codex.MCP.Transport.Stdio` — launches stdio MCP servers with the same default env whitelist as upstream Codex.
+- `Codex.MCP.Transport.StreamableHTTP` — JSON-RPC over streamable HTTP with optional bearer/OAuth auth.
+
+---
+
+## Codex.MCP.Config
+
+Helpers for managing MCP server configuration via app-server config APIs.
+
+- `list_servers/2` — reads `mcp_servers` entries from `config/read`.
+- `add_server/4` — writes `mcp_servers.<name>` entries via `config/value/write`.
+- `remove_server/3` — clears `mcp_servers.<name>` entries via `config/value/write`.
+
+---
+
+## Codex.Skills
+
+Skill discovery and loading helpers gated by `features.skills`.
+
+- `list/2` — calls `skills/list` when enabled.
+- `load/2` — loads skill file contents from the `path` field.
+
+---
+
+## Codex.Prompts
+
+Custom prompt discovery and expansion helpers for `$CODEX_HOME/prompts`.
+
+- `list/1` — discovers prompt files, parses frontmatter, and returns prompt metadata + content.
+- `expand/2` — expands `$1..$9`, `$ARGUMENTS`, and `$KEY` placeholders with positional or `KEY=value` args.
 
 ### Hosted MCP tool
 
@@ -536,7 +621,7 @@ Thin client for performing capability handshake with MCP-compatible servers.
 
 ## Codex.Session
 
-Behaviour for persisting conversation history between runs. The built-in `Codex.Session.Memory` adapter stores entries in an Agent for tests and short-lived runs.
+Behaviour for persisting conversation history between runs. The built-in `Codex.Session.Memory` adapter stores entries in an Agent for short-lived runs.
 
 - `session` / `session_input_callback` — configure on `RunConfig` to load history before a run and optionally transform the input. Callbacks receive the input and loaded history.
 - `conversation_id` / `previous_response_id` — optional identifiers stored on thread metadata and persisted alongside session entries (optionally updated by `auto_previous_response_id` when the backend provides a `response_id`).
@@ -552,7 +637,8 @@ Helper module for emitting telemetry and wiring default logging.
 
 ## Error Types
 
-- `Codex.TransportError` — returned when the codex executable exits non-zero. Includes `exit_status` and optional `stderr` snippet.
+- `Codex.Error` — normalized error struct for exec and turn failures (returned as `{:exec_failed, %Codex.Error{}}` or `{:turn_failed, %Codex.Error{}}`).
+- `Codex.TransportError` — low-level exec errors from `Codex.Exec` streams; includes `exit_status` and optional `stderr`.
 - `Codex.ApprovalError` — returned when an approval policy denies a tool invocation, exposing `tool` and `reason` fields.
 
 ### Functions
@@ -622,7 +708,7 @@ Starts turn execution and returns a reference for event tracking.
 
 **Usage**:
 ```elixir
-{:ok, pid} = Codex.Exec.start_link(input: "test")
+{:ok, pid} = Codex.Exec.start_link(input: "example input")
 ref = Codex.Exec.run_turn(pid)
 
 # Receive events
@@ -824,6 +910,8 @@ The app-server transport emits additional typed deltas:
 - `Codex.Events.ReasoningSummaryDelta`, `Codex.Events.ReasoningSummaryPartAdded`, and `Codex.Events.ReasoningDelta` for reasoning streams
 - `Codex.Events.McpToolCallProgress` for MCP tool progress messages
 - `Codex.Events.AccountUpdated`, `Codex.Events.AccountRateLimitsUpdated`, `Codex.Events.AccountLoginCompleted`, `Codex.Events.McpServerOauthLoginCompleted`, and `Codex.Events.WindowsWorldWritableWarning` for account/system updates
+- `Codex.Events.RawResponseItemCompleted` for raw response items (ghost snapshots, compaction, etc.)
+- `Codex.Events.DeprecationNotice` for deprecation warnings
 
 #### `Error`
 
@@ -983,8 +1071,8 @@ Shell command executed by the agent.
 %Codex.Items.CommandExecution{
   id: "cmd_1",
   type: :command_execution,
-  command: "mix test",
-  aggregated_output: "...\n42 tests, 0 failures\n",
+  command: "ls -la",
+  aggregated_output: "...\nREADME.md\nlib\n",
   exit_code: 0,
   status: :completed
 }
@@ -1144,7 +1232,11 @@ Global Codex configuration.
   api_key: String.t() | nil,
   telemetry_prefix: [atom()],
   model: String.t() | nil,
-  reasoning_effort: Codex.Models.reasoning_effort() | nil
+  reasoning_effort: Codex.Models.reasoning_effort() | nil,
+  model_reasoning_summary: String.t() | nil,
+  model_verbosity: String.t() | nil,
+  model_context_window: pos_integer() | nil,
+  model_supports_reasoning_summaries: boolean() | nil
 }
 ```
 
@@ -1155,6 +1247,12 @@ Global Codex configuration.
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override (defaults to `Codex.Models.default_model/0`)
 - `reasoning_effort`: Reasoning effort override (defaults to `Codex.Models.default_reasoning_effort/1`)
+- `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)
+- `model_verbosity`: Response verbosity (`low`, `medium`, `high`)
+- `model_context_window`: Context window size override, in tokens
+- `model_supports_reasoning_summaries`: Force-enable reasoning summaries for non-default models
+- `history_persistence`: History persistence mode override (mirrors `history.persistence`)
+- `history_max_bytes`: History size cap in bytes (mirrors `history.max_bytes`)
 
 **Example**:
 ```elixir
@@ -1197,6 +1295,10 @@ Thread-specific configuration.
   skip_git_repo_check: boolean(),
   network_access_enabled: boolean() | nil,
   web_search_enabled: boolean(),
+  apply_patch_freeform_enabled: boolean() | nil,
+  view_image_tool_enabled: boolean() | nil,
+  unified_exec_enabled: boolean() | nil,
+  skills_enabled: boolean() | nil,
   ask_for_approval: atom() | String.t() | nil,
   attachments: [map()],
   file_search: Codex.FileSearch.t() | nil,
@@ -1208,11 +1310,25 @@ Thread-specific configuration.
   output_last_message: String.t() | nil,
   color: :auto | :always | :never | String.t() | nil,
   config_overrides: [String.t() | {String.t() | atom(), term()}],
+  history_persistence: String.t() | nil,
+  history_max_bytes: non_neg_integer() | nil,
   model: String.t() | nil,
   model_provider: String.t() | nil,
+  model_reasoning_summary: String.t() | nil,
+  model_verbosity: String.t() | nil,
+  model_context_window: pos_integer() | nil,
+  model_supports_reasoning_summaries: boolean() | nil,
+  request_max_retries: pos_integer() | nil,
+  stream_max_retries: pos_integer() | nil,
+  stream_idle_timeout_ms: pos_integer() | nil,
   config: map() | nil,
   base_instructions: String.t() | nil,
   developer_instructions: String.t() | nil,
+  shell_environment_policy: map() | nil,
+  retry: boolean() | nil,
+  retry_opts: keyword() | nil,
+  rate_limit: boolean() | nil,
+  rate_limit_opts: keyword() | nil,
   experimental_raw_events: boolean()
 }
 ```
@@ -1230,6 +1346,10 @@ Thread-specific configuration.
 - `skip_git_repo_check`: Allow running outside a Git repo
 - `network_access_enabled`: Workspace-write network access override for exec (`--config sandbox_workspace_write.network_access=...`)
 - `web_search_enabled`: Enable web search (`--config features.web_search_request=...`)
+- `apply_patch_freeform_enabled`: Enable the freeform apply_patch tool (`features.apply_patch_freeform`)
+- `view_image_tool_enabled`: Enable the view_image tool (`features.view_image_tool`)
+- `unified_exec_enabled`: Enable unified exec tool (`features.unified_exec`)
+- `skills_enabled`: Enable skills discovery/injection (`features.skills`)
 - `ask_for_approval`: Approval policy hint for app-server turns
 - `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
@@ -1239,9 +1359,17 @@ Thread-specific configuration.
 - `output_last_message`: File path for `--output-last-message`
 - `color`: Output color mode (`--color`)
 - `config_overrides`: Generic `-c key=value` overrides (strings or `{key, value}` pairs)
+- `history_persistence` / `history_max_bytes`: History persistence configuration forwarded via config overrides
 - `model` / `model_provider`: App-server thread model overrides
+- `model_reasoning_summary` / `model_verbosity`: Reasoning summary + verbosity settings forwarded via config overrides
+- `model_context_window`: Context window override (tokens)
+- `model_supports_reasoning_summaries`: Force reasoning summary support for non-default models
+- `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms`: Per-provider network tuning overrides (config)
 - `config`: App-server config override map
 - `base_instructions` / `developer_instructions`: App-server instruction overrides
+- `shell_environment_policy`: CLI shell env policy overrides (`shell_environment_policy.*`)
+- `retry` / `retry_opts`: Enable transport retries (uses `Codex.Retry`)
+- `rate_limit` / `rate_limit_opts`: Enable rate-limit handling (uses `Codex.RateLimit`)
 - `experimental_raw_events`: App-server raw response item toggle
 
 **Example**:
@@ -1270,7 +1398,16 @@ Turn-specific configuration passed as a map or keyword list.
   optional(:approval_policy) => atom() | String.t() | nil,
   optional(:cwd) => String.t() | nil,
   optional(:effort) => atom() | String.t() | nil,
-  optional(:summary) => atom() | String.t() | nil
+  optional(:summary) => atom() | String.t() | nil,
+  optional(:env) => map() | keyword() | nil,
+  optional(:clear_env?) => boolean() | nil,
+  optional(:cancellation_token) => String.t() | nil,
+  optional(:timeout_ms) => pos_integer() | nil,
+  optional(:stream_idle_timeout_ms) => pos_integer() | nil,
+  optional(:retry) => boolean() | nil,
+  optional(:retry_opts) => keyword() | map() | nil,
+  optional(:rate_limit) => boolean() | nil,
+  optional(:rate_limit_opts) => keyword() | map() | nil
 }
 ```
 
@@ -1280,6 +1417,12 @@ Turn-specific configuration passed as a map or keyword list.
 - `sandbox_policy`: App-server sandbox policy override
 - `model` / `approval_policy` / `cwd`: App-server per-turn overrides
 - `effort` / `summary`: App-server reasoning overrides
+- `env` / `clear_env?`: Exec env overrides and optional env clearing
+- `cancellation_token`: Exec cancellation token
+- `timeout_ms`: Exec overall timeout (blocking)
+- `stream_idle_timeout_ms`: Exec stream idle timeout
+- `retry` / `retry_opts`: Opt-in retry handling for transports
+- `rate_limit` / `rate_limit_opts`: Opt-in rate limit handling for transports
 
 **Example**:
 ```elixir
@@ -1370,7 +1513,7 @@ Result of a completed turn (from `run/3`).
 - `usage`: Token usage statistics (nil if turn failed before completion)
 - `raw`: Underlying exec metadata (`events`, CLI flags, etc.)
 - `attempts`: Number of attempts performed (useful for auto-run)
-- `last_response_id`: Last backend response identifier when surfaced (currently `nil` on `codex exec --experimental-json`)
+- `last_response_id`: Last backend response identifier when surfaced (currently `nil` on `codex exec --json`)
 
 **Helpers**:
 
@@ -1467,7 +1610,7 @@ For developers familiar with the TypeScript SDK:
 
 ## See Also
 
+- [Getting Started](01.md)
 - [Architecture Guide](02-architecture.md)
-- [Implementation Plan](03-implementation-plan.md)
-- [Testing Strategy](04-testing-strategy.md)
 - [Examples](06-examples.md)
+- [App-server Transport](09-app-server-transport.md)

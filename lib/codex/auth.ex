@@ -1,6 +1,12 @@
 defmodule Codex.Auth do
   @moduledoc false
 
+  require Logger
+
+  alias Codex.Config.LayerStack
+
+  @keyring_warning_key {__MODULE__, :keyring_warning_emitted}
+
   @spec codex_home() :: String.t()
   def codex_home do
     System.get_env("CODEX_HOME") || Path.join(System.user_home!(), ".codex")
@@ -44,8 +50,24 @@ defmodule Codex.Auth do
 
   @spec chatgpt_access_token() :: String.t() | nil
   def chatgpt_access_token do
-    auth_paths()
-    |> Enum.find_value(&read_chatgpt_access_token/1)
+    case credentials_store_mode() do
+      :keyring ->
+        warn_keyring_unsupported(:keyring)
+        nil
+
+      :auto ->
+        if keyring_supported?() do
+          warn_keyring_unsupported(:auto)
+          nil
+        else
+          auth_paths()
+          |> Enum.find_value(&read_chatgpt_access_token/1)
+        end
+
+      _ ->
+        auth_paths()
+        |> Enum.find_value(&read_chatgpt_access_token/1)
+    end
   end
 
   defp api_key_env? do
@@ -61,8 +83,24 @@ defmodule Codex.Auth do
   end
 
   defp openai_api_key_from_auth do
-    auth_paths()
-    |> Enum.find_value(&read_openai_api_key/1)
+    case credentials_store_mode() do
+      :keyring ->
+        warn_keyring_unsupported(:keyring)
+        nil
+
+      :auto ->
+        if keyring_supported?() do
+          warn_keyring_unsupported(:auto)
+          nil
+        else
+          auth_paths()
+          |> Enum.find_value(&read_openai_api_key/1)
+        end
+
+      _ ->
+        auth_paths()
+        |> Enum.find_value(&read_openai_api_key/1)
+    end
   end
 
   defp read_openai_api_key(path) do
@@ -125,5 +163,52 @@ defmodule Codex.Auth do
   defp normalize_string(value) when is_binary(value) do
     value = String.trim(value)
     if value == "", do: nil, else: value
+  end
+
+  defp credentials_store_mode do
+    cwd =
+      case File.cwd() do
+        {:ok, value} -> value
+        _ -> nil
+      end
+
+    case LayerStack.load(codex_home(), cwd) do
+      {:ok, layers} ->
+        layers
+        |> LayerStack.effective_config()
+        |> fetch_auth_store()
+
+      {:error, _} ->
+        :file
+    end
+  end
+
+  defp fetch_auth_store(%{} = config) do
+    case Map.get(config, "cli_auth_credentials_store") ||
+           Map.get(config, :cli_auth_credentials_store) do
+      "keyring" -> :keyring
+      "auto" -> :auto
+      "file" -> :file
+      nil -> :file
+      _ -> :file
+    end
+  end
+
+  defp keyring_supported? do
+    Application.get_env(:codex_sdk, :keyring_supported?, false)
+  end
+
+  defp warn_keyring_unsupported(mode) do
+    case :persistent_term.get(@keyring_warning_key, false) do
+      true ->
+        :ok
+
+      false ->
+        Logger.warning(
+          "codex_sdk does not support keyring auth (cli_auth_credentials_store=#{mode}); remote model fetch is disabled"
+        )
+
+        :persistent_term.put(@keyring_warning_key, true)
+    end
   end
 end

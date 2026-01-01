@@ -39,14 +39,14 @@ defmodule Codex.HostedToolsTest do
     assert {:ok, _info} = Tools.lookup("shell")
 
     # ShellTool now returns structured result with exit_code and success
-    assert {:ok, result} = Tools.invoke("shell", %{"command" => "ls"}, %{})
+    assert {:ok, result} = Tools.invoke("shell", %{"command" => ["ls"]}, %{})
     assert result["exit_code"] == 0
     assert result["success"] == true
     # Output is truncated to max_output_bytes
     assert String.starts_with?(result["output"], "12345")
     assert String.ends_with?(result["output"], "... (truncated)")
 
-    assert_receive {:shell_called, %{"command" => "ls"}, ctx, meta}
+    assert_receive {:shell_called, %{"command" => ["ls"]}, ctx, meta}
     assert ctx.timeout_ms == 1000
     assert meta.max_output_bytes == 5
   end
@@ -66,14 +66,14 @@ defmodule Codex.HostedToolsTest do
     assert {:ok, _} = Tools.lookup("apply_patch")
 
     patch = """
-    --- /dev/null
-    +++ b/test.txt
-    @@ -0,0 +1 @@
+    *** Begin Patch
+    *** Add File: test.txt
     +hello
+    *** End Patch
     """
 
     assert {:ok, %{"applied" => 1, "files" => [%{"kind" => "add", "path" => _}]}} =
-             Tools.invoke("apply_patch", %{"patch" => patch, "base_path" => tmp_dir}, %{})
+             Tools.invoke("apply_patch", %{"input" => patch, "base_path" => tmp_dir}, %{})
 
     assert File.exists?(Path.join(tmp_dir, "test.txt"))
   end

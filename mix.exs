@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.4.5"
+  @version "0.5.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -85,33 +85,19 @@ defmodule CodexSdk.MixProject do
         "CHANGELOG.md",
         "docs/01.md",
         "docs/02-architecture.md",
-        "docs/03-implementation-plan.md",
-        "docs/04-testing-strategy.md",
         "docs/05-api-reference.md",
         "docs/06-examples.md",
-        "docs/07-python-parity-plan.md",
-        "docs/08-tdd-implementation-guide.md",
-        "docs/09-app-server-transport.md",
-        "docs/fixtures.md",
-        "docs/observability-runbook.md",
-        "docs/python-parity-checklist.md"
+        "docs/09-app-server-transport.md"
       ],
       groups_for_extras: [
         Introduction: ["README.md", "docs/01.md"],
-        "Getting Started": [
+        Guides: [
           "docs/02-architecture.md",
-          "docs/03-implementation-plan.md",
-          "docs/04-testing-strategy.md",
-          "docs/05-api-reference.md",
           "docs/09-app-server-transport.md"
         ],
         Reference: [
+          "docs/05-api-reference.md",
           "docs/06-examples.md",
-          "docs/07-python-parity-plan.md",
-          "docs/08-tdd-implementation-guide.md",
-          "docs/fixtures.md",
-          "docs/observability-runbook.md",
-          "docs/python-parity-checklist.md",
           "LICENSE"
         ],
         Changelog: ["CHANGELOG.md"]
@@ -146,7 +132,13 @@ defmodule CodexSdk.MixProject do
           Codex.Tool,
           Codex.Tools,
           Codex.Tools.Registry,
-          Codex.MCP.Client
+          Codex.MCP.Client,
+          Codex.MCP.Config,
+          Codex.MCP.OAuth,
+          Codex.MCP.Transport.Stdio,
+          Codex.MCP.Transport.StreamableHTTP,
+          Codex.Prompts,
+          Codex.Skills
         ],
         Errors: [
           Codex.Error,
@@ -163,16 +155,9 @@ defmodule CodexSdk.MixProject do
   @package_docs ~w(
     docs/01.md
     docs/02-architecture.md
-    docs/03-implementation-plan.md
-    docs/04-testing-strategy.md
     docs/05-api-reference.md
     docs/06-examples.md
-    docs/07-python-parity-plan.md
-    docs/08-tdd-implementation-guide.md
     docs/09-app-server-transport.md
-    docs/fixtures.md
-    docs/observability-runbook.md
-    docs/python-parity-checklist.md
   )
 
   defp package do

@@ -16,82 +16,88 @@ defmodule Codex.Tools.ApplyPatchToolTest do
     test "returns valid tool metadata" do
       meta = ApplyPatchTool.metadata()
       assert meta.name == "apply_patch"
-      assert meta.description =~ "unified diff"
+      assert meta.description =~ "apply_patch"
       assert meta.schema["type"] == "object"
-      assert "patch" in meta.schema["required"]
+      assert meta.schema["additionalProperties"] == false
+      assert meta.schema["properties"]["input"]["type"] == "string"
+      assert meta.schema["properties"]["patch"]["type"] == "string"
     end
   end
 
   describe "parse_patch/1" do
-    test "parses simple add patch" do
+    test "parses apply_patch add file" do
       patch = """
-      --- /dev/null
-      +++ b/new_file.txt
-      @@ -0,0 +1,3 @@
+      *** Begin Patch
+      *** Add File: new_file.txt
       +line 1
       +line 2
       +line 3
+      *** End Patch
       """
 
       {:ok, changes} = ApplyPatchTool.parse_patch(patch)
       assert length(changes) == 1
-      {path, kind, hunks} = hd(changes)
-      assert path == "new_file.txt"
-      assert kind == :add
-      assert length(hunks) == 1
+      change = hd(changes)
+      assert change.format == :apply_patch
+      assert change.kind == :add
+      assert change.path == "new_file.txt"
+      assert change.content == ["line 1", "line 2", "line 3"]
     end
 
-    test "parses delete patch" do
+    test "parses apply_patch delete file" do
       patch = """
-      --- a/old_file.txt
-      +++ /dev/null
-      @@ -1,2 +0,0 @@
-      -line 1
-      -line 2
+      *** Begin Patch
+      *** Delete File: old_file.txt
+      *** End Patch
       """
 
       {:ok, changes} = ApplyPatchTool.parse_patch(patch)
       assert length(changes) == 1
-      {path, kind, _hunks} = hd(changes)
-      assert path == "old_file.txt"
-      assert kind == :delete
+      change = hd(changes)
+      assert change.format == :apply_patch
+      assert change.kind == :delete
+      assert change.path == "old_file.txt"
     end
 
-    test "parses modify patch" do
+    test "parses apply_patch update file" do
       patch = """
-      --- a/existing.txt
-      +++ b/existing.txt
-      @@ -1,3 +1,4 @@
+      *** Begin Patch
+      *** Update File: existing.txt
+      @@
        line 1
       -old line 2
       +new line 2
-      +extra line
+       line 3
+      *** End Patch
+      """
+
+      {:ok, changes} = ApplyPatchTool.parse_patch(patch)
+      assert length(changes) == 1
+      change = hd(changes)
+      assert change.format == :apply_patch
+      assert change.kind == :update
+      assert change.path == "existing.txt"
+      assert Enum.any?(change.segments, &match?({:chunk, _}, &1))
+    end
+
+    test "parses unified diff fallback" do
+      patch = """
+      --- a/existing.txt
+      +++ b/existing.txt
+      @@ -1,3 +1,3 @@
+       line 1
+      -old line 2
+      +new line 2
        line 3
       """
 
       {:ok, changes} = ApplyPatchTool.parse_patch(patch)
       assert length(changes) == 1
-      {path, kind, hunks} = hd(changes)
-      assert path == "existing.txt"
-      assert kind == :modify
-      assert length(hunks) == 1
-    end
-
-    test "parses multiple file changes" do
-      patch = """
-      --- /dev/null
-      +++ b/file1.txt
-      @@ -0,0 +1 @@
-      +content 1
-      --- a/file2.txt
-      +++ b/file2.txt
-      @@ -1 +1 @@
-      -old
-      +new
-      """
-
-      {:ok, changes} = ApplyPatchTool.parse_patch(patch)
-      assert length(changes) == 2
+      change = hd(changes)
+      assert change.format == :unified_diff
+      assert change.kind == :update
+      assert change.path == "existing.txt"
+      assert length(change.hunks) == 1
     end
 
     test "handles empty patch" do
@@ -103,15 +109,15 @@ defmodule Codex.Tools.ApplyPatchToolTest do
   describe "invoke/2 - create new file" do
     test "creates new file from patch", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/new_file.txt
-      @@ -0,0 +1,3 @@
+      *** Begin Patch
+      *** Add File: new_file.txt
       +line 1
       +line 2
       +line 3
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
       assert result["applied"] == 1
@@ -128,13 +134,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "creates nested directories as needed", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/deep/nested/path/file.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: deep/nested/path/file.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
       assert result["applied"] == 1
@@ -150,13 +156,12 @@ defmodule Codex.Tools.ApplyPatchToolTest do
       assert File.exists?(file)
 
       patch = """
-      --- a/to_delete.txt
-      +++ /dev/null
-      @@ -1,1 +0,0 @@
-      -content
+      *** Begin Patch
+      *** Delete File: to_delete.txt
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
       assert result["applied"] == 1
@@ -166,13 +171,12 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "returns error when deleting non-existent file", %{test_dir: dir} do
       patch = """
-      --- a/nonexistent.txt
-      +++ /dev/null
-      @@ -1 +0,0 @@
-      -content
+      *** Begin Patch
+      *** Delete File: nonexistent.txt
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:error, {_path, :enoent}} = ApplyPatchTool.invoke(args, %{})
     end
   end
@@ -183,17 +187,18 @@ defmodule Codex.Tools.ApplyPatchToolTest do
       File.write!(file, "line 1\nold line 2\nline 3\n")
 
       patch = """
-      --- a/existing.txt
-      +++ b/existing.txt
-      @@ -1,3 +1,4 @@
+      *** Begin Patch
+      *** Update File: existing.txt
+      @@
        line 1
       -old line 2
       +new line 2
       +extra line
        line 3
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{})
 
       assert result["applied"] == 1
@@ -201,6 +206,26 @@ defmodule Codex.Tools.ApplyPatchToolTest do
       assert content =~ "new line 2"
       assert content =~ "extra line"
       refute content =~ "old line 2"
+    end
+
+    test "renames file with move_to", %{test_dir: dir} do
+      file = Path.join(dir, "old_name.txt")
+      File.write!(file, "hello\n")
+
+      patch = """
+      *** Begin Patch
+      *** Update File: old_name.txt
+      *** Move to: new_name.txt
+      *** End Patch
+      """
+
+      args = %{"input" => patch, "base_path" => dir}
+      {:ok, result} = ApplyPatchTool.invoke(args, %{})
+
+      assert result["applied"] == 1
+      assert hd(result["files"])["move_path"] == Path.join(dir, "new_name.txt")
+      refute File.exists?(file)
+      assert File.read!(Path.join(dir, "new_name.txt")) == "hello\n"
     end
 
     test "handles single line modification", %{test_dir: dir} do
@@ -227,13 +252,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
   describe "invoke/2 - dry run" do
     test "dry run does not modify files", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/should_not_exist.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: should_not_exist.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{dry_run: true})
 
       assert result["validated"] == 1
@@ -244,13 +269,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "dry run via metadata", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/should_not_exist.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: should_not_exist.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{metadata: %{dry_run: true}}
       {:ok, result} = ApplyPatchTool.invoke(args, context)
 
@@ -264,13 +289,12 @@ defmodule Codex.Tools.ApplyPatchToolTest do
       File.write!(file, "content")
 
       patch = """
-      --- a/exists.txt
-      +++ /dev/null
-      @@ -1 +0,0 @@
-      -content
+      *** Begin Patch
+      *** Delete File: exists.txt
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, result} = ApplyPatchTool.invoke(args, %{dry_run: true})
 
       assert result["validated"] == 1
@@ -281,13 +305,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
   describe "invoke/2 - approval" do
     test "respects approval callback - approved", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/approved.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: approved.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{metadata: %{approval: fn _changes, _ctx -> :ok end}}
       {:ok, result} = ApplyPatchTool.invoke(args, context)
 
@@ -297,13 +321,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "respects approval callback - denied", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/denied.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: denied.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{metadata: %{approval: fn _changes, _ctx -> {:deny, "not allowed"} end}}
 
       assert {:deny, "not allowed"} = ApplyPatchTool.invoke(args, context)
@@ -312,17 +336,17 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "approval callback receives change summary", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/new.txt
-      @@ -0,0 +1,3 @@
+      *** Begin Patch
+      *** Add File: new.txt
       +line 1
       +line 2
       +line 3
+      *** End Patch
       """
 
       test_pid = self()
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
 
       context = %{
         metadata: %{
@@ -346,13 +370,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "approval with :deny atom", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/denied.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: denied.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{metadata: %{approval: fn _changes, _ctx -> :deny end}}
 
       assert {:deny, :denied} = ApplyPatchTool.invoke(args, context)
@@ -360,13 +384,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "approval with false", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/denied.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: denied.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{metadata: %{approval: fn _changes, _ctx -> false end}}
 
       assert {:deny, :denied} = ApplyPatchTool.invoke(args, context)
@@ -388,14 +412,15 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "returns error when modifying non-existent file", %{test_dir: dir} do
       patch = """
-      --- a/nonexistent.txt
-      +++ b/nonexistent.txt
-      @@ -1 +1 @@
+      *** Begin Patch
+      *** Update File: nonexistent.txt
+      @@
       -old
       +new
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:error, {"nonexistent.txt", :enoent}} = ApplyPatchTool.invoke(args, %{})
     end
   end
@@ -403,13 +428,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
   describe "invoke/2 - base_path handling" do
     test "uses base_path from args", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/file.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: file.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       {:ok, _result} = ApplyPatchTool.invoke(args, %{})
 
       assert File.exists?(Path.join(dir, "file.txt"))
@@ -417,13 +442,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "uses base_path from context", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/file.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: file.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch}
+      args = %{"input" => patch}
       {:ok, _result} = ApplyPatchTool.invoke(args, %{base_path: dir})
 
       assert File.exists?(Path.join(dir, "file.txt"))
@@ -431,13 +456,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
 
     test "uses base_path from metadata", %{test_dir: dir} do
       patch = """
-      --- /dev/null
-      +++ b/file.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: file.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch}
+      args = %{"input" => patch}
       context = %{metadata: %{base_path: dir}}
       {:ok, _result} = ApplyPatchTool.invoke(args, context)
 
@@ -450,13 +475,13 @@ defmodule Codex.Tools.ApplyPatchToolTest do
       on_exit(fn -> File.rm_rf!(other_dir) end)
 
       patch = """
-      --- /dev/null
-      +++ b/file.txt
-      @@ -0,0 +1 @@
+      *** Begin Patch
+      *** Add File: file.txt
       +content
+      *** End Patch
       """
 
-      args = %{"patch" => patch, "base_path" => dir}
+      args = %{"input" => patch, "base_path" => dir}
       context = %{base_path: other_dir}
       {:ok, _result} = ApplyPatchTool.invoke(args, context)
 

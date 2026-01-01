@@ -4,7 +4,7 @@ This guide covers using the **stateful** `codex app-server` transport from Elixi
 
 The SDK supports two external Codex transports:
 
-- **Exec JSONL (default, backwards compatible)**: `codex exec --experimental-json`
+- **Exec JSONL (default, backwards compatible)**: `codex exec --json`
 - **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON messages over stdio)
 
 Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive, skills/models/config APIs, server-driven approvals, etc.).
@@ -65,7 +65,7 @@ To keep your existing `Codex.Thread.*` usage but switch the underlying transport
 Streaming works the same way:
 
 ```elixir
-{:ok, stream} = Codex.Thread.run_streamed(thread, "Run tests and report failures")
+{:ok, stream} = Codex.Thread.run_streamed(thread, "List the top-level files and summarize them")
 Enum.each(stream, &IO.inspect/1)
 ```
 
@@ -76,13 +76,20 @@ App-server enables additional APIs that are not available via exec JSONL. Exampl
 ```elixir
 {:ok, conn} = Codex.AppServer.connect(codex_opts)
 
-{:ok, %{"data" => skills}} = Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"])
+{:ok, %{"data" => skills}} =
+  Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"], force_reload: true)
 {:ok, %{"data" => models}} = Codex.AppServer.model_list(conn, limit: 25)
+
+When you need feature-flag gating or to load the underlying `SKILL.md` contents,
+use `Codex.Skills.list/2` and `Codex.Skills.load/2`, which honor `features.skills`.
 
 {:ok, %{"config" => config}} = Codex.AppServer.config_read(conn, include_layers: false)
 {:ok, _} = Codex.AppServer.config_write(conn, "features.web_search_request", true)
 
 {:ok, %{"data" => threads, "nextCursor" => cursor}} = Codex.AppServer.thread_list(conn, limit: 10)
+
+{:ok, %{"files" => files}} =
+  Codex.AppServer.fuzzy_file_search(conn, "readme", roots: ["/path/to/project"])
 ```
 
 When `include_layers: true`, `config_read/2` returns a `layers` list. Recent Codex versions encode each layer's `name` as a tagged union (`ConfigLayerSource`), for example:
@@ -103,10 +110,23 @@ Common thread-history operations are exposed via:
 
 - `Codex.AppServer.thread_list/2`
 - `Codex.AppServer.thread_archive/2`
+- `Codex.AppServer.thread_resume/3` accepts optional `history` and `path` overrides
 
 ### Removed APIs
 
 - `thread_compact/2` - Removed upstream; compaction is now automatic server-side
+
+## Legacy v1 APIs
+
+Older app-server builds only implement the v1 conversation endpoints. Use
+`Codex.AppServer.V1` for those flows:
+
+```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+
+{:ok, convo} = Codex.AppServer.V1.new_conversation(conn, %{})
+{:ok, _} = Codex.AppServer.V1.send_user_message(conn, convo["conversationId"], "Hello!")
+```
 
 ## Notifications and server requests (approvals)
 
@@ -131,6 +151,15 @@ You can filter by thread id and/or method list:
   methods: ["turn/completed", "item/completed", "item/commandExecution/requestApproval"]
 )
 ```
+
+### Raw response items and deprecations
+
+When `experimental_raw_events` is enabled on `thread/start` or
+`Codex.AppServer.V1.add_conversation_listener/3`, the server emits
+`rawResponseItem/completed` notifications. The SDK maps these to
+`%Codex.Events.RawResponseItemCompleted{}` and parses known item types such as
+ghost snapshots and compaction payloads. Deprecation warnings are surfaced as
+`%Codex.Events.DeprecationNotice{}` from `deprecationNotice` notifications.
 
 ### Manual approval handling (UI loop)
 

@@ -6,6 +6,18 @@ defmodule Codex.MCPClientTest do
 
   @sdk_version to_string(Application.spec(:codex_sdk, :vsn))
 
+  defp rpc_ok(result) do
+    fn request ->
+      %{"jsonrpc" => "2.0", "id" => request["id"], "result" => result}
+    end
+  end
+
+  defp rpc_error(error) do
+    fn request ->
+      %{"jsonrpc" => "2.0", "id" => request["id"], "error" => error}
+    end
+  end
+
   defmodule FakeTransport do
     use GenServer
 
@@ -15,7 +27,7 @@ defmodule Codex.MCPClientTest do
 
     @impl true
     def init(response) do
-      {:ok, %{response: response, sent: []}}
+      {:ok, %{response: response, sent: [], last: nil}}
     end
 
     def send(pid, message) do
@@ -33,12 +45,18 @@ defmodule Codex.MCPClientTest do
 
     @impl true
     def handle_cast({:send, message}, state) do
-      {:noreply, %{state | sent: [message | state.sent]}}
+      {:noreply, %{state | sent: [message | state.sent], last: message}}
     end
 
     @impl true
-    def handle_call(:recv, _from, %{response: [next | rest]} = state) do
-      {:reply, {:ok, next}, %{state | response: rest}}
+    def handle_call(:recv, _from, %{response: [next | rest], last: last} = state) do
+      reply =
+        case next do
+          fun when is_function(fun, 1) -> fun.(last)
+          other -> other
+        end
+
+      {:reply, {:ok, reply}, %{state | response: rest}}
     end
 
     def handle_call(:recv, _from, %{response: []} = state) do
@@ -54,7 +72,11 @@ defmodule Codex.MCPClientTest do
   test "handshake exchanges capability information" do
     {:ok, transport} =
       FakeTransport.start_link([
-        %{"type" => "handshake.ack", "capabilities" => ["tools", "attachments"]}
+        rpc_ok(%{
+          "capabilities" => %{"tools" => %{}, "attachments" => %{}},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        })
       ])
 
     transport_ref = {FakeTransport, transport}
@@ -63,22 +85,23 @@ defmodule Codex.MCPClientTest do
 
     assert Client.capabilities(client) == %{"attachments" => %{}, "tools" => %{}}
 
-    assert [sent] = FakeTransport.sent(transport)
-    assert sent["type"] == "handshake"
-    assert sent["client"] == "codex"
+    sent = FakeTransport.sent(transport)
+    assert Enum.any?(sent, &(&1["method"] == "initialize"))
+    assert Enum.any?(sent, &(&1["method"] == "notifications/initialized"))
   end
 
   test "handshake preserves capability metadata including elicitation support" do
     {:ok, transport} =
       FakeTransport.start_link([
-        %{
-          "type" => "handshake.ack",
+        rpc_ok(%{
           "capabilities" => %{
             "tools" => %{"listChanged" => true},
             "elicitation" => %{"server" => "shell"},
             "mcpServers" => [%{"name" => "shell-mcp", "capabilities" => %{"exec" => true}}]
-          }
-        }
+          },
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        })
       ])
 
     transport_ref = {FakeTransport, transport}
@@ -95,19 +118,23 @@ defmodule Codex.MCPClientTest do
   test "list_tools caches responses and applies filters" do
     {:ok, transport} =
       FakeTransport.start_link([
-        %{"type" => "handshake.ack", "capabilities" => %{}},
-        %{
+        rpc_ok(%{
+          "capabilities" => %{},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        }),
+        rpc_ok(%{
           "tools" => [
             %{"name" => "alpha"},
             %{"name" => "beta"}
           ]
-        },
-        %{
+        }),
+        rpc_ok(%{
           "tools" => [
             %{"name" => "alpha"},
             %{"name" => "beta"}
           ]
-        }
+        })
       ])
 
     transport_ref = {FakeTransport, transport}
@@ -125,15 +152,70 @@ defmodule Codex.MCPClientTest do
              Client.list_tools(cached_client, allow: ["beta"], cache?: false)
 
     sent = FakeTransport.sent(transport)
-    assert Enum.count(sent, &(&1["type"] == "list_tools")) == 2
+    assert Enum.count(sent, &(&1["method"] == "tools/list")) == 2
+  end
+
+  test "list_resources sends cursor and returns response" do
+    {:ok, transport} =
+      FakeTransport.start_link([
+        rpc_ok(%{
+          "capabilities" => %{},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        }),
+        rpc_ok(%{"resources" => [%{"name" => "alpha"}], "nextCursor" => "next"})
+      ])
+
+    transport_ref = {FakeTransport, transport}
+
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
+
+    assert {:ok, %{"resources" => [%{"name" => "alpha"}], "nextCursor" => "next"}} =
+             Client.list_resources(client, cursor: "page-1")
+
+    sent = FakeTransport.sent(transport)
+
+    assert Enum.any?(sent, fn message ->
+             message["method"] == "resources/list" and
+               message["params"] == %{"cursor" => "page-1"}
+           end)
+  end
+
+  test "list_prompts sends cursor and returns response" do
+    {:ok, transport} =
+      FakeTransport.start_link([
+        rpc_ok(%{
+          "capabilities" => %{},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        }),
+        rpc_ok(%{"prompts" => [%{"name" => "review"}], "nextCursor" => nil})
+      ])
+
+    transport_ref = {FakeTransport, transport}
+
+    assert {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
+
+    assert {:ok, %{"prompts" => [%{"name" => "review"}], "nextCursor" => nil}} =
+             Client.list_prompts(client, cursor: "page-2")
+
+    sent = FakeTransport.sent(transport)
+
+    assert Enum.any?(sent, fn message ->
+             message["method"] == "prompts/list" and message["params"] == %{"cursor" => "page-2"}
+           end)
   end
 
   test "call_tool retries on failure with backoff" do
     {:ok, transport} =
       FakeTransport.start_link([
-        %{"type" => "handshake.ack", "capabilities" => %{}},
-        %{"error" => "transient"},
-        %{"result" => %{"echo" => "ok"}}
+        rpc_ok(%{
+          "capabilities" => %{},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        }),
+        rpc_error(%{"code" => -32_000, "message" => "transient"}),
+        rpc_ok(%{"echo" => "ok"})
       ])
 
     transport_ref = {FakeTransport, transport}
@@ -153,15 +235,19 @@ defmodule Codex.MCPClientTest do
 
     assert Agent.get(backoffs, &Enum.reverse/1) == [1]
     sent = FakeTransport.sent(transport)
-    assert Enum.count(sent, &(&1["type"] == "call_tool")) == 2
+    assert Enum.count(sent, &(&1["method"] == "tools/call")) == 2
   end
 
   describe "call_tool/4" do
     test "invokes tool and returns result" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"data" => "hello"}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"data" => "hello"})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -174,10 +260,14 @@ defmodule Codex.MCPClientTest do
     test "retries on transient failure with default backoff" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"error" => "transient"},
-          %{"error" => "transient"},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_error(%{"code" => -32_000, "message" => "transient"}),
+          rpc_error(%{"code" => -32_000, "message" => "transient"}),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -190,16 +280,20 @@ defmodule Codex.MCPClientTest do
                Client.call_tool(client, "test_tool", %{}, retries: 2, backoff: backoff)
 
       sent = FakeTransport.sent(transport)
-      assert Enum.count(sent, &(&1["type"] == "call_tool")) == 3
+      assert Enum.count(sent, &(&1["method"] == "tools/call")) == 3
     end
 
     test "applies exponential backoff" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"error" => "fail1"},
-          %{"error" => "fail2"},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_error(%{"code" => -32_000, "message" => "fail1"}),
+          rpc_error(%{"code" => -32_000, "message" => "fail2"}),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -224,8 +318,12 @@ defmodule Codex.MCPClientTest do
     test "respects approval callback - allows" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -240,8 +338,11 @@ defmodule Codex.MCPClientTest do
     test "respects approval callback - denies" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          })
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -254,13 +355,17 @@ defmodule Codex.MCPClientTest do
 
       # Should not have sent any call_tool request
       sent = FakeTransport.sent(transport)
-      refute Enum.any?(sent, &(&1["type"] == "call_tool"))
+      refute Enum.any?(sent, &(&1["method"] == "tools/call"))
     end
 
     test "respects approval callback - denies with false" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          })
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -275,8 +380,12 @@ defmodule Codex.MCPClientTest do
     test "emits telemetry events on success" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"data" => "test"}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"data" => "test"})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -329,8 +438,12 @@ defmodule Codex.MCPClientTest do
     test "emits telemetry events on failure" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"error" => "fatal_error"}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_error(%{"code" => -32_000, "message" => "fatal_error"})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -356,7 +469,7 @@ defmodule Codex.MCPClientTest do
         nil
       )
 
-      assert {:error, "fatal_error"} =
+      assert {:error, %{"code" => -32_000, "message" => "fatal_error"}} =
                Client.call_tool(client, "fail_tool", %{}, retries: 0)
 
       # Verify start event
@@ -369,7 +482,7 @@ defmodule Codex.MCPClientTest do
       assert is_integer(failure_measurements.duration)
       assert failure_metadata.tool == "fail_tool"
       assert failure_metadata.server_name == "fail_server"
-      assert failure_metadata.reason == "fatal_error"
+      assert failure_metadata.reason == %{"code" => -32_000, "message" => "fatal_error"}
       assert failure_metadata.attempt == 1
 
       :telemetry.detach("test-mcp-tool-call-failure")
@@ -378,11 +491,15 @@ defmodule Codex.MCPClientTest do
     test "uses default retries of 3" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"error" => "fail1"},
-          %{"error" => "fail2"},
-          %{"error" => "fail3"},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_error(%{"code" => -32_000, "message" => "fail1"}),
+          rpc_error(%{"code" => -32_000, "message" => "fail2"}),
+          rpc_error(%{"code" => -32_000, "message" => "fail3"}),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -395,16 +512,20 @@ defmodule Codex.MCPClientTest do
       assert {:ok, %{"ok" => true}} = Client.call_tool(client, "test_tool", %{}, backoff: backoff)
 
       sent = FakeTransport.sent(transport)
-      assert Enum.count(sent, &(&1["type"] == "call_tool")) == 4
+      assert Enum.count(sent, &(&1["method"] == "tools/call")) == 4
     end
 
     test "fails after exhausting retries" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"error" => "fail1"},
-          %{"error" => "fail2"},
-          %{"error" => "final_fail"}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_error(%{"code" => -32_000, "message" => "fail1"}),
+          rpc_error(%{"code" => -32_000, "message" => "fail2"}),
+          rpc_error(%{"code" => -32_000, "message" => "final_fail"})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -412,18 +533,22 @@ defmodule Codex.MCPClientTest do
 
       backoff = fn _attempt -> :ok end
 
-      assert {:error, "final_fail"} =
+      assert {:error, %{"code" => -32_000, "message" => "final_fail"}} =
                Client.call_tool(client, "test_tool", %{}, retries: 2, backoff: backoff)
 
       sent = FakeTransport.sent(transport)
-      assert Enum.count(sent, &(&1["type"] == "call_tool")) == 3
+      assert Enum.count(sent, &(&1["method"] == "tools/call")) == 3
     end
 
     test "supports 2-arity approval callbacks" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -445,8 +570,12 @@ defmodule Codex.MCPClientTest do
     test "supports 1-arity approval callbacks" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -464,8 +593,12 @@ defmodule Codex.MCPClientTest do
     test "passes context to approval callback" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"ok" => true}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"ok" => true})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -489,8 +622,12 @@ defmodule Codex.MCPClientTest do
     test "handles nil server_name in telemetry" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"result" => %{"data" => "test"}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"data" => "test"})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -519,8 +656,12 @@ defmodule Codex.MCPClientTest do
   test "hosted MCP tool respects approval hook" do
     {:ok, transport} =
       FakeTransport.start_link([
-        %{"type" => "handshake.ack", "capabilities" => %{}},
-        %{"result" => %{"ok" => true}}
+        rpc_ok(%{
+          "capabilities" => %{},
+          "protocolVersion" => "2025-06-18",
+          "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+        }),
+        rpc_ok(%{"ok" => true})
       ])
 
     transport_ref = {FakeTransport, transport}
@@ -552,7 +693,11 @@ defmodule Codex.MCPClientTest do
     test "handshake accepts server_name option" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          })
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -570,8 +715,12 @@ defmodule Codex.MCPClientTest do
     test "list_tools qualifies tool names with server prefix" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"tools" => [%{"name" => "tool_a"}, %{"name" => "tool_b"}]}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"tools" => [%{"name" => "tool_a"}, %{"name" => "tool_b"}]})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -592,15 +741,19 @@ defmodule Codex.MCPClientTest do
     test "list_tools truncates long tool names with SHA1 suffix" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{
             "tools" => [
               %{
                 "name" =>
                   "extremely_lengthy_function_name_that_absolutely_surpasses_all_reasonable_limits"
               }
             ]
-          }
+          })
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -629,8 +782,12 @@ defmodule Codex.MCPClientTest do
     test "list_tools preserves original name alongside qualified name" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"tools" => [%{"name" => "echo", "description" => "echoes input"}]}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"tools" => [%{"name" => "echo", "description" => "echoes input"}]})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -651,8 +808,12 @@ defmodule Codex.MCPClientTest do
     test "list_tools without qualify? option returns original names only" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"tools" => [%{"name" => "tool_a"}]}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"tools" => [%{"name" => "tool_a"}]})
         ])
 
       transport_ref = {FakeTransport, transport}
@@ -673,8 +834,12 @@ defmodule Codex.MCPClientTest do
     test "list_tools skips duplicate qualified names" do
       {:ok, transport} =
         FakeTransport.start_link([
-          %{"type" => "handshake.ack", "capabilities" => %{}},
-          %{"tools" => [%{"name" => "dup"}, %{"name" => "dup"}]}
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"tools" => [%{"name" => "dup"}, %{"name" => "dup"}]})
         ])
 
       transport_ref = {FakeTransport, transport}

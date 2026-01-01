@@ -12,7 +12,7 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 
 `codex_sdk` supports two upstream external transports:
 
-- **Exec JSONL (default)**: spawns `codex exec --experimental-json` and parses JSONL events
+- **Exec JSONL (default)**: spawns `codex exec --json` and parses JSONL events
 - **App-server JSON-RPC (optional)**: maintains a stateful `codex app-server` subprocess and speaks newline-delimited JSON-RPC over stdio
 
 Transport selection is per-thread via `Codex.Thread.Options.transport`:
@@ -560,62 +560,6 @@ end
 - 100s of concurrent turns easily
 - 1000s possible with tuning
 - Limited by API, not SDK
-
-## Testing Strategy
-
-### Unit Tests
-
-**Codex Module**:
-- Option validation
-- Thread creation
-- Error cases
-
-**Thread Module**:
-- Turn execution (mocked Exec)
-- Option passing
-- Schema handling
-
-**Exec GenServer**:
-- Process spawning
-- Event parsing
-- Error handling
-- Cleanup
-
-### Integration Tests
-
-**With Mock codex-rs**:
-- Script that emits test events
-- No real API calls
-- Fast and deterministic
-
-**With Real codex-rs**:
-- Tagged `:integration`
-- Requires API key
-- Slow but comprehensive
-
-### Property Tests
-
-**Event Parsing**:
-- Generate random valid events
-- Verify round-trip JSON encoding
-- Ensure no crashes
-
-**Stream Properties**:
-- Events in order
-- No duplicates
-- Complete consumption
-
-### Chaos Tests
-
-**Process Crashes**:
-- Kill Exec during turn
-- Kill Port during turn
-- Verify cleanup happens
-
-**Resource Exhaustion**:
-- Many concurrent turns
-- Large event payloads
-- Verify no leaks
 
 ## Telemetry Integration
 

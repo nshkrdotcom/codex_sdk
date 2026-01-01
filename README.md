@@ -11,20 +11,18 @@
 [![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/codex_sdk)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE)
 
-An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support, comprehensive event handling, and robust testing utilities.
+An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support and comprehensive event handling.
 
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
-- **Multi-Transport Support**: Default exec JSONL (`codex exec --experimental-json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
+- **Multi-Transport Support**: Default exec JSONL (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color, config overrides, review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events plus reasoning summary/content preservation and typed app-server deltas.
-- **File & Attachment Pipeline**: Secure temp file registry, change events, and fixture harvesting helpers.
+- **File & Attachment Pipeline**: Secure temp file registry and change events.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
 - **Tooling & MCP Integration**: Built-in registry for Codex tool manifests and MCP client helpers.
 - **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, and usage stats.
-- **Deterministic Testing**: Supertester-powered OTP test suite, contract fixtures, and live CLI validation.
-- **Developer Experience**: Mix tasks for parity verification, rich docs, runnable examples, and CI-friendly checks.
 
 ## Installation
 
@@ -33,7 +31,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.4.5"}
+    {:codex_sdk, "~> 0.5.0"}
   ]
 end
 ```
@@ -70,6 +68,13 @@ then `auth.json` `OPENAI_API_KEY`, and otherwise falls back to your CLI login to
 `CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support). If neither an API
 key nor an authenticated CLI session is available, Codex executions will fail with upstream
 authentication errors—the SDK does not perform additional login flows.
+
+If `cli_auth_credentials_store = "keyring"` is set in config and keyring support is unavailable,
+the SDK logs a warning and skips file-based tokens (remote model fetch falls back to bundled models).
+When `cli_auth_credentials_store = "auto"` and keyring is unavailable, the SDK falls back to file-based auth.
+
+When an API key is supplied, the SDK forwards it as both `CODEX_API_KEY` and `OPENAI_API_KEY`
+to the codex subprocess to align with provider expectations.
 ```
 
 Model defaults are auth-aware:
@@ -138,11 +143,13 @@ App-server-only APIs include:
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`
 - `Codex.AppServer.turn_interrupt/3`
+- `Codex.AppServer.fuzzy_file_search/3` (legacy v1 helper used by `@` file search)
 - `Codex.AppServer.command_write_stdin/4` (interactive command stdin)
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
 Note: app-server v2 does not support sending `UserInput::Skill` directly; use `skills/list` and inject skill content as text if you need emulation.
+Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 
 ### Streaming Responses
 
@@ -279,6 +286,18 @@ Resume the most recent session (equivalent to `codex exec resume --last`):
 {:ok, result} = Codex.Thread.run(thread, "Continue from where we left off")
 ```
 
+### Session Helpers
+
+The CLI writes session logs under `~/.codex/sessions`. The SDK can list them and
+apply or undo diffs locally:
+
+```elixir
+{:ok, sessions} = Codex.Sessions.list_sessions()
+
+{:ok, result} = Codex.Sessions.apply(diff, cwd: "/path/to/repo")
+{:ok, _undo} = Codex.Sessions.undo(ghost_snapshot, cwd: "/path/to/repo")
+```
+
 ### Configuration Options
 
 ```elixir
@@ -288,7 +307,8 @@ Resume the most recent session (equivalent to `codex exec resume --last`):
     api_key: System.fetch_env!("CODEX_API_KEY"),
     codex_path_override: "/custom/path/to/codex",
     telemetry_prefix: [:codex, :sdk],
-    model: "o1"
+    model: "o1",
+    history: %{persistence: "local", max_bytes: 1_000_000}
   )
 
 # Thread-level options
@@ -319,15 +339,25 @@ turn_options = %{output_schema: my_json_schema}
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 
-# Exec controls: inject env, set cancellation token/timeout (forwarded to codex exec)
+# Exec controls: inject env, set cancellation token/timeout/idle timeout (forwarded to codex exec)
 turn_options = %{
   env: %{"CODEX_DEMO_ENV" => "from-sdk"},
   cancellation_token: "demo-token-123",
-  timeout_ms: 120_000
+  timeout_ms: 120_000,
+  stream_idle_timeout_ms: 300_000
 }
 
 {:ok, stream} =
   Codex.Thread.run_streamed(thread, "List three files and echo $CODEX_DEMO_ENV", turn_options)
+
+# Opt-in retry and rate limit handling
+{:ok, thread_opts} =
+  Codex.Thread.Options.new(
+    retry: true,
+    retry_opts: [max_attempts: 3],
+    rate_limit: true,
+    rate_limit_opts: [max_attempts: 3]
+  )
 ```
 
 ### Approval Hooks
@@ -398,21 +428,27 @@ thread_opts =
 {:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
 ```
 
-Query `Codex.Files.metrics/0` for staging stats, force cleanup with `Codex.Files.force_cleanup/0`,
-and leverage `scripts/harvest_python_fixtures.py` to import parity fixtures from the Python SDK.
+Query `Codex.Files.metrics/0` for staging stats and force cleanup with `Codex.Files.force_cleanup/0`.
 
 ### MCP Tool Discovery
 
 The SDK provides MCP client helpers for discovering and invoking tools from MCP servers:
 
 ```elixir
-# Connect to an MCP server with handshake
-{:ok, client} = Codex.MCP.Client.handshake(
-  {MyTransport, transport_state},
-  client: "codex-elixir",
-  version: "0.1.0",
-  server_name: "my_server"
-)
+# Connect to a stdio MCP server
+{:ok, transport} =
+  Codex.MCP.Transport.Stdio.start_link(
+    command: "npx",
+    args: ["-y", "mcp-server"]
+  )
+
+{:ok, client} =
+  Codex.MCP.Client.initialize(
+    {Codex.MCP.Transport.Stdio, transport},
+    client: "codex-elixir",
+    version: "0.1.0",
+    server_name: "my_server"
+  )
 
 # List tools with filtering
 {:ok, tools, client} = Codex.MCP.Client.list_tools(client,
@@ -428,6 +464,9 @@ The SDK provides MCP client helpers for discovering and invoking tools from MCP 
 # - "qualified_name" - fully qualified name (e.g., "mcp__my_server__read_file")
 # - "server_name" - server identifier
 ```
+
+`Codex.MCP.Transport.StreamableHTTP` provides JSON-RPC over HTTP with bearer/OAuth
+auth support for remote MCP servers.
 
 Tool name qualification follows the OpenAI convention (`^[a-zA-Z0-9_-]+$`). Names exceeding
 64 characters are truncated with a SHA1 hash suffix for disambiguation:
@@ -457,11 +496,11 @@ alias Codex.Tools.ShellTool
 {:ok, _} = Tools.register(ShellTool)
 
 # Execute a simple command
-{:ok, result} = Tools.invoke("shell", %{"command" => "ls -la"}, %{})
+{:ok, result} = Tools.invoke("shell", %{"command" => ["ls", "-la"]}, %{})
 # => %{"output" => "...", "exit_code" => 0, "success" => true}
 
 # With working directory
-{:ok, result} = Tools.invoke("shell", %{"command" => "pwd", "cwd" => "/tmp"}, %{})
+{:ok, result} = Tools.invoke("shell", %{"command" => ["pwd"], "workdir" => "/tmp"}, %{})
 
 # With custom timeout and output limits
 {:ok, _} = Tools.register(ShellTool,
@@ -476,18 +515,32 @@ end
 
 {:ok, _} = Tools.register(ShellTool, approval: approval)
 {:error, {:approval_denied, "rm not allowed"}} =
-  Tools.invoke("shell", %{"command" => "rm file"}, %{})
+  Tools.invoke("shell", %{"command" => ["rm", "file"]}, %{})
 ```
 
-For testing, provide a custom executor:
+For custom execution, provide a custom executor:
 
 ```elixir
-mock_executor = fn %{"command" => cmd}, _ctx, _meta ->
-  {:ok, %{"output" => "mocked: #{cmd}", "exit_code" => 0}}
+custom_executor = fn %{"command" => cmd}, _ctx, _meta ->
+  formatted = if is_list(cmd), do: Enum.join(cmd, " "), else: cmd
+  {:ok, %{"output" => "custom: #{formatted}", "exit_code" => 0}}
 end
 
-{:ok, _} = Tools.register(ShellTool, executor: mock_executor)
+{:ok, _} = Tools.register(ShellTool, executor: custom_executor)
 ```
+
+For string shell scripts, use the `shell_command` tool:
+
+```elixir
+alias Codex.Tools.ShellCommandTool
+
+{:ok, _} = Tools.register(ShellCommandTool)
+{:ok, result} = Tools.invoke("shell_command", %{"command" => "ls -la", "workdir" => "/tmp"}, %{})
+```
+
+Additional hosted tools include `write_stdin` (unified exec sessions via app-server) and
+`view_image` (local image attachments gated by `features.view_image_tool` or
+`Thread.Options.view_image_tool_enabled`).
 
 See `examples/shell_tool.exs` for a complete demonstration.
 
@@ -535,7 +588,6 @@ Supported glob patterns:
 - `*.ex` - All `.ex` files in base directory
 - `**/*.ex` - All `.ex` files recursively
 - `lib/**/*.{ex,exs}` - All Elixir files under lib/
-- `test/*_test.exs` - All test files in test/
 
 See `examples/file_search_tool.exs` for more examples.
 
@@ -567,6 +619,20 @@ Telemetry events are emitted for observability:
 - `[:codex, :mcp, :tool_call, :start]` - When a call begins
 - `[:codex, :mcp, :tool_call, :success]` - On successful completion
 - `[:codex, :mcp, :tool_call, :failure]` - On failure after retries exhausted
+
+### Custom Prompts and Skills
+
+List and expand custom prompts from `$CODEX_HOME/prompts`, and load skills when
+`features.skills` is enabled:
+
+```elixir
+{:ok, prompts} = Codex.Prompts.list()
+{:ok, expanded} = Codex.Prompts.expand(Enum.at(prompts, 0), "FILE=lib/app.ex")
+
+{:ok, conn} = Codex.AppServer.connect(codex_opts)
+{:ok, %{"data" => skills}} = Codex.Skills.list(conn, skills_enabled: true)
+{:ok, content} = Codex.Skills.load(hd(hd(skills)["skills"]), skills_enabled: true)
+```
 
 ### Retry Logic
 
@@ -629,8 +695,7 @@ mix run examples/basic_usage.exs
 ```
 
 When the flag is not set (default), the SDK runs without booting the OTLP exporter—avoiding
-`tls_certificate_check` warnings on systems without the helper installed. See
-`docs/observability-runbook.md` for advanced setup instructions.
+`tls_certificate_check` warnings on systems without the helper installed.
 
 The Codex CLI (`codex-rs`) has its own OpenTelemetry **log** exporter, configured separately via
 `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) under `[otel]`. This is independent of
@@ -718,41 +783,6 @@ The SDK provides structured events for all Codex operations:
 - **`TodoList`** - Agent's running task list
 - **`Error`** - Non-fatal error items
 
-## Testing
-
-The SDK uses [Supertester](https://hex.pm/packages/supertester) for robust, deterministic OTP testing:
-
-### Test & Quality Commands
-
-```bash
-mix test
-mix test --cover
-# Only the live-tagged tests (hits real codex CLI)
-CODEX_TEST_LIVE=true mix test --only live --include live
-# Full test suite + live-tagged tests
-CODEX_TEST_LIVE=true mix test --include live
-mix codex.verify
-mix codex.verify --dry-run
-mix codex.parity
-MIX_ENV=test mix credo --strict
-mix format --check-formatted
-MIX_ENV=dev mix dialyzer
-```
-
-`mix codex.verify` orchestrates compile/format/test checks (pass `--dry-run` to preview), while
-`mix codex.parity` reports harvested Python fixtures—refresh them via
-`scripts/harvest_python_fixtures.py`.
-
-### Test Features
-
-- **Zero `Process.sleep`**: All tests use proper OTP synchronization
-- **Fully Async**: All tests run with `async: true`
-- **Mock Support**: Tests work with mocked `codex-rs` output
-- **Live Testing**: Optional `:live` ExUnit suite hitting real CLI (`CODEX_TEST_LIVE=true mix test --only live --include live`)
-- **Chaos Engineering**: Resilience testing for process crashes
-- **Performance Assertions**: SLA verification and leak detection
-- **Parity Fixtures**: Python fixture harvesting via `scripts/harvest_python_fixtures.py`
-
 ## Examples
 
 See the `examples/` directory for comprehensive demonstrations. A quick index:
@@ -783,114 +813,11 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 ## Documentation
 
-HexDocs hosts the complete documentation set referenced in `mix.exs`:
+HexDocs hosts the prerelease documentation set referenced in `mix.exs`:
 
-- **Guides**: [docs/01.md](docs/01.md) (intro), [docs/02-architecture.md](docs/02-architecture.md), and [docs/03-implementation-plan.md](docs/03-implementation-plan.md)
-- **Testing & Quality**: [docs/04-testing-strategy.md](docs/04-testing-strategy.md), [docs/08-tdd-implementation-guide.md](docs/08-tdd-implementation-guide.md), and [docs/observability-runbook.md](docs/observability-runbook.md)
-- **API & Examples**: [docs/05-api-reference.md](docs/05-api-reference.md), [docs/06-examples.md](docs/06-examples.md), and [docs/fixtures.md](docs/fixtures.md)
-- **Python Parity**: [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md) and [docs/python-parity-checklist.md](docs/python-parity-checklist.md)
-- **Design Dossiers**: All files under `docs/design/` cover attachments, error handling, telemetry, sandbox approvals, and more
-- **Phase Notes**: Iteration notes and prompts under `docs/20251018/` track ongoing parity milestones
+- **Guides**: [docs/01.md](docs/01.md), [docs/02-architecture.md](docs/02-architecture.md), and [docs/09-app-server-transport.md](docs/09-app-server-transport.md)
+- **Reference**: [docs/05-api-reference.md](docs/05-api-reference.md) and [docs/06-examples.md](docs/06-examples.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
-
-## Project Status
-
-**Current Version**: 0.4.5 (Gap analysis implementation: tools, retry, rate limiting)
-
-### v0.4.4 Highlights
-
-- App-server `UserInput` lists (text/image/localImage), full thread/turn params, and sandbox policies
-- Typed app-server notifications for terminal interaction, reasoning summaries, and output deltas
-- Exec parity: profile/OSS/full-auto/color/output-last-message flags, generic `-c` overrides, review wrapper, resume --last
-- Reasoning items now preserve `summary`/`content` structure instead of flattened text
-
-### v0.4.3 Highlights
-
-- App-server error notifications now surface `additional_details` and retry metadata
-- Remote model gating now honors system/user/project config layering
-- Bundled `models.json` synced to latest upstream format
-
-### v0.4.2 Highlights
-
-- New `:external_sandbox` mode for containerized environments with network access control
-- Internal constraint system for validated configuration values (aligned with upstream)
-- Updated model presets from upstream (32 commits synced)
-- Skills now support `short_description` and `:admin` scope (pass-through from CLI)
-
-### v0.4.1 Highlights
-
-- Auth-aware defaults and new `gpt-5.2` model presets (ChatGPT: `gpt-5.2-codex`, API: `gpt-5.1-codex-max`)
-- Remote model gating behind `features.remote_models`, with bundled `models.json` fallback and upgrade metadata
-- Added reasoning effort normalization for `none` plus richer model metadata helpers
-
-### v0.4.0 Highlights
-
-- `Codex.AppServer.thread_compact/2` is deprecated and now returns `{:error, {:unsupported, _}}` (upstream removed `thread/compact`; compaction is automatic)
-- `Codex.AppServer.Mcp.list_servers/2` now uses `mcpServerStatus/list` with fallback to `mcpServers/list` for older servers
-
-### v0.3.0 Highlights
-
-- Added app-server JSON-RPC stdio transport (`codex app-server`) alongside the existing exec JSONL default
-- Exposed v2 app-server request APIs (threads/turns/skills/models/config/review/command exec/account/MCP)
-- Implemented approval request handling with full `ApprovalDecision` support (including execpolicy amendments)
-- Updated turn diff events (`turn/diff/updated`) to surface unified diff strings
-
-### v0.2.5 Highlights
-
-- Tests run quietly by default (log capture + console logger level tuned for test)
-- Fixed a race in tool registry resets that could intermittently fail in async tests
-
-### v0.2.4 Highlights
-
-- Examples now default to `gpt-5.1-codex-mini` and `run_all.sh` continues past failures with a summary
-- Fixed `codex exec --output-schema` example schema and improved example error messages
-- Exec env handling hardened so CLI-login auth works reliably when env overrides are absent
-
-### v0.2.3 Highlights
-
-- Forwarded Codex CLI execution knobs (sandbox/cd/add-dir/skip-git, web search, approval policy, network access) and `OPENAI_BASE_URL`
-- Added optional `clear_env?` per-turn switch to clear inherited environment for codex subprocesses
-- Updated port gap analysis docs to match the actual wired integration surface
-
-### v0.2.2 Highlights
-
-- Added `auto_previous_response_id` to `Codex.RunConfig` plus `last_response_id` on turn results (forward-compatible with future `response_id` support)
-- Clarified OTEL export layers: Elixir-side OTLP exporter vs codex-rs `[otel]` config.toml exporter
-- Fixed tool registration to load metadata modules before resolving tool names
-
-### v0.2.1 Highlights
-
-- Auth fallback to Codex CLI login when `CODEX_API_KEY` is absent; live two-turn walkthrough example added
-- Resumption now uses `codex exec … resume <thread_id>`; `/new` resets threads and early-exit sessions are not persisted
-- App-server event coverage for token usage, turn diffs, and compaction notices; streaming example surfaces live usage/diff updates alongside items
-
-### v0.2.0 Highlights
-
-- Core thread lifecycle with streaming, resumption, and structured output decoding
-- Comprehensive event and item structs mirroring Codex's JSON protocol
-- GenServer-based `Codex.Exec` process supervision with resilient Port management
-- Approval policies/hooks, tool registry, and sandbox-aware error handling
-- File staging registry, parity fixtures, and runnable examples for every workflow
-- Observability instrumentation with OTLP export gating and approval telemetry
-- Mix tasks (`mix codex.verify`, `mix codex.parity`) plus Supertester-powered contract suite
-
-### What's Next
-
-- Python parity tracking and contract validation (see [docs/07-python-parity-plan.md](docs/07-python-parity-plan.md))
-- Phase notes for additional tooling integrations under `docs/20251018/`
-- Feedback-driven enhancements surfaced via GitHub Issues
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Write tests for your changes
-4. Ensure all tests pass (`mix test`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
 
 ## License
 
@@ -901,13 +828,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - OpenAI team for the Codex CLI and agent technology
 - Elixir community for excellent OTP tooling and libraries
 - [Gemini Ex](https://github.com/nshkrdotcom/gemini_ex) for SDK inspiration
-- [Supertester](https://github.com/nshkrdotcom/supertester) for robust testing utilities
 
 ## Related Projects
 
 - **[OpenAI Codex](https://github.com/openai/codex)** - The official Codex CLI
 - **[Codex TypeScript SDK](https://github.com/openai/codex/tree/main/sdk/typescript)** - Official TypeScript SDK
-- **[Gemini Ex](https://github.com/nshkrdotcom/gemini_ex)** - Elixir client for Google's Gemini AI
 
 ---
 

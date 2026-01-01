@@ -1,4 +1,4 @@
-alias Codex.{Models, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.{Error, Models, Options, RunResultStreaming, Thread, TransportError}
 
 defmodule LiveTelemetryStream do
   @moduledoc false
@@ -85,7 +85,7 @@ defmodule LiveTelemetryStream do
 
           IO.puts("\nFinal response:\n#{final.final_response || "<none>"}\n")
         rescue
-          error in [TransportError] ->
+          error in [Error, TransportError] ->
             render_transport_error(error)
         end
 
@@ -153,6 +153,18 @@ defmodule LiveTelemetryStream do
       """)
   end
 
+  defp render_transport_error(%Error{} = error) do
+    status = error.details[:exit_status]
+    stderr = error.details[:stderr]
+
+    IO.puts("""
+    Failed to run codex#{format_exit_status(status)}.
+    #{error.message}
+    Ensure the codex CLI is installed on PATH and you're logged in (or set CODEX_API_KEY).
+    stderr: #{String.trim(to_string(stderr || ""))}
+    """)
+  end
+
   defp render_transport_error(%TransportError{exit_status: status, stderr: stderr}) do
     IO.puts("""
     Failed to run codex (exit #{inspect(status)}).
@@ -160,6 +172,9 @@ defmodule LiveTelemetryStream do
     stderr: #{String.trim(to_string(stderr || ""))}
     """)
   end
+
+  defp format_exit_status(nil), do: ""
+  defp format_exit_status(status), do: " (exit #{inspect(status)})"
 
   defp unwrap!({:ok, value}, _label), do: value
 

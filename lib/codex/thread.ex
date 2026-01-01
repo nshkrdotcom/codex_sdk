@@ -30,6 +30,7 @@ defmodule Codex.Thread do
             resume: nil,
             continuation_token: nil,
             usage: %{},
+            rate_limits: nil,
             pending_tool_outputs: [],
             pending_tool_failures: [],
             transport: :exec,
@@ -44,6 +45,7 @@ defmodule Codex.Thread do
           resume: :last | nil,
           continuation_token: String.t() | nil,
           usage: map(),
+          rate_limits: map() | nil,
           pending_tool_outputs: [map()],
           pending_tool_failures: [map()],
           transport: :exec | {:app_server, pid()},
@@ -67,6 +69,7 @@ defmodule Codex.Thread do
           resume: nil,
           continuation_token: nil,
           usage: %{},
+          rate_limits: nil,
           pending_tool_outputs: [],
           pending_tool_failures: [],
           transport: transport,
@@ -175,6 +178,7 @@ defmodule Codex.Thread do
 
           {:error, reason} ->
             duration = System.monotonic_time() - started_monotonic
+            error = Error.normalize(reason)
 
             Telemetry.emit(
               [:codex, :thread, :exception],
@@ -183,11 +187,11 @@ defmodule Codex.Thread do
                 thread_id: thread.thread_id,
                 source: extract_source(thread.metadata)
               })
-              |> Map.put(:reason, reason)
+              |> Map.put(:reason, error)
               |> Map.put(:result, :error)
             )
 
-            {:error, reason}
+            {:error, {:exec_failed, error}}
         end
       after
         cleanup.()
@@ -270,7 +274,7 @@ defmodule Codex.Thread do
   defp next_streamed_exec_event(%{phase: :init} = state) do
     case start_streamed_exec(state) do
       {:ok, started_state} -> next_streamed_exec_event(started_state)
-      {:error, reason, _state} -> raise_stream_error(reason)
+      {:error, reason, _state} -> raise_stream_error(Error.normalize(reason))
     end
   end
 
@@ -357,18 +361,19 @@ defmodule Codex.Thread do
 
           {:error, reason} ->
             duration = System.monotonic_time() - started_monotonic
+            error = Error.normalize(reason)
 
             Telemetry.emit(
               [:codex, :thread, :exception],
               %{duration: duration, system_time: System.system_time()},
               merge_metadata(meta, initial_context)
-              |> Map.put(:reason, reason)
+              |> Map.put(:reason, error)
               |> Map.put(:result, :error)
             )
 
             cleanup.()
 
-            {:error, reason,
+            {:error, error,
              %{
                state
                | phase: :error,
@@ -421,6 +426,9 @@ defmodule Codex.Thread do
       {:done, nil} -> :done
       {:halted, nil} -> :done
     end
+  rescue
+    error ->
+      raise_stream_error(Error.normalize(error))
   end
 
   defp resume_one(continuation) when is_function(continuation, 1) do
@@ -429,13 +437,15 @@ defmodule Codex.Thread do
       {:done, nil} -> :done
       {:halted, nil} -> :done
     end
+  rescue
+    error ->
+      raise_stream_error(Error.normalize(error))
   end
 
   defp suspend_one(event, _acc), do: {:suspend, event}
 
-  @spec raise_stream_error(term()) :: no_return()
+  @spec raise_stream_error(Exception.t()) :: no_return()
   defp raise_stream_error(%{__exception__: true} = exception), do: raise(exception)
-  defp raise_stream_error(reason), do: raise(RuntimeError, inspect(reason))
 
   defp transport_impl(%__MODULE__{transport: :exec}), do: Codex.Transport.ExecJsonl
   defp transport_impl(%__MODULE__{transport: {:app_server, _pid}}), do: Codex.Transport.AppServer
@@ -501,6 +511,13 @@ defmodule Codex.Thread do
 
     timeout_ms = Map.get(turn_opts_map, :timeout_ms, Map.get(turn_opts_map, "timeout_ms"))
 
+    stream_idle_timeout_ms =
+      Map.get(
+        turn_opts_map,
+        :stream_idle_timeout_ms,
+        Map.get(turn_opts_map, "stream_idle_timeout_ms")
+      ) || thread.thread_opts.stream_idle_timeout_ms
+
     filtered_turn_opts =
       turn_opts_map
       |> Map.delete(:output_schema)
@@ -513,6 +530,8 @@ defmodule Codex.Thread do
       |> Map.delete("cancellation_token")
       |> Map.delete(:timeout_ms)
       |> Map.delete("timeout_ms")
+      |> Map.delete(:stream_idle_timeout_ms)
+      |> Map.delete("stream_idle_timeout_ms")
 
     exec_opts =
       %{
@@ -529,6 +548,7 @@ defmodule Codex.Thread do
       |> maybe_put(:clear_env?, clear_env?)
       |> maybe_put(:cancellation_token, cancellation_token)
       |> maybe_put(:timeout_ms, timeout_ms)
+      |> maybe_put(:stream_idle_timeout_ms, stream_idle_timeout_ms)
 
     exec_meta = %{
       structured_output?: not is_nil(schema_path)
@@ -580,6 +600,12 @@ defmodule Codex.Thread do
 
   def last_response_id(_events), do: nil
 
+  @doc """
+  Returns the most recent account rate limit snapshot for this thread, if any.
+  """
+  @spec rate_limits(t()) :: map() | nil
+  def rate_limits(%__MODULE__{rate_limits: rate_limits}), do: rate_limits
+
   @doc false
   @spec reduce_events(t(), [Events.t()], map()) :: {t(), term(), map() | nil}
   def reduce_events(thread, events, opts) do
@@ -630,6 +656,19 @@ defmodule Codex.Thread do
     updated_usage = apply_usage_update(usage, usage_event)
     updated_thread = maybe_put(thread, :thread_id, usage_event.thread_id)
     {updated_thread, response, updated_usage, continuation}
+  end
+
+  defp reduce_event(
+         %Events.AccountRateLimitsUpdated{} = rate_event,
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    updated =
+      thread
+      |> maybe_put(:thread_id, rate_event.thread_id)
+      |> Map.put(:rate_limits, rate_event.rate_limits)
+
+    {updated, response, usage, continuation}
   end
 
   defp reduce_event(
@@ -890,6 +929,7 @@ defmodule Codex.Thread do
   defp extract_turn_failure(events) do
     find_turn_failed_failure(events) ||
       find_turn_completed_failure(events) ||
+      find_error_failure(events) ||
       :ok
   end
 
@@ -908,6 +948,27 @@ defmodule Codex.Thread do
       _ ->
         nil
     end
+  end
+
+  defp find_error_failure(events) do
+    case Enum.find(events, &match?(%Events.Error{}, &1)) do
+      %Events.Error{} = event ->
+        {:error, Error.normalize(error_event_payload(event))}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp error_event_payload(%Events.Error{} = event) do
+    %{
+      "message" => event.message,
+      "additional_details" => event.additional_details,
+      "codex_error_info" => event.codex_error_info,
+      "details" =>
+        %{}
+        |> maybe_put("will_retry", event.will_retry)
+    }
   end
 
   defp failed_turn_completed?(%Events.TurnCompleted{status: status})
@@ -1424,12 +1485,22 @@ defmodule Codex.Thread do
   defp maybe_invoke_tool(thread, %Events.ToolCallRequested{} = event, attempt, guardrails, hooks) do
     context = build_tool_context(thread, event, attempt)
 
-    with :ok <-
-           run_tool_guardrails(:input, guardrails.input, event, event.arguments, context, hooks),
-         :ok <- approve_tool(thread, event, context, hooks),
-         {:ok, output} <- invoke_tool(event, context),
-         :ok <- run_tool_guardrails(:output, guardrails.output, event, output, context, hooks) do
-      {:ok, output}
+    case run_tool_guardrails(:input, guardrails.input, event, event.arguments, context, hooks) do
+      :ok ->
+        with :ok <- approve_tool(thread, event, context, hooks),
+             {:ok, output} <- invoke_tool(event, context) do
+          case run_tool_guardrails(:output, guardrails.output, event, output, context, hooks) do
+            :ok -> {:ok, output}
+            {:reject_content, message} -> {:ok, ToolOutput.normalize(ToolOutput.text(message))}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+
+      {:reject_content, message} ->
+        {:ok, ToolOutput.normalize(ToolOutput.text(message))}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -1498,11 +1569,51 @@ defmodule Codex.Thread do
   defp run_tool_guardrails(stage, guardrails, event, payload, context, hooks) do
     context = Map.put(context, :event, event)
 
+    {parallel, sequential} = Enum.split_with(guardrails, & &1.run_in_parallel)
+
+    case run_tool_guardrails_sequential(stage, sequential, event, payload, context, hooks) do
+      :ok -> run_tool_guardrails_parallel(stage, parallel, event, payload, context, hooks)
+      {:reject_content, message} -> {:reject_content, message}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp run_tool_guardrails_sequential(_stage, [], _event, _payload, _context, _hooks), do: :ok
+
+  defp run_tool_guardrails_sequential(stage, guardrails, event, payload, context, hooks) do
     Enum.reduce_while(guardrails, :ok, fn guardrail, :ok ->
       case run_tool_guardrail(stage, guardrail, event, payload, context, hooks) do
         :ok -> {:cont, :ok}
+        {:reject_content, message} -> {:halt, {:reject_content, message}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
+    end)
+  end
+
+  defp run_tool_guardrails_parallel(_stage, [], _event, _payload, _context, _hooks), do: :ok
+
+  defp run_tool_guardrails_parallel(stage, guardrails, event, payload, context, hooks) do
+    guardrails
+    |> Task.async_stream(
+      fn guardrail ->
+        run_tool_guardrail(stage, guardrail, event, payload, context, hooks)
+      end,
+      ordered: true
+    )
+    |> Enum.reduce_while(:ok, fn
+      {:ok, :ok}, :ok ->
+        {:cont, :ok}
+
+      {:ok, {:reject_content, message}}, :ok ->
+        {:halt, {:reject_content, message}}
+
+      {:ok, {:error, reason}}, :ok ->
+        {:halt, {:error, reason}}
+
+      {:exit, reason}, :ok ->
+        {:halt,
+         {:error,
+          guardrail_exception_error(stage, %{name: "parallel_guardrail"}, inspect(reason))}}
     end)
   end
 
@@ -1523,7 +1634,19 @@ defmodule Codex.Thread do
   end
 
   defp handle_tool_guardrail_result({:ok, {:reject, message}}, stage, guardrail, hooks) do
-    handle_tool_guardrail_failure(stage, guardrail, hooks, :reject, message)
+    case guardrail.behavior do
+      :reject_content ->
+        case notify_tool_guardrail(hooks, stage, guardrail, :reject, message) do
+          :ok -> {:reject_content, message}
+          {:error, reason} -> {:error, reason}
+        end
+
+      :raise_exception ->
+        handle_tool_guardrail_failure(stage, guardrail, hooks, :tripwire, message)
+
+      _ ->
+        handle_tool_guardrail_failure(stage, guardrail, hooks, :reject, message)
+    end
   end
 
   defp handle_tool_guardrail_result({:ok, {:tripwire, message}}, stage, guardrail, hooks) do
@@ -1615,23 +1738,15 @@ defmodule Codex.Thread do
     })
   end
 
-  defp normalize_tool_failure(%Codex.Error{} = error) do
-    details =
-      case error.details do
-        value when is_map(value) -> value
-        _ -> %{}
-      end
+  defp normalize_tool_failure(reason) do
+    %Codex.Error{message: message, kind: kind, details: details} = Codex.Error.normalize(reason)
 
     %{
-      message: error.message,
-      kind: error.kind,
+      message: message,
+      kind: kind,
       details: details
     }
   end
-
-  defp normalize_tool_failure(value) when is_map(value), do: value
-  defp normalize_tool_failure(value) when is_binary(value), do: %{message: value}
-  defp normalize_tool_failure(value), do: %{message: inspect(value)}
 
   defp handled_tool_call?(%Result{} = result, %Events.ToolCallRequested{} = event) do
     key = tool_call_key(event)

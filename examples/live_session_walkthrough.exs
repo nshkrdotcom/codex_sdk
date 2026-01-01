@@ -42,6 +42,17 @@ defmodule CodexExamples.LiveSessionWalkthrough do
         Conversation complete.
         Thread ID: #{second.thread.thread_id || "pending"}
         """)
+
+        case Codex.Sessions.list_sessions() do
+          {:ok, [latest | _]} ->
+            IO.puts("Latest session metadata: #{inspect(latest.metadata)}")
+
+          {:ok, []} ->
+            IO.puts("No session files found under ~/.codex/sessions.")
+
+          {:error, reason} ->
+            IO.puts("Failed to list sessions: #{inspect(reason)}")
+        end
       else
         {:error, reason} -> Mix.raise("Follow-up turn failed: #{inspect(reason)}")
       end

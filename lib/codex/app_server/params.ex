@@ -27,7 +27,7 @@ defmodule Codex.AppServer.Params do
   @spec sandbox_mode(atom() | String.t() | {atom(), atom()} | nil) :: sandbox_policy()
   def sandbox_mode(nil), do: nil
   def sandbox_mode(:strict), do: "read-only"
-  def sandbox_mode(:default), do: "workspace-write"
+  def sandbox_mode(:default), do: nil
   def sandbox_mode(:permissive), do: "danger-full-access"
   def sandbox_mode(:read_only), do: "read-only"
   def sandbox_mode(:workspace_write), do: "workspace-write"
@@ -45,6 +45,7 @@ defmodule Codex.AppServer.Params do
   def sandbox_mode("read-only"), do: "read-only"
   def sandbox_mode("workspace-write"), do: "workspace-write"
   def sandbox_mode("danger-full-access"), do: "danger-full-access"
+  def sandbox_mode("default"), do: nil
 
   def sandbox_mode("external-sandbox"),
     do: %{"type" => "external-sandbox", "network_access" => "restricted"}

@@ -68,17 +68,8 @@ defmodule CodexExamples.LiveExecControls do
           |> Codex.RunResultStreaming.raw_events()
           |> Enum.each(&print_event/1)
         rescue
-          error in [Codex.TransportError] ->
-            %Codex.TransportError{exit_status: status, stderr: stderr} = error
-
-            IO.puts("""
-            codex exec exited with status #{status}
-            #{format_stderr(stderr)}
-
-            If your Codex CLI is older and does not support --cancellation-token,
-            rerun with --no-cancel or upgrade via `npm install -g @openai/codex`.
-            """)
-
+          error in [Codex.Error, Codex.TransportError] ->
+            render_exec_error(error)
             reraise error, __STACKTRACE__
         end
 
@@ -152,6 +143,33 @@ defmodule CodexExamples.LiveExecControls do
       "stderr:\n" <> trimmed
     end
   end
+
+  defp render_exec_error(%Codex.Error{} = error) do
+    status = error.details[:exit_status]
+    stderr = error.details[:stderr]
+
+    IO.puts("""
+    codex exec failed#{format_exit_status(status)}.
+    #{error.message}
+    #{format_stderr(stderr)}
+
+    If your Codex CLI is older and does not support --cancellation-token,
+    rerun with --no-cancel or upgrade via `npm install -g @openai/codex`.
+    """)
+  end
+
+  defp render_exec_error(%Codex.TransportError{} = error) do
+    IO.puts("""
+    codex exec exited with status #{error.exit_status}
+    #{format_stderr(error.stderr)}
+
+    If your Codex CLI is older and does not support --cancellation-token,
+    rerun with --no-cancel or upgrade via `npm install -g @openai/codex`.
+    """)
+  end
+
+  defp format_exit_status(nil), do: ""
+  defp format_exit_status(status), do: " (status #{status})"
 end
 
 CodexExamples.LiveExecControls.main(System.argv())

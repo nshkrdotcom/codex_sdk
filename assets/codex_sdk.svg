@@ -1,6 +1,6 @@
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <path id="hexPath" d="M 100 10 L 173.2 50 L 173.2 130 L 100 170 L 26.8 130 L 26.8 50 Z"/>
+    <path id="hexPath" d="M 100 7.7 L 180.4 51.6 L 180.4 139.6 L 100 183.5 L 19.6 139.6 L 19.6 51.6 Z"/>
 
     <linearGradient id="hexFill" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0a1324"/>
@@ -60,7 +60,7 @@
     </linearGradient>
 
     <filter id="eGlow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -73,20 +73,20 @@
       <stop offset="100%" stop-color="#4fc8b6" stop-opacity="0.2"/>
     </radialGradient>
 
-    <pattern id="microGrid" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(20)">
-      <path d="M 0 0 L 14 0" stroke="#8fd4ff" stroke-width="0.6" stroke-opacity="0.12"/>
-      <path d="M 0 7 L 14 7" stroke="#8fd4ff" stroke-width="0.6" stroke-opacity="0.08"/>
-      <path d="M 0 14 L 14 14" stroke="#8fd4ff" stroke-width="0.6" stroke-opacity="0.12"/>
-      <path d="M 0 0 L 0 14" stroke="#7ad6c8" stroke-width="0.6" stroke-opacity="0.08"/>
-      <circle cx="7" cy="7" r="1.6" fill="#9fe1ff" fill-opacity="0.18"/>
+    <pattern id="microGrid" width="15.4" height="15.4" patternUnits="userSpaceOnUse" patternTransform="rotate(20)">
+      <path d="M 0 0 L 15.4 0" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.12"/>
+      <path d="M 0 7.7 L 15.4 7.7" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.08"/>
+      <path d="M 0 15.4 L 15.4 15.4" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.12"/>
+      <path d="M 0 0 L 0 15.4" stroke="#7ad6c8" stroke-width="0.66" stroke-opacity="0.08"/>
+      <circle cx="7.7" cy="7.7" r="1.76" fill="#9fe1ff" fill-opacity="0.18"/>
     </pattern>
 
     <filter id="hexShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#050a14" flood-opacity="0.85"/>
+      <feDropShadow dx="0" dy="11" stdDeviation="8.8" flood-color="#050a14" flood-opacity="0.85"/>
     </filter>
 
     <filter id="letterGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.3" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -99,113 +99,113 @@
   </defs>
 
   <g filter="url(#hexShadow)">
-    <use href="#hexPath" fill="url(#hexFill)" stroke="url(#hexStroke)" stroke-width="4" stroke-linejoin="round"/>
+    <use href="#hexPath" fill="url(#hexFill)" stroke="url(#hexStroke)" stroke-width="4.4" stroke-linejoin="round"/>
   </g>
 
   <g clip-path="url(#hexClip)">
     <use href="#hexPath" fill="url(#hexGlow)"/>
-    <rect x="20" y="20" width="160" height="160" fill="url(#microGrid)" opacity="0.35"/>
+    <rect x="12.1" y="18.7" width="175.8" height="175.8" fill="url(#microGrid)" opacity="0.35"/>
 
-    <rect x="34" y="58" width="132" height="64" rx="10" fill="url(#bandFill)" stroke="url(#bandStroke)" stroke-width="1.2" opacity="0.95"/>
+    <rect x="27.5" y="60.4" width="145.1" height="70.3" rx="11" fill="url(#bandFill)" stroke="url(#bandStroke)" stroke-width="1.3" opacity="0.95"/>
 
-    <g opacity="0.25" stroke="#8acbff" stroke-width="1" stroke-linecap="round">
-      <path d="M 40 90 H 160" stroke-dasharray="5 6"/>
-      <path d="M 44 74 H 156" stroke-dasharray="3 8"/>
-      <path d="M 44 106 H 156" stroke-dasharray="3 8"/>
+    <g opacity="0.25" stroke="#8acbff" stroke-width="1.1" stroke-linecap="round">
+      <path d="M 34.1 95.6 H 166" stroke-dasharray="5.5 6.6"/>
+      <path d="M 38.5 78 H 161.5" stroke-dasharray="3.3 8.8"/>
+      <path d="M 38.5 113.2 H 161.5" stroke-dasharray="3.3 8.8"/>
     </g>
 
     <g id="letters" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#letterGlow)">
-      <g id="letter-base" stroke="url(#letterStroke)" stroke-width="6">
-        <path d="M 59 70 A 9 20 0 0 0 59 110"/>
-        <ellipse cx="76" cy="90" rx="9" ry="20"/>
-        <path d="M 93 70 L 93 110"/>
-        <path d="M 93 70 L 97 70"/>
-        <path d="M 93 110 L 97 110"/>
-        <path d="M 97 70 A 7 20 0 0 1 97 110"/>
-        <path d="M 135 70 L 153 110"/>
-        <path d="M 153 70 L 135 110"/>
+      <g id="letter-base" stroke="url(#letterStroke)" stroke-width="6.6">
+        <path d="M 54.9 73.6 A 9.9 22 0 0 0 54.9 117.6"/>
+        <ellipse cx="73.6" cy="95.6" rx="9.9" ry="22"/>
+        <path d="M 92.3 73.6 L 92.3 117.6"/>
+        <path d="M 92.3 73.6 L 96.7 73.6"/>
+        <path d="M 92.3 117.6 L 96.7 117.6"/>
+        <path d="M 96.7 73.6 A 7.7 22 0 0 1 96.7 117.6"/>
+        <path d="M 138.5 73.6 L 158.2 117.6"/>
+        <path d="M 158.2 73.6 L 138.5 117.6"/>
       </g>
 
-      <g id="letter-E" stroke="url(#letterE)" stroke-width="6" filter="url(#eGlow)">
-        <path d="M 112 70 L 112 110"/>
-        <path d="M 112 70 L 127 70"/>
-        <path d="M 112 90 L 124 90"/>
-        <path d="M 112 110 L 127 110"/>
+      <g id="letter-E" stroke="url(#letterE)" stroke-width="6.6" filter="url(#eGlow)">
+        <path d="M 113.2 73.6 L 113.2 117.6"/>
+        <path d="M 113.2 73.6 L 129.7 73.6"/>
+        <path d="M 113.2 95.6 L 126.4 95.6"/>
+        <path d="M 113.2 117.6 L 129.7 117.6"/>
       </g>
 
-      <g id="letter-highlight" stroke="url(#letterHighlight)" stroke-width="2.2" opacity="0.85">
-        <path d="M 56 74 A 6 16 0 0 0 56 106"/>
-        <ellipse cx="76" cy="90" rx="5.5" ry="13"/>
-        <path d="M 96 76 A 4.5 14 0 0 1 96 104"/>
-        <path d="M 137 74 L 151 106"/>
-        <path d="M 151 74 L 137 106"/>
+      <g id="letter-highlight" stroke="url(#letterHighlight)" stroke-width="2.4" opacity="0.85">
+        <path d="M 51.6 78 A 6.6 17.6 0 0 0 51.6 113.2"/>
+        <ellipse cx="73.6" cy="95.6" rx="6" ry="14.3"/>
+        <path d="M 95.6 80.2 A 4.9 15.4 0 0 1 95.6 111"/>
+        <path d="M 140.7 78 L 156 113.2"/>
+        <path d="M 156 78 L 140.7 113.2"/>
       </g>
 
-      <g id="letter-E-highlight" stroke="#f5d6c6" stroke-width="2" opacity="0.6">
-        <path d="M 112 70 L 112 110"/>
-        <path d="M 112 70 L 127 70"/>
-        <path d="M 112 90 L 124 90"/>
-        <path d="M 112 110 L 127 110"/>
+      <g id="letter-E-highlight" stroke="#f5d6c6" stroke-width="2.2" opacity="0.6">
+        <path d="M 113.2 73.6 L 113.2 117.6"/>
+        <path d="M 113.2 73.6 L 129.7 73.6"/>
+        <path d="M 113.2 95.6 L 126.4 95.6"/>
+        <path d="M 113.2 117.6 L 129.7 117.6"/>
       </g>
 
-      <g id="letter-detail" stroke="url(#letterDetail)" stroke-width="1" opacity="0.65">
-        <path d="M 46 80 L 52 80"/>
-        <path d="M 46 100 L 52 100"/>
-        <path d="M 49 84 L 49 96" stroke-dasharray="2 3"/>
-        <path d="M 76 76 L 76 104"/>
-        <path d="M 70 90 L 82 90"/>
-        <path d="M 93 90 L 101 90"/>
-        <path d="M 99 78 L 99 102" stroke-dasharray="2 4"/>
-        <path d="M 140 82 L 148 90 L 140 98"/>
-        <path d="M 148 82 L 140 90 L 148 98"/>
+      <g id="letter-detail" stroke="url(#letterDetail)" stroke-width="1.1" opacity="0.65">
+        <path d="M 40.7 84.6 L 47.3 84.6"/>
+        <path d="M 40.7 106.6 L 47.3 106.6"/>
+        <path d="M 44 89 L 44 102.2" stroke-dasharray="2.2 3.3"/>
+        <path d="M 73.6 80.2 L 73.6 111"/>
+        <path d="M 67 95.6 L 80.2 95.6"/>
+        <path d="M 92.3 95.6 L 101.1 95.6"/>
+        <path d="M 98.9 82.4 L 98.9 108.8" stroke-dasharray="2.2 4.4"/>
+        <path d="M 144 86.8 L 152.7 95.6 L 144 104.4"/>
+        <path d="M 152.7 86.8 L 144 95.6 L 152.7 104.4"/>
       </g>
 
-      <g id="letter-E-detail" stroke="#d4a88a" stroke-width="1" opacity="0.5">
-        <path d="M 116 80 L 124 80" stroke-dasharray="3 3"/>
-        <path d="M 116 100 L 124 100" stroke-dasharray="3 3"/>
-        <path d="M 114 78 L 114 102" stroke-dasharray="2 3"/>
+      <g id="letter-E-detail" stroke="#d4a88a" stroke-width="1.1" opacity="0.5">
+        <path d="M 117.6 84.6 L 126.4 84.6" stroke-dasharray="3.3 3.3"/>
+        <path d="M 117.6 106.6 L 126.4 106.6" stroke-dasharray="3.3 3.3"/>
+        <path d="M 115.4 82.4 L 115.4 108.8" stroke-dasharray="2.2 3.3"/>
       </g>
 
-      <g id="letter-nodes" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.6" opacity="0.9">
-        <circle cx="59" cy="70" r="2"/>
-        <circle cx="59" cy="110" r="2"/>
-        <circle cx="76" cy="70" r="2"/>
-        <circle cx="76" cy="110" r="2"/>
-        <circle cx="67" cy="90" r="1.8"/>
-        <circle cx="85" cy="90" r="1.8"/>
-        <circle cx="93" cy="70" r="1.9"/>
-        <circle cx="93" cy="110" r="1.9"/>
-        <circle cx="104" cy="90" r="1.9"/>
-        <circle cx="97" cy="90" r="1.6"/>
-        <circle cx="135" cy="70" r="1.9"/>
-        <circle cx="153" cy="110" r="1.9"/>
-        <circle cx="153" cy="70" r="1.9"/>
-        <circle cx="135" cy="110" r="1.9"/>
-        <circle cx="144" cy="90" r="1.8"/>
-        <rect x="141.5" y="87.5" width="5" height="5" transform="rotate(45 144 90)" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.6"/>
+      <g id="letter-nodes" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.66" opacity="0.9">
+        <circle cx="54.9" cy="73.6" r="2.2"/>
+        <circle cx="54.9" cy="117.6" r="2.2"/>
+        <circle cx="73.6" cy="73.6" r="2.2"/>
+        <circle cx="73.6" cy="117.6" r="2.2"/>
+        <circle cx="63.7" cy="95.6" r="2"/>
+        <circle cx="83.5" cy="95.6" r="2"/>
+        <circle cx="92.3" cy="73.6" r="2.1"/>
+        <circle cx="92.3" cy="117.6" r="2.1"/>
+        <circle cx="104.4" cy="95.6" r="2.1"/>
+        <circle cx="96.7" cy="95.6" r="1.76"/>
+        <circle cx="138.5" cy="73.6" r="2.1"/>
+        <circle cx="158.2" cy="117.6" r="2.1"/>
+        <circle cx="158.2" cy="73.6" r="2.1"/>
+        <circle cx="138.5" cy="117.6" r="2.1"/>
+        <circle cx="148.4" cy="95.6" r="2"/>
+        <rect x="145.6" y="92.9" width="5.5" height="5.5" transform="rotate(45 148.4 95.6)" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.66"/>
       </g>
 
-      <g id="letter-E-nodes" fill="url(#nodeFill)" stroke="#e8c4a8" stroke-width="0.8" opacity="0.95">
-        <circle cx="112" cy="70" r="2"/>
-        <circle cx="127" cy="70" r="2"/>
-        <circle cx="112" cy="90" r="1.8"/>
-        <circle cx="124" cy="90" r="1.8"/>
-        <circle cx="112" cy="110" r="2"/>
-        <circle cx="127" cy="110" r="2"/>
+      <g id="letter-E-nodes" fill="url(#nodeFill)" stroke="#e8c4a8" stroke-width="0.88" opacity="0.95">
+        <circle cx="113.2" cy="73.6" r="2.2"/>
+        <circle cx="129.7" cy="73.6" r="2.2"/>
+        <circle cx="113.2" cy="95.6" r="2"/>
+        <circle cx="126.4" cy="95.6" r="2"/>
+        <circle cx="113.2" cy="117.6" r="2.2"/>
+        <circle cx="129.7" cy="117.6" r="2.2"/>
       </g>
     </g>
 
-    <use href="#hexPath" fill="none" stroke="url(#innerStroke)" stroke-width="1.4" opacity="0.6"/>
+    <use href="#hexPath" fill="none" stroke="url(#innerStroke)" stroke-width="1.54" opacity="0.6"/>
   </g>
 
   <g opacity="0.55">
-    <path d="M 100 10 L 173.2 50" fill="none" stroke="#f5f9ff" stroke-width="1.4" stroke-linecap="round"/>
-    <path d="M 26.8 50 L 100 10" fill="none" stroke="#f5f9ff" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M 100 7.7 L 180.4 51.6" fill="none" stroke="#f5f9ff" stroke-width="1.54" stroke-linecap="round"/>
+    <path d="M 19.6 51.6 L 100 7.7" fill="none" stroke="#f5f9ff" stroke-width="1.54" stroke-linecap="round"/>
   </g>
 
   <g opacity="0.5">
-    <circle cx="100" cy="10" r="3" fill="#f8fbff"/>
-    <circle cx="173.2" cy="90" r="2.4" fill="#77e7d6"/>
-    <circle cx="26.8" cy="90" r="2.4" fill="#f0c07a"/>
+    <circle cx="100" cy="7.7" r="3.3" fill="#f8fbff"/>
+    <circle cx="180.4" cy="95.6" r="2.6" fill="#77e7d6"/>
+    <circle cx="19.6" cy="95.6" r="2.6" fill="#f0c07a"/>
   </g>
 </svg>

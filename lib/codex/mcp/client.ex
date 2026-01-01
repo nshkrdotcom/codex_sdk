@@ -1,7 +1,6 @@
 defmodule Codex.MCP.Client do
   @moduledoc """
-  Minimal MCP client responsible for performing the handshake with external servers and
-  providing lightweight tool discovery/invocation helpers with caching and retries.
+  MCP JSON-RPC client for stdio and streamable HTTP transports.
 
   ## Tool Name Qualification
 
@@ -41,46 +40,91 @@ defmodule Codex.MCP.Client do
   alias Codex.Telemetry
   alias Codex.Thread.Backoff
 
-  defstruct transport: nil, capabilities: %{}, tool_cache: %{}, server_name: nil
+  defstruct transport: nil,
+            capabilities: %{},
+            tool_cache: %{},
+            server_name: nil,
+            server_info: nil,
+            protocol_version: nil,
+            instructions: nil
 
   @type transport_ref :: {module(), term()}
   @type capabilities :: %{optional(String.t()) => term()}
+
   @type t :: %__MODULE__{
           transport: transport_ref(),
           capabilities: capabilities(),
           tool_cache: map(),
-          server_name: String.t() | nil
+          server_name: String.t() | nil,
+          server_info: map() | nil,
+          protocol_version: String.t() | nil,
+          instructions: String.t() | nil
         }
 
   @mcp_tool_name_delimiter "__"
   @max_tool_name_length 64
+  @mcp_protocol_version "2025-06-18"
+  @jsonrpc_version "2.0"
+
+  @default_init_timeout_ms 10_000
+  @default_list_timeout_ms 30_000
+  @default_timeout_ms 60_000
+  @default_retries 3
 
   @doc """
-  Performs a handshake against the given transport.
+  Performs MCP initialization against the given transport.
+
+  This sends `initialize` and then emits the `notifications/initialized` notification.
 
   ## Options
 
-    * `:client` - Client name to send during handshake (default: `"codex-elixir"`)
+    * `:client` - Client name to send during initialization (default: `"codex-elixir"`)
+    * `:client_title` - Optional client title for UI display
     * `:version` - Client version (default: `"0.0.0"`)
+    * `:capabilities` - Client capability map (default: `%{}`)
+    * `:protocol_version` - MCP protocol version (default: `#{@mcp_protocol_version}`)
     * `:server_name` - Server name for tool name qualification (e.g., `"shell"`)
+    * `:timeout_ms` - Timeout for initialization (default: `#{@default_init_timeout_ms}`)
   """
-  @spec handshake(transport_ref(), keyword()) :: {:ok, t()} | {:error, term()}
-  def handshake({mod, state} = transport, opts \\ []) when is_atom(mod) do
-    request = %{
-      "type" => "handshake",
-      "client" => Keyword.get(opts, :client, "codex-elixir"),
-      "version" => Keyword.get(opts, :version, "0.0.0")
+  @spec initialize(transport_ref(), keyword()) :: {:ok, t()} | {:error, term()}
+  def initialize({mod, _state} = transport, opts \\ []) when is_atom(mod) do
+    params = %{
+      "protocolVersion" => Keyword.get(opts, :protocol_version, @mcp_protocol_version),
+      "clientInfo" => client_info(opts),
+      "capabilities" => normalize_client_capabilities(Keyword.get(opts, :capabilities, %{}))
     }
 
-    :ok = mod.send(state, request)
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_init_timeout_ms)
 
-    with {:ok, response} <- mod.recv(state),
-         {:ok, caps} <- extract_capabilities(response) do
+    with {:ok, result} <- request_raw(transport, "initialize", params, timeout_ms),
+         {:ok, caps} <- normalize_capabilities(Map.get(result, "capabilities")),
+         :ok <- send_initialized_notification(transport) do
       server_name = Keyword.get(opts, :server_name)
-      {:ok, %__MODULE__{transport: transport, capabilities: caps, server_name: server_name}}
+      server_info = Map.get(result, "serverInfo")
+      protocol_version = Map.get(result, "protocolVersion")
+      instructions = Map.get(result, "instructions")
+
+      {:ok,
+       %__MODULE__{
+         transport: transport,
+         capabilities: caps,
+         tool_cache: %{},
+         server_name: server_name,
+         server_info: server_info,
+         protocol_version: protocol_version,
+         instructions: instructions
+       }}
     else
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Backwards compatible alias for `initialize/2`.
+  """
+  @spec handshake(transport_ref(), keyword()) :: {:ok, t()} | {:error, term()}
+  def handshake(transport, opts \\ []) do
+    initialize(transport, opts)
   end
 
   @doc """
@@ -100,6 +144,8 @@ defmodule Codex.MCP.Client do
     * `:deny` - List of tool names to deny (blocklist filter)
     * `:filter` - Custom filter function `(tool -> boolean)`
     * `:qualify?` - Whether to add qualified names with server prefix (default: `false`)
+    * `:cursor` - Pagination cursor (default: `nil`)
+    * `:timeout_ms` - Request timeout (default: `#{@default_list_timeout_ms}`)
 
   ## Returns
 
@@ -122,8 +168,35 @@ defmodule Codex.MCP.Client do
     end
   end
 
-  @default_timeout_ms 60_000
-  @default_retries 3
+  @doc """
+  Lists available resources via `resources/list`.
+
+  ## Options
+
+    * `:cursor` - Pagination cursor (default: `nil`)
+    * `:timeout_ms` - Request timeout (default: `#{@default_list_timeout_ms}`)
+  """
+  @spec list_resources(t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def list_resources(%__MODULE__{} = client, opts \\ []) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_list_timeout_ms)
+    params = build_cursor_params(opts)
+    request(client, "resources/list", params, timeout_ms)
+  end
+
+  @doc """
+  Lists available prompts via `prompts/list`.
+
+  ## Options
+
+    * `:cursor` - Pagination cursor (default: `nil`)
+    * `:timeout_ms` - Request timeout (default: `#{@default_list_timeout_ms}`)
+  """
+  @spec list_prompts(t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def list_prompts(%__MODULE__{} = client, opts \\ []) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_list_timeout_ms)
+    params = build_cursor_params(opts)
+    request(client, "prompts/list", params, timeout_ms)
+  end
 
   @doc """
   Invokes a tool on the MCP server.
@@ -188,7 +261,7 @@ defmodule Codex.MCP.Client do
         end
       )
   """
-  @spec call_tool(t(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec call_tool(t(), String.t(), map() | nil, keyword()) :: {:ok, map()} | {:error, term()}
   def call_tool(%__MODULE__{} = client, tool, args, opts \\ []) when is_binary(tool) do
     retries = Keyword.get(opts, :retries, @default_retries)
     backoff = Keyword.get(opts, :backoff, &exponential_backoff/1)
@@ -197,11 +270,25 @@ defmodule Codex.MCP.Client do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
 
     with :ok <- run_approval(approval, tool, args, context) do
-      emit_start_telemetry(client, tool, args)
+      emit_start_telemetry(client, tool, args || %{})
       started = System.monotonic_time()
       result = do_call_tool(client, tool, args, retries, backoff, timeout_ms, 0)
-      emit_result_telemetry(result, client, tool, args, started, retries)
+      emit_result_telemetry(result, client, tool, args || %{}, started, retries)
       result
+    end
+  end
+
+  defp do_call_tool(%__MODULE__{} = client, tool, args, retries, backoff, timeout_ms, attempt) do
+    params =
+      %{"name" => tool}
+      |> maybe_put("arguments", args)
+
+    case request(client, "tools/call", params, timeout_ms) do
+      {:ok, result} ->
+        {:ok, stringify_keys(result)}
+
+      {:error, reason} ->
+        retry_or_error(client, tool, args, retries, backoff, timeout_ms, attempt, reason)
     end
   end
 
@@ -209,27 +296,86 @@ defmodule Codex.MCP.Client do
     Backoff.sleep(attempt)
   end
 
-  defp extract_capabilities(%{"type" => "handshake.ack"} = response),
-    do: extract_capabilities(response, Map.get(response, "capabilities"))
-
-  defp extract_capabilities(%{"capabilities" => caps}), do: normalize_capabilities(caps)
-  defp extract_capabilities(_other), do: {:error, :invalid_handshake}
-
-  defp extract_capabilities(%{"capabilities" => caps}, _), do: normalize_capabilities(caps)
-  defp extract_capabilities(_other, _caps), do: {:error, :invalid_handshake}
-
-  defp normalize_capabilities(caps) when is_map(caps), do: {:ok, stringify_keys(caps)}
-
-  defp normalize_capabilities(caps) when is_list(caps) do
-    normalized =
-      caps
-      |> Enum.map(fn cap -> {to_string(cap), %{}} end)
-      |> Map.new()
-
-    {:ok, normalized}
+  defp request(%__MODULE__{transport: transport}, method, params, timeout_ms) do
+    request_raw(transport, method, params, timeout_ms)
   end
 
-  defp normalize_capabilities(_other), do: {:error, :invalid_handshake}
+  defp request_raw({mod, _state} = transport, method, params, timeout_ms) when is_atom(mod) do
+    id = new_request_id()
+
+    message =
+      %{
+        "jsonrpc" => @jsonrpc_version,
+        "id" => id,
+        "method" => method
+      }
+      |> maybe_put("params", params)
+
+    with :ok <- send_message(transport, message) do
+      await_response(transport, id, timeout_ms)
+    end
+  end
+
+  defp send_message({mod, state}, message) do
+    mod.send(state, message)
+  end
+
+  defp send_initialized_notification({mod, state}) do
+    notification = %{
+      "jsonrpc" => @jsonrpc_version,
+      "method" => "notifications/initialized"
+    }
+
+    mod.send(state, notification)
+  end
+
+  defp await_response(transport, id, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + max(timeout_ms, 0)
+    do_await_response(transport, id, deadline)
+  end
+
+  defp do_await_response({mod, state} = transport, id, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    if remaining == 0 do
+      {:error, :timeout}
+    else
+      case recv_with_timeout(mod, state, remaining) do
+        {:ok, %{"id" => ^id, "result" => result}} ->
+          {:ok, result}
+
+        {:ok, %{"id" => ^id, "error" => error}} ->
+          {:error, error}
+
+        {:ok, %{"method" => _method}} ->
+          do_await_response(transport, id, deadline)
+
+        {:ok, %{"id" => _other_id}} ->
+          do_await_response(transport, id, deadline)
+
+        {:ok, _other} ->
+          do_await_response(transport, id, deadline)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp recv_with_timeout(mod, state, timeout_ms) do
+    if function_exported?(mod, :recv, 2) do
+      mod.recv(state, timeout_ms)
+    else
+      mod.recv(state)
+    end
+  end
+
+  defp normalize_client_capabilities(capabilities) when is_map(capabilities), do: capabilities
+  defp normalize_client_capabilities(_), do: %{}
+
+  defp normalize_capabilities(nil), do: {:ok, %{}}
+  defp normalize_capabilities(%{} = caps), do: {:ok, stringify_keys(caps)}
+  defp normalize_capabilities(_other), do: {:error, :invalid_capabilities}
 
   defp stringify_keys(value) when is_map(value) do
     Map.new(value, fn {key, val} -> {to_string(key), stringify_keys(val)} end)
@@ -238,11 +384,12 @@ defmodule Codex.MCP.Client do
   defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
   defp stringify_keys(other), do: other
 
-  defp fetch_tools(%__MODULE__{transport: {mod, state}} = client, opts, qualify?) do
-    :ok = mod.send(state, %{"type" => "list_tools"})
+  defp fetch_tools(%__MODULE__{} = client, opts, qualify?) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_list_timeout_ms)
+    params = build_cursor_params(opts)
 
-    with {:ok, response} <- mod.recv(state),
-         {:ok, tools} <- normalize_tools(response) do
+    with {:ok, result} <- request(client, "tools/list", params, timeout_ms),
+         {:ok, tools} <- normalize_tools(result) do
       filtered = filter_tools(tools, opts)
       processed = maybe_qualify_tools(filtered, client.server_name, qualify?)
       updated = %{client | tool_cache: %{tools: filtered}}
@@ -258,6 +405,10 @@ defmodule Codex.MCP.Client do
        %{} = tool -> stringify_keys(tool)
        other -> %{"name" => to_string(other)}
      end)}
+  end
+
+  defp normalize_tools(%{tools: tools}) when is_list(tools) do
+    normalize_tools(%{"tools" => tools})
   end
 
   defp normalize_tools(_), do: {:error, :invalid_tools_response}
@@ -295,42 +446,6 @@ defmodule Codex.MCP.Client do
 
   defp run_approval(_other, _tool, _args, _context), do: :ok
 
-  defp do_call_tool(
-         %__MODULE__{transport: {mod, state}} = client,
-         tool,
-         args,
-         retries,
-         backoff,
-         timeout_ms,
-         attempt
-       ) do
-    :ok =
-      mod.send(state, %{
-        "type" => "call_tool",
-        "tool" => tool,
-        "arguments" => args
-      })
-
-    case recv_with_timeout(mod, state, timeout_ms) do
-      {:ok, %{"result" => result}} ->
-        {:ok, stringify_keys(result)}
-
-      {:ok, %{"error" => reason}} ->
-        retry_or_error(client, tool, args, retries, backoff, timeout_ms, attempt, reason)
-
-      {:error, reason} ->
-        retry_or_error(client, tool, args, retries, backoff, timeout_ms, attempt, reason)
-    end
-  end
-
-  defp recv_with_timeout(mod, state, timeout_ms) do
-    if function_exported?(mod, :recv, 2) do
-      mod.recv(state, timeout_ms)
-    else
-      mod.recv(state)
-    end
-  end
-
   defp retry_or_error(client, tool, args, retries, backoff, timeout_ms, attempt, reason) do
     if attempt < retries do
       safe_backoff(backoff, attempt + 1)
@@ -342,6 +457,30 @@ defmodule Codex.MCP.Client do
 
   defp safe_backoff(fun, attempt) when is_function(fun, 1), do: fun.(attempt)
   defp safe_backoff(_fun, _attempt), do: :ok
+
+  defp build_cursor_params(opts) do
+    case Keyword.get(opts, :cursor) do
+      nil -> nil
+      cursor -> %{"cursor" => cursor}
+    end
+  end
+
+  defp client_info(opts) do
+    %{
+      "name" => Keyword.get(opts, :client, "codex-elixir"),
+      "version" => Keyword.get(opts, :version, "0.0.0")
+    }
+    |> maybe_put("title", Keyword.get(opts, :client_title))
+  end
+
+  defp new_request_id do
+    System.unique_integer([:positive])
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, _key, %{} = value) when map_size(value) == 0, do: map
+  defp maybe_put(map, _key, []), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   # Telemetry helpers
 
@@ -433,7 +572,6 @@ defmodule Codex.MCP.Client do
         qualified_name = qualify_tool_name(server_name, tool_name)
 
         if MapSet.member?(seen, qualified_name) do
-          # Skip duplicate qualified names
           {acc, seen}
         else
           qualified_tool =

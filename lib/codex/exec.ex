@@ -8,6 +8,7 @@ defmodule Codex.Exec do
 
   require Logger
 
+  alias Codex.Config.Overrides
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
@@ -113,6 +114,7 @@ defmodule Codex.Exec do
   defp start_process(command, exec_opts) do
     env = build_env(exec_opts)
     timeout_ms = resolve_timeout_ms(exec_opts)
+    idle_timeout_ms = resolve_idle_timeout_ms(exec_opts)
 
     run_opts =
       [:stdin, {:stdout, self()}, {:stderr, self()}, :monitor]
@@ -128,7 +130,8 @@ defmodule Codex.Exec do
            non_json_stdout: [],
            stderr: [],
            done?: false,
-           timeout_ms: timeout_ms
+           timeout_ms: timeout_ms,
+           idle_timeout_ms: idle_timeout_ms
          }}
 
       {:error, reason} ->
@@ -160,23 +163,26 @@ defmodule Codex.Exec do
       {:stderr, ^os_pid, chunk} ->
         do_collect(%{state | stderr: [chunk | state.stderr]}, os_pid, events)
 
-      {:DOWN, ^os_pid, :process, _pid, :normal} ->
-        {decoded, _, _} = decode_lines(state.buffer)
-        {:ok, %{events: events ++ decoded}}
+      {:DOWN, ^os_pid, :process, _pid, reason} ->
+        case exit_status_from_reason(reason) do
+          {:ok, 0} ->
+            {decoded, _, _} = decode_lines(state.buffer)
+            {:ok, %{events: events ++ decoded}}
 
-      {:DOWN, ^os_pid, :process, _pid, {:exit_status, status}} ->
-        stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
-        non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
+          {:ok, status} ->
+            merged_stderr = merge_stderr(state)
+            {:error, TransportError.new(status, stderr: merged_stderr)}
 
-        merged_stderr =
-          if String.trim(non_json) == "" do
-            stderr
-          else
-            [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
-            |> IO.iodata_to_binary()
-          end
+          {:error, down_reason} ->
+            merged_stderr = merge_stderr(state)
 
-        {:error, TransportError.new(normalize_exit_status(status), stderr: merged_stderr)}
+            {:error,
+             TransportError.new(-1,
+               message: "codex executable exited: #{inspect(down_reason)}",
+               stderr: merged_stderr,
+               retryable?: false
+             )}
+        end
     after
       timeout_ms ->
         Logger.warning("codex exec timed out after #{timeout_ms}ms without output")
@@ -213,7 +219,12 @@ defmodule Codex.Exec do
 
   defp next_stream_chunk(%{done?: true} = state), do: {:halt, state}
 
-  defp next_stream_chunk(%{os_pid: os_pid} = state) do
+  defp next_stream_chunk(%{idle_timeout_ms: nil} = state), do: next_stream_chunk_no_timeout(state)
+
+  defp next_stream_chunk(%{idle_timeout_ms: timeout_ms} = state)
+       when is_integer(timeout_ms) and timeout_ms > 0 do
+    os_pid = state.os_pid
+
     receive do
       {:stdout, ^os_pid, chunk} ->
         data = state.buffer <> iodata_to_binary(chunk)
@@ -225,24 +236,73 @@ defmodule Codex.Exec do
       {:stderr, ^os_pid, chunk} ->
         {[], %{state | stderr: [chunk | state.stderr]}}
 
-      {:DOWN, ^os_pid, :process, _pid, :normal} ->
-        {decoded, _, _} = decode_lines(state.buffer)
-        {decoded, %{state | buffer: "", done?: true}}
+      {:DOWN, ^os_pid, :process, _pid, reason} ->
+        case exit_status_from_reason(reason) do
+          {:ok, 0} ->
+            {decoded, _, _} = decode_lines(state.buffer)
+            {decoded, %{state | buffer: "", done?: true}}
 
-      {:DOWN, ^os_pid, :process, _pid, {:exit_status, status}} ->
-        stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
-        non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
+          {:ok, status} ->
+            merged_stderr = merge_stderr(state)
+            raise TransportError.new(status, stderr: merged_stderr)
 
-        merged_stderr =
-          if String.trim(non_json) == "" do
-            stderr
-          else
-            [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
-            |> IO.iodata_to_binary()
-          end
+          {:error, down_reason} ->
+            merged_stderr = merge_stderr(state)
 
-        raise TransportError.new(normalize_exit_status(status), stderr: merged_stderr)
+            raise TransportError.new(-1,
+                    message: "codex executable exited: #{inspect(down_reason)}",
+                    stderr: merged_stderr,
+                    retryable?: false
+                  )
+        end
+    after
+      timeout_ms ->
+        raise handle_stream_idle_timeout(state, timeout_ms)
     end
+  end
+
+  defp next_stream_chunk_no_timeout(%{os_pid: os_pid} = state) do
+    receive do
+      {:stdout, ^os_pid, chunk} ->
+        data = state.buffer <> iodata_to_binary(chunk)
+        {decoded, new_buffer, non_json} = decode_lines(data)
+
+        {decoded,
+         %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
+
+      {:stderr, ^os_pid, chunk} ->
+        {[], %{state | stderr: [chunk | state.stderr]}}
+
+      {:DOWN, ^os_pid, :process, _pid, reason} ->
+        case exit_status_from_reason(reason) do
+          {:ok, 0} ->
+            {decoded, _, _} = decode_lines(state.buffer)
+            {decoded, %{state | buffer: "", done?: true}}
+
+          {:ok, status} ->
+            merged_stderr = merge_stderr(state)
+            raise TransportError.new(status, stderr: merged_stderr)
+
+          {:error, down_reason} ->
+            merged_stderr = merge_stderr(state)
+
+            raise TransportError.new(-1,
+                    message: "codex executable exited: #{inspect(down_reason)}",
+                    stderr: merged_stderr,
+                    retryable?: false
+                  )
+        end
+    end
+  end
+
+  defp handle_stream_idle_timeout(state, timeout_ms) do
+    Logger.warning("codex exec stream idle timeout after #{timeout_ms}ms without output")
+    safe_stop(state)
+
+    TransportError.new(-1,
+      message: "codex exec stream idle timeout after #{timeout_ms}ms",
+      retryable?: true
+    )
   end
 
   defp safe_stop({:error, _reason}), do: :ok
@@ -261,6 +321,15 @@ defmodule Codex.Exec do
   defp resolve_timeout_ms(%ExecOptions{timeout_ms: nil}), do: @default_timeout_ms
   defp resolve_timeout_ms(%ExecOptions{timeout_ms: timeout_ms}), do: timeout_ms
 
+  defp resolve_idle_timeout_ms(%ExecOptions{stream_idle_timeout_ms: nil}), do: nil
+
+  defp resolve_idle_timeout_ms(%ExecOptions{stream_idle_timeout_ms: timeout_ms})
+       when is_integer(timeout_ms) and timeout_ms > 0 do
+    timeout_ms
+  end
+
+  defp resolve_idle_timeout_ms(_), do: nil
+
   defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts, command_args \\ nil) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
       args = build_args(exec_opts, command_args)
@@ -272,7 +341,7 @@ defmodule Codex.Exec do
   defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts, command_args) do
     command_args = command_args || command_args_for_run(exec_opts)
 
-    ["exec", "--experimental-json"] ++
+    ["exec", "--json"] ++
       profile_args(exec_opts) ++
       oss_args(exec_opts) ++
       local_provider_args(exec_opts) ++
@@ -288,7 +357,6 @@ defmodule Codex.Exec do
       skip_git_repo_check_args(exec_opts.thread) ++
       network_access_args(exec_opts.thread) ++
       ask_for_approval_args(exec_opts.thread) ++
-      web_search_args(exec_opts.thread) ++
       command_args ++
       continuation_args(exec_opts.continuation_token) ++
       cancellation_args(exec_opts.cancellation_token) ++
@@ -376,7 +444,7 @@ defmodule Codex.Exec do
   defp sandbox_args(_), do: []
 
   defp sandbox_mode(:strict), do: "read-only"
-  defp sandbox_mode(:default), do: "workspace-write"
+  defp sandbox_mode(:default), do: nil
   defp sandbox_mode(:permissive), do: "danger-full-access"
   defp sandbox_mode(:read_only), do: "read-only"
   defp sandbox_mode(:workspace_write), do: "workspace-write"
@@ -457,13 +525,6 @@ defmodule Codex.Exec do
   defp approval_policy(value) when is_binary(value), do: value
   defp approval_policy(_), do: nil
 
-  defp web_search_args(%{thread_opts: %Codex.Thread.Options{web_search_enabled: value}})
-       when value in [true, false] do
-    ["--config", "features.web_search_request=#{value}"]
-  end
-
-  defp web_search_args(_), do: []
-
   defp resume_args(%{thread_id: thread_id}) when is_binary(thread_id), do: ["resume", thread_id]
   defp resume_args(%{resume: :last}), do: ["resume", "--last"]
   defp resume_args(_), do: []
@@ -494,22 +555,13 @@ defmodule Codex.Exec do
   defp attachment_cli_args(_), do: []
 
   defp config_override_args(exec_opts) do
+    derived_overrides = derived_config_overrides(exec_opts)
     thread_overrides = thread_config_overrides(exec_opts)
     turn_overrides = turn_config_overrides(exec_opts)
 
-    (thread_overrides ++ turn_overrides)
-    |> Enum.flat_map(&config_override_arg/1)
+    (derived_overrides ++ thread_overrides ++ turn_overrides)
+    |> Overrides.cli_args()
   end
-
-  defp config_override_arg({key, value}) do
-    ["--config", "#{key}=#{encode_override_value(value)}"]
-  end
-
-  defp config_override_arg(value) when is_binary(value) and value != "" do
-    ["--config", value]
-  end
-
-  defp config_override_arg(_), do: []
 
   defp thread_config_overrides(%ExecOptions{
          thread: %{thread_opts: %Codex.Thread.Options{} = opts}
@@ -549,26 +601,15 @@ defmodule Codex.Exec do
 
   defp normalize_config_overrides(_), do: []
 
-  defp encode_override_value(value) when is_binary(value), do: inspect(value)
-  defp encode_override_value(value) when is_boolean(value), do: to_string(value)
+  defp derived_config_overrides(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
+    thread_opts =
+      case exec_opts.thread do
+        %{thread_opts: %Codex.Thread.Options{} = thread_opts} -> thread_opts
+        _ -> nil
+      end
 
-  defp encode_override_value(value) when is_integer(value) or is_float(value),
-    do: to_string(value)
-
-  defp encode_override_value(value) when is_list(value) do
-    "[" <> Enum.map_join(value, ",", &encode_override_value/1) <> "]"
+    Overrides.derived_overrides(opts, thread_opts)
   end
-
-  defp encode_override_value(%{} = value) do
-    "{" <>
-      Enum.map_join(value, ",", fn {key, entry} ->
-        "#{encode_override_key(key)}=#{encode_override_value(entry)}"
-      end) <> "}"
-  end
-
-  defp encode_override_value(value), do: inspect(value)
-
-  defp encode_override_key(key), do: inspect(to_string(key))
 
   defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env} = exec_opts) do
     base_env =
@@ -668,6 +709,30 @@ defmodule Codex.Exec do
 
   defp iodata_to_binary(data) when is_binary(data), do: data
   defp iodata_to_binary(data), do: IO.iodata_to_binary(data)
+
+  defp merge_stderr(state) do
+    stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
+    non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
+
+    if String.trim(non_json) == "" do
+      stderr
+    else
+      [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
+      |> IO.iodata_to_binary()
+    end
+  end
+
+  defp exit_status_from_reason(:normal), do: {:ok, 0}
+
+  defp exit_status_from_reason({:exit_status, status}) do
+    {:ok, normalize_exit_status(status)}
+  end
+
+  defp exit_status_from_reason(status) when is_integer(status) do
+    {:ok, normalize_exit_status(status)}
+  end
+
+  defp exit_status_from_reason(reason), do: {:error, reason}
 
   defp normalize_exit_status(raw_status) when is_integer(raw_status) do
     case :exec.status(raw_status) do

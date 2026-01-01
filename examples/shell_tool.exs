@@ -30,8 +30,8 @@ IO.puts("-" |> String.duplicate(50))
 
 {:ok, _handle} = Tools.register(ShellTool)
 
-{:ok, result} = Tools.invoke("shell", %{"command" => "echo 'Hello from shell!'"}, %{})
-IO.puts("Command: echo 'Hello from shell!'")
+{:ok, result} = Tools.invoke("shell", %{"command" => ["echo", "Hello from shell!"]}, %{})
+IO.puts("Command: echo Hello from shell!")
 IO.puts("Output: #{String.trim(result["output"])}")
 IO.puts("Exit code: #{result["exit_code"]}")
 IO.puts("Success: #{result["success"]}")
@@ -46,8 +46,8 @@ IO.puts("-" |> String.duplicate(50))
 
 {:ok, _} = Tools.register(ShellTool)
 
-{:ok, result} = Tools.invoke("shell", %{"command" => "exit 42"}, %{})
-IO.puts("Command: exit 42")
+{:ok, result} = Tools.invoke("shell", %{"command" => ["sh", "-c", "exit 42"]}, %{})
+IO.puts("Command: sh -c \"exit 42\"")
 IO.puts("Exit code: #{result["exit_code"]}")
 IO.puts("Success: #{result["success"]}")
 
@@ -61,8 +61,8 @@ IO.puts("-" |> String.duplicate(50))
 
 {:ok, _} = Tools.register(ShellTool)
 
-{:ok, result} = Tools.invoke("shell", %{"command" => "pwd", "cwd" => "/tmp"}, %{})
-IO.puts("Command: pwd (cwd: /tmp)")
+{:ok, result} = Tools.invoke("shell", %{"command" => ["pwd"], "workdir" => "/tmp"}, %{})
+IO.puts("Command: pwd (workdir: /tmp)")
 IO.puts("Output: #{String.trim(result["output"])}")
 
 Tools.reset!()
@@ -75,8 +75,8 @@ IO.puts("-" |> String.duplicate(50))
 
 {:ok, _} = Tools.register(ShellTool, max_output_bytes: 50)
 
-{:ok, result} = Tools.invoke("shell", %{"command" => "yes | head -n 100"}, %{})
-IO.puts("Command: yes | head -n 100 (max 50 bytes)")
+{:ok, result} = Tools.invoke("shell", %{"command" => ["sh", "-c", "yes | head -n 100"]}, %{})
+IO.puts("Command: sh -c \"yes | head -n 100\" (max 50 bytes)")
 IO.puts("Output length: #{byte_size(result["output"])} bytes")
 IO.puts("Truncated: #{String.ends_with?(result["output"], "... (truncated)")}")
 
@@ -99,12 +99,12 @@ end
 {:ok, _} = Tools.register(ShellTool, approval: approval)
 
 # Safe command - should succeed
-{:ok, result} = Tools.invoke("shell", %{"command" => "echo safe"}, %{})
+{:ok, result} = Tools.invoke("shell", %{"command" => ["echo", "safe"]}, %{})
 IO.puts("Command: echo safe")
 IO.puts("Result: #{String.trim(result["output"])}")
 
 # Dangerous command - should be denied
-case Tools.invoke("shell", %{"command" => "rm /some/file"}, %{}) do
+case Tools.invoke("shell", %{"command" => ["rm", "/some/file"]}, %{}) do
   {:error, {:approval_denied, reason}} ->
     IO.puts("\nCommand: rm /some/file")
     IO.puts("Denied: #{inspect(reason)}")
@@ -122,13 +122,14 @@ IO.puts("\n6. Custom executor for testing/mocking")
 IO.puts("-" |> String.duplicate(50))
 
 mock_executor = fn %{"command" => cmd}, _ctx, _meta ->
-  IO.puts("  [Mock executor called with: #{cmd}]")
-  {:ok, %{"output" => "Mocked output for: #{cmd}", "exit_code" => 0}}
+  formatted = if is_list(cmd), do: Enum.join(cmd, " "), else: cmd
+  IO.puts("  [Mock executor called with: #{formatted}]")
+  {:ok, %{"output" => "Mocked output for: #{formatted}", "exit_code" => 0}}
 end
 
 {:ok, _} = Tools.register(ShellTool, executor: mock_executor)
 
-{:ok, result} = Tools.invoke("shell", %{"command" => "any-command"}, %{})
+{:ok, result} = Tools.invoke("shell", %{"command" => ["echo", "any-command"]}, %{})
 IO.puts("Output: #{result["output"]}")
 
 Tools.reset!()
@@ -141,7 +142,7 @@ IO.puts("-" |> String.duplicate(50))
 
 {:ok, _} = Tools.register(ShellTool, timeout_ms: 100)
 
-case Tools.invoke("shell", %{"command" => "sleep 5"}, %{}) do
+case Tools.invoke("shell", %{"command" => ["sleep", "5"]}, %{}) do
   {:error, :timeout} ->
     IO.puts("Command: sleep 5 (timeout: 100ms)")
     IO.puts("Result: Timed out as expected!")
@@ -174,7 +175,7 @@ end
 {:ok, result} =
   Tools.invoke(
     "shell",
-    %{"command" => "echo 'Combined options test'"},
+    %{"command" => ["echo", "Combined options test"]},
     %{user: "admin"}
   )
 
@@ -194,7 +195,7 @@ executor = fn _args, _ctx, _meta ->
 end
 
 context = %{metadata: %{executor: executor}}
-args = %{"command" => "test"}
+args = %{"command" => ["echo", "test"]}
 
 {:ok, result} = ShellTool.invoke(args, context)
 IO.puts("Output: #{result["output"]}")
@@ -210,7 +211,7 @@ IO.puts("""
 Features demonstrated:
 - Basic command execution with default erlexec executor
 - Exit code capture and success flag
-- Working directory (cwd) support
+- Working directory (workdir) support
 - Output truncation for large outputs
 - Approval callback integration (allow/deny)
 - Custom executor for testing/mocking

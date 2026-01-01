@@ -19,24 +19,54 @@ defmodule CodexExamples.StubMcpTransport do
 
   def recv(pid) do
     Agent.get_and_update(pid, fn %{last: request} = state ->
-      case request["type"] do
-        "handshake" ->
-          {{:ok, %{"type" => "handshake.ack", "capabilities" => %{"tools" => true}}}, state}
+      case request["method"] do
+        "initialize" ->
+          response = %{
+            "jsonrpc" => "2.0",
+            "id" => request["id"],
+            "result" => %{
+              "capabilities" => %{"tools" => %{}},
+              "protocolVersion" => "2025-06-18",
+              "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+            }
+          }
 
-        "list_tools" ->
+          {{:ok, response}, state}
+
+        "tools/list" ->
           tools = [%{"name" => "stub.echo", "description" => "echoes arguments"}]
-          {{:ok, %{"tools" => tools}}, state}
 
-        "call_tool" ->
+          response = %{
+            "jsonrpc" => "2.0",
+            "id" => request["id"],
+            "result" => %{"tools" => tools}
+          }
+
+          {{:ok, response}, state}
+
+        "tools/call" ->
           attempt = state.call_attempts + 1
           updated = %{state | call_attempts: attempt}
+          params = Map.get(request, "params") || %{}
 
-          if attempt == 1 do
-            {{:ok, %{"error" => "transient"}}, updated}
-          else
-            args = Map.get(request, "arguments") || %{}
-            {{:ok, %{"result" => %{"echo" => args}}}, updated}
-          end
+          response =
+            if attempt == 1 do
+              %{
+                "jsonrpc" => "2.0",
+                "id" => request["id"],
+                "error" => %{"code" => -32_000, "message" => "transient"}
+              }
+            else
+              args = Map.get(params, "arguments") || %{}
+
+              %{
+                "jsonrpc" => "2.0",
+                "id" => request["id"],
+                "result" => %{"echo" => args}
+              }
+            end
+
+          {{:ok, response}, updated}
 
         _ ->
           {{:error, :unknown_request}, state}

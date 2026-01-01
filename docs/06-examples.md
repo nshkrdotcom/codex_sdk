@@ -587,7 +587,7 @@ defmodule CommandExample do
 
     {:ok, stream} = Codex.Thread.run_streamed(
       thread,
-      "Run the test suite and fix any failures"
+      "List the top-level files and print the working directory"
     )
 
     # Collect all commands
@@ -623,37 +623,6 @@ defmodule CommandExample do
     end)
   end
 
-  def verify_tests_pass do
-    {:ok, thread} = Codex.start_thread()
-
-    {:ok, result} = Codex.Thread.run(
-      thread,
-      "Run mix test and report if all tests pass"
-    )
-
-    # Find the test command
-    test_command = result.items
-      |> Enum.find(fn
-        %{type: :command_execution, command: cmd} ->
-          String.contains?(cmd, "mix test")
-        _ ->
-          false
-      end)
-
-    case test_command do
-      %{exit_code: 0} ->
-        IO.puts("✓ All tests passed!")
-        {:ok, :all_passed}
-
-      %{exit_code: code} ->
-        IO.puts("✗ Tests failed with exit code #{code}")
-        {:error, :tests_failed}
-
-      nil ->
-        IO.puts("No test command found")
-        {:error, :no_tests_run}
-    end
-  end
 end
 ```
 
@@ -825,7 +794,6 @@ defmodule MyApp.Codex do
   defp sandbox_mode do
     case Mix.env() do
       :prod -> :read_only
-      :test -> :read_only
       _ -> :workspace_write
     end
   end
@@ -862,6 +830,25 @@ defmodule ConfigExample do
     end)
   end
 end
+```
+
+You can also pass CLI config overrides and shell environment policy entries via thread options:
+
+```elixir
+{:ok, thread_opts} =
+  Codex.Thread.Options.new(
+    model_provider: "mistral",
+    base_instructions: "Keep answers brief.",
+    shell_environment_policy: %{
+      inherit: "core",
+      exclude: ["AWS_*"]
+    },
+    config_overrides: %{
+      "model_reasoning_summary" => "concise"
+    }
+  )
+
+{:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
 ```
 
 ---
@@ -1001,8 +988,8 @@ end
 
 ### Tool Output Bridging and Auto-Run (Transport Notes)
 
-The SDK includes a tool registry and can collect structured tool outputs in fixture-driven runs.
-However, the default transport (`codex exec --experimental-json`) does not currently expose a
+The SDK includes a tool registry and can collect structured tool outputs during auto-run cycles.
+However, the default transport (`codex exec --json`) does not currently expose a
 supported mechanism to inject tool outputs back into the CLI. Treat the example below as a
 conceptual demo until a tool-capable transport (e.g. MCP-hosted tools or protocol/app-server) is
 adopted.
@@ -1341,7 +1328,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 ## App-server Transport
 
-App-server (`codex app-server`) is a **stateful, bidirectional** transport that unlocks upstream v2 APIs (threads list/archive/compact, skills/models/config, server-driven approvals, etc.).
+App-server (`codex app-server`) is a **stateful, bidirectional** transport that unlocks upstream v2 APIs (threads list/archive, skills/models/config, server-driven approvals, etc.).
 
 See `docs/09-app-server-transport.md` for the complete guide, and run the live scripts:
 
@@ -1367,43 +1354,16 @@ Minimal usage with existing thread APIs:
 IO.inspect(result.final_response, label: "final_response")
 ```
 
-## Testing Patterns
-
-### Testing with Mocks
-
-Test code that uses Codex without calling the API.
+### Custom prompts and skills helpers
 
 ```elixir
-defmodule MyApp.CodeReviewer do
-  def review_code(file_path) do
-    {:ok, thread} = Codex.start_thread()
+{:ok, prompts} = Codex.Prompts.list()
+{:ok, expanded} = Codex.Prompts.expand(Enum.at(prompts, 0), "FILE=lib/app.ex")
 
-    {:ok, result} = Codex.Thread.run(
-      thread,
-      "Review #{file_path} for issues"
-    )
-
-    parse_review(result.final_response)
-  end
-
-  defp parse_review(text) do
-    # Parse review from text
-    %{issues: [], suggestions: []}
-  end
-end
-
-# Test
-defmodule MyApp.CodeReviewerTest do
-  use ExUnit.Case, async: true
-
-  test "parses review correctly" do
-    # Would use Mox to mock Codex.Thread.run
-    # For now, test the parse_review function directly
-  end
-end
+{:ok, %{"data" => skills}} = Codex.Skills.list(conn, skills_enabled: true)
+first_skill = skills |> List.first() |> Map.get("skills") |> List.first()
+{:ok, skill_body} = Codex.Skills.load(first_skill, skills_enabled: true)
 ```
-
----
 
 ## Conclusion
 

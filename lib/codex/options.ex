@@ -17,7 +17,13 @@ defmodule Codex.Options do
             codex_path_override: nil,
             telemetry_prefix: [:codex],
             model: Models.default_model(),
-            reasoning_effort: Models.default_reasoning_effort()
+            reasoning_effort: Models.default_reasoning_effort(),
+            model_reasoning_summary: nil,
+            model_verbosity: nil,
+            model_context_window: nil,
+            model_supports_reasoning_summaries: nil,
+            history_persistence: nil,
+            history_max_bytes: nil
 
   @type t :: %__MODULE__{
           api_key: String.t() | nil,
@@ -25,7 +31,13 @@ defmodule Codex.Options do
           codex_path_override: String.t() | nil,
           telemetry_prefix: [atom()],
           model: String.t() | nil,
-          reasoning_effort: Models.reasoning_effort() | nil
+          reasoning_effort: Models.reasoning_effort() | nil,
+          model_reasoning_summary: String.t() | nil,
+          model_verbosity: String.t() | nil,
+          model_context_window: pos_integer() | nil,
+          model_supports_reasoning_summaries: boolean() | nil,
+          history_persistence: String.t() | nil,
+          history_max_bytes: non_neg_integer() | nil
         }
 
   @doc """
@@ -43,7 +55,13 @@ defmodule Codex.Options do
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
          {:ok, model} <- fetch_model(attrs, auth_mode_for(api_key)),
-         {:ok, reasoning_effort} <- fetch_reasoning_effort(attrs, model) do
+         {:ok, reasoning_effort} <- fetch_reasoning_effort(attrs, model),
+         {:ok, reasoning_summary} <- fetch_reasoning_summary(attrs),
+         {:ok, model_verbosity} <- fetch_model_verbosity(attrs),
+         {:ok, model_context_window} <- fetch_model_context_window(attrs),
+         {:ok, supports_reasoning_summaries} <- fetch_supports_reasoning_summaries(attrs),
+         {:ok, history_persistence} <- fetch_history_persistence(attrs),
+         {:ok, history_max_bytes} <- fetch_history_max_bytes(attrs) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
@@ -51,7 +69,13 @@ defmodule Codex.Options do
          codex_path_override: override,
          telemetry_prefix: telemetry_prefix,
          model: model,
-         reasoning_effort: reasoning_effort
+         reasoning_effort: reasoning_effort,
+         model_reasoning_summary: reasoning_summary,
+         model_verbosity: model_verbosity,
+         model_context_window: model_context_window,
+         model_supports_reasoning_summaries: supports_reasoning_summaries,
+         history_persistence: history_persistence,
+         history_max_bytes: history_max_bytes
        }}
     end
   end
@@ -164,6 +188,80 @@ defmodule Codex.Options do
     |> Models.normalize_reasoning_effort()
   end
 
+  defp fetch_reasoning_summary(attrs) do
+    attrs
+    |> pick([
+      :model_reasoning_summary,
+      "model_reasoning_summary",
+      :reasoning_summary,
+      "reasoning_summary"
+    ])
+    |> normalize_reasoning_summary()
+  end
+
+  defp fetch_model_verbosity(attrs) do
+    attrs
+    |> pick([:model_verbosity, "model_verbosity", :verbosity, "verbosity"])
+    |> normalize_model_verbosity()
+  end
+
+  defp fetch_model_context_window(attrs) do
+    case pick(attrs, [
+           :model_context_window,
+           "model_context_window",
+           :context_window,
+           "context_window"
+         ]) do
+      nil -> {:ok, nil}
+      value when is_integer(value) and value > 0 -> {:ok, value}
+      other -> {:error, {:invalid_model_context_window, other}}
+    end
+  end
+
+  defp fetch_supports_reasoning_summaries(attrs) do
+    case pick(
+           attrs,
+           [
+             :model_supports_reasoning_summaries,
+             "model_supports_reasoning_summaries",
+             :supports_reasoning_summaries,
+             "supports_reasoning_summaries"
+           ]
+         ) do
+      nil -> {:ok, nil}
+      value when is_boolean(value) -> {:ok, value}
+      other -> {:error, {:invalid_model_supports_reasoning_summaries, other}}
+    end
+  end
+
+  defp fetch_history_persistence(attrs) do
+    history = pick(attrs, [:history, "history"])
+
+    value =
+      pick(attrs, [:history_persistence, "history_persistence"]) ||
+        if is_map(history) do
+          Map.get(history, :persistence, Map.get(history, "persistence"))
+        end
+
+    normalize_history_persistence(value)
+  end
+
+  defp fetch_history_max_bytes(attrs) do
+    history = pick(attrs, [:history, "history"])
+
+    value =
+      pick(attrs, [:history_max_bytes, "history_max_bytes"]) ||
+        if is_map(history) do
+          Map.get(
+            history,
+            :max_bytes,
+            Map.get(history, "max_bytes", Map.get(history, "maxBytes"))
+          )
+        end
+
+    validate_history_max_bytes(value)
+  end
+
   defp auth_mode_for(api_key) when is_binary(api_key) and api_key != "", do: :api
   defp auth_mode_for(_), do: Auth.infer_auth_mode()
 
@@ -175,4 +273,71 @@ defmodule Codex.Options do
   end
 
   defp normalize_string(_), do: nil
+
+  defp normalize_reasoning_summary(nil), do: {:ok, nil}
+
+  defp normalize_reasoning_summary(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_reasoning_summary()
+  end
+
+  defp normalize_reasoning_summary(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "auto" -> {:ok, "auto"}
+      "concise" -> {:ok, "concise"}
+      "detailed" -> {:ok, "detailed"}
+      "none" -> {:ok, "none"}
+      other -> {:error, {:invalid_model_reasoning_summary, other}}
+    end
+  end
+
+  defp normalize_reasoning_summary(other),
+    do: {:error, {:invalid_model_reasoning_summary, other}}
+
+  defp normalize_history_persistence(nil), do: {:ok, nil}
+
+  defp normalize_history_persistence(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_history_persistence()
+  end
+
+  defp normalize_history_persistence(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:ok, nil}
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  defp normalize_history_persistence(other),
+    do: {:error, {:invalid_history_persistence, other}}
+
+  defp validate_history_max_bytes(nil), do: {:ok, nil}
+
+  defp validate_history_max_bytes(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp validate_history_max_bytes(other),
+    do: {:error, {:invalid_history_max_bytes, other}}
+
+  defp normalize_model_verbosity(nil), do: {:ok, nil}
+
+  defp normalize_model_verbosity(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_model_verbosity()
+  end
+
+  defp normalize_model_verbosity(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "low" -> {:ok, "low"}
+      "medium" -> {:ok, "medium"}
+      "high" -> {:ok, "high"}
+      other -> {:error, {:invalid_model_verbosity, other}}
+    end
+  end
+
+  defp normalize_model_verbosity(other), do: {:error, {:invalid_model_verbosity, other}}
 end

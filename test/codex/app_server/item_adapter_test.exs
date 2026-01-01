@@ -97,4 +97,24 @@ defmodule Codex.AppServer.ItemAdapterTest do
       assert {:raw, ^item} = ItemAdapter.to_item(item)
     end
   end
+
+  describe "to_raw_item/1" do
+    test "parses ghost snapshot raw items" do
+      item = %{
+        "type" => "ghost_snapshot",
+        "id" => "raw_1",
+        "ghost_commit" => %{"id" => "ghost_1"}
+      }
+
+      assert {:ok, %Items.GhostSnapshot{id: "raw_1", ghost_commit: %{"id" => "ghost_1"}}} =
+               ItemAdapter.to_raw_item(item)
+    end
+
+    test "returns RawResponseItem for unknown raw types" do
+      item = %{"type" => "custom_item", "foo" => "bar"}
+
+      assert {:ok, %Items.RawResponseItem{type: "custom_item", payload: %{"foo" => "bar"}}} =
+               ItemAdapter.to_raw_item(item)
+    end
+  end
 end

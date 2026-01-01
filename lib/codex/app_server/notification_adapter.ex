@@ -98,6 +98,23 @@ defmodule Codex.AppServer.NotificationAdapter do
   def to_event("item/completed", %{} = params),
     do: handle_item_event(Events.ItemCompleted, params)
 
+  def to_event("rawResponseItem/completed", %{} = params) do
+    item = Map.get(params, "item") || %{}
+
+    parsed_item =
+      case ItemAdapter.to_raw_item(item) do
+        {:ok, parsed} -> parsed
+        {:raw, raw} -> raw
+      end
+
+    {:ok,
+     %Events.RawResponseItemCompleted{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       item: parsed_item
+     }}
+  end
+
   def to_event("item/agentMessage/delta", %{} = params) do
     {:ok,
      %Events.ItemAgentMessageDelta{
@@ -212,7 +229,9 @@ defmodule Codex.AppServer.NotificationAdapter do
   def to_event("account/rateLimits/updated", %{} = params) do
     {:ok,
      %Events.AccountRateLimitsUpdated{
-       rate_limits: Map.get(params, "rateLimits") || Map.get(params, "rate_limits") || %{}
+       rate_limits: Map.get(params, "rateLimits") || Map.get(params, "rate_limits") || %{},
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id")
      }}
   end
 
@@ -222,6 +241,14 @@ defmodule Codex.AppServer.NotificationAdapter do
        sample_paths: Map.get(params, "samplePaths") || [],
        extra_count: Map.get(params, "extraCount") || 0,
        failed_scan: Map.get(params, "failedScan") || false
+     }}
+  end
+
+  def to_event("deprecationNotice", %{} = params) do
+    {:ok,
+     %Events.DeprecationNotice{
+       summary: Map.get(params, "summary") || "",
+       details: Map.get(params, "details")
      }}
   end
 

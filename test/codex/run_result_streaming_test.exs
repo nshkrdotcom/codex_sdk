@@ -3,7 +3,7 @@ defmodule Codex.RunResultStreamingTest do
 
   import ExUnit.CaptureLog
 
-  alias Codex.{Options, RunResultStreaming, Thread, TransportError}
+  alias Codex.{Error, Options, RunResultStreaming, Thread}
   alias Codex.Thread.Options, as: ThreadOptions
 
   test "RunResultStreaming: surfaces transport errors for streamed runs" do
@@ -39,11 +39,11 @@ defmodule Codex.RunResultStreamingTest do
     assert_receive {:task_result, task_result}
 
     case task_result do
-      {:exit, {%TransportError{} = error, _}} ->
-        assert error.exit_status == 9
+      {:exit, {%Error{} = error, _}} ->
+        assert error.details[:exit_status] == 9
 
       other ->
-        flunk("expected TransportError exit, got: #{inspect(other)}")
+        flunk("expected Codex.Error exit, got: #{inspect(other)}")
     end
   end
 

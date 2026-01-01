@@ -47,7 +47,7 @@ defmodule Codex.Tools.Registry do
         {:ok, %{name: name, module: module, metadata: metadata}}
 
       [] ->
-        {:error, :not_found}
+        lookup_alias(name)
     end
   end
 
@@ -244,6 +244,25 @@ defmodule Codex.Tools.Registry do
       _ -> true
     end
   end
+
+  defp lookup_alias(name) do
+    name
+    |> alias_candidates()
+    |> Enum.reduce_while({:error, :not_found}, fn alias_name, _acc ->
+      case :ets.lookup(@table, alias_name) do
+        [{^alias_name, module, metadata}] ->
+          {:halt, {:ok, %{name: alias_name, module: module, metadata: metadata}}}
+
+        [] ->
+          {:cont, {:error, :not_found}}
+      end
+    end)
+  end
+
+  defp alias_candidates("container.exec"), do: ["shell", "shell_command"]
+  defp alias_candidates("local_shell"), do: ["shell", "shell_command"]
+  defp alias_candidates("shell_command"), do: ["shell"]
+  defp alias_candidates(_name), do: []
 
   defp maybe_handle_error(metadata, reason, context) do
     case metadata |> Map.get(:on_error) || Map.get(metadata, "on_error") do

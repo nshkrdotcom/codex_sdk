@@ -62,6 +62,48 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
+    test "accepts reasoning summary and verbosity options" do
+      {:ok, opts} =
+        Options.new(%{
+          model_reasoning_summary: :concise,
+          model_verbosity: "high",
+          model_context_window: 8192,
+          model_supports_reasoning_summaries: true
+        })
+
+      assert opts.model_reasoning_summary == "concise"
+      assert opts.model_verbosity == "high"
+      assert opts.model_context_window == 8192
+      assert opts.model_supports_reasoning_summaries == true
+    end
+
+    test "accepts history persistence overrides" do
+      {:ok, opts} =
+        Options.new(%{
+          history_persistence: :local,
+          history_max_bytes: 12_000
+        })
+
+      assert opts.history_persistence == "local"
+      assert opts.history_max_bytes == 12_000
+
+      {:ok, opts_from_map} =
+        Options.new(%{
+          history: %{
+            persistence: "remote",
+            max_bytes: 24_000
+          }
+        })
+
+      assert opts_from_map.history_persistence == "remote"
+      assert opts_from_map.history_max_bytes == 24_000
+    end
+
+    test "rejects invalid reasoning summary" do
+      assert {:error, {:invalid_model_reasoning_summary, "loud"}} =
+               Options.new(%{model_reasoning_summary: "loud"})
+    end
+
     test "loads API key from CLI auth file when env is absent" do
       tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_home)

@@ -19,6 +19,9 @@ IO.puts("=== WebSearch Tool Example ===\n")
 # Reset tools registry
 Tools.reset!()
 
+# Note: when using web_search in a Thread, enable `web_search_enabled` or set
+# `features.web_search_request=true` in config overrides.
+
 # ============================================================
 # Example 1: Mock Provider (No API Key Needed)
 # ============================================================
@@ -27,7 +30,12 @@ IO.puts("-" |> String.duplicate(40))
 
 {:ok, _} = Tools.register(WebSearchTool, provider: :mock)
 
-{:ok, result} = Tools.invoke("web_search", %{"query" => "Elixir programming"}, %{})
+{:ok, result} =
+  Tools.invoke(
+    "web_search",
+    %{"action" => %{"type" => "search", "query" => "Elixir programming"}},
+    %{}
+  )
 
 IO.puts("Found #{result["count"]} results:")
 
@@ -53,7 +61,7 @@ IO.puts("-" |> String.duplicate(40))
 {:ok, limited_result} =
   Tools.invoke(
     "web_search",
-    %{"query" => "GenServer patterns", "max_results" => 1},
+    %{"action" => %{"type" => "search", "query" => "GenServer patterns"}, "max_results" => 1},
     %{}
   )
 
@@ -87,7 +95,12 @@ end
 
 {:ok, _} = Tools.register(WebSearchTool, searcher: custom_searcher)
 
-{:ok, custom_result} = Tools.invoke("web_search", %{"query" => "custom search"}, %{})
+{:ok, custom_result} =
+  Tools.invoke(
+    "web_search",
+    %{"action" => %{"type" => "search", "query" => "custom search"}},
+    %{}
+  )
 
 IO.puts("Custom searcher returned:")
 IO.puts("  #{inspect(custom_result)}")
@@ -110,7 +123,10 @@ cond do
 
     case Tools.invoke(
            "web_search",
-           %{"query" => "Elixir GenServer patterns 2025", "max_results" => 3},
+           %{
+             "action" => %{"type" => "search", "query" => "Elixir GenServer patterns 2025"},
+             "max_results" => 3
+           },
            %{}
          ) do
       {:ok, live_result} ->
@@ -140,7 +156,10 @@ cond do
 
     case Tools.invoke(
            "web_search",
-           %{"query" => "Elixir GenServer patterns 2025", "max_results" => 3},
+           %{
+             "action" => %{"type" => "search", "query" => "Elixir GenServer patterns 2025"},
+             "max_results" => 3
+           },
            %{}
          ) do
       {:ok, live_result} ->

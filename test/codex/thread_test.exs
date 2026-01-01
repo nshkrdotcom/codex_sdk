@@ -26,6 +26,51 @@ defmodule Codex.ThreadTest do
                  dangerously_bypass_approvals_and_sandbox: true
                })
     end
+
+    test "accepts reasoning, tuning, and retry options" do
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          model_reasoning_summary: :detailed,
+          model_verbosity: :low,
+          model_context_window: 4096,
+          model_supports_reasoning_summaries: true,
+          history_persistence: "local",
+          history_max_bytes: 50_000,
+          request_max_retries: 3,
+          stream_max_retries: 5,
+          stream_idle_timeout_ms: 10_000,
+          shell_environment_policy: %{
+            inherit: "core",
+            exclude: ["AWS_*"],
+            set: %{"FOO" => "bar"}
+          },
+          retry: true,
+          retry_opts: [max_attempts: 2],
+          rate_limit: true,
+          rate_limit_opts: [max_attempts: 2]
+        })
+
+      assert opts.model_reasoning_summary == "detailed"
+      assert opts.model_verbosity == "low"
+      assert opts.model_context_window == 4096
+      assert opts.model_supports_reasoning_summaries == true
+      assert opts.history_persistence == "local"
+      assert opts.history_max_bytes == 50_000
+      assert opts.request_max_retries == 3
+      assert opts.stream_max_retries == 5
+      assert opts.stream_idle_timeout_ms == 10_000
+      assert opts.retry == true
+      assert opts.retry_opts == [max_attempts: 2]
+      assert opts.rate_limit == true
+      assert opts.rate_limit_opts == [max_attempts: 2]
+    end
+
+    test "rejects invalid shell environment policy" do
+      assert {:error, {:invalid_shell_environment_set, _}} =
+               ThreadOptions.new(%{
+                 shell_environment_policy: %{set: %{"FOO" => 1}}
+               })
+    end
   end
 
   describe "build/3" do
@@ -704,6 +749,22 @@ defmodule Codex.ThreadTest do
     end
   end
 
+  describe "rate limits" do
+    test "stores account rate limit snapshots on the thread" do
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      rate_limits = %{"primary" => %{"remaining" => 10}}
+      event = %Events.AccountRateLimitsUpdated{thread_id: "thread_1", rate_limits: rate_limits}
+
+      {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})
+
+      assert updated.rate_limits == rate_limits
+      assert Thread.rate_limits(updated) == rate_limits
+    end
+  end
+
   describe "tool output forwarding" do
     test "does not forward pending tool outputs and failures to codex exec" do
       capture_path =
@@ -832,6 +893,97 @@ defmodule Codex.ThreadTest do
       refute_receive :tool_invoked
 
       assert length(updated.raw.tool_outputs) == 2
+    end
+
+    test "reject_content guardrail returns tool output without invoking tool", %{thread: thread} do
+      guardrail =
+        ToolGuardrail.new(
+          name: "reject_content_guardrail",
+          behavior: :reject_content,
+          handler: fn _event, _payload, _context -> {:reject, "blocked"} end
+        )
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_guardrail",
+        turn_id: "turn_guardrail",
+        call_id: "call_guardrail",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      assert {:ok, updated} = Thread.handle_tool_requests(result, 1, %{tool_input: [guardrail]})
+
+      assert [%{output: output}] = updated.raw.tool_outputs
+      assert output == %{"type" => "input_text", "text" => "blocked"}
+      refute_receive :tool_invoked
+    end
+
+    test "raise_exception guardrail treats reject as tripwire", %{thread: thread} do
+      guardrail =
+        ToolGuardrail.new(
+          name: "raise_guardrail",
+          behavior: :raise_exception,
+          handler: fn _event, _payload, _context -> {:reject, "blocked"} end
+        )
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_guardrail",
+        turn_id: "turn_guardrail",
+        call_id: "call_guardrail",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      assert {:error, %GuardrailError{guardrail: "raise_guardrail", type: :tripwire}} =
+               Thread.handle_tool_requests(result, 1, %{tool_input: [guardrail]})
+
+      refute_receive :tool_invoked
+    end
+
+    test "run_in_parallel tool guardrails enforce rejections", %{thread: thread} do
+      guardrail =
+        ToolGuardrail.new(
+          name: "parallel_guardrail",
+          run_in_parallel: true,
+          handler: fn _event, _payload, _context -> {:reject, "blocked"} end
+        )
+
+      event = %Events.ToolCallRequested{
+        thread_id: "thread_guardrail",
+        turn_id: "turn_guardrail",
+        call_id: "call_guardrail",
+        tool_name: "dedup_tool",
+        arguments: %{}
+      }
+
+      result = %TurnResult{
+        thread: thread,
+        events: [event],
+        final_response: nil,
+        usage: %{},
+        raw: %{}
+      }
+
+      assert {:error, %GuardrailError{guardrail: "parallel_guardrail", type: :reject}} =
+               Thread.handle_tool_requests(result, 1, %{tool_input: [guardrail]})
+
+      refute_receive :tool_invoked
     end
 
     test "returns guardrail errors when tool guardrail handlers raise", %{thread: thread} do

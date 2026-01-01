@@ -3,6 +3,8 @@ defmodule Codex.RateLimitTest do
 
   alias Codex.{Error, RateLimit}
 
+  @moduletag :capture_log
+
   describe "detect/1" do
     test "detects rate limit error from Codex.Error" do
       error = Error.rate_limit("Rate limited", retry_after_ms: 30_000)

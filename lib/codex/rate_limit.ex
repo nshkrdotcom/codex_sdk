@@ -75,6 +75,14 @@ defmodule Codex.RateLimit do
      }}
   end
 
+  def detect({:error, {:turn_failed, %Error{} = error}}) do
+    detect({:error, error})
+  end
+
+  def detect({:error, {:exec_failed, %Error{} = error}}) do
+    detect({:error, error})
+  end
+
   def detect({:error, %{status: 429} = response}) do
     retry_after = parse_retry_after(response)
     {:rate_limited, %{retry_after_ms: retry_after, source: :http_429}}

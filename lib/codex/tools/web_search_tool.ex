@@ -76,20 +76,37 @@ defmodule Codex.Tools.WebSearchTool do
     %{
       name: "web_search",
       description: "Search the web for information",
+      enabled?: &enabled?/2,
       schema: %{
         "type" => "object",
         "properties" => %{
+          "action" => %{
+            "type" => "object",
+            "properties" => %{
+              "type" => %{
+                "type" => "string",
+                "description" => "Action type (search, open_page, find_in_page)"
+              },
+              "query" => %{"type" => "string"},
+              "url" => %{"type" => "string"},
+              "pattern" => %{"type" => "string"}
+            },
+            "additionalProperties" => false
+          },
           "query" => %{
             "type" => "string",
-            "description" => "The search query"
+            "description" => "The search query (legacy)"
+          },
+          "type" => %{
+            "type" => "string",
+            "description" => "Action type (search, open_page, find_in_page)"
           },
           "max_results" => %{
             "type" => "integer",
             "description" => "Maximum number of results (default: 10)"
           }
         },
-        "required" => ["query"],
-        "additionalProperties" => false
+        "additionalProperties" => true
       }
     }
   end
@@ -101,7 +118,7 @@ defmodule Codex.Tools.WebSearchTool do
     # Check for custom searcher callback first (for backwards compatibility)
     case Hosted.callback(metadata, :searcher) do
       fun when is_function(fun) ->
-        invoke_with_searcher(fun, args, context, metadata)
+        invoke_with_searcher(fun, ensure_query_arg(args), context, metadata)
 
       nil ->
         invoke_with_provider(args, context, metadata)
@@ -117,18 +134,26 @@ defmodule Codex.Tools.WebSearchTool do
   end
 
   defp invoke_with_provider(args, _context, metadata) do
-    query = Map.fetch!(args, "query")
-    max_results = resolve_max_results(args, metadata)
-    provider = resolve_provider(metadata)
+    with {:ok, action} <- normalize_action(args) do
+      case action.type do
+        "search" ->
+          max_results = resolve_max_results(args, metadata)
+          provider = resolve_provider(metadata)
 
-    with {:ok, api_key} <- get_api_key(provider, metadata),
-         {:ok, results} <- search(provider, query, max_results, api_key) do
-      {:ok, format_results(results)}
+          with {:ok, api_key} <- get_api_key(provider, metadata),
+               {:ok, results} <- search(provider, action.query, max_results, api_key) do
+            {:ok, format_results(results)}
+          end
+
+        other ->
+          {:error, {:unsupported_action, other}}
+      end
     end
   end
 
   defp resolve_max_results(args, metadata) do
     Map.get(args, "max_results") ||
+      Map.get(args, "maxResults") ||
       Hosted.metadata_value(metadata, :max_results, @default_max_results)
   end
 
@@ -308,5 +333,126 @@ defmodule Codex.Tools.WebSearchTool do
 
   defp http_client do
     Application.get_env(:codex_sdk, :http_client, Codex.HTTPClient)
+  end
+
+  defp enabled?(context, _metadata) do
+    case Map.get(context, :thread) do
+      %{thread_opts: %{web_search_enabled: true}} ->
+        true
+
+      %{thread_opts: opts} ->
+        feature_enabled_from_config(opts)
+
+      nil ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp feature_enabled_from_config(%{config: %{"features" => %{"web_search_request" => value}}})
+       when is_boolean(value),
+       do: value
+
+  defp feature_enabled_from_config(_opts), do: false
+
+  defp normalize_action(args) do
+    action = Map.get(args, "action") || Map.get(args, :action)
+    type = Map.get(args, "type") || Map.get(args, :type)
+    query = Map.get(args, "query") || Map.get(args, :query)
+
+    cond do
+      is_map(action) ->
+        parse_action(action)
+
+      is_binary(type) ->
+        parse_action(args)
+
+      is_binary(query) ->
+        {:ok, %{type: "search", query: query}}
+
+      true ->
+        {:error, {:missing_argument, :query}}
+    end
+  end
+
+  defp parse_action(action) when is_map(action) do
+    raw_type = fetch_action_value(action, :type)
+    type = normalize_action_type(raw_type)
+
+    parse_action_by_type(type, action)
+  end
+
+  defp parse_action_by_type("search", action) do
+    case fetch_action_string(action, :query) do
+      {:ok, query} -> {:ok, %{type: "search", query: query}}
+      :error -> {:error, {:missing_argument, :query}}
+    end
+  end
+
+  defp parse_action_by_type("open_page", action) do
+    case fetch_action_string(action, :url) do
+      {:ok, url} -> {:ok, %{type: "open_page", url: url}}
+      :error -> {:error, {:missing_argument, :url}}
+    end
+  end
+
+  defp parse_action_by_type("find_in_page", action) do
+    with {:ok, url} <- fetch_action_string(action, :url),
+         {:ok, pattern} <- fetch_action_string(action, :pattern) do
+      {:ok, %{type: "find_in_page", url: url, pattern: pattern}}
+    else
+      _ -> {:error, {:missing_argument, :pattern}}
+    end
+  end
+
+  defp parse_action_by_type(nil, _action), do: {:error, {:missing_argument, :type}}
+  defp parse_action_by_type(other, _action), do: {:error, {:unsupported_action, other}}
+
+  defp normalize_action_type(nil), do: nil
+
+  defp normalize_action_type(type) when is_binary(type) do
+    type
+    |> Macro.underscore()
+    |> String.downcase()
+  end
+
+  defp normalize_action_type(other), do: to_string(other) |> normalize_action_type()
+
+  defp ensure_query_arg(%{} = args) do
+    case fetch_action_string(args, :query) do
+      {:ok, _query} ->
+        args
+
+      :error ->
+        maybe_put_query(args)
+    end
+  end
+
+  defp maybe_put_query(args) do
+    case Map.get(args, "action") || Map.get(args, :action) do
+      %{} = action ->
+        type = fetch_action_value(action, :type)
+
+        case fetch_action_string(action, :query) do
+          {:ok, query} when is_binary(type) -> Map.put(args, "query", query)
+          _ -> args
+        end
+
+      _ ->
+        args
+    end
+  end
+
+  defp fetch_action_value(action, key) do
+    Map.get(action, key) || Map.get(action, to_string(key))
+  end
+
+  defp fetch_action_string(action, key) do
+    case fetch_action_value(action, key) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> :error
+    end
   end
 end

@@ -20,6 +20,10 @@ defmodule Codex.Thread.Options do
             skip_git_repo_check: false,
             network_access_enabled: nil,
             web_search_enabled: false,
+            apply_patch_freeform_enabled: nil,
+            view_image_tool_enabled: nil,
+            unified_exec_enabled: nil,
+            skills_enabled: nil,
             ask_for_approval: nil,
             attachments: [],
             file_search: nil,
@@ -31,11 +35,25 @@ defmodule Codex.Thread.Options do
             output_last_message: nil,
             color: nil,
             config_overrides: [],
+            history_persistence: nil,
+            history_max_bytes: nil,
             model: nil,
             model_provider: nil,
+            model_reasoning_summary: nil,
+            model_verbosity: nil,
+            model_context_window: nil,
+            model_supports_reasoning_summaries: nil,
+            request_max_retries: nil,
+            stream_max_retries: nil,
+            stream_idle_timeout_ms: nil,
             config: nil,
             base_instructions: nil,
             developer_instructions: nil,
+            shell_environment_policy: nil,
+            retry: nil,
+            retry_opts: nil,
+            rate_limit: nil,
+            rate_limit_opts: nil,
             experimental_raw_events: false
 
   @type transport :: :exec | {:app_server, pid()}
@@ -70,6 +88,13 @@ defmodule Codex.Thread.Options do
 
   @type color :: :always | :never | :auto | String.t()
 
+  @type reasoning_summary :: :auto | :concise | :detailed | :none | String.t()
+  @type model_verbosity :: :low | :medium | :high | String.t()
+
+  @type retry_opts :: keyword()
+  @type rate_limit_opts :: keyword()
+  @type history_persistence :: String.t()
+
   @type config_override ::
           String.t()
           | {String.t() | atom(), term()}
@@ -89,6 +114,10 @@ defmodule Codex.Thread.Options do
           skip_git_repo_check: boolean(),
           network_access_enabled: boolean() | nil,
           web_search_enabled: boolean(),
+          apply_patch_freeform_enabled: boolean() | nil,
+          view_image_tool_enabled: boolean() | nil,
+          unified_exec_enabled: boolean() | nil,
+          skills_enabled: boolean() | nil,
           ask_for_approval: :untrusted | :on_failure | :on_request | :never | String.t() | nil,
           attachments: [map()] | [],
           file_search: FileSearch.t() | nil,
@@ -100,11 +129,25 @@ defmodule Codex.Thread.Options do
           output_last_message: String.t() | nil,
           color: color() | nil,
           config_overrides: [config_override()],
+          history_persistence: history_persistence() | nil,
+          history_max_bytes: non_neg_integer() | nil,
           model: String.t() | nil,
           model_provider: String.t() | nil,
+          model_reasoning_summary: reasoning_summary() | nil,
+          model_verbosity: model_verbosity() | nil,
+          model_context_window: pos_integer() | nil,
+          model_supports_reasoning_summaries: boolean() | nil,
+          request_max_retries: pos_integer() | nil,
+          stream_max_retries: pos_integer() | nil,
+          stream_idle_timeout_ms: pos_integer() | nil,
           config: map() | nil,
           base_instructions: String.t() | nil,
           developer_instructions: String.t() | nil,
+          shell_environment_policy: map() | nil,
+          retry: boolean() | nil,
+          retry_opts: retry_opts() | nil,
+          rate_limit: boolean() | nil,
+          rate_limit_opts: rate_limit_opts() | nil,
           experimental_raw_events: boolean()
         }
 
@@ -143,6 +186,21 @@ defmodule Codex.Thread.Options do
 
     web_search_enabled =
       Map.get(attrs, :web_search_enabled, Map.get(attrs, "web_search_enabled", false))
+
+    apply_patch_freeform_enabled =
+      Map.get(
+        attrs,
+        :apply_patch_freeform_enabled,
+        Map.get(attrs, "apply_patch_freeform_enabled")
+      )
+
+    view_image_tool_enabled =
+      Map.get(attrs, :view_image_tool_enabled, Map.get(attrs, "view_image_tool_enabled"))
+
+    unified_exec_enabled =
+      Map.get(attrs, :unified_exec_enabled, Map.get(attrs, "unified_exec_enabled"))
+
+    skills_enabled = Map.get(attrs, :skills_enabled, Map.get(attrs, "skills_enabled"))
 
     ask_for_approval = Map.get(attrs, :ask_for_approval, Map.get(attrs, "ask_for_approval"))
     attachments = Map.get(attrs, :attachments, Map.get(attrs, "attachments", []))
@@ -189,10 +247,60 @@ defmodule Codex.Thread.Options do
         Map.get(attrs, "config_overrides", Map.get(attrs, :config_override, []))
       )
 
+    history = Map.get(attrs, :history, Map.get(attrs, "history"))
+
+    history_persistence =
+      Map.get(attrs, :history_persistence, Map.get(attrs, "history_persistence"))
+
+    history_max_bytes =
+      Map.get(attrs, :history_max_bytes, Map.get(attrs, "history_max_bytes"))
+
+    {history_persistence, history_max_bytes} =
+      case history do
+        %{} ->
+          {
+            history_persistence ||
+              Map.get(history, :persistence, Map.get(history, "persistence")),
+            history_max_bytes ||
+              Map.get(
+                history,
+                :max_bytes,
+                Map.get(history, "max_bytes", Map.get(history, "maxBytes"))
+              )
+          }
+
+        _ ->
+          {history_persistence, history_max_bytes}
+      end
+
     model = Map.get(attrs, :model, Map.get(attrs, "model"))
 
     model_provider =
       Map.get(attrs, :model_provider, Map.get(attrs, "model_provider", Map.get(attrs, :provider)))
+
+    model_reasoning_summary =
+      Map.get(attrs, :model_reasoning_summary, Map.get(attrs, "model_reasoning_summary"))
+
+    model_verbosity = Map.get(attrs, :model_verbosity, Map.get(attrs, "model_verbosity"))
+
+    model_context_window =
+      Map.get(attrs, :model_context_window, Map.get(attrs, "model_context_window"))
+
+    model_supports_reasoning_summaries =
+      Map.get(
+        attrs,
+        :model_supports_reasoning_summaries,
+        Map.get(attrs, "model_supports_reasoning_summaries")
+      )
+
+    request_max_retries =
+      Map.get(attrs, :request_max_retries, Map.get(attrs, "request_max_retries"))
+
+    stream_max_retries =
+      Map.get(attrs, :stream_max_retries, Map.get(attrs, "stream_max_retries"))
+
+    stream_idle_timeout_ms =
+      Map.get(attrs, :stream_idle_timeout_ms, Map.get(attrs, "stream_idle_timeout_ms"))
 
     config = Map.get(attrs, :config, Map.get(attrs, "config"))
 
@@ -201,6 +309,14 @@ defmodule Codex.Thread.Options do
 
     developer_instructions =
       Map.get(attrs, :developer_instructions, Map.get(attrs, "developer_instructions"))
+
+    shell_environment_policy =
+      Map.get(attrs, :shell_environment_policy, Map.get(attrs, "shell_environment_policy"))
+
+    retry = Map.get(attrs, :retry, Map.get(attrs, "retry"))
+    retry_opts = Map.get(attrs, :retry_opts, Map.get(attrs, "retry_opts"))
+    rate_limit = Map.get(attrs, :rate_limit, Map.get(attrs, "rate_limit"))
+    rate_limit_opts = Map.get(attrs, :rate_limit_opts, Map.get(attrs, "rate_limit_opts"))
 
     experimental_raw_events =
       Map.get(attrs, :experimental_raw_events, Map.get(attrs, "experimental_raw_events", false))
@@ -220,6 +336,13 @@ defmodule Codex.Thread.Options do
          {:ok, network_access_enabled} <-
            validate_optional_boolean(network_access_enabled, :network_access_enabled),
          :ok <- validate_boolean(web_search_enabled, :web_search_enabled),
+         {:ok, apply_patch_freeform_enabled} <-
+           validate_optional_boolean(apply_patch_freeform_enabled, :apply_patch_freeform_enabled),
+         {:ok, view_image_tool_enabled} <-
+           validate_optional_boolean(view_image_tool_enabled, :view_image_tool_enabled),
+         {:ok, unified_exec_enabled} <-
+           validate_optional_boolean(unified_exec_enabled, :unified_exec_enabled),
+         {:ok, skills_enabled} <- validate_optional_boolean(skills_enabled, :skills_enabled),
          {:ok, ask_for_approval} <- normalize_ask_for_approval(ask_for_approval),
          :ok <- validate_optional_string(profile, :profile),
          :ok <- validate_boolean(oss, :oss),
@@ -233,12 +356,33 @@ defmodule Codex.Thread.Options do
          :ok <- validate_optional_string(output_last_message, :output_last_message),
          {:ok, color} <- normalize_color(color),
          {:ok, config_overrides} <- normalize_config_overrides(config_overrides),
+         {:ok, history_persistence} <- normalize_history_persistence(history_persistence),
+         :ok <- validate_optional_non_negative_integer(history_max_bytes, :history_max_bytes),
          :ok <- validate_auto_flags(full_auto, dangerously_bypass_approvals_and_sandbox),
          :ok <- validate_optional_string(model, :model),
          :ok <- validate_optional_string(model_provider, :model_provider),
+         {:ok, model_reasoning_summary} <- normalize_reasoning_summary(model_reasoning_summary),
+         {:ok, model_verbosity} <- normalize_model_verbosity(model_verbosity),
+         :ok <- validate_optional_positive_integer(model_context_window, :model_context_window),
+         {:ok, model_supports_reasoning_summaries} <-
+           validate_optional_boolean(
+             model_supports_reasoning_summaries,
+             :model_supports_reasoning_summaries
+           ),
+         :ok <- validate_optional_positive_integer(request_max_retries, :request_max_retries),
+         :ok <- validate_optional_positive_integer(stream_max_retries, :stream_max_retries),
+         :ok <-
+           validate_optional_positive_integer(stream_idle_timeout_ms, :stream_idle_timeout_ms),
          {:ok, config} <- ensure_optional_map(config, :config),
          :ok <- validate_optional_string(base_instructions, :base_instructions),
          :ok <- validate_optional_string(developer_instructions, :developer_instructions),
+         {:ok, shell_environment_policy} <-
+           normalize_shell_environment_policy(shell_environment_policy),
+         {:ok, retry} <- validate_optional_boolean(retry, :retry),
+         {:ok, retry_opts} <- normalize_optional_keyword_list(retry_opts, :retry_opts),
+         {:ok, rate_limit} <- validate_optional_boolean(rate_limit, :rate_limit),
+         {:ok, rate_limit_opts} <-
+           normalize_optional_keyword_list(rate_limit_opts, :rate_limit_opts),
          :ok <- validate_boolean(experimental_raw_events, :experimental_raw_events),
          :ok <- validate_timeout(approval_timeout_ms) do
       {:ok,
@@ -257,6 +401,10 @@ defmodule Codex.Thread.Options do
          skip_git_repo_check: skip_git_repo_check,
          network_access_enabled: network_access_enabled,
          web_search_enabled: web_search_enabled,
+         apply_patch_freeform_enabled: apply_patch_freeform_enabled,
+         view_image_tool_enabled: view_image_tool_enabled,
+         unified_exec_enabled: unified_exec_enabled,
+         skills_enabled: skills_enabled,
          ask_for_approval: ask_for_approval,
          attachments: attachments,
          file_search: file_search,
@@ -268,11 +416,25 @@ defmodule Codex.Thread.Options do
          output_last_message: output_last_message,
          color: color,
          config_overrides: config_overrides,
+         history_persistence: history_persistence,
+         history_max_bytes: history_max_bytes,
          model: model,
          model_provider: model_provider,
+         model_reasoning_summary: model_reasoning_summary,
+         model_verbosity: model_verbosity,
+         model_context_window: model_context_window,
+         model_supports_reasoning_summaries: model_supports_reasoning_summaries,
+         request_max_retries: request_max_retries,
+         stream_max_retries: stream_max_retries,
+         stream_idle_timeout_ms: stream_idle_timeout_ms,
          config: config,
          base_instructions: base_instructions,
          developer_instructions: developer_instructions,
+         shell_environment_policy: shell_environment_policy,
+         retry: retry,
+         retry_opts: retry_opts,
+         rate_limit: rate_limit,
+         rate_limit_opts: rate_limit_opts,
          experimental_raw_events: experimental_raw_events
        }}
     else
@@ -299,6 +461,23 @@ defmodule Codex.Thread.Options do
   defp validate_optional_boolean(nil, _field), do: {:ok, nil}
   defp validate_optional_boolean(value, _field) when is_boolean(value), do: {:ok, value}
   defp validate_optional_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+
+  defp validate_optional_positive_integer(nil, _field), do: :ok
+
+  defp validate_optional_positive_integer(value, _field) when is_integer(value) and value > 0,
+    do: :ok
+
+  defp validate_optional_positive_integer(value, field),
+    do: {:error, {:"invalid_#{field}", value}}
+
+  defp validate_optional_non_negative_integer(nil, _field), do: :ok
+
+  defp validate_optional_non_negative_integer(value, _field)
+       when is_integer(value) and value >= 0,
+       do: :ok
+
+  defp validate_optional_non_negative_integer(value, field),
+    do: {:error, {:"invalid_#{field}", value}}
 
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
   defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
@@ -378,6 +557,66 @@ defmodule Codex.Thread.Options do
   defp normalize_color(value) when is_binary(value), do: {:ok, value}
   defp normalize_color(value), do: {:error, {:invalid_color, value}}
 
+  defp normalize_history_persistence(nil), do: {:ok, nil}
+
+  defp normalize_history_persistence(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_history_persistence()
+  end
+
+  defp normalize_history_persistence(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:ok, nil}
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  defp normalize_history_persistence(value),
+    do: {:error, {:invalid_history_persistence, value}}
+
+  defp normalize_reasoning_summary(nil), do: {:ok, nil}
+
+  defp normalize_reasoning_summary(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_reasoning_summary()
+  end
+
+  defp normalize_reasoning_summary(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "auto" -> {:ok, "auto"}
+      "concise" -> {:ok, "concise"}
+      "detailed" -> {:ok, "detailed"}
+      "none" -> {:ok, "none"}
+      other -> {:error, {:invalid_model_reasoning_summary, other}}
+    end
+  end
+
+  defp normalize_reasoning_summary(other),
+    do: {:error, {:invalid_model_reasoning_summary, other}}
+
+  defp normalize_model_verbosity(nil), do: {:ok, nil}
+
+  defp normalize_model_verbosity(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_model_verbosity()
+  end
+
+  defp normalize_model_verbosity(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "low" -> {:ok, "low"}
+      "medium" -> {:ok, "medium"}
+      "high" -> {:ok, "high"}
+      other -> {:error, {:invalid_model_verbosity, other}}
+    end
+  end
+
+  defp normalize_model_verbosity(other), do: {:error, {:invalid_model_verbosity, other}}
+
   defp normalize_config_overrides(nil), do: {:ok, []}
 
   defp normalize_config_overrides(%{} = overrides) do
@@ -402,6 +641,95 @@ defmodule Codex.Thread.Options do
 
   defp normalize_config_overrides(value), do: {:error, {:invalid_config_overrides, value}}
 
+  defp normalize_shell_environment_policy(nil), do: {:ok, nil}
+
+  defp normalize_shell_environment_policy(%{} = policy) do
+    with :ok <- validate_shell_env_inherit(policy),
+         :ok <- validate_shell_env_ignore_default_excludes(policy),
+         :ok <- validate_shell_env_list(policy, ["exclude", :exclude]),
+         :ok <- validate_shell_env_list(policy, ["include_only", :include_only]),
+         :ok <- validate_shell_env_set(policy) do
+      {:ok, policy}
+    end
+  end
+
+  defp normalize_shell_environment_policy(list) when is_list(list) do
+    normalize_shell_environment_policy(Map.new(list))
+  end
+
+  defp normalize_shell_environment_policy(value),
+    do: {:error, {:invalid_shell_environment_policy, value}}
+
+  defp validate_shell_env_inherit(policy) do
+    case fetch_any(policy, ["inherit", :inherit]) do
+      nil -> :ok
+      value when is_binary(value) -> :ok
+      other -> {:error, {:invalid_shell_environment_inherit, other}}
+    end
+  end
+
+  defp validate_shell_env_ignore_default_excludes(policy) do
+    case fetch_any(policy, ["ignore_default_excludes", :ignore_default_excludes]) do
+      nil -> :ok
+      value when is_boolean(value) -> :ok
+      other -> {:error, {:invalid_shell_environment_ignore_default_excludes, other}}
+    end
+  end
+
+  defp validate_shell_env_list(policy, keys) do
+    case fetch_any(policy, keys) do
+      nil ->
+        :ok
+
+      value when is_list(value) ->
+        if Enum.all?(value, &is_binary/1) do
+          :ok
+        else
+          {:error, {:invalid_shell_environment_list, value}}
+        end
+
+      other ->
+        {:error, {:invalid_shell_environment_list, other}}
+    end
+  end
+
+  defp validate_shell_env_set(policy) do
+    case fetch_any(policy, ["set", :set]) do
+      nil ->
+        :ok
+
+      %{} = set ->
+        validate_string_map(set, :invalid_shell_environment_set)
+
+      other ->
+        {:error, {:invalid_shell_environment_set, other}}
+    end
+  end
+
+  defp validate_string_map(map, error_tag) do
+    if Enum.all?(map, fn {key, value} -> is_binary(key) and is_binary(value) end) do
+      :ok
+    else
+      {:error, {error_tag, map}}
+    end
+  end
+
+  defp normalize_optional_keyword_list(nil, _field), do: {:ok, nil}
+
+  defp normalize_optional_keyword_list(%{} = value, _field),
+    do: {:ok, Map.to_list(value)}
+
+  defp normalize_optional_keyword_list(value, field) when is_list(value) do
+    if Keyword.keyword?(value) do
+      {:ok, value}
+    else
+      {:error, {:"invalid_#{field}", value}}
+    end
+  end
+
+  defp normalize_optional_keyword_list(value, field),
+    do: {:error, {:"invalid_#{field}", value}}
+
   defp normalize_ask_for_approval(nil), do: {:ok, nil}
   defp normalize_ask_for_approval(:untrusted), do: {:ok, :untrusted}
   defp normalize_ask_for_approval(:on_failure), do: {:ok, :on_failure}
@@ -413,4 +741,13 @@ defmodule Codex.Thread.Options do
   defp normalize_ask_for_approval("never"), do: {:ok, :never}
   defp normalize_ask_for_approval(value) when is_binary(value), do: {:ok, value}
   defp normalize_ask_for_approval(value), do: {:error, {:invalid_ask_for_approval, value}}
+
+  defp fetch_any(map, keys) when is_map(map) and is_list(keys) do
+    Enum.reduce_while(keys, nil, fn key, _acc ->
+      case Map.fetch(map, key) do
+        {:ok, value} -> {:halt, value}
+        :error -> {:cont, nil}
+      end
+    end)
+  end
 end

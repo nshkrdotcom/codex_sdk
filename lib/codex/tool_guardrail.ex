@@ -40,19 +40,43 @@ defmodule Codex.ToolGuardrail do
   """
   @spec run(t(), map(), term(), map()) ::
           :ok | {:reject, String.t()} | {:tripwire, String.t()}
-  def run(%__MODULE__{handler: handler}, event, payload, context) when is_function(handler, 3) do
-    normalize_result(handler.(event, payload, context))
+  def run(%__MODULE__{handler: handler, behavior: behavior}, event, payload, context)
+      when is_function(handler, 3) do
+    normalize_result(handler.(event, payload, context), behavior)
   end
 
-  def run(%__MODULE__{handler: handler}, event, payload, _context) when is_function(handler, 2) do
-    normalize_result(handler.(event, payload))
+  def run(%__MODULE__{handler: handler, behavior: behavior}, event, payload, _context)
+      when is_function(handler, 2) do
+    normalize_result(handler.(event, payload), behavior)
   end
 
   def run(_guardrail, _event, _payload, _context), do: :ok
 
-  defp normalize_result(:ok), do: :ok
-  defp normalize_result({:ok, _val}), do: :ok
-  defp normalize_result({:reject, message}), do: {:reject, message || "rejected"}
-  defp normalize_result({:tripwire, message}), do: {:tripwire, message || "tripwire triggered"}
-  defp normalize_result(_other), do: :ok
+  defp normalize_result(:ok, _behavior), do: :ok
+  defp normalize_result(:allow, _behavior), do: :ok
+  defp normalize_result({:ok, _val}, _behavior), do: :ok
+  defp normalize_result({:allow, _val}, _behavior), do: :ok
+
+  defp normalize_result({:reject, message}, behavior),
+    do: {:reject, message || default_message(behavior)}
+
+  defp normalize_result({:reject_content, message}, behavior),
+    do: {:reject, message || default_message(behavior)}
+
+  defp normalize_result({:tripwire, message}, _behavior),
+    do: {:tripwire, message || "tripwire triggered"}
+
+  defp normalize_result({:raise_exception, message}, _behavior),
+    do: {:tripwire, message || "tripwire triggered"}
+
+  defp normalize_result({:deny, message}, behavior),
+    do: {:reject, message || default_message(behavior)}
+
+  defp normalize_result(:deny, behavior), do: {:reject, default_message(behavior)}
+  defp normalize_result(false, behavior), do: {:reject, default_message(behavior)}
+  defp normalize_result(_other, _behavior), do: :ok
+
+  defp default_message(:reject_content), do: "rejected"
+  defp default_message(:raise_exception), do: "tripwire triggered"
+  defp default_message(_), do: "rejected"
 end

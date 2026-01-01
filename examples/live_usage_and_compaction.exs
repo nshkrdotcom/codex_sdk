@@ -1,5 +1,4 @@
-alias Codex.{Events, Items, Models, Options, RunResultStreaming, Thread}
-alias Codex.TransportError
+alias Codex.{Error, Events, Items, Models, Options, RunResultStreaming, Thread, TransportError}
 
 defmodule LiveUsageAndCompaction do
   @moduledoc false
@@ -41,13 +40,25 @@ defmodule LiveUsageAndCompaction do
           IO.puts("\nFinal response:\n#{final_state.final_response || "<none>"}")
           IO.inspect(final_state.usage, label: "Merged usage (includes deltas and compaction)")
         rescue
-          error in [TransportError] ->
+          error in [Error, TransportError] ->
             render_transport_error(error)
         end
 
       {:error, reason} ->
         IO.puts("Failed to start streamed turn: #{inspect(reason)}")
     end
+  end
+
+  defp render_transport_error(%Error{} = error) do
+    status = error.details[:exit_status]
+    stderr = error.details[:stderr]
+
+    IO.puts("""
+    Failed to run codex#{format_exit_status(status)}.
+    #{error.message}
+    Ensure the codex CLI is installed on PATH and you're logged in (or set CODEX_API_KEY).
+    stderr: #{String.trim(to_string(stderr || ""))}
+    """)
   end
 
   defp render_transport_error(%TransportError{exit_status: status, stderr: stderr}) do
@@ -57,6 +68,9 @@ defmodule LiveUsageAndCompaction do
     stderr: #{String.trim(to_string(stderr || ""))}
     """)
   end
+
+  defp format_exit_status(nil), do: ""
+  defp format_exit_status(status), do: " (exit #{inspect(status)})"
 
   defp parse_prompt([prompt | _]), do: prompt
 

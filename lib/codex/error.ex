@@ -39,6 +39,19 @@ defmodule Codex.Error do
   @spec normalize(term()) :: t()
   def normalize(%__MODULE__{} = error), do: error
 
+  def normalize(%Codex.TransportError{} = error) do
+    details =
+      %{
+        exit_status: error.exit_status,
+        stderr: error.stderr,
+        retryable?: error.retryable?
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    new(:unknown, error.message, details)
+  end
+
   def normalize(%{message: message} = payload) do
     normalize_map(Map.put(payload, "message", message))
   end
@@ -46,6 +59,10 @@ defmodule Codex.Error do
   def normalize(%{"message" => _} = payload), do: normalize_map(payload)
 
   def normalize(%{} = payload), do: normalize_map(payload)
+
+  def normalize({:codex_timeout, timeout_ms}) when is_integer(timeout_ms) do
+    new(:unknown, "codex exec timed out after #{timeout_ms}ms", %{timeout_ms: timeout_ms})
+  end
 
   def normalize(message) when is_binary(message) do
     new(:unknown, message, %{})

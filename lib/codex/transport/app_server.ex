@@ -7,16 +7,40 @@ defmodule Codex.Transport.AppServer do
   alias Codex.AppServer.Approvals, as: AppServerApprovals
   alias Codex.AppServer.Connection
   alias Codex.AppServer.NotificationAdapter
+  alias Codex.Config.Overrides
   alias Codex.Events
   alias Codex.Models
   alias Codex.Options
   alias Codex.Thread
+  alias Codex.Transport.Support
   alias Codex.Turn.Result
 
   @impl true
   def run_turn(%Thread{transport: {:app_server, _pid}} = thread, input, turn_opts)
       when is_binary(input) or is_list(input) do
-    with {:ok, stream} <- run_turn_streamed(thread, input, turn_opts) do
+    turn_opts = Support.normalize_turn_opts(turn_opts)
+
+    Support.with_retry_and_rate_limit(
+      fn -> run_turn_once(thread, input, turn_opts) end,
+      thread.thread_opts,
+      turn_opts
+    )
+  end
+
+  @impl true
+  def run_turn_streamed(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts)
+      when (is_binary(input) or is_list(input)) and is_pid(conn) do
+    turn_opts = Support.normalize_turn_opts(turn_opts)
+
+    Support.with_retry_and_rate_limit(
+      fn -> run_turn_streamed_once(thread, input, turn_opts) end,
+      thread.thread_opts,
+      turn_opts
+    )
+  end
+
+  defp run_turn_once(%Thread{} = thread, input, turn_opts) do
+    with {:ok, stream} <- run_turn_streamed_once(thread, input, turn_opts) do
       events = Enum.to_list(stream)
 
       {updated_thread, final_response, usage} =
@@ -41,11 +65,7 @@ defmodule Codex.Transport.AppServer do
     end
   end
 
-  @impl true
-  def run_turn_streamed(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts)
-      when (is_binary(input) or is_list(input)) and is_pid(conn) do
-    turn_opts = normalize_turn_opts(turn_opts)
-
+  defp run_turn_streamed_once(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts) do
     :ok = Connection.subscribe(conn)
 
     with {:ok, thread_id, started_event, thread_start_raw} <- ensure_thread(conn, thread),
@@ -88,10 +108,6 @@ defmodule Codex.Transport.AppServer do
       {:error, :missing_thread_id}
     end
   end
-
-  defp normalize_turn_opts(%{} = opts), do: opts
-  defp normalize_turn_opts(list) when is_list(list), do: Map.new(list)
-  defp normalize_turn_opts(_), do: %{}
 
   defp completion_timeout_ms(%{} = turn_opts) do
     turn_opts
@@ -143,6 +159,7 @@ defmodule Codex.Transport.AppServer do
     config =
       thread.thread_opts.config
       |> normalize_config()
+      |> Overrides.merge_config(thread.codex_opts, thread.thread_opts)
       |> maybe_apply_reasoning_effort(thread, mode)
 
     model =

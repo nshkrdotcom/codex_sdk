@@ -118,6 +118,8 @@ defmodule Codex.AppServer do
 
     wire_params =
       %{"threadId" => thread_id}
+      |> Params.put_optional("history", fetch_any(params, [:history, "history"]))
+      |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
       |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
       |> Params.put_optional(
         "modelProvider",
@@ -235,8 +237,31 @@ defmodule Codex.AppServer do
   @spec skills_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def skills_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
     cwds = Keyword.get(opts, :cwds, [])
-    params = %{"cwds" => List.wrap(cwds)}
+
+    force_reload =
+      case Keyword.get(opts, :force_reload) do
+        true -> true
+        _ -> nil
+      end
+
+    params =
+      %{}
+      |> Params.put_optional("cwds", List.wrap(cwds))
+      |> Params.put_optional("forceReload", force_reload)
+
     Connection.request(conn, "skills/list", params, timeout_ms: 30_000)
+  end
+
+  @spec fuzzy_file_search(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def fuzzy_file_search(conn, query, opts \\ [])
+      when is_pid(conn) and is_binary(query) and is_list(opts) do
+    roots = Keyword.get(opts, :roots, [])
+
+    params =
+      %{"query" => query, "roots" => List.wrap(roots)}
+      |> Params.put_optional("cancellationToken", Keyword.get(opts, :cancellation_token))
+
+    Connection.request(conn, "fuzzyFileSearch", params, timeout_ms: 30_000)
   end
 
   @spec model_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}

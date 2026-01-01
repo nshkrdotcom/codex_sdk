@@ -521,6 +521,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert params["model"] == "gpt-5.1-codex-mini"
     assert %{"model_reasoning_effort" => "high"} = params["config"]
+    refute Map.has_key?(params, "sandbox")
 
     send(
       conn,

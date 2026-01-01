@@ -552,9 +552,9 @@ defmodule Codex.AgentRunner do
   end
 
   defp stream_error?(%Codex.TransportError{}), do: true
+  defp stream_error?(%Codex.Error{}), do: true
   defp stream_error?(%Codex.ApprovalError{}), do: false
   defp stream_error?(%Codex.GuardrailError{}), do: false
-  defp stream_error?(%Codex.Error{}), do: false
   defp stream_error?(reason) when is_exception(reason), do: true
   defp stream_error?(_reason), do: false
 
@@ -685,11 +685,51 @@ defmodule Codex.AgentRunner do
        do: :ok
 
   defp run_guardrails(stage, guardrails, payload, context, hooks) do
+    {parallel, sequential} = Enum.split_with(guardrails, & &1.run_in_parallel)
+
+    case run_guardrails_sequential(stage, sequential, payload, context, hooks) do
+      :ok -> run_guardrails_parallel(stage, parallel, payload, context, hooks)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp run_guardrails_sequential(_stage, [], _payload, _context, _hooks), do: :ok
+
+  defp run_guardrails_sequential(stage, guardrails, payload, context, hooks) do
     Enum.reduce_while(guardrails, :ok, fn guardrail, :ok ->
       case run_guardrail(stage, guardrail, payload, context, hooks) do
         :ok -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
+    end)
+  end
+
+  defp run_guardrails_parallel(_stage, [], _payload, _context, _hooks), do: :ok
+
+  defp run_guardrails_parallel(stage, guardrails, payload, context, hooks) do
+    guardrails
+    |> Task.async_stream(
+      fn guardrail ->
+        run_guardrail(stage, guardrail, payload, context, hooks)
+      end,
+      ordered: true
+    )
+    |> Enum.reduce_while(:ok, fn
+      {:ok, :ok}, :ok ->
+        {:cont, :ok}
+
+      {:ok, {:error, reason}}, :ok ->
+        {:halt, {:error, reason}}
+
+      {:exit, reason}, :ok ->
+        {:halt,
+         {:error,
+          %GuardrailError{
+            stage: stage,
+            guardrail: "parallel_guardrail",
+            message: inspect(reason),
+            type: :tripwire
+          }}}
     end)
   end
 
@@ -741,7 +781,7 @@ defmodule Codex.AgentRunner do
            stage: tool_stage,
            guardrail: guardrail.name,
            message: message,
-           type: :reject
+           type: if(guardrail.behavior == :raise_exception, do: :tripwire, else: :reject)
          }}
 
       {:tripwire, message} ->

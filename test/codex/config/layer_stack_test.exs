@@ -98,6 +98,73 @@ defmodule Codex.Config.LayerStackTest do
     assert LayerStack.remote_models_enabled?(codex_home, child) == false
   end
 
+  test "parses history and shell environment policy config", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    File.mkdir_p!(codex_home)
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    [history]
+    persistence = "none"
+    max_bytes = 12345
+
+    [shell_environment_policy]
+    inherit = "core"
+    ignore_default_excludes = false
+    exclude = ["AWS_*"]
+    include_only = ["PATH"]
+    set = { FOO = "bar" }
+    """)
+
+    assert {:ok, layers} = LayerStack.load(codex_home, nil)
+
+    config = LayerStack.effective_config(layers)
+
+    assert get_in(config, ["history", "persistence"]) == "none"
+    assert get_in(config, ["history", "max_bytes"]) == 12_345
+    assert get_in(config, ["shell_environment_policy", "inherit"]) == "core"
+    assert get_in(config, ["shell_environment_policy", "ignore_default_excludes"]) == false
+    assert get_in(config, ["shell_environment_policy", "exclude"]) == ["AWS_*"]
+    assert get_in(config, ["shell_environment_policy", "include_only"]) == ["PATH"]
+    assert get_in(config, ["shell_environment_policy", "set"]) == %{"FOO" => "bar"}
+  end
+
+  test "parses dotted core keys and model provider", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    File.mkdir_p!(codex_home)
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    model_provider = "mistral"
+    features.remote_models = true
+    history.persistence = "local"
+    history.max_bytes = 2048
+    shell_environment_policy.inherit = "none"
+    shell_environment_policy.exclude = ["AWS_*"]
+    """)
+
+    assert {:ok, layers} = LayerStack.load(codex_home, nil)
+
+    config = LayerStack.effective_config(layers)
+
+    assert config["model_provider"] == "mistral"
+    assert get_in(config, ["features", "remote_models"]) == true
+    assert get_in(config, ["history", "persistence"]) == "local"
+    assert get_in(config, ["history", "max_bytes"]) == 2048
+    assert get_in(config, ["shell_environment_policy", "inherit"]) == "none"
+    assert get_in(config, ["shell_environment_policy", "exclude"]) == ["AWS_*"]
+  end
+
+  test "rejects invalid cli_auth_credentials_store values", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    File.mkdir_p!(codex_home)
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    cli_auth_credentials_store = "unsupported"
+    """)
+
+    assert {:error, {:invalid_toml, _path, {:invalid_cli_auth_credentials_store, "unsupported"}}} =
+             LayerStack.load(codex_home, nil)
+  end
+
   defp write_config!(path, contents) do
     path
     |> Path.dirname()

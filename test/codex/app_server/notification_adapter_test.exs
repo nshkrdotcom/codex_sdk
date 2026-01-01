@@ -3,6 +3,7 @@ defmodule Codex.AppServer.NotificationAdapterTest do
 
   alias Codex.AppServer.NotificationAdapter
   alias Codex.Events
+  alias Codex.Items
 
   describe "to_event/2" do
     test "maps agent message deltas into Codex.Events.ItemAgentMessageDelta" do
@@ -212,6 +213,35 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                  "extraCount" => 2,
                  "failedScan" => false
                })
+    end
+
+    test "maps raw response item completion events" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "item" => %{
+          "type" => "ghost_snapshot",
+          "id" => "raw_1",
+          "ghost_commit" => %{"id" => "ghost_1"}
+        }
+      }
+
+      assert {:ok,
+              %Events.RawResponseItemCompleted{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                item: %Items.GhostSnapshot{id: "raw_1", ghost_commit: %{"id" => "ghost_1"}}
+              }} = NotificationAdapter.to_event("rawResponseItem/completed", params)
+    end
+
+    test "maps deprecation notices" do
+      params = %{"summary" => "Deprecated endpoint", "details" => "Use thread/start instead."}
+
+      assert {:ok,
+              %Events.DeprecationNotice{
+                summary: "Deprecated endpoint",
+                details: "Use thread/start instead."
+              }} = NotificationAdapter.to_event("deprecationNotice", params)
     end
 
     test "maps turn completed error payloads" do

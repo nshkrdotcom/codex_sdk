@@ -23,9 +23,11 @@ defmodule Codex.Tools.ShellToolTest do
       assert meta.name == "shell"
       assert meta.description == "Execute shell commands"
       assert meta.schema["required"] == ["command"]
-      assert meta.schema["properties"]["command"]["type"] == "string"
-      assert meta.schema["properties"]["cwd"]["type"] == "string"
+      assert meta.schema["properties"]["command"]["type"] == "array"
+      assert meta.schema["properties"]["command"]["items"]["type"] == "string"
+      assert meta.schema["properties"]["workdir"]["type"] == "string"
       assert meta.schema["properties"]["timeout_ms"]["type"] == "integer"
+      assert meta.schema["properties"]["sandbox_permissions"]["type"] == "string"
     end
 
     test "Tool.metadata/1 returns module metadata" do
@@ -44,12 +46,12 @@ defmodule Codex.Tools.ShellToolTest do
 
       {:ok, _} = Tools.register(ShellTool, executor: executor)
 
-      assert {:ok, result} = Tools.invoke("shell", %{"command" => "echo hello"}, %{})
+      assert {:ok, result} = Tools.invoke("shell", %{"command" => ["echo", "hello"]}, %{})
       assert result["output"] == "hello world"
       assert result["exit_code"] == 0
       assert result["success"] == true
 
-      assert_receive {:shell_called, %{"command" => "echo hello"}}
+      assert_receive {:shell_called, %{"command" => ["echo", "hello"]}}
     end
 
     test "captures exit code from custom executor" do
@@ -88,10 +90,10 @@ defmodule Codex.Tools.ShellToolTest do
 
       {:ok, _} = Tools.register(ShellTool, executor: executor)
 
-      {:ok, _} = Tools.invoke("shell", %{"command" => "pwd", "cwd" => "/tmp"}, %{})
+      {:ok, _} = Tools.invoke("shell", %{"command" => "pwd", "workdir" => "/tmp"}, %{})
 
       assert_receive {:cwd_check, args, ctx}
-      assert args["cwd"] == "/tmp"
+      assert args["workdir"] == "/tmp"
       assert ctx.cwd == "/tmp"
     end
 
@@ -181,7 +183,7 @@ defmodule Codex.Tools.ShellToolTest do
       {:ok, _} = Tools.register(ShellTool, executor: executor, approval: approval)
 
       assert {:error, {:approval_denied, "dangerous"}} =
-               Tools.invoke("shell", %{"command" => "rm -rf /"}, %{})
+               Tools.invoke("shell", %{"command" => ["rm", "-rf", "/"]}, %{})
     end
 
     test "respects 3-arity approval callback" do
@@ -272,7 +274,7 @@ defmodule Codex.Tools.ShellToolTest do
     test "executes real echo command" do
       {:ok, _} = Tools.register(ShellTool)
 
-      assert {:ok, result} = Tools.invoke("shell", %{"command" => "echo hello"}, %{})
+      assert {:ok, result} = Tools.invoke("shell", %{"command" => ["echo", "hello"]}, %{})
       assert String.contains?(result["output"], "hello")
       assert result["exit_code"] == 0
       assert result["success"] == true

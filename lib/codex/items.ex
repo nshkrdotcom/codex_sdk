@@ -8,11 +8,14 @@ defmodule Codex.Items do
 
   alias __MODULE__.{
     AgentMessage,
+    Compaction,
     CommandExecution,
     Error,
     FileChange,
+    GhostSnapshot,
     ImageView,
     McpToolCall,
+    RawResponseItem,
     Reasoning,
     ReviewMode,
     TodoList,
@@ -32,6 +35,9 @@ defmodule Codex.Items do
           | WebSearch.t()
           | TodoList.t()
           | Error.t()
+          | GhostSnapshot.t()
+          | Compaction.t()
+          | RawResponseItem.t()
 
   defmodule AgentMessage do
     @moduledoc """
@@ -255,6 +261,50 @@ defmodule Codex.Items do
           }
   end
 
+  defmodule GhostSnapshot do
+    @moduledoc """
+    Raw response item describing a ghost snapshot captured for undo.
+    """
+
+    @enforce_keys [:ghost_commit]
+    defstruct id: nil, type: :ghost_snapshot, ghost_commit: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :ghost_snapshot,
+            ghost_commit: map()
+          }
+  end
+
+  defmodule Compaction do
+    @moduledoc """
+    Raw response item emitted when compaction summaries are generated.
+    """
+
+    @enforce_keys [:encrypted_content]
+    defstruct id: nil, type: :compaction, encrypted_content: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :compaction,
+            encrypted_content: String.t()
+          }
+  end
+
+  defmodule RawResponseItem do
+    @moduledoc """
+    Fallback container for unparsed raw response items.
+    """
+
+    @enforce_keys [:type, :payload]
+    defstruct type: nil, payload: %{}
+
+    @type t :: %__MODULE__{
+            type: String.t(),
+            payload: map()
+          }
+  end
+
   @command_status_map %{
     "in_progress" => :in_progress,
     "completed" => :completed,
@@ -296,6 +346,17 @@ defmodule Codex.Items do
   def parse!(%{"type" => "web_search"} = map), do: parse_web_search(map)
   def parse!(%{"type" => "todo_list"} = map), do: parse_todo_list(map)
   def parse!(%{"type" => "error"} = map), do: parse_error(map)
+
+  def parse!(%{"type" => type} = map) when type in ["ghost_snapshot", "compaction"] do
+    {:ok, item} = parse_raw_response_item(map)
+    item
+  end
+
+  def parse!(%{"type" => "compaction_summary"} = map) do
+    {:ok, item} = parse_raw_response_item(map)
+    item
+  end
+
   def parse!(%{type: type} = map), do: parse!(Map.put(map, "type", type))
 
   def parse!(%{"type" => other}) do
@@ -395,6 +456,55 @@ defmodule Codex.Items do
   def to_map(%Error{} = item) do
     base_item_map(item, "error")
     |> maybe_put("message", item.message)
+  end
+
+  def to_map(%GhostSnapshot{} = item) do
+    %{"type" => "ghost_snapshot"}
+    |> maybe_put("id", item.id)
+    |> maybe_put("ghost_commit", item.ghost_commit)
+  end
+
+  def to_map(%Compaction{} = item) do
+    %{"type" => "compaction"}
+    |> maybe_put("id", item.id)
+    |> maybe_put("encrypted_content", item.encrypted_content)
+  end
+
+  def to_map(%RawResponseItem{} = item) do
+    payload = if is_map(item.payload), do: item.payload, else: %{}
+    Map.put(payload, "type", item.type)
+  end
+
+  @doc """
+  Parses a raw response item (snake_case response output) into a typed struct.
+  """
+  @spec parse_raw_response_item(map()) :: {:ok, t()} | {:error, term()}
+  def parse_raw_response_item(%{"type" => type} = map) when is_binary(type) do
+    type
+    |> String.trim()
+    |> parse_raw_response_item(map)
+  end
+
+  def parse_raw_response_item(_), do: {:error, :invalid_raw_response_item}
+
+  defp parse_raw_response_item("ghost_snapshot", map) do
+    {:ok,
+     %GhostSnapshot{
+       id: get(map, :id),
+       ghost_commit: get(map, :ghost_commit) || get(map, :ghostCommit) || %{}
+     }}
+  end
+
+  defp parse_raw_response_item(type, map) when type in ["compaction", "compaction_summary"] do
+    {:ok,
+     %Compaction{
+       id: get(map, :id),
+       encrypted_content: get(map, :encrypted_content) || get(map, :encryptedContent) || ""
+     }}
+  end
+
+  defp parse_raw_response_item(type, map) do
+    {:ok, %RawResponseItem{type: type, payload: Map.delete(map, "type")}}
   end
 
   defp parse_agent_message(map) do

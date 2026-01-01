@@ -16,7 +16,8 @@ defmodule Codex.Exec.Options do
             env: %{},
             clear_env?: nil,
             cancellation_token: nil,
-            timeout_ms: nil
+            timeout_ms: nil,
+            stream_idle_timeout_ms: nil
 
   @type t :: %__MODULE__{
           codex_opts: Options.t(),
@@ -30,7 +31,8 @@ defmodule Codex.Exec.Options do
           env: map(),
           clear_env?: boolean() | nil,
           cancellation_token: String.t() | nil,
-          timeout_ms: pos_integer() | nil
+          timeout_ms: pos_integer() | nil,
+          stream_idle_timeout_ms: pos_integer() | nil
         }
 
   @spec new(map() | keyword() | t()) :: {:ok, t()} | {:error, term()}
@@ -51,6 +53,9 @@ defmodule Codex.Exec.Options do
     cancellation_token = Map.get(attrs, :cancellation_token, Map.get(attrs, "cancellation_token"))
     timeout_ms = Map.get(attrs, :timeout_ms, Map.get(attrs, "timeout_ms"))
 
+    stream_idle_timeout_ms =
+      Map.get(attrs, :stream_idle_timeout_ms, Map.get(attrs, "stream_idle_timeout_ms"))
+
     with {:ok, codex_opts} <- ensure_codex_opts(codex_opts),
          {:ok, turn_opts} <- ensure_map(turn_opts, :turn_opts),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
@@ -59,7 +64,8 @@ defmodule Codex.Exec.Options do
          {:ok, env} <- normalize_env(env),
          {:ok, clear_env?} <- validate_optional_boolean(clear_env?, :clear_env?),
          :ok <- validate_cancellation_token(cancellation_token),
-         :ok <- validate_timeout(timeout_ms) do
+         :ok <- validate_timeout(timeout_ms),
+         :ok <- validate_optional_timeout(stream_idle_timeout_ms, :stream_idle_timeout_ms) do
       {:ok,
        %__MODULE__{
          codex_opts: codex_opts,
@@ -73,7 +79,8 @@ defmodule Codex.Exec.Options do
          env: env,
          clear_env?: clear_env?,
          cancellation_token: cancellation_token,
-         timeout_ms: timeout_ms
+         timeout_ms: timeout_ms,
+         stream_idle_timeout_ms: stream_idle_timeout_ms
        }}
     else
       {:error, _} = error -> error
@@ -137,4 +144,12 @@ defmodule Codex.Exec.Options do
   defp validate_timeout(nil), do: :ok
   defp validate_timeout(timeout) when is_integer(timeout) and timeout > 0, do: :ok
   defp validate_timeout(timeout), do: {:error, {:invalid_timeout, timeout}}
+
+  defp validate_optional_timeout(nil, _field), do: :ok
+
+  defp validate_optional_timeout(timeout, _field) when is_integer(timeout) and timeout > 0,
+    do: :ok
+
+  defp validate_optional_timeout(timeout, field),
+    do: {:error, {:"invalid_#{field}", timeout}}
 end

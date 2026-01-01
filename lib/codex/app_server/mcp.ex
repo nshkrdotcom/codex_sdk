@@ -9,6 +9,8 @@ defmodule Codex.AppServer.Mcp do
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Params
+  alias Codex.MCP.Config, as: MCPConfig
+  alias Codex.MCP.OAuth
 
   @type connection :: pid()
 
@@ -56,6 +58,12 @@ defmodule Codex.AppServer.Mcp do
   @spec list_server_statuses(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def list_server_statuses(conn, opts \\ []), do: list_servers(conn, opts)
 
+  @doc """
+  Starts an OAuth login flow for a streamable HTTP MCP server.
+
+  OAuth credentials are stored using the configured MCP credentials store. Use
+  `oauth_tokens/3` to load them after login completes.
+  """
   @spec oauth_login(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def oauth_login(conn, opts) when is_pid(conn) and is_list(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -66,6 +74,53 @@ defmodule Codex.AppServer.Mcp do
       |> Params.put_optional("timeoutSecs", Keyword.get(opts, :timeout_secs))
 
     Connection.request(conn, "mcpServer/oauth/login", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Loads stored OAuth tokens for a configured MCP server.
+
+  Returns `{:error, :server_not_found}` if the server is not configured, or
+  `{:error, :missing_url}` if the server is not a streamable HTTP server.
+  """
+  @spec oauth_tokens(connection(), String.t(), keyword()) ::
+          {:ok, OAuth.tokens() | nil} | {:error, term()}
+  def oauth_tokens(conn, name, opts \\ [])
+      when is_pid(conn) and is_binary(name) and is_list(opts) do
+    store_mode = Keyword.get(opts, :store_mode)
+
+    with {:ok, servers} <- MCPConfig.list_servers(conn, opts),
+         {:ok, server} <- Map.fetch(servers, name),
+         url when is_binary(url) <- fetch_server_url(server) do
+      {:ok, OAuth.load_tokens(name, url, store_mode)}
+    else
+      :error -> {:error, :server_not_found}
+      false -> {:error, :missing_url}
+      nil -> {:error, :missing_url}
+      {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  Deletes stored OAuth tokens for a configured MCP server.
+
+  Returns `{:error, :server_not_found}` if the server is not configured, or
+  `{:error, :missing_url}` if the server is not a streamable HTTP server.
+  """
+  @spec oauth_logout(connection(), String.t(), keyword()) :: :ok | {:error, term()}
+  def oauth_logout(conn, name, opts \\ [])
+      when is_pid(conn) and is_binary(name) and is_list(opts) do
+    store_mode = Keyword.get(opts, :store_mode)
+
+    with {:ok, servers} <- MCPConfig.list_servers(conn, opts),
+         {:ok, server} <- Map.fetch(servers, name),
+         url when is_binary(url) <- fetch_server_url(server) do
+      OAuth.delete_tokens(name, url, store_mode)
+    else
+      :error -> {:error, :server_not_found}
+      false -> {:error, :missing_url}
+      nil -> {:error, :missing_url}
+      {:error, _} = error -> error
+    end
   end
 
   defp unknown_variant_mcp_server_status_list?(%{"code" => -32_600, "message" => message})
@@ -81,4 +136,8 @@ defmodule Codex.AppServer.Mcp do
   end
 
   defp unknown_variant_mcp_server_status_list?(_error), do: false
+
+  defp fetch_server_url(%{} = server) do
+    Map.get(server, "url") || Map.get(server, :url)
+  end
 end

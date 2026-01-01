@@ -47,8 +47,17 @@ defmodule Codex.Guardrail do
   def run(_guardrail, _payload, _context), do: :ok
 
   defp normalize_result(:ok), do: :ok
+  defp normalize_result(:allow), do: :ok
   defp normalize_result({:ok, _val}), do: :ok
+  defp normalize_result({:allow, _val}), do: :ok
   defp normalize_result({:reject, message}), do: {:reject, message || "rejected"}
+  defp normalize_result({:deny, message}), do: {:reject, message || "rejected"}
   defp normalize_result({:tripwire, message}), do: {:tripwire, message || "tripwire triggered"}
+
+  defp normalize_result({:raise_exception, message}),
+    do: {:tripwire, message || "tripwire triggered"}
+
+  defp normalize_result(:deny), do: {:reject, "rejected"}
+  defp normalize_result(false), do: {:reject, "rejected"}
   defp normalize_result(_other), do: :ok
 end

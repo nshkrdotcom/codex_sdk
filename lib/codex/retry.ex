@@ -214,6 +214,8 @@ defmodule Codex.Retry do
   def retryable?(:stream_timeout), do: true
   def retryable?(%{__struct__: Codex.TransportError, retryable?: true}), do: true
   def retryable?(%{__struct__: Codex.Error, kind: :rate_limit}), do: true
+  def retryable?({:turn_failed, %Codex.Error{} = error}), do: retryable?(error)
+  def retryable?({:exec_failed, %Codex.Error{} = error}), do: retryable?(error)
   def retryable?(_), do: false
 
   @doc """

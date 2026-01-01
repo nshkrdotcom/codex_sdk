@@ -108,6 +108,16 @@ defmodule Codex.AppServer.ItemAdapter do
   def to_item(%{"type" => _type} = item), do: {:raw, item}
   def to_item(item) when is_map(item), do: {:raw, item}
 
+  @spec to_raw_item(map()) :: {:ok, Items.t()} | {:raw, map()}
+  def to_raw_item(%{"type" => _type} = item) do
+    case Items.parse_raw_response_item(item) do
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, _} -> {:raw, item}
+    end
+  end
+
+  def to_raw_item(item) when is_map(item), do: {:raw, item}
+
   defp normalize_file_changes(changes) when is_list(changes) do
     Enum.map(changes, fn change ->
       %{path: Map.get(change, "path") || "", kind: :update}

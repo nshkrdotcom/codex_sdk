@@ -159,205 +159,540 @@ defmodule Codex.Config.LayerStack do
   end
 
   defp parse_config_contents(contents) do
-    lines = String.split(contents, ~r/\R/)
-
-    initial = %{
-      section: nil,
-      remote_models: nil,
-      project_root_markers: nil,
-      markers_buffer: nil
-    }
-
-    with {:ok, state} <- parse_config_lines(lines, initial) do
-      build_config(state)
+    with {:ok, config} <- parse_toml_subset(contents),
+         :ok <- validate_config(config) do
+      {:ok, config}
     end
   end
 
-  defp parse_config_lines(lines, state) do
-    Enum.reduce_while(lines, {:ok, state}, fn line, {:ok, acc} ->
-      case parse_config_line(line, acc) do
-        {:ok, next} -> {:cont, {:ok, next}}
+  defp parse_toml_subset(contents) when is_binary(contents) do
+    contents
+    |> String.split(~r/\r?\n/, trim: false)
+    |> parse_lines(%{}, nil)
+  end
+
+  defp parse_lines([], acc, _section), do: {:ok, acc}
+
+  defp parse_lines([line | rest], acc, section) do
+    line = line |> strip_comments() |> String.trim()
+
+    cond do
+      line == "" ->
+        parse_lines(rest, acc, section)
+
+      table = parse_table(line) ->
+        parse_lines(rest, acc, table)
+
+      true ->
+        case parse_key_value(line, acc, section) do
+          {:ok, updated} -> parse_lines(rest, updated, section)
+          {:error, _} = error -> error
+        end
+    end
+  end
+
+  defp parse_table(line) do
+    case Regex.run(~r/^\[(.+)\]$/, line) do
+      [_, name] ->
+        name = String.trim(name)
+
+        case name do
+          "features" -> "features"
+          "history" -> "history"
+          "shell_environment_policy" -> "shell_environment_policy"
+          _ -> :skip
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_key_value(line, acc, section) do
+    case String.split(line, "=", parts: 2) do
+      [raw_key, raw_value] ->
+        key = String.trim(raw_key)
+        raw_value = String.trim(raw_value)
+
+        with {:ok, value} <- parse_value(raw_value) do
+          {:ok, put_config_value(acc, section, key, value)}
+        end
+
+      _ ->
+        {:error, {:invalid_toml_line, line}}
+    end
+  end
+
+  defp put_config_value(acc, :skip, _key, _value), do: acc
+
+  defp put_config_value(acc, nil, "project_root_markers", value),
+    do: Map.put(acc, "project_root_markers", value)
+
+  defp put_config_value(acc, nil, "cli_auth_credentials_store", value),
+    do: Map.put(acc, "cli_auth_credentials_store", value)
+
+  defp put_config_value(acc, nil, "mcp_oauth_credentials_store", value),
+    do: Map.put(acc, "mcp_oauth_credentials_store", value)
+
+  defp put_config_value(acc, nil, "forced_login_method", value),
+    do: Map.put(acc, "forced_login_method", value)
+
+  defp put_config_value(acc, nil, "forced_chatgpt_workspace_id", value),
+    do: Map.put(acc, "forced_chatgpt_workspace_id", value)
+
+  defp put_config_value(acc, nil, "model_provider", value),
+    do: Map.put(acc, "model_provider", value)
+
+  defp put_config_value(acc, nil, "features", value) when is_map(value),
+    do: Map.put(acc, "features", value)
+
+  defp put_config_value(acc, nil, "features", _value), do: acc
+
+  defp put_config_value(acc, nil, "history", value) when is_map(value),
+    do: Map.put(acc, "history", value)
+
+  defp put_config_value(acc, nil, "history", _value), do: acc
+
+  defp put_config_value(acc, nil, "shell_environment_policy", value) when is_map(value),
+    do: Map.put(acc, "shell_environment_policy", value)
+
+  defp put_config_value(acc, nil, "shell_environment_policy", _value), do: acc
+
+  defp put_config_value(acc, nil, key, value), do: maybe_put_dotted_value(acc, key, value)
+
+  defp put_config_value(acc, "features", key, value) do
+    Map.update(acc, "features", %{key => value}, &Map.put(&1, key, value))
+  end
+
+  defp put_config_value(acc, "history", key, value) do
+    Map.update(acc, "history", %{key => value}, &Map.put(&1, key, value))
+  end
+
+  defp put_config_value(acc, "shell_environment_policy", key, value) do
+    Map.update(acc, "shell_environment_policy", %{key => value}, &Map.put(&1, key, value))
+  end
+
+  defp maybe_put_dotted_value(acc, key, value) do
+    case String.split(key, ".") do
+      ["features" | rest] when rest != [] ->
+        put_nested_path(acc, ["features" | rest], value)
+
+      ["history" | rest] when rest != [] ->
+        put_nested_path(acc, ["history" | rest], value)
+
+      ["shell_environment_policy" | rest] when rest != [] ->
+        put_nested_path(acc, ["shell_environment_policy" | rest], value)
+
+      _ ->
+        acc
+    end
+  end
+
+  defp put_nested_path(acc, [root | rest], value) do
+    Map.update(acc, root, build_nested(rest, value), fn existing ->
+      merge_nested(existing, rest, value)
+    end)
+  end
+
+  defp build_nested([], value), do: value
+  defp build_nested([key | rest], value), do: %{key => build_nested(rest, value)}
+
+  defp merge_nested(_existing, [], value), do: value
+
+  defp merge_nested(%{} = existing, [key | rest], value) do
+    Map.update(existing, key, build_nested(rest, value), fn nested ->
+      merge_nested(nested, rest, value)
+    end)
+  end
+
+  defp merge_nested(_existing, rest, value), do: build_nested(rest, value)
+
+  defp strip_comments(line) do
+    line
+    |> String.to_charlist()
+    |> strip_comments([], nil)
+    |> Enum.reverse()
+    |> to_string()
+  end
+
+  defp strip_comments([], acc, _quote), do: acc
+
+  defp strip_comments([?# | _rest], acc, nil), do: acc
+
+  defp strip_comments([char | rest], acc, quote) do
+    strip_comments(rest, [char | acc], next_quote(char, quote))
+  end
+
+  defp next_quote(char, nil) when char in [?", ?'], do: char
+  defp next_quote(char, quote) when char == quote, do: nil
+  defp next_quote(_char, quote), do: quote
+
+  defp parse_value(value) do
+    value = String.trim(value)
+
+    cond do
+      value == "" ->
+        {:error, {:invalid_toml_value, value}}
+
+      boolean_string?(value) ->
+        {:ok, value == "true"}
+
+      array_string?(value) ->
+        parse_array(value)
+
+      inline_table_string?(value) ->
+        parse_inline_table(value)
+
+      quoted_string?(value) ->
+        {:ok, strip_quotes(value)}
+
+      integer_string?(value) ->
+        {:ok, parse_integer(value)}
+
+      true ->
+        {:ok, value}
+    end
+  end
+
+  defp boolean_string?("true"), do: true
+  defp boolean_string?("false"), do: true
+  defp boolean_string?(_), do: false
+
+  defp array_string?(value) do
+    String.starts_with?(value, "[") and String.ends_with?(value, "]")
+  end
+
+  defp inline_table_string?(value) do
+    String.starts_with?(value, "{") and String.ends_with?(value, "}")
+  end
+
+  defp quoted_string?(value) do
+    (String.starts_with?(value, "\"") and String.ends_with?(value, "\"")) or
+      (String.starts_with?(value, "'") and String.ends_with?(value, "'"))
+  end
+
+  defp strip_quotes(value) do
+    value
+    |> String.trim_leading("\"")
+    |> String.trim_trailing("\"")
+    |> String.trim_leading("'")
+    |> String.trim_trailing("'")
+  end
+
+  defp integer_string?(value) do
+    String.match?(value, ~r/^-?\d+(_\d+)*$/)
+  end
+
+  defp parse_integer(value) do
+    value
+    |> String.replace("_", "")
+    |> String.to_integer()
+  end
+
+  defp parse_array(value) do
+    value
+    |> String.trim_leading("[")
+    |> String.trim_trailing("]")
+    |> String.trim()
+    |> parse_array_inner()
+  end
+
+  defp parse_array_inner(""), do: {:ok, []}
+
+  defp parse_array_inner(inner) do
+    inner
+    |> String.split(",", trim: true)
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case parse_value(entry) do
+        {:ok, parsed} -> {:cont, {:ok, acc ++ [parsed]}}
         {:error, _} = error -> {:halt, error}
       end
     end)
   end
 
-  defp parse_config_line(line, %{markers_buffer: buffer} = state) when is_list(buffer) do
-    stripped = strip_comment(line)
-    buffer = buffer ++ [stripped]
+  defp parse_inline_table(value) do
+    value
+    |> String.trim_leading("{")
+    |> String.trim_trailing("}")
+    |> String.trim()
+    |> parse_inline_table_inner()
+  end
 
-    if String.contains?(stripped, "]") do
-      raw = Enum.join(buffer, "")
+  defp parse_inline_table_inner(""), do: {:ok, %{}}
 
-      case parse_marker_list(raw) do
-        {:ok, markers} ->
-          {:ok, %{state | project_root_markers: markers, markers_buffer: nil}}
-
-        {:error, _} = error ->
-          error
+  defp parse_inline_table_inner(inner) do
+    inner
+    |> String.split(",", trim: true)
+    |> Enum.reduce_while({:ok, %{}}, fn entry, {:ok, acc} ->
+      case parse_inline_entry(entry) do
+        {:ok, {key, parsed}} -> {:cont, {:ok, Map.put(acc, key, parsed)}}
+        {:error, _} = error -> {:halt, error}
       end
-    else
-      {:ok, %{state | markers_buffer: buffer}}
-    end
+    end)
   end
 
-  defp parse_config_line(line, state) do
-    stripped = strip_comment(line)
+  defp parse_inline_entry(entry) do
+    case String.split(entry, "=", parts: 2) do
+      [raw_key, raw_value] ->
+        key = String.trim(raw_key)
+        raw_value = String.trim(raw_value)
 
-    cond do
-      stripped == "" ->
-        {:ok, state}
-
-      section_header?(stripped) ->
-        {:ok, %{state | section: parse_section_header(stripped)}}
-
-      state.section in [nil, ""] and key_matches?(stripped, "project_root_markers") ->
-        parse_project_root_markers(stripped, state)
-
-      state.section == "features" and key_matches?(stripped, "remote_models") ->
-        parse_remote_models(stripped, state)
-
-      true ->
-        {:ok, state}
-    end
-  end
-
-  defp parse_project_root_markers(line, state) do
-    case split_kv(line) do
-      {:ok, _key, value} ->
-        case parse_marker_list(value) do
-          {:ok, markers} -> {:ok, %{state | project_root_markers: markers}}
-          {:error, :incomplete} -> {:ok, %{state | markers_buffer: [value]}}
+        case parse_value(raw_value) do
+          {:ok, parsed} -> {:ok, {key, parsed}}
           {:error, _} = error -> error
         end
 
-      {:error, _} = error ->
-        error
+      _ ->
+        {:error, {:invalid_toml_inline_table, entry}}
     end
   end
 
-  defp parse_remote_models(line, state) do
-    case split_kv(line) do
-      {:ok, _key, value} ->
-        case parse_bool(value) do
-          bool when is_boolean(bool) -> {:ok, %{state | remote_models: bool}}
-          _ -> {:error, {:invalid_remote_models, value}}
+  defp validate_config(%{} = config) do
+    with :ok <- validate_features(config),
+         :ok <- validate_model_provider(config),
+         :ok <- validate_history(config),
+         :ok <- validate_shell_environment_policy(config),
+         :ok <- validate_project_root_markers(config),
+         :ok <- validate_cli_auth_store(config),
+         :ok <- validate_mcp_oauth_store(config) do
+      validate_forced_login_config(config)
+    end
+  end
+
+  defp validate_config(_), do: {:error, :invalid_config_root}
+
+  defp validate_features(config) do
+    case fetch_value(config, ["features", :features]) do
+      nil ->
+        :ok
+
+      %{} = features ->
+        validate_boolean_map(features, :invalid_features)
+
+      other ->
+        {:error, {:invalid_features, other}}
+    end
+  end
+
+  defp validate_model_provider(config) do
+    case fetch_value(config, ["model_provider", :model_provider]) do
+      nil ->
+        :ok
+
+      value when is_binary(value) ->
+        :ok
+
+      other ->
+        {:error, {:invalid_model_provider, other}}
+    end
+  end
+
+  defp validate_history(config) do
+    case fetch_value(config, ["history", :history]) do
+      nil ->
+        :ok
+
+      %{} = history ->
+        with :ok <- validate_history_persistence(history) do
+          validate_history_max_bytes(history)
         end
 
-      {:error, _} = error ->
-        error
+      other ->
+        {:error, {:invalid_history, other}}
     end
   end
 
-  defp build_config(%{remote_models: remote_models, project_root_markers: markers}) do
-    config =
-      %{}
-      |> maybe_put("features", remote_models)
-      |> maybe_put("project_root_markers", markers)
-
-    {:ok, config}
-  end
-
-  defp maybe_put(config, _key, nil), do: config
-
-  defp maybe_put(config, "features", value) when is_boolean(value) do
-    Map.put(config, "features", %{"remote_models" => value})
-  end
-
-  defp maybe_put(config, "project_root_markers", value) when is_list(value) do
-    Map.put(config, "project_root_markers", value)
-  end
-
-  defp maybe_put(config, _key, _value), do: config
-
-  defp parse_marker_list(value) do
-    trimmed = String.trim(value)
-
-    cond do
-      !String.contains?(trimmed, "[") ->
-        {:error, {:invalid_project_root_markers, value}}
-
-      String.contains?(trimmed, "]") ->
-        do_parse_marker_list(trimmed)
-
-      true ->
-        {:error, :incomplete}
+  defp validate_history_persistence(history) do
+    case fetch_value(history, ["persistence", :persistence]) do
+      nil -> :ok
+      value when is_binary(value) -> :ok
+      other -> {:error, {:invalid_history_persistence, other}}
     end
   end
 
-  defp do_parse_marker_list(value) do
-    case Regex.run(~r/\[(.*)\]/s, value) do
-      [_, inner] ->
-        inner
-        |> String.trim()
-        |> markers_from_inner(value)
+  defp validate_history_max_bytes(history) do
+    case fetch_value(history, ["max_bytes", "maxBytes", :max_bytes, :maxBytes]) do
+      nil ->
+        :ok
 
-      _ ->
-        {:error, {:invalid_project_root_markers, value}}
+      value when is_integer(value) and value >= 0 ->
+        :ok
+
+      other ->
+        {:error, {:invalid_history_max_bytes, other}}
     end
   end
 
-  defp markers_from_inner("", _value), do: {:ok, []}
+  defp validate_shell_environment_policy(config) do
+    case fetch_value(config, ["shell_environment_policy", :shell_environment_policy]) do
+      nil ->
+        :ok
 
-  defp markers_from_inner(inner, value) do
-    case extract_markers(inner) do
-      [] -> {:error, {:invalid_project_root_markers, value}}
-      markers -> {:ok, markers}
+      %{} = policy ->
+        with :ok <- validate_shell_env_inherit(policy),
+             :ok <- validate_shell_env_ignore_default_excludes(policy),
+             :ok <- validate_shell_env_list(policy, "exclude", :exclude),
+             :ok <- validate_shell_env_list(policy, "include_only", :include_only) do
+          validate_shell_env_set(policy)
+        end
+
+      other ->
+        {:error, {:invalid_shell_environment_policy, other}}
     end
   end
 
-  defp extract_markers(inner) do
-    Regex.scan(~r/"([^"]*)"/, inner)
-    |> Enum.map(fn [_full, match] -> match end)
-  end
-
-  defp split_kv(line) do
-    case String.split(line, "=", parts: 2) do
-      [key, value] ->
-        {:ok, String.trim(key), String.trim(value)}
-
-      _ ->
-        {:error, {:invalid_config_line, line}}
+  defp validate_shell_env_inherit(policy) do
+    case fetch_value(policy, ["inherit", :inherit]) do
+      nil -> :ok
+      value when is_binary(value) -> :ok
+      other -> {:error, {:invalid_shell_environment_inherit, other}}
     end
   end
 
-  defp key_matches?(line, key) do
-    case split_kv(line) do
-      {:ok, ^key, _value} -> true
-      _ -> false
+  defp validate_shell_env_ignore_default_excludes(policy) do
+    case fetch_value(policy, ["ignore_default_excludes", :ignore_default_excludes]) do
+      nil -> :ok
+      value when is_boolean(value) -> :ok
+      other -> {:error, {:invalid_shell_environment_ignore_default_excludes, other}}
     end
   end
 
-  defp section_header?(line) do
-    String.starts_with?(line, "[") && String.ends_with?(line, "]")
-  end
+  defp validate_shell_env_list(policy, key, atom_key) do
+    case fetch_value(policy, [key, atom_key]) do
+      nil ->
+        :ok
 
-  defp parse_section_header(line) do
-    line
-    |> String.trim_leading("[")
-    |> String.trim_trailing("]")
-    |> String.trim()
-  end
+      value when is_list(value) ->
+        if Enum.all?(value, &is_binary/1) do
+          :ok
+        else
+          {:error, {:invalid_shell_environment_list, key, value}}
+        end
 
-  defp strip_comment(line) do
-    line
-    |> String.split("#", parts: 2)
-    |> List.first()
-    |> String.split(";", parts: 2)
-    |> List.first()
-    |> String.trim()
-  end
-
-  defp parse_bool(value) do
-    value
-    |> String.trim()
-    |> String.downcase()
-    |> case do
-      "true" -> true
-      "false" -> false
-      _ -> nil
+      other ->
+        {:error, {:invalid_shell_environment_list, key, other}}
     end
   end
+
+  defp validate_shell_env_set(policy) do
+    case fetch_value(policy, ["set", :set]) do
+      nil ->
+        :ok
+
+      %{} = set ->
+        validate_string_map(set, :invalid_shell_environment_set)
+
+      other ->
+        {:error, {:invalid_shell_environment_set, other}}
+    end
+  end
+
+  defp validate_boolean_map(map, error_tag) do
+    if Enum.all?(map, fn {_key, value} -> is_boolean(value) end) do
+      :ok
+    else
+      {:error, {error_tag, map}}
+    end
+  end
+
+  defp validate_string_map(map, error_tag) do
+    if Enum.all?(map, fn {key, value} -> is_binary(key) and is_binary(value) end) do
+      :ok
+    else
+      {:error, {error_tag, map}}
+    end
+  end
+
+  defp validate_project_root_markers(config) do
+    case fetch_value(config, ["project_root_markers", :project_root_markers]) do
+      nil ->
+        :ok
+
+      value when is_list(value) ->
+        if Enum.all?(value, &is_binary/1) do
+          :ok
+        else
+          {:error, {:invalid_project_root_markers, value}}
+        end
+
+      other ->
+        {:error, {:invalid_project_root_markers, other}}
+    end
+  end
+
+  defp validate_cli_auth_store(config) do
+    case fetch_value(config, ["cli_auth_credentials_store", :cli_auth_credentials_store]) do
+      nil ->
+        :ok
+
+      value when is_binary(value) ->
+        if value in ["file", "keyring", "auto"] do
+          :ok
+        else
+          {:error, {:invalid_cli_auth_credentials_store, value}}
+        end
+
+      other ->
+        {:error, {:invalid_cli_auth_credentials_store, other}}
+    end
+  end
+
+  defp validate_mcp_oauth_store(config) do
+    case fetch_value(config, ["mcp_oauth_credentials_store", :mcp_oauth_credentials_store]) do
+      nil ->
+        :ok
+
+      value when is_binary(value) ->
+        if value in ["file", "keyring", "auto"] do
+          :ok
+        else
+          {:error, {:invalid_mcp_oauth_credentials_store, value}}
+        end
+
+      other ->
+        {:error, {:invalid_mcp_oauth_credentials_store, other}}
+    end
+  end
+
+  defp validate_forced_login_config(config) do
+    with :ok <- validate_forced_login_method(config) do
+      validate_forced_chatgpt_workspace_id(config)
+    end
+  end
+
+  defp validate_forced_login_method(config) do
+    case fetch_value(config, ["forced_login_method", :forced_login_method]) do
+      nil ->
+        :ok
+
+      value when is_binary(value) ->
+        if value in ["chatgpt", "api"] do
+          :ok
+        else
+          {:error, {:invalid_forced_login_method, value}}
+        end
+
+      other ->
+        {:error, {:invalid_forced_login_method, other}}
+    end
+  end
+
+  defp validate_forced_chatgpt_workspace_id(config) do
+    case fetch_value(config, ["forced_chatgpt_workspace_id", :forced_chatgpt_workspace_id]) do
+      nil -> :ok
+      value when is_binary(value) -> :ok
+      other -> {:error, {:invalid_forced_chatgpt_workspace_id, other}}
+    end
+  end
+
+  defp fetch_value(map, [key | rest]) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> fetch_value(map, rest)
+    end
+  end
+
+  defp fetch_value(_map, []), do: nil
 
   defp merge_configs(base, override) when is_map(base) and is_map(override) do
     Map.merge(base, override, fn _key, left, right ->

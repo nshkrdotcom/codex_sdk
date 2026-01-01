@@ -1,6 +1,9 @@
 defmodule Codex.Tools.WebSearchToolTest do
   use ExUnit.Case, async: false
 
+  alias Codex.Options
+  alias Codex.Thread
+  alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Tool
   alias Codex.Tools
   alias Codex.Tools.WebSearchTool
@@ -28,8 +31,10 @@ defmodule Codex.Tools.WebSearchToolTest do
       meta = WebSearchTool.metadata()
       assert meta.name == "web_search"
       assert meta.description == "Search the web for information"
-      assert meta.schema["required"] == ["query"]
+      assert meta.schema["required"] == nil
+      assert meta.schema["properties"]["action"]["type"] == "object"
       assert meta.schema["properties"]["query"]["type"] == "string"
+      assert meta.schema["properties"]["type"]["type"] == "string"
       assert meta.schema["properties"]["max_results"]["type"] == "integer"
     end
 
@@ -53,6 +58,22 @@ defmodule Codex.Tools.WebSearchToolTest do
       assert first["url"] =~ "example.com"
       assert is_binary(first["snippet"])
       assert is_float(first["score"])
+    end
+
+    test "accepts action map for search" do
+      args = %{"action" => %{"type" => "search", "query" => "elixir programming"}}
+      context = %{metadata: %{provider: :mock}}
+
+      {:ok, result} = WebSearchTool.invoke(args, context)
+
+      assert result["count"] == 2
+    end
+
+    test "returns error for unsupported action" do
+      args = %{"action" => %{"type" => "open_page", "url" => "https://example.com"}}
+      context = %{metadata: %{provider: :mock}}
+
+      assert {:error, {:unsupported_action, "open_page"}} = WebSearchTool.invoke(args, context)
     end
 
     test "respects max_results from args" do
@@ -93,7 +114,7 @@ defmodule Codex.Tools.WebSearchToolTest do
         {:ok, %{"count" => 1, "results" => [%{"title" => args["query"]}]}}
       end
 
-      args = %{"query" => "test query"}
+      args = %{"action" => %{"type" => "search", "query" => "test query"}}
       context = %{metadata: %{searcher: searcher}}
 
       {:ok, result} = WebSearchTool.invoke(args, context)
@@ -209,6 +230,44 @@ defmodule Codex.Tools.WebSearchToolTest do
       {:ok, _} = Tools.register(WebSearchTool, provider: :mock)
       assert {:ok, info} = Tools.lookup("web_search")
       assert info.module == WebSearchTool
+    end
+  end
+
+  describe "enablement gating" do
+    test "disabled by default for thread context" do
+      {:ok, _} = Tools.register(WebSearchTool, provider: :mock)
+      {:ok, thread_opts} = ThreadOptions.new(%{web_search_enabled: false})
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:tool_disabled, "web_search"}} =
+               Tools.invoke("web_search", %{"query" => "test"}, %{thread: thread})
+    end
+
+    test "enabled when thread opts set web_search_enabled" do
+      {:ok, _} = Tools.register(WebSearchTool, provider: :mock)
+      {:ok, thread_opts} = ThreadOptions.new(%{web_search_enabled: true})
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:ok, result} = Tools.invoke("web_search", %{"query" => "test"}, %{thread: thread})
+      assert result["count"] == 2
+    end
+
+    test "enabled when config features.web_search_request is true" do
+      {:ok, _} = Tools.register(WebSearchTool, provider: :mock)
+
+      {:ok, thread_opts} =
+        ThreadOptions.new(%{
+          web_search_enabled: false,
+          config: %{"features" => %{"web_search_request" => true}}
+        })
+
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:ok, result} = Tools.invoke("web_search", %{"query" => "test"}, %{thread: thread})
+      assert result["count"] == 2
     end
   end
 

@@ -93,6 +93,73 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "thread_resume/3 encodes history and path", %{conn: conn, os_pid: os_pid} do
+    history = [%{"type" => "ghost_snapshot", "ghost_commit" => %{"id" => "ghost_1"}}]
+
+    task =
+      Task.async(fn ->
+        AppServer.thread_resume(conn, "thr_1", history: history, path: "/tmp/rollout.jsonl")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/resume", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["threadId"] == "thr_1"
+    assert params["history"] == history
+    assert params["path"] == "/tmp/rollout.jsonl"
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(task, 200)
+  end
+
+  test "skills_list/2 encodes force_reload", %{conn: conn, os_pid: os_pid} do
+    task = Task.async(fn -> AppServer.skills_list(conn, cwds: ["/tmp"], force_reload: true) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "skills/list", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["cwds"] == ["/tmp"]
+    assert params["forceReload"] == true
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+
+    assert {:ok, %{"data" => []}} = Task.await(task, 200)
+  end
+
+  test "fuzzy_file_search/3 encodes query roots and cancellation token", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.fuzzy_file_search(conn, "readme",
+          roots: ["/tmp"],
+          cancellation_token: "tok-1"
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "fuzzyFileSearch", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["query"] == "readme"
+    assert params["roots"] == ["/tmp"]
+    assert params["cancellationToken"] == "tok-1"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"files" => []})})
+
+    assert {:ok, %{"files" => []}} = Task.await(task, 200)
+  end
+
   test "config_write/4 encodes merge strategy and key_path", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->

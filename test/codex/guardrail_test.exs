@@ -45,6 +45,26 @@ defmodule Codex.GuardrailTest do
              AgentRunner.run(thread, "Hello Codex", %{agent: %{input_guardrails: [guardrail]}})
   end
 
+  test "parallel input guardrail rejects run", %{thread_opts: thread_opts} do
+    script_path =
+      FixtureScripts.cat_fixture("thread_basic.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    guardrail =
+      Guardrail.new(
+        name: "block-parallel",
+        stage: :input,
+        run_in_parallel: true,
+        handler: fn _input, _ctx -> {:reject, "blocked"} end
+      )
+
+    assert {:error, %GuardrailError{stage: :input, guardrail: "block-parallel", type: :reject}} =
+             AgentRunner.run(thread, "Hello Codex", %{agent: %{input_guardrails: [guardrail]}})
+  end
+
   test "tool input guardrail blocks tool execution", %{thread_opts: thread_opts} do
     Tools.reset!()
     Tools.reset_metrics()

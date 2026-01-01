@@ -320,6 +320,35 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule DeprecationNotice do
+    @moduledoc """
+    Event emitted when the server reports a deprecated feature or behavior.
+    """
+
+    @enforce_keys [:summary]
+    defstruct summary: nil, details: nil
+
+    @type t :: %__MODULE__{
+            summary: String.t(),
+            details: String.t() | nil
+          }
+  end
+
+  defmodule RawResponseItemCompleted do
+    @moduledoc """
+    Event emitted when a raw response item completes on the app-server stream.
+    """
+
+    @enforce_keys [:item]
+    defstruct thread_id: nil, turn_id: nil, item: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            item: Items.t() | map()
+          }
+  end
+
   defmodule AppServerNotification do
     @moduledoc """
     Lossless wrapper for an app-server notification that is not yet mapped into a typed event.
@@ -546,6 +575,8 @@ defmodule Codex.Events do
     AccountRateLimitsUpdated,
     AccountLoginCompleted,
     WindowsWorldWritableWarning,
+    DeprecationNotice,
+    RawResponseItemCompleted,
     Error,
     TurnFailed
   }
@@ -577,6 +608,8 @@ defmodule Codex.Events do
           | AccountRateLimitsUpdated.t()
           | AccountLoginCompleted.t()
           | WindowsWorldWritableWarning.t()
+          | DeprecationNotice.t()
+          | RawResponseItemCompleted.t()
           | Error.t()
           | TurnFailed.t()
           | ToolCallRequested.t()
@@ -695,6 +728,52 @@ defmodule Codex.Events do
       item: map |> Map.fetch!("item") |> Items.parse!(),
       thread_id: Map.get(map, "thread_id"),
       turn_id: Map.get(map, "turn_id")
+    }
+  end
+
+  def parse!(%{"type" => "deprecationNotice"} = map) do
+    %DeprecationNotice{
+      summary: Map.get(map, "summary") || "",
+      details: Map.get(map, "details")
+    }
+  end
+
+  def parse!(%{"type" => "account/updated"} = map) do
+    %AccountUpdated{
+      auth_mode: Map.get(map, "auth_mode") || Map.get(map, "authMode")
+    }
+  end
+
+  def parse!(%{"type" => "account/login/completed"} = map) do
+    %AccountLoginCompleted{
+      login_id: Map.get(map, "login_id") || Map.get(map, "loginId"),
+      success: Map.get(map, "success") || false,
+      error: Map.get(map, "error")
+    }
+  end
+
+  def parse!(%{"type" => "account/rateLimits/updated"} = map) do
+    %AccountRateLimitsUpdated{
+      rate_limits: Map.get(map, "rate_limits") || Map.get(map, "rateLimits") || %{},
+      thread_id: Map.get(map, "thread_id") || Map.get(map, "threadId"),
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId")
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["rawResponseItem/completed", "rawResponseItem.completed"] do
+    item_map = Map.get(map, "item") || %{}
+
+    item =
+      case Items.parse_raw_response_item(item_map) do
+        {:ok, parsed} -> parsed
+        {:error, _} -> item_map
+      end
+
+    %RawResponseItemCompleted{
+      thread_id: Map.get(map, "thread_id") || Map.get(map, "threadId"),
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      item: item
     }
   end
 
@@ -993,6 +1072,23 @@ defmodule Codex.Events do
     }
   end
 
+  def to_map(%DeprecationNotice{} = event) do
+    %{
+      "type" => "deprecationNotice",
+      "summary" => event.summary
+    }
+    |> put_optional("details", event.details)
+  end
+
+  def to_map(%RawResponseItemCompleted{} = event) do
+    %{
+      "type" => "rawResponseItem/completed",
+      "item" => encode_raw_item(event.item)
+    }
+    |> put_optional("thread_id", event.thread_id)
+    |> put_optional("turn_id", event.turn_id)
+  end
+
   def to_map(%Error{} = event) do
     %{
       "type" => "error",
@@ -1070,6 +1166,10 @@ defmodule Codex.Events do
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)
+
+  defp encode_raw_item(%{__struct__: _} = item), do: Items.to_map(item)
+  defp encode_raw_item(%{} = item), do: item
+  defp encode_raw_item(other), do: other
 
   defp encode_final_response(%Items.AgentMessage{text: text}) when is_binary(text) do
     %{"type" => "text", "text" => text}

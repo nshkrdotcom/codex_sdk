@@ -23,7 +23,7 @@ defmodule Codex.Tools.ShellTool do
 
   ### Direct Invocation
 
-      args = %{"command" => "ls -la", "cwd" => "/tmp"}
+      args = %{"command" => ["bash", "-lc", "ls -la"], "workdir" => "/tmp"}
       {:ok, result} = Codex.Tools.ShellTool.invoke(args, %{})
       # => %{"output" => "...", "exit_code" => 0, "success" => true}
 
@@ -35,7 +35,8 @@ defmodule Codex.Tools.ShellTool do
         approval: fn cmd, _ctx -> :ok end
       )
 
-      {:ok, result} = Codex.Tools.invoke("shell", %{"command" => "echo hello"}, %{})
+      {:ok, result} =
+        Codex.Tools.invoke("shell", %{"command" => ["bash", "-lc", "echo hello"]}, %{})
 
   ## Approval Integration
 
@@ -76,16 +77,27 @@ defmodule Codex.Tools.ShellTool do
         "type" => "object",
         "properties" => %{
           "command" => %{
-            "type" => "string",
-            "description" => "The shell command to execute"
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "The command to execute"
           },
-          "cwd" => %{
+          "workdir" => %{
             "type" => "string",
             "description" => "Working directory (optional)"
           },
           "timeout_ms" => %{
             "type" => "integer",
             "description" => "Timeout in milliseconds (optional)"
+          },
+          "sandbox_permissions" => %{
+            "type" => "string",
+            "description" =>
+              "Sandbox permissions for the command. Set to \"require_escalated\" to request running without sandbox restrictions; defaults to \"use_default\"."
+          },
+          "justification" => %{
+            "type" => "string",
+            "description" =>
+              "Only set if sandbox_permissions is \"require_escalated\". 1-sentence explanation of why we want to run this command."
           }
         },
         "required" => ["command"],
@@ -97,7 +109,7 @@ defmodule Codex.Tools.ShellTool do
   @impl true
   def invoke(args, context) do
     metadata = Map.get(context, :metadata, %{})
-    command = Map.fetch!(args, "command")
+    command = Map.get(args, "command") || Map.get(args, :command)
 
     # Resolve options from args, context, and metadata
     cwd = resolve_cwd(args, context, metadata)
@@ -108,20 +120,24 @@ defmodule Codex.Tools.ShellTool do
       context
       |> Map.put(:timeout_ms, timeout_ms)
       |> Map.put(:cwd, cwd)
+      |> Map.put(:command, command)
 
-    with :ok <- check_approval(command, metadata, merged_context) do
-      execute_command(command, cwd, timeout_ms, max_bytes, args, merged_context, metadata)
+    with {:ok, normalized} <- normalize_command(command),
+         :ok <- check_approval(format_command_for_approval(normalized), metadata, merged_context) do
+      execute_command(normalized, cwd, timeout_ms, max_bytes, args, merged_context, metadata)
     end
   end
 
   defp resolve_cwd(args, context, metadata) do
-    Map.get(args, "cwd") ||
+    Map.get(args, "workdir") ||
+      Map.get(args, "cwd") ||
       Map.get(context, :cwd) ||
       Hosted.metadata_value(metadata, :cwd)
   end
 
   defp resolve_timeout(args, context, metadata) do
     Map.get(args, "timeout_ms") ||
+      Map.get(args, "timeout") ||
       Map.get(context, :timeout_ms) ||
       Hosted.metadata_value(metadata, :timeout_ms, @default_timeout_ms)
   end
@@ -222,9 +238,9 @@ defmodule Codex.Tools.ShellTool do
       [:stdout, :stderr, :monitor]
       |> maybe_add_cd(cwd)
 
-    shell_command = build_shell_command(command)
+    exec_command = build_exec_command(command)
 
-    case :exec.run(shell_command, opts) do
+    case :exec.run(exec_command, opts) do
       {:ok, pid, os_pid} ->
         collect_output(os_pid, pid, timeout_ms)
 
@@ -233,11 +249,45 @@ defmodule Codex.Tools.ShellTool do
     end
   end
 
-  defp build_shell_command(command) do
+  defp build_exec_command(command) when is_list(command) do
+    [exe | rest] = Enum.map(command, &to_string/1)
+    resolved = resolve_executable_path(exe)
+
+    Enum.map([resolved | rest], &to_charlist/1)
+  end
+
+  defp build_exec_command(command) when is_binary(command) do
     # Escape single quotes in command for shell
     escaped = String.replace(command, "'", "'\\''")
     ~c"sh -c '#{escaped}'"
   end
+
+  defp build_exec_command(command), do: build_exec_command(to_string(command))
+
+  defp normalize_command(command) when is_list(command) do
+    normalized =
+      command
+      |> Enum.map(&to_string/1)
+      |> Enum.reject(&(&1 == ""))
+
+    if normalized == [] do
+      {:error, {:invalid_argument, :command}}
+    else
+      {:ok, normalized}
+    end
+  end
+
+  defp normalize_command(command) when is_binary(command) and command != "" do
+    {:ok, command}
+  end
+
+  defp normalize_command(_), do: {:error, {:invalid_argument, :command}}
+
+  defp format_command_for_approval(command) when is_list(command) do
+    Enum.join(command, " ")
+  end
+
+  defp format_command_for_approval(command), do: command
 
   defp maybe_add_cd(opts, nil), do: opts
   defp maybe_add_cd(opts, ""), do: opts
@@ -265,21 +315,12 @@ defmodule Codex.Tools.ShellTool do
         do_collect_output(os_pid, pid, timeout_ms, stdout_acc, [data | stderr_acc])
 
       {:DOWN, ^os_pid, :process, _proc, :normal} ->
-        output = stdout_acc |> Enum.reverse() |> IO.iodata_to_binary()
+        output = combine_output(stdout_acc, stderr_acc)
         {:ok, output, 0}
 
       {:DOWN, ^os_pid, :process, _proc, {:exit_status, status}} ->
-        output = stdout_acc |> Enum.reverse() |> IO.iodata_to_binary()
-        stderr = stderr_acc |> Enum.reverse() |> IO.iodata_to_binary()
-
-        combined_output =
-          if String.trim(stderr) != "" and String.trim(output) != "" do
-            output <> "\n" <> stderr
-          else
-            if String.trim(stderr) != "", do: stderr, else: output
-          end
-
-        {:ok, combined_output, normalize_exit_status(status)}
+        output = combine_output(stdout_acc, stderr_acc)
+        {:ok, output, normalize_exit_status(status)}
     after
       timeout_ms ->
         safe_stop(pid)
@@ -331,5 +372,34 @@ defmodule Codex.Tools.ShellTool do
 
   defp maybe_truncate(output, max_bytes) do
     String.slice(output, 0, max_bytes) <> "\n... (truncated)"
+  end
+
+  defp resolve_executable_path(executable) do
+    cond do
+      executable == "" ->
+        executable
+
+      String.contains?(executable, "/") ->
+        executable
+
+      true ->
+        System.find_executable(executable) || executable
+    end
+  end
+
+  defp combine_output(stdout_acc, stderr_acc) do
+    stdout = stdout_acc |> Enum.reverse() |> IO.iodata_to_binary()
+    stderr = stderr_acc |> Enum.reverse() |> IO.iodata_to_binary()
+
+    cond do
+      String.trim(stderr) != "" and String.trim(stdout) != "" ->
+        stdout <> "\n" <> stderr
+
+      String.trim(stderr) != "" ->
+        stderr
+
+      true ->
+        stdout
+    end
   end
 end

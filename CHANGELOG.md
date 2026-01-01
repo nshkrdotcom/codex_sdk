@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-12-31
+
+### Added
+
+- Typed model options for reasoning summaries/verbosity/context window/supports reasoning summaries
+- Provider tuning options (`request_max_retries`, `stream_max_retries`, `stream_idle_timeout_ms`)
+- Exec config overrides for model provider/instructions, sandbox policy details, shell env policy, and feature flags
+- Opt-in retry/rate-limit handling for exec and app-server transports
+- Thread rate limit snapshot storage (`thread.rate_limits` + `Thread.rate_limits/1`)
+- Exec stream idle timeout handling
+- Keyring auth detection with warnings when unsupported
+- Forced login enforcement for app-server login flows
+- Config layer parsing for dotted core keys and `model_provider`
+- Exec JSONL parsing for account notifications (`account/updated`, `account/login/completed`, `account/rateLimits/updated`)
+- App-server protocol parity: thread resume `history`/`path`, skills reload, and fuzzy file search helper
+- Raw response item structs (ghost snapshots/compaction) plus `rawResponseItem/completed` and `deprecationNotice` events
+- Session helpers for metadata preservation, apply, and undo workflows
+- History persistence options on `Codex.Options` and `Codex.Thread.Options`
+- Legacy app-server v1 conversation helpers (`Codex.AppServer.V1`)
+- Hosted tooling parity: `shell_command`, `write_stdin`, and `view_image` tools plus aliases (`container.exec`, `local_shell`)
+- Guardrail parallel execution and tool behavior semantics (`reject_content`, `raise_exception`)
+- MCP JSON-RPC client with stdio + streamable HTTP transports plus resources/prompts listing
+- MCP OAuth credential storage/refresh helpers and MCP config helpers (`Codex.MCP.Config`)
+- Skills and custom prompt helpers (`Codex.Skills`, `Codex.Prompts`) with prompt expansion rules
+
+### Changed
+
+- Exec JSONL now uses `--json` (alias of `--experimental-json`)
+- Exec no longer passes sandbox/approval defaults unless explicitly configured
+- Exec transport failures normalize into `Codex.Error` at thread level
+- Config parsing now validates core config keys (features/history/shell env/auth store)
+- `Codex.MCP.Client` now speaks MCP JSON-RPC (`initialize`, `tools/list`, `tools/call`)
+- Shell tool schema now uses argv arrays with `workdir`/`timeout_ms` (legacy string commands remain supported)
+- ApplyPatch supports `*** Begin Patch` grammar with add/update/delete/move, retaining unified diff fallback
+- WebSearch schema now supports `action` arguments and honors `features.web_search_request` gating
+
+### Documentation
+
+- Updated README, API reference, and transport guides for MCP/skills/prompts parity
+
+
 ## [0.4.5] - 2025-12-30
 
 ### Added

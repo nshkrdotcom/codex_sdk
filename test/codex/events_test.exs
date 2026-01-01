@@ -220,6 +220,56 @@ defmodule Codex.EventsTest do
              } = Events.to_map(diff_event)
     end
 
+    test "parses account events" do
+      updated =
+        Events.parse!(%{
+          "type" => "account/updated",
+          "auth_mode" => "chatgpt"
+        })
+
+      assert %Events.AccountUpdated{auth_mode: "chatgpt"} = updated
+
+      assert %{
+               "type" => "account/updated",
+               "auth_mode" => "chatgpt"
+             } = Events.to_map(updated)
+
+      login =
+        Events.parse!(%{
+          "type" => "account/login/completed",
+          "loginId" => "login_1",
+          "success" => true
+        })
+
+      assert %Events.AccountLoginCompleted{login_id: "login_1", success: true} = login
+
+      assert %{
+               "type" => "account/login/completed",
+               "login_id" => "login_1",
+               "success" => true
+             } = Events.to_map(login)
+
+      rate_limits = %{"primary" => %{"remaining" => 10}}
+
+      rate_event =
+        Events.parse!(%{
+          "type" => "account/rateLimits/updated",
+          "rateLimits" => rate_limits,
+          "thread_id" => "thread_1"
+        })
+
+      assert %Events.AccountRateLimitsUpdated{
+               rate_limits: ^rate_limits,
+               thread_id: "thread_1"
+             } = rate_event
+
+      assert %{
+               "type" => "account/rateLimits/updated",
+               "rate_limits" => ^rate_limits,
+               "thread_id" => "thread_1"
+             } = Events.to_map(rate_event)
+    end
+
     test "parses compaction notifications and carries thread context" do
       compaction = %{"dropped_item_ids" => ["msg_1"], "token_savings" => 120}
 
