@@ -13,7 +13,7 @@ Add the dependency in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.6.0"}
+    {:codex_sdk, "~> 0.7.0"}
   ]
 end
 ```
@@ -105,8 +105,36 @@ and resume them:
 
 See `guides/05-app-server-transport.md` for the app-server guide.
 
+## Realtime and Voice
+
+For voice-based interactions, the SDK provides two options:
+
+### Realtime API (Bidirectional Streaming)
+
+```elixir
+alias Codex.Realtime
+
+agent = Realtime.agent(name: "Assistant", instructions: "You are helpful.")
+{:ok, session} = Realtime.start_session(agent)
+Realtime.subscribe(session, self())
+Realtime.send_audio(session, audio_data)
+```
+
+### Voice Pipeline (STT -> Workflow -> TTS)
+
+```elixir
+alias Codex.Voice.{Pipeline, SimpleWorkflow, Config}
+
+workflow = SimpleWorkflow.new(fn text -> ["You said: #{text}"] end)
+{:ok, pipeline} = Pipeline.start_link(workflow: workflow, config: %Config{})
+{:ok, result} = Pipeline.run(pipeline, audio_input)
+```
+
+See `guides/06-realtime-and-voice.md` for the complete guide.
+
 ## Next Steps
 
 - `guides/02-architecture.md` for system layout and transport flow.
 - `guides/03-api-reference.md` for module-level docs.
 - `guides/04-examples.md` for runnable patterns.
+- `guides/06-realtime-and-voice.md` for voice interactions.

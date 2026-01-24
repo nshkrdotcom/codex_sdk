@@ -24,6 +24,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - **Collaboration & Personality Controls**: Collaboration modes, personality overrides, and web search mode toggles.
 - **Tooling & MCP Integration**: Built-in registry for Codex tool manifests, MCP client helpers, and elicitation handling.
 - **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, usage stats, and rate limit snapshots.
+- **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions with WebSocket streaming.
+- **Voice Pipeline**: Non-realtime STT -> Workflow -> TTS pipeline with streaming audio support and multi-turn conversations.
 
 ## Installation
 
@@ -32,7 +34,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.6.0"}
+    {:codex_sdk, "~> 0.7.0"}
   ]
 end
 ```
@@ -269,6 +271,76 @@ mix run examples/live_telemetry_stream.exs
 mix run examples/live_cli_demo.exs "What is the capital of France?"
 ```
 
+
+### Realtime Voice Interactions
+
+For bidirectional voice interactions using the OpenAI Realtime API:
+
+```elixir
+alias Codex.Realtime
+
+# Create a realtime agent
+agent = Realtime.agent(
+  name: "VoiceAssistant",
+  instructions: "You are a helpful voice assistant. Keep responses brief."
+)
+
+# Configure session options
+config = %Codex.Realtime.Config.RunConfig{
+  model_settings: %Codex.Realtime.Config.SessionModelSettings{
+    voice: "alloy",
+    turn_detection: %Codex.Realtime.Config.TurnDetectionConfig{
+      type: :semantic_vad,
+      eagerness: :medium
+    }
+  }
+}
+
+# Start a realtime session
+{:ok, session} = Realtime.start_session(agent, config)
+
+# Subscribe to events
+Realtime.subscribe(session, self())
+
+# Send audio and receive responses
+Realtime.send_audio(session, audio_data)
+```
+
+### Voice Pipeline (Non-Realtime)
+
+For STT -> Workflow -> TTS processing:
+
+```elixir
+alias Codex.Voice.{Pipeline, SimpleWorkflow, Config}
+
+# Create a simple workflow
+workflow = SimpleWorkflow.new(
+  fn text -> ["You said: #{text}. How can I help?"] end,
+  greeting: "Hello! I'm ready to listen."
+)
+
+# Configure the pipeline
+config = %Config{
+  workflow_name: "VoiceDemo",
+  tts_settings: %Config.TTSSettings{voice: :nova}
+}
+
+# Create and run the pipeline
+{:ok, pipeline} = Pipeline.start_link(workflow: workflow, config: config)
+{:ok, result} = Pipeline.run(pipeline, audio_input)
+
+# Process streamed audio output
+for event <- result do
+  case event do
+    %Codex.Voice.Events.VoiceStreamEventAudio{data: data} ->
+      # Handle audio chunk
+      play_audio(data)
+    _ -> :ok
+  end
+end
+```
+
+See `examples/realtime_*.exs` and `examples/voice_*.exs` for comprehensive demos.
 
 ### Resuming Threads
 
@@ -824,6 +896,9 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_web_search_modes.exs`** - Web search mode toggles with event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
+- **`live_realtime_voice.exs`** - Full realtime voice interaction demo with event handling
+- **`realtime_basic.exs`**, **`realtime_tools.exs`**, **`realtime_handoffs.exs`** - Realtime API examples for sessions, tools, and agent handoffs
+- **`voice_pipeline.exs`**, **`voice_multi_turn.exs`**, **`voice_with_agent.exs`** - Voice pipeline examples for STT/TTS workflows
 
 Run examples with:
 

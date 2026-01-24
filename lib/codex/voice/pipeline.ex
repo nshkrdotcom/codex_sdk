@@ -212,28 +212,32 @@ defmodule Codex.Voice.Pipeline do
           # Transcribe audio to text
           stt_settings = pipeline.config.stt_settings || %STTSettings{}
 
-          {:ok, text} =
-            OpenAISTT.transcribe(
-              pipeline.stt_model,
-              audio,
-              stt_settings,
-              pipeline.config.trace_include_sensitive_data,
-              pipeline.config.trace_include_sensitive_audio_data
-            )
+          case OpenAISTT.transcribe(
+                 pipeline.stt_model,
+                 audio,
+                 stt_settings,
+                 pipeline.config.trace_include_sensitive_data,
+                 pipeline.config.trace_include_sensitive_audio_data
+               ) do
+            {:ok, text} ->
+              # Signal turn start
+              Result.turn_started(result)
 
-          # Signal turn start
-          Result.turn_started(result)
+              # Run workflow and convert each response to audio
+              pipeline.workflow
+              |> apply_workflow(:run, [text])
+              |> Enum.each(fn response_text ->
+                Result.add_text(result, response_text)
+              end)
 
-          # Run workflow and convert each response to audio
-          pipeline.workflow
-          |> apply_workflow(:run, [text])
-          |> Enum.each(fn response_text ->
-            Result.add_text(result, response_text)
-          end)
+              # Signal turn and session completion
+              Result.turn_done(result)
+              Result.done(result)
 
-          # Signal turn and session completion
-          Result.turn_done(result)
-          Result.done(result)
+            {:error, reason} ->
+              Logger.error("STT transcription failed: #{inspect(reason)}")
+              Result.add_error(result, reason)
+          end
         rescue
           e ->
             Logger.error("Pipeline error: #{inspect(e)}")

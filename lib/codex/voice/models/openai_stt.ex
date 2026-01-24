@@ -108,15 +108,17 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
     {filename, wav_data, content_type} = AudioInput.to_audio_file(input)
 
+    # Build multipart form for Req library
+    # Req expects: {name, {value, options}} where options is a keyword list
+    # Options can include :filename, :content_type, :size
     multipart =
       [
-        {:file, wav_data, {"form-data", [name: "file", filename: filename]},
-         [{"content-type", content_type}]},
-        {"model", model.model}
+        {:file, {wav_data, filename: filename, content_type: content_type}},
+        {:model, model.model}
       ]
-      |> maybe_add_param("prompt", settings.prompt)
-      |> maybe_add_param("language", settings.language)
-      |> maybe_add_param("temperature", format_temperature(settings.temperature))
+      |> maybe_add_param(:prompt, settings.prompt)
+      |> maybe_add_param(:language, settings.language)
+      |> maybe_add_param(:temperature, format_temperature(settings.temperature))
 
     case Req.post("#{model.base_url}/audio/transcriptions",
            headers: [{"Authorization", "Bearer #{api_key}"}],
@@ -150,7 +152,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
   end
 
   defp maybe_add_param(list, _key, nil), do: list
-  defp maybe_add_param(list, key, value), do: list ++ [{key, to_string(value)}]
+  defp maybe_add_param(list, key, value) when is_atom(key), do: list ++ [{key, to_string(value)}]
 
   @spec format_temperature(float() | nil) :: String.t() | nil
   defp format_temperature(nil), do: nil

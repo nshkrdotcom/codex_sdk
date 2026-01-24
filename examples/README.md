@@ -1,8 +1,22 @@
 # Examples
 
-All examples run with `mix run` from the repository root. The `live_*.exs` scripts hit the live Codex CLI (no mocks, no extra API-key setup required if you are already logged in).
+All examples run with `mix run` from the repository root.
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). Auth-aware defaults are `gpt-5.2-codex` for ChatGPT login and `gpt-5.1-codex-max` for API keys. A few live scripts explicitly set `model: "gpt-5.2-codex"` to avoid mini limitations (for example, higher reasoning-effort requests); edit those examples if you need a different model.
+## Architecture Note
+
+This SDK contains two distinct subsystems with different authentication:
+
+1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.exec/2`, `Codex.run/2`)
+   - Wraps the `codex` CLI via erlexec subprocess
+   - Uses `codex login` authentication (no separate API key needed)
+   - Auth-aware defaults: `gpt-5.2-codex` for ChatGPT login, `gpt-5.1-codex-max` for API keys
+
+2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
+   - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
+   - Requires `OPENAI_API_KEY` environment variable
+   - Does NOT use the codex CLI
+
+By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). A few live scripts explicitly set `model: "gpt-5.2-codex"` to avoid mini limitations (for example, higher reasoning-effort requests); edit those examples if you need a different model.
 
 ## Running everything
 
@@ -24,7 +38,9 @@ Prereqs:
 - `codex` installed and on PATH (or set `CODEX_PATH`)
 - authenticated via `codex login` or `CODEX_API_KEY`
 
-## Notable live examples
+## Notable Codex CLI Examples (uses `codex login` auth)
+
+The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you are authenticated via `codex login`).
 
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
@@ -48,37 +64,62 @@ Prereqs:
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
-- `examples/live_realtime_voice.exs` — full realtime voice interaction demo
 
-## Realtime Voice Examples
+## Realtime Voice Examples (OpenAI Agents SDK - requires OPENAI_API_KEY)
 
-These examples demonstrate the OpenAI Realtime API integration for real-time voice interactions:
+These examples use the OpenAI Realtime API directly (not via Codex CLI). They demonstrate real-time bidirectional voice interactions:
 
-- `examples/live_realtime_voice.exs` — full realtime voice interaction demo with event handling
-- `examples/realtime_basic.exs` — basic realtime session setup with configuration
+- `examples/live_realtime_voice.exs` — full realtime voice interaction demo with real audio I/O
+- `examples/realtime_basic.exs` — basic realtime session setup with real audio input
 - `examples/realtime_tools.exs` — using function tools with realtime agents
 - `examples/realtime_handoffs.exs` — agent-to-agent handoffs in realtime sessions
+
+### Audio Format
+
+All realtime examples use real audio:
+- **Input**: `test/fixtures/audio/voice_sample.wav` (24kHz, 16-bit PCM, mono)
+- **Output**: Saved to `/tmp/codex_realtime_*.pcm` (24kHz, 16-bit PCM, mono)
 
 ### Prerequisites for Realtime Examples
 
 ```bash
 export OPENAI_API_KEY=your-key-here
 mix run examples/realtime_basic.exs
+
+# Play the output audio:
+aplay -f S16_LE -r 24000 -c 1 /tmp/codex_realtime_basic.pcm
+
+# Or convert to WAV:
+sox -t raw -r 24000 -b 16 -c 1 -e signed-integer /tmp/codex_realtime_basic.pcm /tmp/response.wav
 ```
 
-For realtime examples with actual audio, you'll need audio capture/playback capabilities.
+## Voice Pipeline Examples (OpenAI Agents SDK - requires OPENAI_API_KEY)
 
-## Voice Pipeline Examples
+These examples use OpenAI's STT/TTS APIs directly (not via Codex CLI). They demonstrate the voice pipeline (STT → Workflow → TTS):
 
-These examples demonstrate the non-realtime voice pipeline (STT -> Workflow -> TTS):
-
-- `examples/voice_pipeline.exs` — basic STT -> Workflow -> TTS pipeline
-- `examples/voice_multi_turn.exs` — multi-turn conversations with streaming input
+- `examples/voice_pipeline.exs` — basic STT -> Workflow -> TTS pipeline with real audio
+- `examples/voice_multi_turn.exs` — multi-turn conversations with streamed audio input
 - `examples/voice_with_agent.exs` — using Codex Agents with voice pipelines
+
+### Audio Format
+
+All voice pipeline examples use real audio:
+- **Input**: `test/fixtures/audio/voice_sample.wav` (24kHz, 16-bit PCM, mono)
+- **Output**: Saved to `/tmp/codex_voice_*.pcm` (24kHz, 16-bit PCM, mono)
 
 ### Prerequisites for Voice Pipeline Examples
 
 ```bash
 export OPENAI_API_KEY=your-key-here
 mix run examples/voice_pipeline.exs
+
+# Play the output audio:
+aplay -f S16_LE -r 24000 -c 1 /tmp/codex_voice_response.pcm
+
+# Or convert to WAV:
+sox -t raw -r 24000 -b 16 -c 1 -e signed-integer /tmp/codex_voice_response.pcm /tmp/response.wav
 ```
+
+### Audio Test Fixture
+
+The audio fixture `test/fixtures/audio/voice_sample.wav` is sourced from Google's genai Python SDK (Apache 2.0 license). It contains ~2 seconds of speech at 24kHz, matching OpenAI's native audio format.

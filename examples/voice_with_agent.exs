@@ -3,13 +3,21 @@
 # Voice with Agent Example
 #
 # Demonstrates using a Codex Agent with the voice pipeline.
+# Uses a real audio file (test/fixtures/audio/voice_sample.wav) for input.
+# Saves received audio to /tmp/codex_voice_agent.pcm
+#
+# Audio formats:
+# - Input:  16-bit PCM, 24kHz, mono (WAV file)
+# - Output: 16-bit PCM, 24kHz, mono (saved to /tmp)
+#
+# To play the output: aplay -f S16_LE -r 24000 -c 1 /tmp/codex_voice_agent.pcm
 #
 # Usage:
 #   mix run examples/voice_with_agent.exs
 
 defmodule VoiceWithAgentExample do
   @moduledoc """
-  Example demonstrating voice pipelines with Codex Agents.
+  Example demonstrating voice pipelines with Codex Agents using real audio.
   """
 
   alias Codex.Agent
@@ -23,6 +31,8 @@ defmodule VoiceWithAgentExample do
   alias Codex.Voice.Pipeline
   alias Codex.Voice.Result
 
+  @output_audio_path "/tmp/codex_voice_agent.pcm"
+
   def run do
     IO.puts("=== Voice with Agent Example ===\n")
 
@@ -31,6 +41,24 @@ defmodule VoiceWithAgentExample do
       IO.puts("Error: OPENAI_API_KEY environment variable not set")
       System.halt(1)
     end
+
+    # Load real audio from test fixture
+    audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
+
+    audio_data =
+      case File.read(audio_file_path) do
+        {:ok, wav_data} ->
+          IO.puts("[OK] Loaded audio file: #{byte_size(wav_data)} bytes")
+          wav_data
+
+        {:error, reason} ->
+          IO.puts("[Error] Could not load #{audio_file_path}: #{inspect(reason)}")
+          System.halt(1)
+      end
+
+    # Initialize output file
+    File.write!(@output_audio_path, "")
+    IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
 
     # Create an agent with instructions
     {:ok, agent} =
@@ -44,7 +72,7 @@ defmodule VoiceWithAgentExample do
         """
       )
 
-    IO.puts("Created agent: #{agent.name}")
+    IO.puts("[OK] Created agent: #{agent.name}")
     IO.puts("  Model: #{agent.model}")
 
     # Create workflow from agent with context
@@ -75,12 +103,12 @@ defmodule VoiceWithAgentExample do
         config: config
       )
 
-    IO.puts("\nPipeline created")
+    IO.puts("\n[OK] Pipeline created")
     IO.puts("  STT Model: #{pipeline.stt_model.model}")
     IO.puts("  TTS Model: #{pipeline.tts_model.model}")
 
-    # Simulate voice input (in real usage, this would be actual recorded audio)
-    audio = AudioInput.new(generate_sample_audio())
+    # Create audio input from WAV file
+    audio = AudioInput.new(audio_data)
 
     IO.puts("\nRunning voice pipeline...")
 
@@ -98,13 +126,29 @@ defmodule VoiceWithAgentExample do
         handle_event(event, bytes, turns)
       end)
 
-    IO.puts("\n[Pipeline Complete]")
+    IO.puts("\n[OK] Pipeline Complete")
     IO.puts("  Total audio output: #{audio_bytes} bytes")
     IO.puts("  Total turns: #{turns}")
+
+    # Show output file info and playback instructions
+    output_size = File.stat!(@output_audio_path).size
+
+    IO.puts("""
+
+    Audio saved to: #{@output_audio_path}
+    Output file size: #{output_size} bytes
+
+    To play the response audio:
+      aplay -f S16_LE -r 24000 -c 1 #{@output_audio_path}
+
+    Or convert to WAV:
+      sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
+    """)
   end
 
   defp handle_event(%VoiceStreamEventAudio{data: data}, bytes, turns) when is_binary(data) do
-    # In a real application, you would play this audio
+    # Append audio to output file
+    File.write!(@output_audio_path, data, [:append])
     IO.write(".")
     {bytes + byte_size(data), turns}
   end
@@ -135,11 +179,6 @@ defmodule VoiceWithAgentExample do
 
   defp handle_event(_event, bytes, turns) do
     {bytes, turns}
-  end
-
-  # Generate sample silence audio (1 second at 24kHz, 16-bit mono)
-  defp generate_sample_audio do
-    :binary.copy(<<0, 0>>, 24_000)
   end
 end
 

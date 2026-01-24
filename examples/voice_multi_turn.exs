@@ -3,13 +3,21 @@
 # Multi-Turn Voice Conversation Example
 #
 # Demonstrates multi-turn voice conversations with streaming input.
+# Uses a real audio file (test/fixtures/audio/voice_sample.wav) for input.
+# Saves received audio to /tmp/codex_voice_multi_turn.pcm
+#
+# Audio formats:
+# - Input:  16-bit PCM, 24kHz, mono (WAV file, streamed in chunks)
+# - Output: 16-bit PCM, 24kHz, mono (saved to /tmp)
+#
+# To play the output: aplay -f S16_LE -r 24000 -c 1 /tmp/codex_voice_multi_turn.pcm
 #
 # Usage:
 #   mix run examples/voice_multi_turn.exs
 
 defmodule VoiceMultiTurnExample do
   @moduledoc """
-  Example demonstrating multi-turn voice conversations.
+  Example demonstrating multi-turn voice conversations with real audio.
   """
 
   alias Codex.Voice.Config
@@ -22,6 +30,8 @@ defmodule VoiceMultiTurnExample do
   alias Codex.Voice.Result
   alias Codex.Voice.SimpleWorkflow
 
+  @output_audio_path "/tmp/codex_voice_multi_turn.pcm"
+
   def run do
     IO.puts("=== Multi-Turn Voice Example ===\n")
 
@@ -30,6 +40,26 @@ defmodule VoiceMultiTurnExample do
       IO.puts("Error: OPENAI_API_KEY environment variable not set")
       System.halt(1)
     end
+
+    # Load real audio from test fixture
+    audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
+
+    audio_data =
+      case File.read(audio_file_path) do
+        {:ok, wav_data} ->
+          # Strip WAV header (44 bytes) to get raw PCM for streaming
+          <<_header::binary-size(44), pcm_data::binary>> = wav_data
+          IO.puts("[OK] Loaded audio file: #{byte_size(pcm_data)} bytes of PCM data")
+          pcm_data
+
+        {:error, reason} ->
+          IO.puts("[Error] Could not load #{audio_file_path}: #{inspect(reason)}")
+          System.halt(1)
+      end
+
+    # Initialize output file
+    File.write!(@output_audio_path, "")
+    IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
 
     # Create a conversational workflow
     workflow =
@@ -58,7 +88,7 @@ defmodule VoiceMultiTurnExample do
         greeting: "Hello! I'm ready to have a conversation with you."
       )
 
-    IO.puts("Created multi-turn workflow")
+    IO.puts("[OK] Created multi-turn workflow")
 
     # Create pipeline configuration
     config = %Config{
@@ -76,7 +106,7 @@ defmodule VoiceMultiTurnExample do
         config: config
       )
 
-    IO.puts("Pipeline ready for streaming input")
+    IO.puts("[OK] Pipeline ready for streaming input")
     IO.puts("Starting multi-turn session...\n")
 
     # Create streaming input
@@ -92,42 +122,84 @@ defmodule VoiceMultiTurnExample do
         stream_output(result)
       end)
 
-    # Simulate sending audio chunks
-    simulate_conversation(streamed_input)
+    # Stream real audio in chunks (simulating multiple turns)
+    stream_audio_turns(streamed_input, audio_data)
 
     # Wait for output to complete
     Task.await(output_task, :infinity)
+
+    # Show output file info and playback instructions
+    output_size = File.stat!(@output_audio_path).size
+
+    IO.puts("""
+
+    Audio saved to: #{@output_audio_path}
+    Output file size: #{output_size} bytes
+
+    To play the response audio:
+      aplay -f S16_LE -r 24000 -c 1 #{@output_audio_path}
+
+    Or convert to WAV:
+      sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
+    """)
   end
 
-  defp simulate_conversation(input) do
-    IO.puts("[Simulating conversation...]\n")
+  defp stream_audio_turns(input, audio_data) do
+    IO.puts("[Streaming audio in 3 turns...]\n")
 
-    # Simulate first turn - greeting
+    # Split audio into 3 parts for 3 turns
+    total_size = byte_size(audio_data)
+    chunk_size = div(total_size, 3)
+
+    # Turn 1
     IO.puts("--- Turn 1 ---")
-    send_audio_chunk(input, "Hello, how are you?")
-    Process.sleep(1_500)
+    turn1_data = binary_part(audio_data, 0, chunk_size)
+    stream_audio_chunk(input, turn1_data)
+    Process.sleep(2000)
 
-    # Simulate second turn - weather question
+    # Turn 2
     IO.puts("\n--- Turn 2 ---")
-    send_audio_chunk(input, "What's the weather like today?")
-    Process.sleep(1_500)
+    turn2_data = binary_part(audio_data, chunk_size, chunk_size)
+    stream_audio_chunk(input, turn2_data)
+    Process.sleep(2000)
 
-    # Simulate third turn - goodbye
+    # Turn 3
     IO.puts("\n--- Turn 3 ---")
-    send_audio_chunk(input, "Thank you, goodbye!")
-    Process.sleep(1_000)
+    remaining = total_size - 2 * chunk_size
+    turn3_data = binary_part(audio_data, 2 * chunk_size, remaining)
+    stream_audio_chunk(input, turn3_data)
+    Process.sleep(1500)
 
     # Close the stream
     StreamedAudioInput.close(input)
     IO.puts("\n[Stream closed]")
   end
 
-  defp send_audio_chunk(input, _simulated_text) do
-    # In real usage, this would be actual audio data from a microphone
-    # For demo, we're simulating with placeholder silence
-    # 100ms of audio at 24kHz, 16-bit mono
-    audio_chunk = :binary.copy(<<0, 0>>, 4_800)
-    StreamedAudioInput.add(input, audio_chunk)
+  defp stream_audio_chunk(input, data) do
+    # Send audio in small chunks (4800 bytes = 100ms at 24kHz, 16-bit mono)
+    chunk_size = 4800
+    chunks = for <<chunk::binary-size(chunk_size) <- data>>, do: chunk
+
+    # Handle any remaining partial chunk
+    remaining_size = rem(byte_size(data), chunk_size)
+
+    chunks =
+      if remaining_size > 0 do
+        last_chunk = binary_part(data, byte_size(data) - remaining_size, remaining_size)
+        chunks ++ [last_chunk]
+      else
+        chunks
+      end
+
+    IO.puts("Sending #{length(chunks)} audio chunks...")
+
+    for chunk <- chunks do
+      StreamedAudioInput.add(input, chunk)
+      IO.write(".")
+      Process.sleep(50)
+    end
+
+    IO.puts(" [done]")
   end
 
   defp stream_output(result) do
@@ -145,6 +217,8 @@ defmodule VoiceMultiTurnExample do
 
   defp handle_output_event(%VoiceStreamEventAudio{data: data}, bytes, turns)
        when is_binary(data) do
+    # Append audio to output file
+    File.write!(@output_audio_path, data, [:append])
     IO.write(".")
     {bytes + byte_size(data), turns}
   end

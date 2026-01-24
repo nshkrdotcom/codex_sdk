@@ -21,6 +21,8 @@ Auth defaults: all examples prefer `CODEX_API_KEY` (or `auth.json` `OPENAI_API_K
 13. [Live Telemetry Stream](#live-telemetry-stream)
 14. [Additional Live Examples](#additional-live-examples)
 15. [App-server Transport](#app-server-transport)
+16. [Realtime Voice Interactions](#realtime-voice-interactions)
+17. [Voice Pipeline](#voice-pipeline)
 
 ---
 
@@ -1379,6 +1381,279 @@ first_skill = skills |> List.first() |> Map.get("skills") |> List.first()
 {:ok, skill_body} = Codex.Skills.load(first_skill, skills_enabled: true)
 ```
 
+## Realtime Voice Interactions
+
+### Basic Realtime Session
+
+Set up a bidirectional voice session using the OpenAI Realtime API:
+
+```elixir
+defmodule RealtimeExample do
+  alias Codex.Realtime
+  alias Codex.Realtime.Config.{RunConfig, SessionModelSettings, TurnDetectionConfig}
+
+  def start_session do
+    # Create a realtime agent
+    agent = Realtime.agent(
+      name: "VoiceAssistant",
+      instructions: "You are a helpful voice assistant."
+    )
+
+    # Configure session with voice and turn detection
+    config = %RunConfig{
+      model_settings: %SessionModelSettings{
+        voice: "alloy",
+        turn_detection: %TurnDetectionConfig{
+          type: :semantic_vad,
+          eagerness: :medium
+        }
+      }
+    }
+
+    # Start the session
+    {:ok, session} = Realtime.start_session(agent, config)
+
+    # Subscribe to events
+    Realtime.subscribe(session, self())
+
+    # Session is now ready for audio
+    session
+  end
+
+  def handle_events do
+    receive do
+      {:realtime_event, %Codex.Realtime.Events.RealtimeAudioEvent{} = event} ->
+        # Handle audio from the agent
+        play_audio(event.audio)
+        handle_events()
+
+      {:realtime_event, %Codex.Realtime.Events.RealtimeAgentStateEvent{state: state}} ->
+        IO.puts("Agent state: #{state}")
+        handle_events()
+
+      {:realtime_event, event} ->
+        IO.inspect(event, label: "Event")
+        handle_events()
+    after
+      30_000 -> :timeout
+    end
+  end
+end
+```
+
+### Realtime with Function Tools
+
+Add function calling capabilities to realtime agents:
+
+```elixir
+defmodule RealtimeToolsExample do
+  alias Codex.Realtime
+
+  def create_agent_with_tools do
+    Realtime.agent(
+      name: "WeatherAssistant",
+      instructions: "Help users check the weather.",
+      tools: [
+        %{
+          name: "get_weather",
+          description: "Get weather for a location",
+          parameters: %{
+            type: "object",
+            properties: %{
+              location: %{type: "string", description: "City name"}
+            },
+            required: ["location"]
+          }
+        }
+      ]
+    )
+  end
+end
+```
+
+### Multi-Agent Handoffs
+
+Hand off conversations between specialized agents:
+
+```elixir
+defmodule RealtimeHandoffsExample do
+  alias Codex.Realtime
+
+  def create_agents do
+    greeter = Realtime.agent(
+      name: "Greeter",
+      instructions: "Greet users and hand off to specialists."
+    )
+
+    specialist = Realtime.agent(
+      name: "TechSupport",
+      instructions: "Provide technical assistance."
+    )
+
+    # Configure greeter to hand off to specialist
+    greeter_with_handoff = Realtime.add_handoff(greeter, specialist,
+      condition: "When user needs technical help"
+    )
+
+    {greeter_with_handoff, specialist}
+  end
+end
+```
+
+Run realtime examples:
+```bash
+export OPENAI_API_KEY=your-key
+mix run examples/realtime_basic.exs
+mix run examples/realtime_tools.exs
+mix run examples/realtime_handoffs.exs
+mix run examples/live_realtime_voice.exs
+```
+
+## Voice Pipeline
+
+### Basic STT -> Workflow -> TTS Pipeline
+
+Process audio through speech-to-text, custom workflow, and text-to-speech:
+
+```elixir
+defmodule VoicePipelineExample do
+  alias Codex.Voice.{Pipeline, SimpleWorkflow, Config}
+  alias Codex.Voice.Config.TTSSettings
+  alias Codex.Voice.Input.AudioInput
+
+  def run_pipeline(audio_data) do
+    # Create a simple workflow
+    workflow = SimpleWorkflow.new(
+      fn transcribed_text ->
+        # Process the transcribed text
+        response = "I heard you say: #{transcribed_text}"
+        [response]
+      end,
+      greeting: "Hello! How can I help you?"
+    )
+
+    # Configure the pipeline
+    config = %Config{
+      workflow_name: "SimpleVoice",
+      tts_settings: %TTSSettings{voice: :nova}
+    }
+
+    # Create and start the pipeline
+    {:ok, pipeline} = Pipeline.start_link(workflow: workflow, config: config)
+
+    # Create audio input
+    input = AudioInput.new(audio_data, format: :wav)
+
+    # Run the pipeline
+    {:ok, result} = Pipeline.run(pipeline, input)
+
+    # Collect audio output
+    result
+    |> Enum.filter(fn
+      %Codex.Voice.Events.VoiceStreamEventAudio{} -> true
+      _ -> false
+    end)
+    |> Enum.map(& &1.data)
+    |> IO.iodata_to_binary()
+  end
+end
+```
+
+### Multi-Turn Voice Conversations
+
+Maintain conversation context across multiple turns:
+
+```elixir
+defmodule VoiceMultiTurnExample do
+  alias Codex.Voice.{Pipeline, AgentWorkflow, Config}
+  alias Codex.Voice.Input.StreamedAudioInput
+
+  def create_conversational_pipeline do
+    # Use AgentWorkflow for multi-turn conversations
+    workflow = AgentWorkflow.new(
+      agent: %{
+        instructions: "You are a helpful assistant. Remember context from earlier in the conversation."
+      }
+    )
+
+    config = %Config{
+      workflow_name: "ConversationalAssistant",
+      tts_settings: %Config.TTSSettings{voice: :alloy}
+    }
+
+    {:ok, pipeline} = Pipeline.start_link(
+      workflow: workflow,
+      config: config
+    )
+
+    pipeline
+  end
+
+  def stream_conversation(pipeline, audio_stream) do
+    # Create streaming input
+    input = StreamedAudioInput.new()
+
+    # Start processing
+    {:ok, result_stream} = Pipeline.run_streamed(pipeline, input)
+
+    # Feed audio chunks
+    Task.start(fn ->
+      for chunk <- audio_stream do
+        StreamedAudioInput.push(input, chunk)
+      end
+      StreamedAudioInput.close(input)
+    end)
+
+    # Process results
+    result_stream
+  end
+end
+```
+
+### Voice with Codex Agent
+
+Integrate the voice pipeline with a full Codex agent:
+
+```elixir
+defmodule VoiceWithAgentExample do
+  alias Codex.Voice.{Pipeline, AgentWorkflow, Config}
+
+  def create_agent_voice_pipeline do
+    # Create workflow backed by Codex.Agent
+    workflow = AgentWorkflow.new(
+      agent: %{
+        instructions: """
+        You are a coding assistant accessible via voice.
+        When asked about code, provide clear explanations.
+        """,
+        tools: [Codex.Tools.FileSearchTool]
+      }
+    )
+
+    config = %Config{
+      workflow_name: "CodingAssistant",
+      stt_settings: %Config.STTSettings{
+        model: "gpt-4o-transcribe"
+      },
+      tts_settings: %Config.TTSSettings{
+        voice: :echo,
+        model: "gpt-4o-mini-tts"
+      }
+    }
+
+    Pipeline.start_link(workflow: workflow, config: config)
+  end
+end
+```
+
+Run voice pipeline examples:
+```bash
+export OPENAI_API_KEY=your-key
+mix run examples/voice_pipeline.exs
+mix run examples/voice_multi_turn.exs
+mix run examples/voice_with_agent.exs
+```
+
 ## Conclusion
 
 These examples demonstrate the flexibility and power of the Elixir Codex SDK. Key patterns include:
@@ -1389,5 +1664,7 @@ These examples demonstrate the flexibility and power of the Elixir Codex SDK. Ke
 - **Error handling** for robustness
 - **Concurrent execution** for performance
 - **Production patterns** for observability and reliability
+- **Realtime voice** for bidirectional audio interactions
+- **Voice pipeline** for STT -> Workflow -> TTS processing
 
 Refer to the [API Reference](03-api-reference.md) for complete documentation of all functions and types.

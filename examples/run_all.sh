@@ -56,7 +56,13 @@ examples=(
   "examples/live_model_streaming_tracing.exs"
   "examples/live_attachments_and_search.exs"
   "examples/live_parity_and_status.exs"
-  "examples/live_realtime_voice_stub.exs"
+  "examples/live_realtime_voice.exs"
+  "examples/realtime_basic.exs"
+  "examples/realtime_tools.exs"
+  "examples/realtime_handoffs.exs"
+  "examples/voice_pipeline.exs"
+  "examples/voice_multi_turn.exs"
+  "examples/voice_with_agent.exs"
 )
 
 failures=()

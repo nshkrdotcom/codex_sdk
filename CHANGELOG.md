@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-24
+
+### Added
+
+- **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions
+  - `Codex.Realtime` module with agent builder and session orchestration
+  - `Codex.Realtime.Session` GenServer for WebSocket-based streaming via WebSockex
+  - `Codex.Realtime.Runner` for managing agent sessions with automatic tool call handling
+  - `Codex.Realtime.Agent` struct with builder functions for agent configuration
+  - Session-level and model-level event types for comprehensive event handling
+  - Configuration structs: `RealtimeSessionConfig`, `RealtimeModelConfig`, `TurnDetectionConfig`, `InputAudioTranscription`
+  - Core types: `Codex.Realtime.Audio` (PCM16/G711), `Codex.Realtime.Item`, `PlaybackTracker`
+  - Handoff execution between agents and guardrail integration
+  - PubSub-based event broadcasting to subscribers
+
+- **Voice Pipeline**: Non-realtime voice pipeline for STT -> Workflow -> TTS processing
+  - `Codex.Voice.Pipeline` for single-turn and multi-turn voice flows
+  - `Codex.Voice.Result` for streamed audio output handling
+  - `Codex.Voice.Workflow` behaviour for custom processing
+  - `Codex.Voice.SimpleWorkflow` for function-based workflows
+  - `Codex.Voice.AgentWorkflow` wrapping `Codex.Agent` for full agent-based voice interactions
+  - STT model behaviour (`Codex.Voice.Model.STTModel`) and OpenAI implementation (`gpt-4o-transcribe`)
+  - TTS model behaviour (`Codex.Voice.Model.TTSModel`) and OpenAI implementation (`gpt-4o-mini-tts`)
+  - `Codex.Voice.Model.ModelProvider` behaviour for model factories
+  - `Codex.Voice.Input.AudioInput` for single audio buffers and `StreamedAudioInput` for streaming
+  - `Codex.Voice.Events` for voice stream events (audio, lifecycle, error)
+  - `Codex.Voice.Config` for pipeline configuration with STT/TTS settings
+  - WAV encoding utilities for audio file handling
+
+- **Main SDK Integration**:
+  - Realtime and voice error types in `Codex.Error`
+  - Telemetry events for realtime session and voice pipeline lifecycle
+  - Delegation functions in main `Codex` module for Realtime/Voice convenience APIs
+
+- **Examples**:
+  - `live_realtime_voice.exs`: Full realtime voice interaction demo
+  - `realtime_basic.exs`: Simple realtime session setup
+  - `realtime_tools.exs`: Function calling with realtime agents
+  - `realtime_handoffs.exs`: Multi-agent handoffs in realtime sessions
+  - `voice_pipeline.exs`: Basic STT -> Workflow -> TTS pipeline
+  - `voice_multi_turn.exs`: Multi-turn streaming conversations
+  - `voice_with_agent.exs`: Using `Codex.Agent` with voice pipelines
+
+### Changed
+
+- Removed `live_realtime_voice_stub.exs` placeholder, replaced with working implementation
+
+### Documentation
+
+- Added Realtime and Voice sections to examples/README.md with prerequisites and usage
+- Updated hexdocs module groups to include all Realtime and Voice modules
+
 ## [0.6.0] - 2026-01-23
 
 ### Added

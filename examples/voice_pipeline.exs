@@ -3,13 +3,21 @@
 # Voice Pipeline Example
 #
 # Demonstrates the non-realtime voice pipeline for STT -> Workflow -> TTS.
+# Uses a real audio file (test/fixtures/audio/voice_sample.wav) for input.
+# Saves received audio to /tmp/codex_voice_response.pcm
+#
+# Audio formats:
+# - Input:  16-bit PCM, 24kHz, mono (WAV file)
+# - Output: 16-bit PCM, 24kHz, mono (saved to /tmp)
+#
+# To play the output: aplay -f S16_LE -r 24000 -c 1 /tmp/codex_voice_response.pcm
 #
 # Usage:
 #   mix run examples/voice_pipeline.exs
 
 defmodule VoicePipelineExample do
   @moduledoc """
-  Example demonstrating the voice pipeline.
+  Example demonstrating the voice pipeline with real audio.
   """
 
   alias Codex.Voice.Config
@@ -22,6 +30,8 @@ defmodule VoicePipelineExample do
   alias Codex.Voice.Result
   alias Codex.Voice.SimpleWorkflow
 
+  @output_audio_path "/tmp/codex_voice_response.pcm"
+
   def run do
     IO.puts("=== Voice Pipeline Example ===\n")
 
@@ -31,17 +41,35 @@ defmodule VoicePipelineExample do
       System.halt(1)
     end
 
+    # Load real audio from test fixture
+    audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
+
+    audio_data =
+      case File.read(audio_file_path) do
+        {:ok, wav_data} ->
+          IO.puts("[OK] Loaded audio file: #{byte_size(wav_data)} bytes")
+          wav_data
+
+        {:error, reason} ->
+          IO.puts("[Error] Could not load #{audio_file_path}: #{inspect(reason)}")
+          System.halt(1)
+      end
+
+    # Initialize output file
+    File.write!(@output_audio_path, "")
+    IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
+
     # Create a simple workflow that echoes input
     workflow =
       SimpleWorkflow.new(
         fn text ->
-          IO.puts("[Transcribed] #{text}")
+          IO.puts("\n[Transcribed] #{text}")
           ["You said: #{text}. How can I help you with that?"]
         end,
         greeting: "Hello! I'm ready to listen."
       )
 
-    IO.puts("Created workflow with greeting: #{workflow.greeting}")
+    IO.puts("[OK] Created workflow with greeting: #{workflow.greeting}")
 
     # Create pipeline configuration
     config = %Config{
@@ -59,15 +87,13 @@ defmodule VoicePipelineExample do
         config: config
       )
 
-    IO.puts("Pipeline created")
+    IO.puts("[OK] Pipeline created")
     IO.puts("  STT Model: #{pipeline.stt_model.model}")
     IO.puts("  TTS Model: #{pipeline.tts_model.model}")
     IO.puts("  TTS Voice: #{config.tts_settings.voice}")
 
-    # Generate sample audio (silence for demo purposes)
-    # In real usage, this would be actual recorded audio bytes
-    audio_data = generate_sample_audio()
-
+    # Create audio input from WAV file
+    # Note: AudioInput accepts WAV data directly - it will be sent as WAV to OpenAI
     audio =
       AudioInput.new(audio_data,
         frame_rate: 24_000,
@@ -92,17 +118,34 @@ defmodule VoicePipelineExample do
         handle_event(event, acc)
       end)
 
-    IO.puts("\nPipeline completed!")
+    IO.puts("\n[OK] Pipeline completed!")
     IO.puts("Total audio output: #{total_audio_bytes} bytes")
+
+    # Show output file info and playback instructions
+    output_size = File.stat!(@output_audio_path).size
+
+    IO.puts("""
+
+    Audio saved to: #{@output_audio_path}
+    Output file size: #{output_size} bytes
+
+    To play the response audio:
+      aplay -f S16_LE -r 24000 -c 1 #{@output_audio_path}
+
+    Or convert to WAV:
+      sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
+    """)
   end
 
   defp handle_event(%VoiceStreamEventAudio{data: data}, acc) when is_binary(data) do
-    IO.write("[Audio] Received #{byte_size(data)} bytes\n")
+    # Append audio to output file
+    File.write!(@output_audio_path, data, [:append])
+    IO.write(".")
     acc + byte_size(data)
   end
 
   defp handle_event(%VoiceStreamEventAudio{data: nil}, acc) do
-    IO.puts("[Audio] End of audio segment")
+    IO.puts("\n[Audio] End of audio segment")
     acc
   end
 
@@ -117,12 +160,6 @@ defmodule VoicePipelineExample do
   end
 
   defp handle_event(_event, acc), do: acc
-
-  # Generate sample silence audio for demo purposes
-  # 1 second of silence at 24kHz, 16-bit mono
-  defp generate_sample_audio do
-    :binary.copy(<<0, 0>>, 24_000)
-  end
 end
 
 VoicePipelineExample.run()

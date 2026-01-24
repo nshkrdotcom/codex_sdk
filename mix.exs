@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -88,13 +88,15 @@ defmodule CodexSdk.MixProject do
         "guides/02-architecture.md",
         "guides/03-api-reference.md",
         "guides/04-examples.md",
-        "guides/05-app-server-transport.md"
+        "guides/05-app-server-transport.md",
+        "guides/06-realtime-and-voice.md"
       ],
       groups_for_extras: [
         Introduction: ["README.md", "guides/01-getting-started.md"],
         Guides: [
           "guides/02-architecture.md",
-          "guides/05-app-server-transport.md"
+          "guides/05-app-server-transport.md",
+          "guides/06-realtime-and-voice.md"
         ],
         Reference: [
           "guides/03-api-reference.md",

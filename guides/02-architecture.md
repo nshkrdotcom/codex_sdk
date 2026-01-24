@@ -684,6 +684,21 @@ end)
 
 ## Future Enhancements
 
+### Realtime and Voice Modules
+
+The SDK includes two additional subsystems for voice interactions:
+
+**Realtime API (`Codex.Realtime.*`)**: Full integration with OpenAI's Realtime API for bidirectional voice streaming.
+- `Codex.Realtime.Session`: WebSocket-based GenServer using WebSockex for real-time communication
+- `Codex.Realtime.Runner`: High-level orchestrator for agent sessions with tool handling
+- `Codex.Realtime.Agent`: Agent configuration with instructions, tools, and handoffs
+- PubSub-based event broadcasting for session events
+
+**Voice Pipeline (`Codex.Voice.*`)**: Non-realtime STT -> Workflow -> TTS processing.
+- `Codex.Voice.Pipeline`: Orchestrates speech-to-text, workflow processing, and text-to-speech
+- `Codex.Voice.Workflow`: Behaviour for custom workflow implementations
+- `Codex.Voice.Model.*`: Behaviours and implementations for STT/TTS models
+
 ### Potential Improvements
 
 1. **Native JSON Parsing**: NIF for faster event parsing
