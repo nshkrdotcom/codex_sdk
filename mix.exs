@@ -49,6 +49,7 @@ defmodule CodexSdk.MixProject do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:req, "~> 0.4"},
+      {:websockex, "~> 0.4.3"},
 
       # Testing
       {:supertester, "~> 0.4.0", only: :test},
