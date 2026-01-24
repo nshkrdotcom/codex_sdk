@@ -48,4 +48,37 @@ Prereqs:
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
-- `examples/live_realtime_voice_stub.exs` — shows the realtime/voice unsupported errors
+- `examples/live_realtime_voice.exs` — full realtime voice interaction demo
+
+## Realtime Voice Examples
+
+These examples demonstrate the OpenAI Realtime API integration for real-time voice interactions:
+
+- `examples/live_realtime_voice.exs` — full realtime voice interaction demo with event handling
+- `examples/realtime_basic.exs` — basic realtime session setup with configuration
+- `examples/realtime_tools.exs` — using function tools with realtime agents
+- `examples/realtime_handoffs.exs` — agent-to-agent handoffs in realtime sessions
+
+### Prerequisites for Realtime Examples
+
+```bash
+export OPENAI_API_KEY=your-key-here
+mix run examples/realtime_basic.exs
+```
+
+For realtime examples with actual audio, you'll need audio capture/playback capabilities.
+
+## Voice Pipeline Examples
+
+These examples demonstrate the non-realtime voice pipeline (STT -> Workflow -> TTS):
+
+- `examples/voice_pipeline.exs` — basic STT -> Workflow -> TTS pipeline
+- `examples/voice_multi_turn.exs` — multi-turn conversations with streaming input
+- `examples/voice_with_agent.exs` — using Codex Agents with voice pipelines
+
+### Prerequisites for Voice Pipeline Examples
+
+```bash
+export OPENAI_API_KEY=your-key-here
+mix run examples/voice_pipeline.exs
+```
