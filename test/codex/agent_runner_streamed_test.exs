@@ -51,7 +51,7 @@ defmodule Codex.AgentRunnerStreamedTest do
     assert Enum.any?(semantic_events, &match?(%RunItem{event: %Events.ThreadStarted{}}, &1))
 
     assert Enum.any?(semantic_events, fn
-             %RawResponses{events: events} -> length(events) > 0
+             %RawResponses{events: events} -> events != []
              _ -> false
            end)
 

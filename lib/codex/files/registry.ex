@@ -21,6 +21,11 @@ defmodule Codex.Files.Registry do
           required(:destination_path) => Path.t()
         }
 
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, %{}, Keyword.put_new(opts, :name, @registry))
+  end
+
   @doc """
   Ensures the registry is running, starting it under the current process when necessary.
   """
@@ -28,7 +33,7 @@ defmodule Codex.Files.Registry do
   def ensure_started do
     case Process.whereis(@registry) do
       nil ->
-        case GenServer.start(__MODULE__, %{}, name: @registry) do
+        case start_link() do
           {:ok, pid} -> {:ok, pid}
           {:error, {:already_started, pid}} -> {:ok, pid}
           {:error, _} = error -> error
@@ -88,10 +93,12 @@ defmodule Codex.Files.Registry do
       :ets.new(@manifest_table, [
         :named_table,
         :set,
-        :public,
+        :protected,
         read_concurrency: true,
         write_concurrency: true
       ])
+
+    cleanup_orphaned_staging()
 
     interval = cleanup_interval()
 
@@ -275,6 +282,11 @@ defmodule Codex.Files.Registry do
 
   defp cleanup_interval do
     Application.get_env(:codex_sdk, :attachment_cleanup_interval_ms, 60_000)
+  end
+
+  defp cleanup_orphaned_staging do
+    _ = File.rm_rf(Codex.Files.staging_dir())
+    :ok
   end
 
   defp accumulate_metrics({_checksum, attachment}, acc) do

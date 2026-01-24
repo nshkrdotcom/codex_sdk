@@ -12,7 +12,10 @@ defmodule Codex.Application do
     Telemetry.configure()
 
     children = [
-      {Codex.AppServer.Supervisor, []}
+      {Codex.AppServer.Supervisor, []},
+      {Codex.Files.Registry, []},
+      {Codex.Approvals.Registry, []},
+      {Task.Supervisor, name: Codex.TaskSupervisor}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Codex.Supervisor)

@@ -103,10 +103,10 @@ and resume them:
 - **App-server JSON-RPC (optional):** `codex app-server` for v2 APIs and server-driven
   approvals.
 
-See `docs/09-app-server-transport.md` for the app-server guide.
+See `guides/05-app-server-transport.md` for the app-server guide.
 
 ## Next Steps
 
-- `docs/02-architecture.md` for system layout and transport flow.
-- `docs/05-api-reference.md` for module-level docs.
-- `docs/06-examples.md` for runnable patterns.
+- `guides/02-architecture.md` for system layout and transport flow.
+- `guides/03-api-reference.md` for module-level docs.
+- `guides/04-examples.md` for runnable patterns.

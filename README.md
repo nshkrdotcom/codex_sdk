@@ -310,6 +310,7 @@ apply or undo diffs locally:
     codex_path_override: "/custom/path/to/codex",
     telemetry_prefix: [:codex, :sdk],
     model: "o1",
+    reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
     model_personality: :friendly,
     review_model: "gpt-5.1-codex",
     tool_output_token_limit: 512,
@@ -324,8 +325,9 @@ apply or undo diffs locally:
     auto_run: true,
     sandbox: :strict,
     approval_timeout_ms: 45_000,
-    web_search_mode: :cached,
-    personality: :pragmatic
+    web_search_mode: :cached,  # :disabled | :cached | :live
+    personality: :pragmatic,   # :friendly | :pragmatic
+    collaboration_mode: :plan  # :plan | :pair_programming | :execute | :custom (app-server)
   )
 
 {:ok, thread} = Codex.start_thread(codex_options, thread_options)
@@ -436,6 +438,8 @@ thread_opts =
 ```
 
 Query `Codex.Files.metrics/0` for staging stats and force cleanup with `Codex.Files.force_cleanup/0`.
+Staged files are runtime-scoped; the registry clears the staging directory on startup, so re-stage
+attachments after restarts.
 
 ### MCP Tool Discovery
 
@@ -836,10 +840,7 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 ## Documentation
 
-HexDocs hosts the prerelease documentation set referenced in `mix.exs`:
-
-- **Guides**: [docs/01.md](docs/01.md), [docs/02-architecture.md](docs/02-architecture.md), and [docs/09-app-server-transport.md](docs/09-app-server-transport.md)
-- **Reference**: [docs/05-api-reference.md](docs/05-api-reference.md) and [docs/06-examples.md](docs/06-examples.md)
+- **API Reference**: Generated docs available via `mix docs` or on [HexDocs](https://hexdocs.pm/codex_sdk)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
 
 ## License

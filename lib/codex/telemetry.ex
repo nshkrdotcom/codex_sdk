@@ -18,6 +18,7 @@ defmodule Codex.Telemetry do
   @otel_handler_id "codex-otel-tracing"
   @default_originator :sdk
   @default_processor_name :codex_sdk_processor
+  @otlp_configured_key :otlp_configured?
 
   @type telemetry_event :: [atom()]
 
@@ -59,6 +60,7 @@ defmodule Codex.Telemetry do
         with :ok <- maybe_start_exporter(exporter_spec),
              :ok <- maybe_start_app(:opentelemetry),
              :ok <- attach_tracing_handler() do
+          set_otlp_configured(true)
           :ok
         else
           {:error, reason} ->
@@ -68,7 +70,12 @@ defmodule Codex.Telemetry do
       end
     else
       disable_otel_tracing()
-      reset_otel_apps()
+
+      if otlp_configured?() do
+        reset_otel_apps()
+        set_otlp_configured(false)
+      end
+
       Application.put_env(:opentelemetry, :processors, [])
       :ok
     end
@@ -270,6 +277,14 @@ defmodule Codex.Telemetry do
 
   defp resolve_env(nil), do: System.get_env()
   defp resolve_env(env) when is_map(env), do: env
+
+  defp otlp_configured? do
+    Application.get_env(:codex_sdk, @otlp_configured_key, false)
+  end
+
+  defp set_otlp_configured(value) when is_boolean(value) do
+    Application.put_env(:codex_sdk, @otlp_configured_key, value)
+  end
 
   defp normalize_string(nil), do: nil
 

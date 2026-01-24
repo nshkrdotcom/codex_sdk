@@ -1,8 +1,8 @@
 defmodule Codex.ErrorTest do
   use ExUnit.Case, async: true
 
-  alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.{Error, Options, Thread}
+  alias Codex.Thread.Options, as: ThreadOptions
 
   test "non-zero codex exit normalizes into Codex.Error" do
     script_body = """

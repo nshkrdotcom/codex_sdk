@@ -56,7 +56,7 @@ defmodule CodexSdk.MixProject do
       {:stream_data, "~> 1.0", only: :test},
 
       # Development and documentation
-      {:ex_doc, "~> 0.38.2", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:excoveralls, "~> 0.18", only: :test}
@@ -83,21 +83,21 @@ defmodule CodexSdk.MixProject do
         "README.md",
         "LICENSE",
         "CHANGELOG.md",
-        "docs/01.md",
-        "docs/02-architecture.md",
-        "docs/05-api-reference.md",
-        "docs/06-examples.md",
-        "docs/09-app-server-transport.md"
+        "guides/01-getting-started.md",
+        "guides/02-architecture.md",
+        "guides/03-api-reference.md",
+        "guides/04-examples.md",
+        "guides/05-app-server-transport.md"
       ],
       groups_for_extras: [
-        Introduction: ["README.md", "docs/01.md"],
+        Introduction: ["README.md", "guides/01-getting-started.md"],
         Guides: [
-          "docs/02-architecture.md",
-          "docs/09-app-server-transport.md"
+          "guides/02-architecture.md",
+          "guides/05-app-server-transport.md"
         ],
         Reference: [
-          "docs/05-api-reference.md",
-          "docs/06-examples.md",
+          "guides/03-api-reference.md",
+          "guides/04-examples.md",
           "LICENSE"
         ],
         Changelog: ["CHANGELOG.md"]
@@ -152,21 +152,11 @@ defmodule CodexSdk.MixProject do
     ]
   end
 
-  @package_docs ~w(
-    docs/01.md
-    docs/02-architecture.md
-    docs/05-api-reference.md
-    docs/06-examples.md
-    docs/09-app-server-transport.md
-  )
-
   defp package do
     [
       name: "codex_sdk",
       description: description(),
-      files:
-        ~w(lib config priv mix.exs README.md CHANGELOG.md LICENSE assets examples) ++
-          @package_docs,
+      files: ~w(lib config priv mix.exs README.md CHANGELOG.md LICENSE),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

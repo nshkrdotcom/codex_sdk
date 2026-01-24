@@ -477,7 +477,7 @@ defmodule Codex.Tools.FileSearchToolTest do
 
       for file <- result["files"] do
         assert is_list(file["matches"])
-        assert length(file["matches"]) > 0
+        assert file["matches"] != []
       end
     end
   end

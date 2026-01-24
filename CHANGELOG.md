@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web search config handling now prefers `web_search_mode` while honoring config defaults and feature gating
 - Account rate limit notifications normalize to rate limit snapshot types
 - Output schemas can be configured at the thread level with turn-level overrides
+- Restructured and streamlined guides
+
+### Fixed
+
+- App-server connections stop spawned subprocesses on initialize-send failures and ignore invalid subscriber filters
+- Files/approval registries are supervised, with staged attachments cleared on registry startup to prevent orphans
+- Streamable HTTP transport and streaming producers avoid blocking GenServer callbacks by running work in tasks
 
 ### Deprecated
 

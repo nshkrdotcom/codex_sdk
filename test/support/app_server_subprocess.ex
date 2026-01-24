@@ -23,13 +23,23 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   def send(_pid, data, opts) do
     owner = Keyword.fetch!(opts, :owner)
     send(owner, {:app_server_subprocess_send, self(), IO.iodata_to_binary(data)})
-    :ok
+
+    case Keyword.get(opts, :send_result, :ok) do
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl true
-  def stop(pid, _opts) do
+  def stop(pid, opts) do
     if is_pid(pid) and Process.alive?(pid) do
       send(pid, :stop)
+    end
+
+    owner = Keyword.get(opts, :owner)
+
+    if owner && Keyword.get(opts, :notify_stop, false) do
+      send(owner, {:app_server_subprocess_stopped, self(), pid})
     end
 
     :ok

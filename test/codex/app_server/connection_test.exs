@@ -39,6 +39,20 @@ defmodule Codex.AppServer.ConnectionTest do
     assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
   end
 
+  test "init failure stops subprocess when initialize send fails", %{codex_opts: codex_opts} do
+    assert {:error, :send_failed} =
+             Connection.start_link(codex_opts,
+               subprocess:
+                 {AppServerSubprocess,
+                  owner: self(), send_result: {:error, :send_failed}, notify_stop: true},
+               init_timeout_ms: 200
+             )
+
+    assert_receive {:app_server_subprocess_started, _conn, _os_pid}
+    assert_receive {:app_server_subprocess_send, _conn, _init_line}
+    assert_receive {:app_server_subprocess_stopped, _conn, _exec_pid}
+  end
+
   test "correlates request responses by id while interleaving notifications", %{
     codex_opts: codex_opts
   } do
@@ -95,5 +109,30 @@ defmodule Codex.AppServer.ConnectionTest do
 
     assert {:error, {:timeout, "thread/list", 10}} =
              Connection.request(conn, "thread/list", %{}, timeout_ms: 10)
+  end
+
+  test "ignores invalid subscriber filters without crashing", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    :ok = Connection.subscribe(conn, methods: :bad, thread_id: 123)
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_notification("turn/started", %{"threadId" => "thr_1"})}
+    )
+
+    refute_receive {:codex_notification, _, _}, 50
+    assert Process.alive?(conn)
   end
 end

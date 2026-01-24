@@ -74,14 +74,16 @@ defmodule Codex.RunResultStreaming do
     Control.usage(control)
   end
 
-  defp ensure_started(%__MODULE__{control: control, start_fun: fun}) do
-    Control.start_if_needed(control, fun)
+  defp ensure_started(%__MODULE__{control: control, start_fun: fun, queue: queue}) do
+    Control.start_if_needed(control, fun, queue)
     :ok
   end
 end
 
 defmodule Codex.RunResultStreaming.Control do
   @moduledoc false
+
+  alias Codex.StreamQueue
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts \\ []) do
@@ -95,20 +97,21 @@ defmodule Codex.RunResultStreaming.Control do
     Agent.start_link(fn -> initial end, opts)
   end
 
-  @spec start_if_needed(pid(), (-> any())) :: :ok | {:error, term()}
-  def start_if_needed(control, starter) when is_pid(control) and is_function(starter, 0) do
-    Agent.get_and_update(control, fn %{started?: started?} = state ->
-      if started? do
-        {:ok, state}
-      else
-        {:ok, pid} = Task.start_link(starter)
-        {:ok, %{state | started?: true, producer_pid: pid}}
-      end
-    end)
-    |> case do
-      {:error, reason} -> {:error, reason}
-      _ -> :ok
-    end
+  @spec start_if_needed(pid(), (-> any()), pid()) :: :ok
+  def start_if_needed(control, starter, queue)
+      when is_pid(control) and is_function(starter, 0) and is_pid(queue) do
+    Agent.get_and_update(control, &do_start_if_needed(&1, starter, queue))
+    :ok
+  end
+
+  defp do_start_if_needed(%{started?: true} = state, _starter, _queue) do
+    {:ok, state}
+  end
+
+  defp do_start_if_needed(%{started?: false} = state, starter, queue) do
+    wrapped = wrap_starter(starter, queue)
+    {:ok, pid} = start_producer(wrapped)
+    {:ok, %{state | started?: true, producer_pid: pid}}
   end
 
   @spec cancel(pid(), :immediate | :after_turn) :: :ok
@@ -129,5 +132,30 @@ defmodule Codex.RunResultStreaming.Control do
   @spec usage(pid()) :: map()
   def usage(control) do
     Agent.get(control, &(Map.get(&1, :usage) || %{}))
+  end
+
+  defp wrap_starter(starter, queue) do
+    fn ->
+      try do
+        starter.()
+      rescue
+        error ->
+          StreamQueue.close(queue, {:error, error})
+      catch
+        kind, reason ->
+          StreamQueue.close(queue, {:error, {kind, reason}})
+      after
+        StreamQueue.close(queue)
+      end
+    end
+  end
+
+  @spec start_producer((-> any())) :: {:ok, pid()}
+  defp start_producer(starter) do
+    case Task.Supervisor.start_child(Codex.TaskSupervisor, starter) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, _} -> Task.start(starter)
+    end
   end
 end

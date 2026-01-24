@@ -18,6 +18,8 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
       :env_http_headers,
       :oauth_tokens,
       :oauth_store_mode,
+      :work_queue,
+      :in_flight,
       :pending,
       :responses
     ]
@@ -71,34 +73,65 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
        env_http_headers: env_http_headers,
        oauth_tokens: oauth_tokens,
        oauth_store_mode: oauth_store_mode,
+       work_queue: :queue.new(),
+       in_flight: nil,
        pending: :queue.new(),
        responses: :queue.new()
      }}
   end
 
   @impl true
-  def handle_call({:send, message}, _from, %State{} = state) do
+  def handle_call({:send, message}, from, %State{} = state) do
     if Map.has_key?(message, "id") do
       {:reply, :ok, %{state | pending: :queue.in(message, state.pending)}}
     else
       timeout_ms = @default_notification_timeout_ms
-
-      case post_json(state, message, timeout_ms) do
-        {:ok, _messages, updated} -> {:reply, :ok, updated}
-        {:error, reason, updated} -> {:reply, {:error, reason}, updated}
-      end
+      job = {:send, from, message, timeout_ms}
+      state = state |> enqueue_work(job) |> maybe_start_work()
+      {:noreply, state}
     end
   end
 
-  def handle_call({:recv, timeout_ms}, _from, %State{} = state) do
+  def handle_call({:recv, timeout_ms}, from, %State{} = state) do
     case pop_response(state) do
       {:ok, message, next_state} ->
         {:reply, {:ok, message}, next_state}
 
       :empty ->
-        handle_pending_recv(state, timeout_ms)
+        case :queue.out(state.pending) do
+          {:empty, _} ->
+            {:reply, {:error, :empty}, state}
+
+          {{:value, request}, pending} ->
+            job = {:recv, from, request, timeout_ms}
+            state = %{state | pending: pending} |> enqueue_work(job) |> maybe_start_work()
+            {:noreply, state}
+        end
     end
   end
+
+  @impl true
+  def handle_info({:work_result, pid, result}, %State{in_flight: %{pid: pid} = in_flight} = state) do
+    Process.demonitor(in_flight.ref, [:flush])
+    state = %{state | in_flight: nil}
+    state = handle_work_result(state, in_flight.job, result)
+    {:noreply, maybe_start_work(state)}
+  end
+
+  def handle_info({:work_result, _pid, _result}, %State{} = state), do: {:noreply, state}
+
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %State{in_flight: %{ref: ref, job: job}} = state
+      ) do
+    state = %{state | in_flight: nil}
+    state = handle_work_failure(state, job, {:worker_down, reason})
+    {:noreply, maybe_start_work(state)}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, %State{} = state), do: {:noreply, state}
+
+  def handle_info(_msg, %State{} = state), do: {:noreply, state}
 
   defp resolve_bearer_token(opts) do
     opts
@@ -127,31 +160,106 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
   defp normalize_token(token) when is_binary(token) and token != "", do: token
   defp normalize_token(_), do: nil
 
-  defp handle_pending_recv(%State{} = state, timeout_ms) do
-    case :queue.out(state.pending) do
+  defp enqueue_work(%State{} = state, job) do
+    %{state | work_queue: :queue.in(job, state.work_queue)}
+  end
+
+  defp maybe_start_work(%State{in_flight: nil, work_queue: queue} = state) do
+    case :queue.out(queue) do
       {:empty, _} ->
-        {:reply, {:error, :empty}, state}
+        state
 
-      {{:value, request}, pending} ->
-        state = %{state | pending: pending}
-        process_pending_request(state, request, timeout_ms)
+      {{:value, job}, rest} ->
+        start_work(state, job, rest)
     end
   end
 
-  defp process_pending_request(%State{} = state, request, timeout_ms) do
-    case post_json(state, request, timeout_ms) do
-      {:ok, messages, updated} ->
-        reply_with_responses(updated, messages)
+  defp maybe_start_work(%State{} = state), do: state
 
-      {:error, reason, updated} ->
-        {:reply, {:error, reason}, updated}
+  defp start_work(%State{} = state, job, rest_queue) do
+    parent = self()
+
+    runner = fn ->
+      result = execute_work(state, job)
+      Kernel.send(parent, {:work_result, self(), result})
+    end
+
+    {:ok, pid} = start_task(runner)
+    ref = Process.monitor(pid)
+    %{state | work_queue: rest_queue, in_flight: %{pid: pid, ref: ref, job: job}}
+  end
+
+  defp execute_work(%State{} = state, {_kind, _from, message, timeout_ms}) do
+    case post_json(state, message, timeout_ms) do
+      {:ok, messages, updated} -> {:ok, messages, updated.oauth_tokens}
+      {:error, reason, updated} -> {:error, reason, updated.oauth_tokens}
+    end
+  rescue
+    error -> {:error, error, state.oauth_tokens}
+  catch
+    kind, reason -> {:error, {kind, reason}, state.oauth_tokens}
+  end
+
+  defp handle_work_result(%State{} = state, job, {:ok, messages, oauth_tokens}) do
+    state = update_oauth_tokens(state, oauth_tokens)
+
+    case job do
+      {:send, from, _message, _timeout_ms} ->
+        GenServer.reply(from, :ok)
+        state
+
+      {:recv, from, _message, _timeout_ms} ->
+        {reply, next_state} = deliver_responses(state, messages)
+        GenServer.reply(from, reply)
+        next_state
     end
   end
 
-  defp reply_with_responses(%State{} = state, messages) do
+  defp handle_work_result(%State{} = state, job, {:error, reason, oauth_tokens}) do
+    state = update_oauth_tokens(state, oauth_tokens)
+
+    case job do
+      {:send, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+
+      {:recv, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+    end
+  end
+
+  defp handle_work_failure(%State{} = state, job, reason) do
+    case job do
+      {:send, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+
+      {:recv, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+    end
+  end
+
+  defp update_oauth_tokens(%State{} = state, nil), do: state
+
+  defp update_oauth_tokens(%State{} = state, tokens) do
+    %{state | oauth_tokens: tokens}
+  end
+
+  defp deliver_responses(%State{} = state, messages) do
     case enqueue_responses(state, messages) do
-      {:ok, message, final_state} -> {:reply, {:ok, message}, final_state}
-      :empty -> {:reply, {:error, :empty}, state}
+      {:ok, message, next_state} -> {{:ok, message}, next_state}
+      :empty -> {{:error, :empty}, state}
+    end
+  end
+
+  @spec start_task((-> any())) :: {:ok, pid()}
+  defp start_task(fun) do
+    case Task.Supervisor.start_child(Codex.TaskSupervisor, fun) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, _} -> Task.start(fun)
     end
   end
 

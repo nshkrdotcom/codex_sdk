@@ -11,6 +11,7 @@ defmodule Codex.AppServer.Connection do
 
   @default_init_timeout_ms 10_000
   @default_request_timeout_ms 30_000
+  @stderr_buffer_limit 50
 
   defmodule State do
     @moduledoc false
@@ -93,9 +94,8 @@ defmodule Codex.AppServer.Connection do
     with :ok <- ensure_erlexec_started(subprocess_mod),
          {:ok, command} <- build_command(codex_opts),
          {:ok, subprocess_pid, os_pid} <-
-           subprocess_mod.start(command, start_opts(codex_opts), subprocess_opts),
-         :ok <-
-           subprocess_mod.send(
+           subprocess_mod.start(command, start_opts(codex_opts), subprocess_opts) do
+      case subprocess_mod.send(
              subprocess_pid,
              Protocol.encode_request(0, "initialize", %{
                "clientInfo" =>
@@ -104,31 +104,37 @@ defmodule Codex.AppServer.Connection do
              }),
              subprocess_opts
            ) do
-      timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
+        :ok ->
+          timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
 
-      {:ok,
-       %State{
-         codex_opts: codex_opts,
-         subprocess_mod: subprocess_mod,
-         subprocess_opts: subprocess_opts,
-         subprocess_pid: subprocess_pid,
-         os_pid: os_pid,
-         phase: :initializing,
-         next_id: 1,
-         stdout_buffer: "",
-         stderr: [],
-         pending: %{
-           0 => %{
-             from: :init,
-             method: "initialize",
-             timeout_ms: init_timeout_ms,
-             timer_ref: timer_ref
-           }
-         },
-         ready_waiters: [],
-         subscribers: %{},
-         subscriber_refs: %{}
-       }}
+          {:ok,
+           %State{
+             codex_opts: codex_opts,
+             subprocess_mod: subprocess_mod,
+             subprocess_opts: subprocess_opts,
+             subprocess_pid: subprocess_pid,
+             os_pid: os_pid,
+             phase: :initializing,
+             next_id: 1,
+             stdout_buffer: "",
+             stderr: [],
+             pending: %{
+               0 => %{
+                 from: :init,
+                 method: "initialize",
+                 timeout_ms: init_timeout_ms,
+                 timer_ref: timer_ref
+               }
+             },
+             ready_waiters: [],
+             subscribers: %{},
+             subscriber_refs: %{}
+           }}
+
+        {:error, _} = error ->
+          _ = subprocess_mod.stop(subprocess_pid, subprocess_opts)
+          error
+      end
     else
       {:error, _} = error ->
         error
@@ -150,10 +156,7 @@ defmodule Codex.AppServer.Connection do
   def handle_call({:subscribe, pid, opts}, _from, %State{} = state) do
     ref = Process.monitor(pid)
 
-    filters = %{
-      thread_id: Keyword.get(opts, :thread_id),
-      methods: Keyword.get(opts, :methods)
-    }
+    filters = normalize_subscriber_filters(opts)
 
     {:reply, :ok,
      %State{
@@ -229,7 +232,8 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_info({:stderr, os_pid, chunk}, %State{os_pid: os_pid} = state) do
-    {:noreply, %State{state | stderr: [chunk | state.stderr]}}
+    stderr = [chunk | state.stderr] |> Enum.take(@stderr_buffer_limit)
+    {:noreply, %State{state | stderr: stderr}}
   end
 
   def handle_info({:DOWN, os_pid, :process, _pid, reason}, %State{os_pid: os_pid} = state) do
@@ -346,26 +350,61 @@ defmodule Codex.AppServer.Connection do
   defp subscriber_match?(%{methods: nil, thread_id: nil}, _method, _params), do: true
 
   defp subscriber_match?(filters, method, params) do
-    method_ok? =
-      case filters.methods do
-        nil -> true
-        methods when is_list(methods) -> method in methods
+    method_matches?(filters.methods, method) and thread_matches?(filters.thread_id, params)
+  end
+
+  defp method_matches?(nil, _method), do: true
+  defp method_matches?(methods, method) when is_list(methods), do: method in methods
+  defp method_matches?(_methods, _method), do: false
+
+  defp thread_matches?(nil, _params), do: true
+
+  defp thread_matches?(thread_id, params) when is_binary(thread_id) do
+    params_thread_id =
+      Map.get(params, "threadId") || Map.get(params, "thread_id") ||
+        Map.get(params, :thread_id)
+
+    thread_id == params_thread_id
+  end
+
+  defp thread_matches?(_thread_id, _params), do: false
+
+  defp normalize_subscriber_filters(opts) do
+    methods =
+      case Keyword.get(opts, :methods) do
+        nil -> nil
+        list when is_list(list) -> normalize_methods(list)
+        _ -> :invalid
       end
 
-    thread_ok? =
-      case filters.thread_id do
-        nil ->
-          true
-
-        thread_id when is_binary(thread_id) ->
-          params_thread_id =
-            Map.get(params, "threadId") || Map.get(params, "thread_id") ||
-              Map.get(params, :thread_id)
-
-          thread_id == params_thread_id
+    thread_id =
+      case Keyword.get(opts, :thread_id) do
+        nil -> nil
+        id when is_binary(id) -> id
+        _ -> :invalid
       end
 
-    method_ok? and thread_ok?
+    %{methods: methods, thread_id: thread_id}
+  end
+
+  defp normalize_methods(list) do
+    list
+    |> Enum.reduce([], fn method, acc ->
+      case normalize_method(method) do
+        {:ok, value} -> [value | acc]
+        :error -> acc
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  defp normalize_method(value) when is_binary(value), do: {:ok, value}
+
+  defp normalize_method(value) do
+    case String.Chars.impl_for(value) do
+      nil -> :error
+      _ -> {:ok, to_string(value)}
+    end
   end
 
   defp resolve_subprocess_module(opts) do

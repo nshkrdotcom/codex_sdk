@@ -1341,7 +1341,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 App-server (`codex app-server`) is a **stateful, bidirectional** transport that unlocks upstream v2 APIs (threads list/archive, skills/models/config, server-driven approvals, etc.).
 
-See `docs/09-app-server-transport.md` for the complete guide, and run the live scripts:
+See `guides/05-app-server-transport.md` for the complete guide, and run the live scripts:
 
 ```bash
 mix run examples/live_app_server_basic.exs
@@ -1390,4 +1390,4 @@ These examples demonstrate the flexibility and power of the Elixir Codex SDK. Ke
 - **Concurrent execution** for performance
 - **Production patterns** for observability and reliability
 
-Refer to the [API Reference](05-api-reference.md) for complete documentation of all functions and types.
+Refer to the [API Reference](03-api-reference.md) for complete documentation of all functions and types.

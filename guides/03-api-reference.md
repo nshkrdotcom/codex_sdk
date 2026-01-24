@@ -548,6 +548,9 @@ Staging and attachment helpers that keep file workflows deterministic.
 - `attach/2` — appends a staged attachment to `Codex.Thread.Options`, deduplicating by checksum.
 - `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files.
 
+Staged files are scoped to the current runtime; the registry clears the staging directory on
+startup, so re-stage attachments after restarts.
+
 On the exec JSONL transport (`codex exec --json`), attachments are forwarded as images via repeated `--image <path>` flags. The upstream exec CLI does not currently support arbitrary non-image file attachments.
 Returning a `%Codex.Files.Attachment{}` from a tool (or passing one to `Codex.ToolOutput.normalize/1`) yields an `input_file` payload with the checksum as `file_id` and the staged contents base64-encoded.
 
@@ -1255,7 +1258,7 @@ Global Codex configuration.
 - `api_key`: OpenAI API key (overrides `CODEX_API_KEY`; optional if CLI login is present)
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override (defaults to `Codex.Models.default_model/0`)
-- `reasoning_effort`: Reasoning effort override (defaults to `Codex.Models.default_reasoning_effort/1`)
+- `reasoning_effort`: Reasoning effort override (`:none`, `:minimal`, `:low`, `:medium`, `:high`, or `:xhigh`; defaults to `Codex.Models.default_reasoning_effort/1`)
 - `model_personality`: Personality preference (`:friendly` or `:pragmatic`)
 - `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)
 - `model_verbosity`: Response verbosity (`low`, `medium`, `high`)
@@ -1369,7 +1372,7 @@ Thread-specific configuration.
 - `web_search_enabled`: Legacy web search toggle (deprecated; use `web_search_mode`)
 - `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`)
 - `personality`: Thread-level personality override
-- `collaboration_mode`: Collaboration mode preset for app-server turns
+- `collaboration_mode`: Collaboration mode preset for app-server turns (`:plan`, `:pair_programming`, `:execute`, or `:custom`)
 - `compact_prompt`: Override prompt used for context compaction
 - `show_raw_agent_reasoning`: Emit raw reasoning content in reasoning items
 - `output_schema`: Default JSON schema for structured outputs (turn options override)
@@ -1637,7 +1640,7 @@ For developers familiar with the TypeScript SDK:
 
 ## See Also
 
-- [Getting Started](01.md)
+- [Getting Started](01-getting-started.md)
 - [Architecture Guide](02-architecture.md)
-- [Examples](06-examples.md)
-- [App-server Transport](09-app-server-transport.md)
+- [Examples](04-examples.md)
+- [App-server Transport](05-app-server-transport.md)

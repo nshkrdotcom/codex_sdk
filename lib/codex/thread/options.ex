@@ -3,6 +3,8 @@ defmodule Codex.Thread.Options do
   Per-thread configuration options.
   """
 
+  # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
+
   alias Codex.FileSearch
   alias Codex.Protocol.CollaborationMode
 
