@@ -8,6 +8,8 @@ defmodule Codex.Exec do
 
   require Logger
 
+  alias Codex.Auth
+  alias Codex.Config.LayerStack
   alias Codex.Config.Overrides
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
@@ -350,7 +352,7 @@ defmodule Codex.Exec do
       model_args(codex_opts) ++
       color_args(exec_opts) ++
       output_last_message_args(exec_opts) ++
-      reasoning_effort_args(codex_opts) ++
+      reasoning_effort_args(exec_opts) ++
       sandbox_args(exec_opts.thread) ++
       working_directory_args(exec_opts.thread) ++
       additional_directories_args(exec_opts.thread) ++
@@ -427,12 +429,63 @@ defmodule Codex.Exec do
     end
   end
 
-  defp reasoning_effort_args(%Options{reasoning_effort: effort}) when not is_nil(effort) do
-    stringified = Models.reasoning_effort_to_string(effort)
-    ["--config", ~s(model_reasoning_effort="#{stringified}")]
+  defp reasoning_effort_args(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
+    case resolve_reasoning_effort(opts, config_cwd(exec_opts)) do
+      nil ->
+        []
+
+      effort ->
+        stringified = Models.reasoning_effort_to_string(effort)
+        ["--config", ~s(model_reasoning_effort="#{stringified}")]
+    end
   end
 
-  defp reasoning_effort_args(_), do: []
+  defp resolve_reasoning_effort(%Options{} = opts, cwd) do
+    effort =
+      opts.reasoning_effort ||
+        config_reasoning_effort(cwd) ||
+        Models.default_reasoning_effort(opts.model)
+
+    effort
+    |> normalize_reasoning_effort_value()
+    |> then(&Models.coerce_reasoning_effort(opts.model, &1))
+  end
+
+  defp normalize_reasoning_effort_value(nil), do: nil
+
+  defp normalize_reasoning_effort_value(value) do
+    case Models.normalize_reasoning_effort(value) do
+      {:ok, effort} -> effort
+      _ -> nil
+    end
+  end
+
+  defp config_reasoning_effort(cwd) do
+    codex_home = Auth.codex_home()
+
+    case LayerStack.load(codex_home, cwd) do
+      {:ok, layers} ->
+        config = LayerStack.effective_config(layers)
+        Map.get(config, "model_reasoning_effort") || Map.get(config, :model_reasoning_effort)
+
+      {:error, _} ->
+        nil
+    end
+  end
+
+  defp config_cwd(%ExecOptions{
+         thread: %{thread_opts: %Codex.Thread.Options{working_directory: dir}}
+       })
+       when is_binary(dir) and dir != "" do
+    dir
+  end
+
+  defp config_cwd(_exec_opts) do
+    case File.cwd() do
+      {:ok, cwd} -> cwd
+      _ -> nil
+    end
+  end
 
   defp sandbox_args(%{thread_opts: %Codex.Thread.Options{} = opts}) do
     case sandbox_mode(opts.sandbox) do

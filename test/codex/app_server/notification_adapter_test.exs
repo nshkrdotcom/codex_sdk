@@ -4,6 +4,7 @@ defmodule Codex.AppServer.NotificationAdapterTest do
   alias Codex.AppServer.NotificationAdapter
   alias Codex.Events
   alias Codex.Items
+  alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
   describe "to_event/2" do
     test "maps agent message deltas into Codex.Events.ItemAgentMessageDelta" do
@@ -183,10 +184,14 @@ defmodule Codex.AppServer.NotificationAdapterTest do
     end
 
     test "maps account rate limit updates" do
-      params = %{"rateLimits" => %{"primary" => %{"remaining" => 10}}}
+      params = %{"rateLimits" => %{"primary" => %{"usedPercent" => 10.0}}}
 
-      assert {:ok, %Events.AccountRateLimitsUpdated{rate_limits: %{"primary" => _}}} =
-               NotificationAdapter.to_event("account/rateLimits/updated", params)
+      assert {:ok,
+              %Events.AccountRateLimitsUpdated{
+                rate_limits: %RateLimitSnapshot.Snapshot{
+                  primary: %RateLimitSnapshot.Window{used_percent: 10.0}
+                }
+              }} = NotificationAdapter.to_event("account/rateLimits/updated", params)
     end
 
     test "maps MCP OAuth completion and Windows warnings" do
@@ -242,6 +247,49 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                 summary: "Deprecated endpoint",
                 details: "Use thread/start instead."
               }} = NotificationAdapter.to_event("deprecationNotice", params)
+    end
+
+    test "maps config warnings" do
+      params = %{"summary" => "Deprecated", "details" => "Update config"}
+
+      assert {:ok,
+              %Events.ConfigWarning{
+                summary: "Deprecated",
+                details: "Update config"
+              }} = NotificationAdapter.to_event("configWarning", params)
+    end
+
+    test "maps session configured notifications" do
+      params = %{
+        "sessionId" => "sess_1",
+        "forkedFromId" => "sess_0",
+        "model" => "gpt-5.1-codex",
+        "modelProviderId" => "openai",
+        "approvalPolicy" => "untrusted",
+        "sandboxPolicy" => %{"type" => "read-only"},
+        "cwd" => "/tmp",
+        "reasoningEffort" => "high",
+        "historyLogId" => 10,
+        "historyEntryCount" => 2,
+        "initialMessages" => [%{"type" => "warning", "message" => "heads up"}],
+        "rolloutPath" => "/tmp/rollout"
+      }
+
+      assert {:ok,
+              %Events.SessionConfigured{
+                session_id: "sess_1",
+                forked_from_id: "sess_0",
+                model: "gpt-5.1-codex",
+                model_provider_id: "openai",
+                approval_policy: "untrusted",
+                sandbox_policy: %{"type" => "read-only"},
+                cwd: "/tmp",
+                reasoning_effort: "high",
+                history_log_id: 10,
+                history_entry_count: 2,
+                initial_messages: [%Events.Warning{message: "heads up"}],
+                rollout_path: "/tmp/rollout"
+              }} = NotificationAdapter.to_event("sessionConfigured", params)
     end
 
     test "maps turn completed error payloads" do

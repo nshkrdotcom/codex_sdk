@@ -7,6 +7,8 @@ defmodule Codex.Events do
   """
 
   alias Codex.Items
+  alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
+  alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
 
   defmodule ThreadStarted do
     @moduledoc """
@@ -86,13 +88,14 @@ defmodule Codex.Events do
     """
 
     @enforce_keys [:usage]
-    defstruct thread_id: nil, turn_id: nil, usage: %{}, delta: nil
+    defstruct thread_id: nil, turn_id: nil, usage: %{}, delta: nil, rate_limits: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
             turn_id: String.t() | nil,
             usage: map(),
-            delta: map() | nil
+            delta: map() | nil,
+            rate_limits: Codex.Protocol.RateLimit.Snapshot.t() | map() | nil
           }
   end
 
@@ -284,7 +287,7 @@ defmodule Codex.Events do
     defstruct rate_limits: %{}, thread_id: nil, turn_id: nil
 
     @type t :: %__MODULE__{
-            rate_limits: map(),
+            rate_limits: Codex.Protocol.RateLimit.Snapshot.t() | map(),
             thread_id: String.t() | nil,
             turn_id: String.t() | nil
           }
@@ -546,6 +549,342 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule SessionConfigured do
+    @moduledoc """
+    Event emitted when a session is configured.
+    """
+
+    defstruct session_id: nil,
+              forked_from_id: nil,
+              model: nil,
+              model_provider_id: nil,
+              approval_policy: nil,
+              sandbox_policy: nil,
+              cwd: nil,
+              reasoning_effort: nil,
+              history_log_id: nil,
+              history_entry_count: nil,
+              initial_messages: nil,
+              rollout_path: nil
+
+    @type t :: %__MODULE__{
+            session_id: String.t() | nil,
+            forked_from_id: String.t() | nil,
+            model: String.t() | nil,
+            model_provider_id: String.t() | nil,
+            approval_policy: term(),
+            sandbox_policy: term(),
+            cwd: String.t() | nil,
+            reasoning_effort: String.t() | atom() | nil,
+            history_log_id: non_neg_integer() | nil,
+            history_entry_count: non_neg_integer() | nil,
+            initial_messages: list() | nil,
+            rollout_path: String.t() | nil
+          }
+  end
+
+  defmodule Warning do
+    @moduledoc """
+    Warning event emitted during a turn.
+    """
+
+    @enforce_keys [:message]
+    defstruct message: nil
+
+    @type t :: %__MODULE__{
+            message: String.t()
+          }
+  end
+
+  defmodule ContextCompacted do
+    @moduledoc """
+    Indicates that the conversation context was compacted.
+    """
+
+    defstruct removed_turns: nil, remaining_turns: nil
+
+    @type t :: %__MODULE__{
+            removed_turns: non_neg_integer() | nil,
+            remaining_turns: non_neg_integer() | nil
+          }
+  end
+
+  defmodule ThreadRolledBack do
+    @moduledoc """
+    Indicates that recent user turns were removed from context.
+    """
+
+    defstruct num_turns: nil
+
+    @type t :: %__MODULE__{
+            num_turns: non_neg_integer() | nil
+          }
+  end
+
+  defmodule RequestUserInput do
+    @moduledoc """
+    Event emitted when the agent requests user input.
+    """
+
+    defstruct id: nil, turn_id: nil, questions: []
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            turn_id: String.t() | nil,
+            questions: list()
+          }
+  end
+
+  defmodule McpStartupUpdate do
+    @moduledoc """
+    Incremental status update for MCP server startup.
+    """
+
+    defstruct server_name: nil, status: nil, message: nil
+
+    @type t :: %__MODULE__{
+            server_name: String.t() | nil,
+            status: String.t() | map() | atom() | nil,
+            message: String.t() | nil
+          }
+  end
+
+  defmodule McpStartupComplete do
+    @moduledoc """
+    Summary of MCP server startup completion.
+    """
+
+    defstruct servers: nil
+
+    @type t :: %__MODULE__{
+            servers: map() | list() | nil
+          }
+  end
+
+  defmodule ElicitationRequest do
+    @moduledoc """
+    Event emitted for MCP elicitation requests.
+    """
+
+    defstruct server_name: nil, id: nil, message: nil
+
+    @type t :: %__MODULE__{
+            server_name: String.t() | nil,
+            id: String.t() | nil,
+            message: String.t() | nil
+          }
+  end
+
+  defmodule UndoStarted do
+    @moduledoc """
+    Event emitted when an undo operation begins.
+    """
+
+    defstruct turn_id: nil, message: nil
+
+    @type t :: %__MODULE__{
+            turn_id: String.t() | nil,
+            message: String.t() | nil
+          }
+  end
+
+  defmodule UndoCompleted do
+    @moduledoc """
+    Event emitted when an undo operation completes.
+    """
+
+    defstruct turn_id: nil, success: nil, message: nil
+
+    @type t :: %__MODULE__{
+            turn_id: String.t() | nil,
+            success: boolean() | nil,
+            message: String.t() | nil
+          }
+  end
+
+  defmodule TurnAborted do
+    @moduledoc """
+    Event emitted when a turn is aborted.
+    """
+
+    defstruct turn_id: nil, reason: nil
+
+    @type t :: %__MODULE__{
+            turn_id: String.t() | nil,
+            reason: String.t() | atom() | map() | nil
+          }
+  end
+
+  defmodule ShutdownComplete do
+    @moduledoc """
+    Event emitted when the agent shuts down.
+    """
+
+    defstruct []
+
+    @type t :: %__MODULE__{}
+  end
+
+  defmodule EnteredReviewMode do
+    @moduledoc """
+    Event emitted when a review session starts.
+    """
+
+    defstruct review_request: nil
+
+    @type t :: %__MODULE__{
+            review_request: map() | nil
+          }
+  end
+
+  defmodule ExitedReviewMode do
+    @moduledoc """
+    Event emitted when a review session ends.
+    """
+
+    defstruct result: nil
+
+    @type t :: %__MODULE__{
+            result: map() | nil
+          }
+  end
+
+  defmodule ConfigWarning do
+    @moduledoc """
+    Event emitted when configuration warnings are reported.
+    """
+
+    @enforce_keys [:summary]
+    defstruct summary: nil, details: nil
+
+    @type t :: %__MODULE__{
+            summary: String.t(),
+            details: String.t() | nil
+          }
+  end
+
+  defmodule CollabAgentSpawnBegin do
+    @moduledoc """
+    Collab event emitted when an agent spawn starts.
+    """
+
+    defstruct call_id: nil, sender_thread_id: nil, prompt: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            prompt: String.t() | nil
+          }
+  end
+
+  defmodule CollabAgentSpawnEnd do
+    @moduledoc """
+    Collab event emitted when an agent spawn completes.
+    """
+
+    defstruct call_id: nil, sender_thread_id: nil, new_thread_id: nil, prompt: nil, status: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            new_thread_id: String.t() | nil,
+            prompt: String.t() | nil,
+            status: map() | String.t() | atom() | nil
+          }
+  end
+
+  defmodule CollabAgentInteractionBegin do
+    @moduledoc """
+    Collab event emitted when an agent interaction starts.
+    """
+
+    defstruct call_id: nil, sender_thread_id: nil, receiver_thread_id: nil, prompt: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil,
+            prompt: String.t() | nil
+          }
+  end
+
+  defmodule CollabAgentInteractionEnd do
+    @moduledoc """
+    Collab event emitted when an agent interaction completes.
+    """
+
+    defstruct call_id: nil,
+              sender_thread_id: nil,
+              receiver_thread_id: nil,
+              prompt: nil,
+              status: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil,
+            prompt: String.t() | nil,
+            status: map() | String.t() | atom() | nil
+          }
+  end
+
+  defmodule CollabWaitingBegin do
+    @moduledoc """
+    Collab event emitted when an agent begins waiting.
+    """
+
+    defstruct sender_thread_id: nil, receiver_thread_ids: [], call_id: nil
+
+    @type t :: %__MODULE__{
+            sender_thread_id: String.t() | nil,
+            receiver_thread_ids: [String.t()],
+            call_id: String.t() | nil
+          }
+  end
+
+  defmodule CollabWaitingEnd do
+    @moduledoc """
+    Collab event emitted when an agent stops waiting.
+    """
+
+    defstruct sender_thread_id: nil, call_id: nil, statuses: nil
+
+    @type t :: %__MODULE__{
+            sender_thread_id: String.t() | nil,
+            call_id: String.t() | nil,
+            statuses: map() | nil
+          }
+  end
+
+  defmodule CollabCloseBegin do
+    @moduledoc """
+    Collab event emitted when a collab session begins closing.
+    """
+
+    defstruct call_id: nil, sender_thread_id: nil, receiver_thread_id: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil
+          }
+  end
+
+  defmodule CollabCloseEnd do
+    @moduledoc """
+    Collab event emitted when a collab session closes.
+    """
+
+    defstruct call_id: nil, sender_thread_id: nil, receiver_thread_id: nil, status: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil,
+            status: map() | String.t() | atom() | nil
+          }
+  end
+
   alias __MODULE__.{
     ItemAgentMessageDelta,
     ItemInputTextDelta,
@@ -578,7 +917,30 @@ defmodule Codex.Events do
     DeprecationNotice,
     RawResponseItemCompleted,
     Error,
-    TurnFailed
+    TurnFailed,
+    SessionConfigured,
+    Warning,
+    ContextCompacted,
+    ThreadRolledBack,
+    RequestUserInput,
+    McpStartupUpdate,
+    McpStartupComplete,
+    ElicitationRequest,
+    UndoStarted,
+    UndoCompleted,
+    TurnAborted,
+    ShutdownComplete,
+    EnteredReviewMode,
+    ExitedReviewMode,
+    ConfigWarning,
+    CollabAgentSpawnBegin,
+    CollabAgentSpawnEnd,
+    CollabAgentInteractionBegin,
+    CollabAgentInteractionEnd,
+    CollabWaitingBegin,
+    CollabWaitingEnd,
+    CollabCloseBegin,
+    CollabCloseEnd
   }
 
   @type t ::
@@ -614,6 +976,29 @@ defmodule Codex.Events do
           | TurnFailed.t()
           | ToolCallRequested.t()
           | ToolCallCompleted.t()
+          | SessionConfigured.t()
+          | Warning.t()
+          | ContextCompacted.t()
+          | ThreadRolledBack.t()
+          | RequestUserInput.t()
+          | McpStartupUpdate.t()
+          | McpStartupComplete.t()
+          | ElicitationRequest.t()
+          | UndoStarted.t()
+          | UndoCompleted.t()
+          | TurnAborted.t()
+          | ShutdownComplete.t()
+          | EnteredReviewMode.t()
+          | ExitedReviewMode.t()
+          | ConfigWarning.t()
+          | CollabAgentSpawnBegin.t()
+          | CollabAgentSpawnEnd.t()
+          | CollabAgentInteractionBegin.t()
+          | CollabAgentInteractionEnd.t()
+          | CollabWaitingBegin.t()
+          | CollabWaitingEnd.t()
+          | CollabCloseBegin.t()
+          | CollabCloseEnd.t()
 
   @compaction_stage_map %{
     "started" => :started,
@@ -629,6 +1014,29 @@ defmodule Codex.Events do
     %ThreadStarted{
       thread_id: Map.get(map, "thread_id"),
       metadata: Map.get(map, "metadata", %{})
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["session_configured", "sessionConfigured"] do
+    parse_session_configured(map)
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["warning", "Warning"] do
+    %Warning{
+      message: Map.get(map, "message") || ""
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["context_compacted", "contextCompacted"] do
+    %ContextCompacted{
+      removed_turns: Map.get(map, "removed_turns") || Map.get(map, "removedTurns"),
+      remaining_turns: Map.get(map, "remaining_turns") || Map.get(map, "remainingTurns")
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["thread_rolled_back", "threadRolledBack"] do
+    %ThreadRolledBack{
+      num_turns: Map.get(map, "num_turns") || Map.get(map, "numTurns")
     }
   end
 
@@ -663,11 +1071,21 @@ defmodule Codex.Events do
 
   def parse!(%{"type" => type} = map)
       when type in ["thread.tokenUsage.updated", "thread/tokenUsage/updated"] do
+    rate_limits =
+      map
+      |> Map.get("rate_limits")
+      |> case do
+        nil -> Map.get(map, "rateLimits")
+        value -> value
+      end
+      |> parse_rate_limits()
+
     %ThreadTokenUsageUpdated{
       thread_id: Map.get(map, "thread_id"),
       turn_id: Map.get(map, "turn_id"),
       usage: Map.get(map, "usage") || Map.get(map, "token_usage") || %{},
-      delta: Map.get(map, "delta") || Map.get(map, "usage_delta")
+      delta: Map.get(map, "delta") || Map.get(map, "usage_delta"),
+      rate_limits: rate_limits
     }
   end
 
@@ -685,6 +1103,182 @@ defmodule Codex.Events do
       turn_id: Map.get(map, "turn_id"),
       explanation: Map.get(map, "explanation"),
       plan: Map.get(map, "plan") || []
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["request_user_input", "requestUserInput"] do
+    %RequestUserInput{
+      id: Map.get(map, "id") || Map.get(map, "call_id") || Map.get(map, "callId"),
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      questions:
+        map
+        |> Map.get("questions")
+        |> parse_request_user_input_questions()
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["mcp_startup_update", "mcpStartupUpdate"] do
+    {status, message} =
+      map
+      |> Map.get("status")
+      |> normalize_mcp_startup_status()
+
+    %McpStartupUpdate{
+      server_name:
+        Map.get(map, "server") ||
+          Map.get(map, "server_name") ||
+          Map.get(map, "serverName"),
+      status: status,
+      message: message || Map.get(map, "message")
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["mcp_startup_complete", "mcpStartupComplete"] do
+    %McpStartupComplete{
+      servers: normalize_mcp_startup_complete(map)
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["elicitation_request", "elicitationRequest"] do
+    %ElicitationRequest{
+      server_name:
+        Map.get(map, "server_name") ||
+          Map.get(map, "serverName") ||
+          Map.get(map, "server"),
+      id: Map.get(map, "id"),
+      message: Map.get(map, "message")
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["undo_started", "undoStarted"] do
+    %UndoStarted{
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      message: Map.get(map, "message")
+    }
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["undo_completed", "undoCompleted"] do
+    %UndoCompleted{
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      success: Map.get(map, "success"),
+      message: Map.get(map, "message")
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["turn_aborted", "turnAborted", "turn.aborted"] do
+    %TurnAborted{
+      turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      reason: Map.get(map, "reason")
+    }
+  end
+
+  def parse!(%{"type" => type}) when type in ["shutdown_complete", "shutdownComplete"] do
+    %ShutdownComplete{}
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["entered_review_mode", "enteredReviewMode"] do
+    review_request =
+      Map.get(map, "review_request") ||
+        Map.get(map, "reviewRequest") ||
+        Map.drop(map, ["type"])
+
+    %EnteredReviewMode{review_request: review_request}
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in ["exited_review_mode", "exitedReviewMode"] do
+    result =
+      Map.get(map, "review_output") ||
+        Map.get(map, "reviewOutput") ||
+        Map.get(map, "result") ||
+        Map.drop(map, ["type"])
+
+    %ExitedReviewMode{result: result}
+  end
+
+  def parse!(%{"type" => type} = map) when type in ["config_warning", "configWarning"] do
+    %ConfigWarning{
+      summary: Map.get(map, "summary") || "",
+      details: Map.get(map, "details")
+    }
+  end
+
+  def parse!(%{"type" => "collab_agent_spawn_begin"} = map) do
+    %CollabAgentSpawnBegin{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      prompt: Map.get(map, "prompt")
+    }
+  end
+
+  def parse!(%{"type" => "collab_agent_spawn_end"} = map) do
+    %CollabAgentSpawnEnd{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      new_thread_id: Map.get(map, "new_thread_id") || Map.get(map, "newThreadId"),
+      prompt: Map.get(map, "prompt"),
+      status: Map.get(map, "status")
+    }
+  end
+
+  def parse!(%{"type" => "collab_agent_interaction_begin"} = map) do
+    %CollabAgentInteractionBegin{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      prompt: Map.get(map, "prompt")
+    }
+  end
+
+  def parse!(%{"type" => "collab_agent_interaction_end"} = map) do
+    %CollabAgentInteractionEnd{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      prompt: Map.get(map, "prompt"),
+      status: Map.get(map, "status")
+    }
+  end
+
+  def parse!(%{"type" => "collab_waiting_begin"} = map) do
+    %CollabWaitingBegin{
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_ids:
+        Map.get(map, "receiver_thread_ids") ||
+          Map.get(map, "receiverThreadIds") ||
+          [],
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id")
+    }
+  end
+
+  def parse!(%{"type" => "collab_waiting_end"} = map) do
+    %CollabWaitingEnd{
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      statuses: Map.get(map, "statuses")
+    }
+  end
+
+  def parse!(%{"type" => "collab_close_begin"} = map) do
+    %CollabCloseBegin{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId")
+    }
+  end
+
+  def parse!(%{"type" => "collab_close_end"} = map) do
+    %CollabCloseEnd{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      status: Map.get(map, "status")
     }
   end
 
@@ -753,8 +1347,17 @@ defmodule Codex.Events do
   end
 
   def parse!(%{"type" => "account/rateLimits/updated"} = map) do
+    rate_limits =
+      map
+      |> Map.get("rate_limits")
+      |> case do
+        nil -> Map.get(map, "rateLimits")
+        value -> value
+      end
+      |> parse_rate_limits()
+
     %AccountRateLimitsUpdated{
-      rate_limits: Map.get(map, "rate_limits") || Map.get(map, "rateLimits") || %{},
+      rate_limits: rate_limits || %{},
       thread_id: Map.get(map, "thread_id") || Map.get(map, "threadId"),
       turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId")
     }
@@ -881,6 +1484,7 @@ defmodule Codex.Events do
     |> put_optional("turn_id", event.turn_id)
     |> put_optional("usage", event.usage)
     |> put_optional("delta", event.delta)
+    |> put_optional("rate_limits", encode_rate_limits(event.rate_limits))
   end
 
   def to_map(%TurnDiffUpdated{} = event) do
@@ -1048,7 +1652,7 @@ defmodule Codex.Events do
   def to_map(%AccountRateLimitsUpdated{} = event) do
     %{
       "type" => "account/rateLimits/updated",
-      "rate_limits" => event.rate_limits
+      "rate_limits" => encode_rate_limits(event.rate_limits) || %{}
     }
     |> put_optional("thread_id", event.thread_id)
     |> put_optional("turn_id", event.turn_id)
@@ -1137,6 +1741,208 @@ defmodule Codex.Events do
     }
   end
 
+  def to_map(%SessionConfigured{} = event) do
+    %{
+      "type" => "session_configured"
+    }
+    |> put_optional("session_id", event.session_id)
+    |> put_optional("forked_from_id", event.forked_from_id)
+    |> put_optional("model", event.model)
+    |> put_optional("model_provider_id", event.model_provider_id)
+    |> put_optional("approval_policy", event.approval_policy)
+    |> put_optional("sandbox_policy", event.sandbox_policy)
+    |> put_optional("cwd", event.cwd)
+    |> put_optional("reasoning_effort", event.reasoning_effort)
+    |> put_optional("history_log_id", event.history_log_id)
+    |> put_optional("history_entry_count", event.history_entry_count)
+    |> put_optional("initial_messages", encode_initial_messages(event.initial_messages))
+    |> put_optional("rollout_path", event.rollout_path)
+  end
+
+  def to_map(%Warning{} = event) do
+    %{
+      "type" => "warning",
+      "message" => event.message
+    }
+  end
+
+  def to_map(%ContextCompacted{} = event) do
+    %{
+      "type" => "context_compacted"
+    }
+    |> put_optional("removed_turns", event.removed_turns)
+    |> put_optional("remaining_turns", event.remaining_turns)
+  end
+
+  def to_map(%ThreadRolledBack{} = event) do
+    %{
+      "type" => "thread_rolled_back"
+    }
+    |> put_optional("num_turns", event.num_turns)
+  end
+
+  def to_map(%RequestUserInput{} = event) do
+    %{
+      "type" => "request_user_input"
+    }
+    |> put_optional("id", event.id)
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("questions", encode_request_user_input_questions(event.questions))
+  end
+
+  def to_map(%McpStartupUpdate{} = event) do
+    %{
+      "type" => "mcp_startup_update",
+      "server" => event.server_name
+    }
+    |> put_optional("status", event.status)
+    |> put_optional("message", event.message)
+  end
+
+  def to_map(%McpStartupComplete{} = event) do
+    %{"type" => "mcp_startup_complete"}
+    |> Map.merge(encode_mcp_startup_complete(event.servers))
+  end
+
+  def to_map(%ElicitationRequest{} = event) do
+    %{
+      "type" => "elicitation_request",
+      "server_name" => event.server_name,
+      "id" => event.id,
+      "message" => event.message
+    }
+  end
+
+  def to_map(%UndoStarted{} = event) do
+    %{
+      "type" => "undo_started"
+    }
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("message", event.message)
+  end
+
+  def to_map(%UndoCompleted{} = event) do
+    %{
+      "type" => "undo_completed"
+    }
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("success", event.success)
+    |> put_optional("message", event.message)
+  end
+
+  def to_map(%TurnAborted{} = event) do
+    %{
+      "type" => "turn_aborted"
+    }
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("reason", event.reason)
+  end
+
+  def to_map(%ShutdownComplete{}) do
+    %{"type" => "shutdown_complete"}
+  end
+
+  def to_map(%EnteredReviewMode{} = event) do
+    base = %{"type" => "entered_review_mode"}
+
+    case event.review_request do
+      %{} = request -> Map.merge(base, request)
+      nil -> base
+      other -> Map.put(base, "review_request", other)
+    end
+  end
+
+  def to_map(%ExitedReviewMode{} = event) do
+    %{"type" => "exited_review_mode"}
+    |> put_optional("review_output", event.result)
+  end
+
+  def to_map(%ConfigWarning{} = event) do
+    %{
+      "type" => "configWarning",
+      "summary" => event.summary
+    }
+    |> put_optional("details", event.details)
+  end
+
+  def to_map(%CollabAgentSpawnBegin{} = event) do
+    %{
+      "type" => "collab_agent_spawn_begin",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id
+    }
+    |> put_optional("prompt", event.prompt)
+  end
+
+  def to_map(%CollabAgentSpawnEnd{} = event) do
+    %{
+      "type" => "collab_agent_spawn_end",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id
+    }
+    |> put_optional("new_thread_id", event.new_thread_id)
+    |> put_optional("prompt", event.prompt)
+    |> put_optional("status", event.status)
+  end
+
+  def to_map(%CollabAgentInteractionBegin{} = event) do
+    %{
+      "type" => "collab_agent_interaction_begin",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+    |> put_optional("prompt", event.prompt)
+  end
+
+  def to_map(%CollabAgentInteractionEnd{} = event) do
+    %{
+      "type" => "collab_agent_interaction_end",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+    |> put_optional("prompt", event.prompt)
+    |> put_optional("status", event.status)
+  end
+
+  def to_map(%CollabWaitingBegin{} = event) do
+    %{
+      "type" => "collab_waiting_begin",
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_ids" => event.receiver_thread_ids,
+      "call_id" => event.call_id
+    }
+  end
+
+  def to_map(%CollabWaitingEnd{} = event) do
+    %{
+      "type" => "collab_waiting_end",
+      "sender_thread_id" => event.sender_thread_id,
+      "call_id" => event.call_id
+    }
+    |> put_optional("statuses", event.statuses)
+  end
+
+  def to_map(%CollabCloseBegin{} = event) do
+    %{
+      "type" => "collab_close_begin",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+  end
+
+  def to_map(%CollabCloseEnd{} = event) do
+    %{
+      "type" => "collab_close_end",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+    |> put_optional("status", event.status)
+  end
+
   defp parse_compaction(map) do
     %TurnCompaction{
       thread_id: Map.get(map, "thread_id"),
@@ -1163,6 +1969,238 @@ defmodule Codex.Events do
   defp stage_to_string(value) when is_atom(value), do: Atom.to_string(value)
   defp stage_to_string(value) when is_binary(value), do: value
   defp stage_to_string(_), do: nil
+
+  defp parse_initial_messages(nil), do: nil
+
+  defp parse_initial_messages(messages) when is_list(messages) do
+    Enum.map(messages, &parse_initial_message/1)
+  end
+
+  defp parse_initial_messages(_), do: nil
+
+  defp parse_session_configured(%{} = map) do
+    %SessionConfigured{
+      session_id: fetch_any(map, ["session_id", "sessionId"]),
+      forked_from_id: fetch_any(map, ["forked_from_id", "forkedFromId"]),
+      model: Map.get(map, "model"),
+      model_provider_id: fetch_any(map, ["model_provider_id", "modelProviderId"]),
+      approval_policy: fetch_any(map, ["approval_policy", "approvalPolicy"]),
+      sandbox_policy: fetch_any(map, ["sandbox_policy", "sandboxPolicy"]),
+      cwd: Map.get(map, "cwd"),
+      reasoning_effort: fetch_any(map, ["reasoning_effort", "reasoningEffort"]),
+      history_log_id: fetch_any(map, ["history_log_id", "historyLogId"]),
+      history_entry_count: fetch_any(map, ["history_entry_count", "historyEntryCount"]),
+      initial_messages:
+        map
+        |> fetch_initial_messages()
+        |> parse_initial_messages(),
+      rollout_path: fetch_any(map, ["rollout_path", "rolloutPath"])
+    }
+  end
+
+  defp fetch_initial_messages(%{} = map) do
+    Map.get(map, "initial_messages") || Map.get(map, "initialMessages")
+  end
+
+  defp fetch_any(%{} = map, keys) when is_list(keys) do
+    Enum.reduce_while(keys, nil, fn key, _acc ->
+      if Map.has_key?(map, key) do
+        {:halt, Map.get(map, key)}
+      else
+        {:cont, nil}
+      end
+    end)
+  end
+
+  defp parse_initial_message(%{} = message) do
+    parse!(message)
+  rescue
+    _ -> message
+  end
+
+  defp parse_initial_message(other), do: other
+
+  defp encode_initial_messages(nil), do: nil
+
+  defp encode_initial_messages(messages) when is_list(messages) do
+    Enum.map(messages, &encode_initial_message/1)
+  end
+
+  defp encode_initial_messages(other), do: other
+
+  defp encode_initial_message(%{__struct__: _} = message), do: to_map(message)
+  defp encode_initial_message(other), do: other
+
+  defp parse_request_user_input_questions(nil), do: []
+
+  defp parse_request_user_input_questions(questions) when is_list(questions) do
+    Enum.map(questions, fn
+      %RequestUserInputQuestion{} = question ->
+        question
+
+      %{} = question ->
+        RequestUserInputQuestion.from_map(question)
+
+      other ->
+        other
+    end)
+  end
+
+  defp parse_request_user_input_questions(_), do: []
+
+  defp encode_request_user_input_questions(nil), do: nil
+
+  defp encode_request_user_input_questions(questions) when is_list(questions) do
+    Enum.map(questions, fn
+      %RequestUserInputQuestion{} = question ->
+        %{
+          "id" => question.id,
+          "header" => question.header,
+          "question" => question.question
+        }
+        |> put_optional("options", encode_request_user_input_options(question.options))
+
+      %{} = question ->
+        question
+
+      other ->
+        other
+    end)
+  end
+
+  defp encode_request_user_input_questions(other), do: other
+
+  defp encode_request_user_input_options(nil), do: nil
+
+  defp encode_request_user_input_options(options) when is_list(options) do
+    Enum.map(options, fn
+      %Codex.Protocol.RequestUserInput.Option{} = option ->
+        %{"label" => option.label, "description" => option.description}
+
+      %{} = option ->
+        option
+
+      other ->
+        other
+    end)
+  end
+
+  defp encode_request_user_input_options(other), do: other
+
+  defp normalize_mcp_startup_status(nil), do: {nil, nil}
+
+  defp normalize_mcp_startup_status(%{"state" => state} = status) do
+    {state, Map.get(status, "error")}
+  end
+
+  defp normalize_mcp_startup_status(%{state: state} = status) do
+    {state, Map.get(status, :error)}
+  end
+
+  defp normalize_mcp_startup_status(value) when is_atom(value) do
+    {Atom.to_string(value), nil}
+  end
+
+  defp normalize_mcp_startup_status(value) when is_binary(value), do: {value, nil}
+  defp normalize_mcp_startup_status(_), do: {nil, nil}
+
+  defp normalize_mcp_startup_complete(%{} = map) do
+    servers = Map.get(map, "servers") || Map.get(map, :servers)
+
+    if servers != nil do
+      servers
+    else
+      data =
+        %{}
+        |> put_optional("ready", Map.get(map, "ready") || Map.get(map, :ready))
+        |> put_optional("failed", Map.get(map, "failed") || Map.get(map, :failed))
+        |> put_optional(
+          "cancelled",
+          Map.get(map, "cancelled") || Map.get(map, :cancelled) || Map.get(map, "canceled")
+        )
+
+      if data == %{}, do: nil, else: data
+    end
+  end
+
+  defp encode_mcp_startup_complete(nil), do: %{}
+
+  defp encode_mcp_startup_complete(%{} = servers) do
+    ready = Map.get(servers, "ready") || Map.get(servers, :ready)
+    failed = Map.get(servers, "failed") || Map.get(servers, :failed)
+    cancelled = Map.get(servers, "cancelled") || Map.get(servers, :cancelled)
+
+    if ready != nil or failed != nil or cancelled != nil do
+      %{}
+      |> put_optional("ready", ready)
+      |> put_optional("failed", failed)
+      |> put_optional("cancelled", cancelled)
+    else
+      %{"servers" => servers}
+    end
+  end
+
+  defp encode_mcp_startup_complete(servers) when is_list(servers) do
+    %{"servers" => servers}
+  end
+
+  defp encode_mcp_startup_complete(servers) do
+    %{"servers" => servers}
+  end
+
+  defp parse_rate_limits(nil), do: nil
+
+  defp parse_rate_limits(%RateLimitSnapshot{} = snapshot), do: snapshot
+
+  defp parse_rate_limits(%{} = snapshot) do
+    RateLimitSnapshot.from_map(snapshot)
+  rescue
+    _ -> snapshot
+  end
+
+  defp parse_rate_limits(_), do: nil
+
+  defp encode_rate_limits(nil), do: nil
+
+  defp encode_rate_limits(%RateLimitSnapshot{} = snapshot) do
+    %{}
+    |> put_optional("primary", encode_rate_limit_window(snapshot.primary))
+    |> put_optional("secondary", encode_rate_limit_window(snapshot.secondary))
+    |> put_optional("credits", encode_rate_limit_credits(snapshot.credits))
+    |> put_optional("plan_type", encode_rate_limit_plan(snapshot.plan_type))
+  end
+
+  defp encode_rate_limits(%{} = snapshot), do: snapshot
+  defp encode_rate_limits(other), do: other
+
+  defp encode_rate_limit_window(nil), do: nil
+
+  defp encode_rate_limit_window(%Codex.Protocol.RateLimit.Window{} = window) do
+    %{}
+    |> put_optional("used_percent", window.used_percent)
+    |> put_optional("window_minutes", window.window_minutes)
+    |> put_optional("resets_at", window.resets_at)
+  end
+
+  defp encode_rate_limit_window(%{} = window), do: window
+  defp encode_rate_limit_window(other), do: other
+
+  defp encode_rate_limit_credits(nil), do: nil
+
+  defp encode_rate_limit_credits(%Codex.Protocol.RateLimit.CreditsSnapshot{} = credits) do
+    %{}
+    |> put_optional("has_credits", credits.has_credits)
+    |> put_optional("unlimited", credits.unlimited)
+    |> put_optional("balance", credits.balance)
+  end
+
+  defp encode_rate_limit_credits(%{} = credits), do: credits
+  defp encode_rate_limit_credits(other), do: other
+
+  defp encode_rate_limit_plan(nil), do: nil
+  defp encode_rate_limit_plan(plan) when is_atom(plan), do: Atom.to_string(plan)
+  defp encode_rate_limit_plan(plan) when is_binary(plan), do: plan
+  defp encode_rate_limit_plan(plan), do: to_string(plan)
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)

@@ -433,6 +433,27 @@ defmodule Codex.Models do
   end
 
   @doc """
+  Coerces a reasoning effort to the nearest supported value for a model.
+
+  Returns the input effort unchanged when the model is unknown or already supports it.
+  """
+  @spec coerce_reasoning_effort(String.t() | atom() | nil, reasoning_effort() | nil) ::
+          reasoning_effort() | nil
+  def coerce_reasoning_effort(_model, nil), do: nil
+  def coerce_reasoning_effort(nil, effort), do: effort
+
+  def coerce_reasoning_effort(model, effort) do
+    model = normalize_model(model)
+    supported = supported_reasoning_efforts(model) |> Enum.map(& &1.effort)
+
+    cond do
+      supported == [] -> effort
+      effort in supported -> effort
+      true -> nearest_effort(effort, supported)
+    end
+  end
+
+  @doc """
   Returns true if a model is supported via API key authentication.
   """
   @spec supported_in_api?(String.t()) :: boolean()

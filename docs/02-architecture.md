@@ -106,7 +106,7 @@ Transport selection is per-thread via `Codex.Thread.Options.transport`:
 - Execute turns (blocking and streaming modes)
 - Maintain thread ID and options
 - Coordinate with Exec GenServer
-- Handle structured output schemas
+- Handle structured output schemas and rate limit snapshots
 
 **State**: Encapsulated in `%Codex.Thread{}` struct (includes transport metadata)
 ```elixir
@@ -114,6 +114,7 @@ defstruct [
   :thread_id,          # String.t() | nil (populated after first turn)
   :codex_opts,         # %Codex.Options{}
   :thread_opts,        # %Codex.Thread.Options{}
+  :rate_limits,        # latest rate limit snapshot (if provided)
   :transport           # :exec | {:app_server, pid()}
 ]
 ```

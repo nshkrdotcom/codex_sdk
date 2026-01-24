@@ -3,6 +3,7 @@ defmodule Codex.AppServer.NotificationAdapter do
 
   alias Codex.AppServer.ItemAdapter
   alias Codex.Events
+  alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
 
   @spec to_event(String.t(), map() | nil) :: {:ok, Events.t()}
   def to_event("error", %{} = params) do
@@ -30,6 +31,30 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("sessionConfigured", %{} = params) do
+    initial_messages =
+      params
+      |> Map.get("initialMessages")
+      |> normalize_initial_messages()
+
+    {:ok,
+     %Events.SessionConfigured{
+       session_id: Map.get(params, "sessionId"),
+       forked_from_id: Map.get(params, "forkedFromId") || Map.get(params, "forked_from_id"),
+       model: Map.get(params, "model"),
+       model_provider_id:
+         Map.get(params, "modelProviderId") || Map.get(params, "model_provider_id"),
+       approval_policy: Map.get(params, "approvalPolicy") || Map.get(params, "approval_policy"),
+       sandbox_policy: Map.get(params, "sandboxPolicy") || Map.get(params, "sandbox_policy"),
+       cwd: Map.get(params, "cwd"),
+       reasoning_effort: Map.get(params, "reasoningEffort"),
+       history_log_id: Map.get(params, "historyLogId"),
+       history_entry_count: Map.get(params, "historyEntryCount"),
+       initial_messages: initial_messages,
+       rollout_path: Map.get(params, "rolloutPath")
+     }}
+  end
+
   def to_event("thread/tokenUsage/updated", %{} = params) do
     token_usage = Map.get(params, "tokenUsage") || %{}
 
@@ -38,7 +63,15 @@ defmodule Codex.AppServer.NotificationAdapter do
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: fetch(params, "turnId", "turn_id"),
        usage: token_usage |> Map.get("total") |> normalize_token_usage_breakdown(),
-       delta: token_usage |> Map.get("last") |> normalize_token_usage_breakdown()
+       delta: token_usage |> Map.get("last") |> normalize_token_usage_breakdown(),
+       rate_limits:
+         params
+         |> Map.get("rateLimits")
+         |> case do
+           nil -> Map.get(params, "rate_limits")
+           value -> value
+         end
+         |> normalize_rate_limits()
      }}
   end
 
@@ -227,9 +260,18 @@ defmodule Codex.AppServer.NotificationAdapter do
   end
 
   def to_event("account/rateLimits/updated", %{} = params) do
+    rate_limits =
+      params
+      |> Map.get("rateLimits")
+      |> case do
+        nil -> Map.get(params, "rate_limits")
+        value -> value
+      end
+      |> normalize_rate_limits()
+
     {:ok,
      %Events.AccountRateLimitsUpdated{
-       rate_limits: Map.get(params, "rateLimits") || Map.get(params, "rate_limits") || %{},
+       rate_limits: rate_limits || %{},
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: fetch(params, "turnId", "turn_id")
      }}
@@ -252,6 +294,14 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("configWarning", %{} = params) do
+    {:ok,
+     %Events.ConfigWarning{
+       summary: Map.get(params, "summary") || "",
+       details: Map.get(params, "details")
+     }}
+  end
+
   def to_event(method, %{} = params) when is_binary(method) do
     {:ok, %Events.AppServerNotification{method: method, params: params}}
   end
@@ -259,6 +309,36 @@ defmodule Codex.AppServer.NotificationAdapter do
   def to_event(method, params) when is_binary(method) do
     {:ok, %Events.AppServerNotification{method: method, params: Map.new(params || %{})}}
   end
+
+  defp normalize_initial_messages(nil), do: nil
+
+  defp normalize_initial_messages(messages) when is_list(messages) do
+    Enum.map(messages, fn
+      %{} = message ->
+        try do
+          Events.parse!(message)
+        rescue
+          _ -> message
+        end
+
+      other ->
+        other
+    end)
+  end
+
+  defp normalize_initial_messages(_), do: nil
+
+  defp normalize_rate_limits(nil), do: nil
+
+  defp normalize_rate_limits(%RateLimitSnapshot{} = snapshot), do: snapshot
+
+  defp normalize_rate_limits(%{} = snapshot) do
+    RateLimitSnapshot.from_map(snapshot)
+  rescue
+    _ -> snapshot
+  end
+
+  defp normalize_rate_limits(_), do: nil
 
   defp handle_item_event(event_module, params) do
     item = Map.get(params, "item") || %{}

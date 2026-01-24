@@ -11,6 +11,7 @@ defmodule Codex.Transport.AppServer do
   alias Codex.Events
   alias Codex.Models
   alias Codex.Options
+  alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
   alias Codex.Thread
   alias Codex.Transport.Support
   alias Codex.Turn.Result
@@ -175,26 +176,12 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:config, config)
     |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
     |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
+    |> maybe_put(:personality, thread.thread_opts.personality)
     |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
   end
 
   defp start_turn(conn, %Thread{} = thread, thread_id, input, turn_opts) do
-    sandbox_policy = fetch_opt(turn_opts, :sandbox_policy) || thread.thread_opts.sandbox_policy
-
-    approval_policy =
-      fetch_opt(turn_opts, :approval_policy) || thread.thread_opts.ask_for_approval
-
-    model = fetch_opt(turn_opts, :model) || thread.thread_opts.model
-    cwd = fetch_opt(turn_opts, :cwd) || thread.thread_opts.working_directory
-
-    opts =
-      []
-      |> maybe_put_kw(:cwd, cwd)
-      |> maybe_put_kw(:model, model)
-      |> maybe_put_kw(:approval_policy, approval_policy)
-      |> maybe_put_kw(:sandbox_policy, sandbox_policy)
-      |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
-      |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
+    opts = turn_start_opts(thread, turn_opts)
 
     case AppServer.turn_start(conn, thread_id, input, opts) do
       {:ok, response} ->
@@ -204,6 +191,41 @@ defmodule Codex.Transport.AppServer do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  defp turn_start_opts(%Thread{} = thread, turn_opts) do
+    []
+    |> maybe_put_kw(:cwd, select_turn_opt(turn_opts, :cwd, thread.thread_opts.working_directory))
+    |> maybe_put_kw(:model, select_turn_opt(turn_opts, :model, thread.thread_opts.model))
+    |> maybe_put_kw(
+      :approval_policy,
+      select_turn_opt(turn_opts, :approval_policy, thread.thread_opts.ask_for_approval)
+    )
+    |> maybe_put_kw(
+      :sandbox_policy,
+      select_turn_opt(turn_opts, :sandbox_policy, thread.thread_opts.sandbox_policy)
+    )
+    |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
+    |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
+    |> maybe_put_kw(
+      :personality,
+      select_turn_opt(turn_opts, :personality, thread.thread_opts.personality)
+    )
+    |> maybe_put_kw(
+      :output_schema,
+      select_turn_opt(turn_opts, :output_schema, thread.thread_opts.output_schema)
+    )
+    |> maybe_put_kw(
+      :collaboration_mode,
+      select_turn_opt(turn_opts, :collaboration_mode, thread.thread_opts.collaboration_mode)
+    )
+  end
+
+  defp select_turn_opt(turn_opts, key, fallback) do
+    case fetch_opt(turn_opts, key) do
+      nil -> fallback
+      value -> value
     end
   end
 
@@ -229,14 +251,19 @@ defmodule Codex.Transport.AppServer do
         end
 
       {:codex_request, id, method, params} ->
-        _ =
-          if request_matches?(state, id, method, params) do
-            AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
-          else
-            :ignore
-          end
+        cond do
+          request_matches?(state, id, method, params) ->
+            _ =
+              AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
 
-        next_event(state)
+            next_event(state)
+
+          user_input_request_method?(method) ->
+            {[request_user_input_event(id, params)], state}
+
+          true ->
+            next_event(state)
+        end
     after
       timeout_ms ->
         {:halt, state}
@@ -257,7 +284,7 @@ defmodule Codex.Transport.AppServer do
 
   defp maybe_apply_reasoning_effort(
          config,
-         %Thread{codex_opts: %Options{reasoning_effort: effort}},
+         %Thread{codex_opts: %Options{model: model, reasoning_effort: effort}},
          :start
        ) do
     config = config || %{}
@@ -265,7 +292,12 @@ defmodule Codex.Transport.AppServer do
     if has_reasoning_effort?(config) do
       config
     else
-      Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))
+      effort = Models.coerce_reasoning_effort(model, effort)
+
+      case effort do
+        nil -> config
+        _ -> Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))
+      end
     end
   end
 
@@ -292,6 +324,54 @@ defmodule Codex.Transport.AppServer do
 
   defp approval_request_method?(method),
     do: method in ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"]
+
+  defp user_input_request_method?(method),
+    do: method in ["item/tool/requestUserInput", "item/tool/request_user_input"]
+
+  defp request_user_input_event(id, %{} = params) do
+    questions =
+      params
+      |> fetch_any(["questions", :questions])
+      |> normalize_request_user_input_questions()
+
+    %Events.RequestUserInput{
+      id: id,
+      turn_id: fetch_any(params, ["turnId", "turn_id"]),
+      questions: questions
+    }
+  end
+
+  defp normalize_request_user_input_questions(nil), do: []
+
+  defp normalize_request_user_input_questions(questions) when is_list(questions) do
+    Enum.map(questions, fn question ->
+      question
+      |> normalize_request_user_input_question()
+      |> RequestUserInputQuestion.from_map()
+    end)
+  end
+
+  defp normalize_request_user_input_questions(_), do: []
+
+  defp normalize_request_user_input_question(%{} = question) do
+    question
+    |> Enum.map(fn {key, value} -> {to_string(key), value} end)
+    |> Enum.map(fn
+      {"options", opts} when is_list(opts) -> {"options", Enum.map(opts, &stringify_keys/1)}
+      other -> other
+    end)
+    |> Map.new()
+  end
+
+  defp normalize_request_user_input_question(other), do: stringify_keys(other)
+
+  defp stringify_keys(%{} = map) do
+    map
+    |> Enum.map(fn {key, value} -> {to_string(key), value} end)
+    |> Map.new()
+  end
+
+  defp stringify_keys(other), do: %{"value" => other}
 
   defp request_ids_match?(thread_id, turn_id, params) do
     request_thread_id =

@@ -18,11 +18,12 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
 - **Multi-Transport Support**: Default exec JSONL (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color, config overrides, review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
-- **Streaming & Structured Output**: Real-time events plus reasoning summary/content preservation and typed app-server deltas.
+- **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
 - **File & Attachment Pipeline**: Secure temp file registry and change events.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
-- **Tooling & MCP Integration**: Built-in registry for Codex tool manifests and MCP client helpers.
-- **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, and usage stats.
+- **Collaboration & Personality Controls**: Collaboration modes, personality overrides, and web search mode toggles.
+- **Tooling & MCP Integration**: Built-in registry for Codex tool manifests, MCP client helpers, and elicitation handling.
+- **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, usage stats, and rate limit snapshots.
 
 ## Installation
 
@@ -31,7 +32,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.5.0"}
+    {:codex_sdk, "~> 0.6.0"}
   ]
 end
 ```
@@ -140,12 +141,13 @@ Note: exec JSONL transport still accepts text input only; list inputs return `{:
 
 App-server-only APIs include:
 
-- `Codex.AppServer.thread_list/2`, `thread_archive/2`
-- `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`
+- `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
+- `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
+- `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
 - `Codex.AppServer.turn_interrupt/3`
 - `Codex.AppServer.fuzzy_file_search/3` (legacy v1 helper used by `@` file search)
 - `Codex.AppServer.command_write_stdin/4` (interactive command stdin)
-- `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints
+- `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints (including MCP reload)
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
 Note: app-server v2 does not support sending `UserInput::Skill` directly; use `skills/list` and inject skill content as text if you need emulation.
@@ -308,6 +310,9 @@ apply or undo diffs locally:
     codex_path_override: "/custom/path/to/codex",
     telemetry_prefix: [:codex, :sdk],
     model: "o1",
+    model_personality: :friendly,
+    review_model: "gpt-5.1-codex",
+    tool_output_token_limit: 512,
     history: %{persistence: "local", max_bytes: 1_000_000}
   )
 
@@ -318,7 +323,9 @@ apply or undo diffs locally:
     labels: %{environment: "dev"},
     auto_run: true,
     sandbox: :strict,
-    approval_timeout_ms: 45_000
+    approval_timeout_ms: 45_000,
+    web_search_mode: :cached,
+    personality: :pragmatic
   )
 
 {:ok, thread} = Codex.start_thread(codex_options, thread_options)
@@ -335,7 +342,7 @@ IO.inspect(result.last_response_id)
 # Note: last_response_id remains nil until codex exec emits response_id fields.
 
 # Turn-level options
-turn_options = %{output_schema: my_json_schema}
+turn_options = %{output_schema: my_json_schema, personality: :friendly}
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 
@@ -766,6 +773,17 @@ The SDK provides structured events for all Codex operations:
 - `TurnCompleted` - Turn finished with usage statistics
 - `TurnFailed` - Turn encountered an error
 
+### Session and Control Events
+
+- `SessionConfigured` - Session bootstrap details and initial messages
+- `ContextCompacted` - Compaction summary after auto-compaction
+- `ThreadRolledBack` - Thread rollback summary
+- `RequestUserInput` - Tool-driven user input request
+- `ElicitationRequest` - MCP elicitation request
+- `UndoStarted` / `UndoCompleted` - Undo lifecycle events
+- `EnteredReviewMode` / `ExitedReviewMode` - Review mode lifecycle updates
+- `ConfigWarning` - Config warnings emitted by the server
+
 ### Item Events
 
 - `ItemStarted` - New item added to thread
@@ -796,6 +814,11 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`sandbox_warnings_and_approval_bypass.exs`** - Normalized sandbox warnings and policy-approved bypass demo
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
+- **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
+- **`live_personality.exs`** - Personality overrides (friendly vs pragmatic)
+- **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
+- **`live_web_search_modes.exs`** - Web search mode toggles with event reporting
+- **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
 
 Run examples with:

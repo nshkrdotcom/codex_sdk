@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-23
+
+### Added
+
+- Protocol types for text elements, collaboration modes, request_user_input, elicitation, rate limit snapshots, and config enums
+- Event structs for session configuration, user input requests, MCP startup updates, elicitation requests, undo/rollback, review mode, config warnings, and collaboration lifecycle updates
+- Thread/turn options: web search modes, personality overrides, collaboration modes, compact prompts, raw reasoning toggle, and per-thread output schemas
+- Global options: model personality, auto-compact token limit, review model, hide agent reasoning, tool output token limit, and max agent threads
+- Reasoning effort levels `:minimal` and `:xhigh`
+- App-server APIs for thread fork/read/rollback/loaded list, skills config writes, config requirements, collaboration modes, app listing, and MCP reloads
+- App-server params for personality, output schemas, and collaboration modes on thread start/resume and turn start
+- Rate limit snapshots parsed from token usage updates and stored on threads
+- Live examples covering collaboration modes, personality, web search modes, thread management, and rate limit monitoring
+
+### Changed
+
+- Web search config handling now prefers `web_search_mode` while honoring config defaults and feature gating
+- Account rate limit notifications normalize to rate limit snapshot types
+- Output schemas can be configured at the thread level with turn-level overrides
+
+### Deprecated
+
+- `web_search_enabled` on `Codex.Thread.Options` (use `web_search_mode` instead)
+
 ## [0.5.0] - 2025-12-31
 
 ### Added

@@ -25,6 +25,16 @@ defmodule Codex.ApprovalsTest do
     def review_tool(_event, _context, _opts), do: {:deny, "blocked by policy"}
   end
 
+  defmodule SyncAllowWithOptsHook do
+    @behaviour Hook
+
+    @impl true
+    def prepare(_event, context), do: {:ok, context}
+
+    @impl true
+    def review_tool(_event, _context, _opts), do: {:allow, for_session: true}
+  end
+
   defmodule AsyncHook do
     @behaviour Hook
 
@@ -88,6 +98,13 @@ defmodule Codex.ApprovalsTest do
       context = %{thread: nil, metadata: %{}}
 
       assert :allow = Approvals.review_tool(SyncAllowHook, event, context)
+    end
+
+    test "allows when sync hook returns {:allow, opts}" do
+      event = %{tool_name: "test_tool", arguments: %{}, call_id: "call_1"}
+      context = %{thread: nil, metadata: %{}}
+
+      assert :allow = Approvals.review_tool(SyncAllowWithOptsHook, event, context)
     end
 
     test "denies when sync hook returns {:deny, reason}" do

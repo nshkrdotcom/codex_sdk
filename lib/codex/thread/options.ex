@@ -4,6 +4,7 @@ defmodule Codex.Thread.Options do
   """
 
   alias Codex.FileSearch
+  alias Codex.Protocol.CollaborationMode
 
   @enforce_keys []
   defstruct metadata: %{},
@@ -20,6 +21,12 @@ defmodule Codex.Thread.Options do
             skip_git_repo_check: false,
             network_access_enabled: nil,
             web_search_enabled: false,
+            web_search_mode: :disabled,
+            personality: nil,
+            collaboration_mode: nil,
+            compact_prompt: nil,
+            show_raw_agent_reasoning: false,
+            output_schema: nil,
             apply_patch_freeform_enabled: nil,
             view_image_tool_enabled: nil,
             unified_exec_enabled: nil,
@@ -90,6 +97,9 @@ defmodule Codex.Thread.Options do
 
   @type reasoning_summary :: :auto | :concise | :detailed | :none | String.t()
   @type model_verbosity :: :low | :medium | :high | String.t()
+  @type web_search_mode :: Codex.Protocol.ConfigTypes.web_search_mode()
+  @type personality :: Codex.Protocol.ConfigTypes.personality()
+  @type collaboration_mode :: Codex.Protocol.CollaborationMode.t()
 
   @type retry_opts :: keyword()
   @type rate_limit_opts :: keyword()
@@ -114,6 +124,12 @@ defmodule Codex.Thread.Options do
           skip_git_repo_check: boolean(),
           network_access_enabled: boolean() | nil,
           web_search_enabled: boolean(),
+          web_search_mode: web_search_mode(),
+          personality: personality() | nil,
+          collaboration_mode: collaboration_mode() | nil,
+          compact_prompt: String.t() | nil,
+          show_raw_agent_reasoning: boolean(),
+          output_schema: map() | nil,
           apply_patch_freeform_enabled: boolean() | nil,
           view_image_tool_enabled: boolean() | nil,
           unified_exec_enabled: boolean() | nil,
@@ -186,6 +202,44 @@ defmodule Codex.Thread.Options do
 
     web_search_enabled =
       Map.get(attrs, :web_search_enabled, Map.get(attrs, "web_search_enabled", false))
+
+    web_search_enabled_provided? =
+      has_any_key?(attrs, [
+        :web_search_enabled,
+        "web_search_enabled",
+        :webSearchEnabled,
+        "webSearchEnabled"
+      ])
+
+    web_search_mode =
+      Map.get(
+        attrs,
+        :web_search_mode,
+        Map.get(
+          attrs,
+          "web_search_mode",
+          Map.get(attrs, :webSearchMode, Map.get(attrs, "webSearchMode"))
+        )
+      )
+
+    web_search_mode_provided? =
+      has_any_key?(attrs, [:web_search_mode, "web_search_mode", :webSearchMode, "webSearchMode"])
+
+    personality = Map.get(attrs, :personality, Map.get(attrs, "personality"))
+
+    collaboration_mode =
+      Map.get(attrs, :collaboration_mode, Map.get(attrs, "collaboration_mode"))
+
+    compact_prompt = Map.get(attrs, :compact_prompt, Map.get(attrs, "compact_prompt"))
+
+    show_raw_agent_reasoning =
+      Map.get(
+        attrs,
+        :show_raw_agent_reasoning,
+        Map.get(attrs, "show_raw_agent_reasoning", false)
+      )
+
+    output_schema = Map.get(attrs, :output_schema, Map.get(attrs, "output_schema"))
 
     apply_patch_freeform_enabled =
       Map.get(
@@ -336,6 +390,13 @@ defmodule Codex.Thread.Options do
          {:ok, network_access_enabled} <-
            validate_optional_boolean(network_access_enabled, :network_access_enabled),
          :ok <- validate_boolean(web_search_enabled, :web_search_enabled),
+         {:ok, web_search_mode} <- normalize_web_search_mode(web_search_mode),
+         {:ok, personality} <- normalize_personality(personality),
+         {:ok, collaboration_mode} <- normalize_collaboration_mode(collaboration_mode),
+         :ok <- validate_optional_string(compact_prompt, :compact_prompt),
+         {:ok, show_raw_agent_reasoning} <-
+           validate_optional_boolean(show_raw_agent_reasoning, :show_raw_agent_reasoning),
+         {:ok, output_schema} <- ensure_optional_map(output_schema, :output_schema),
          {:ok, apply_patch_freeform_enabled} <-
            validate_optional_boolean(apply_patch_freeform_enabled, :apply_patch_freeform_enabled),
          {:ok, view_image_tool_enabled} <-
@@ -385,6 +446,18 @@ defmodule Codex.Thread.Options do
            normalize_optional_keyword_list(rate_limit_opts, :rate_limit_opts),
          :ok <- validate_boolean(experimental_raw_events, :experimental_raw_events),
          :ok <- validate_timeout(approval_timeout_ms) do
+      web_search_mode =
+        resolve_web_search_mode(
+          web_search_mode,
+          web_search_enabled,
+          web_search_mode_provided?,
+          web_search_enabled_provided?,
+          config
+        )
+
+      web_search_enabled = web_search_mode != :disabled
+      show_raw_agent_reasoning = show_raw_agent_reasoning || false
+
       {:ok,
        %__MODULE__{
          metadata: metadata,
@@ -401,6 +474,12 @@ defmodule Codex.Thread.Options do
          skip_git_repo_check: skip_git_repo_check,
          network_access_enabled: network_access_enabled,
          web_search_enabled: web_search_enabled,
+         web_search_mode: web_search_mode,
+         personality: personality,
+         collaboration_mode: collaboration_mode,
+         compact_prompt: compact_prompt,
+         show_raw_agent_reasoning: show_raw_agent_reasoning,
+         output_schema: output_schema,
          apply_patch_freeform_enabled: apply_patch_freeform_enabled,
          view_image_tool_enabled: view_image_tool_enabled,
          unified_exec_enabled: unified_exec_enabled,
@@ -617,6 +696,136 @@ defmodule Codex.Thread.Options do
 
   defp normalize_model_verbosity(other), do: {:error, {:invalid_model_verbosity, other}}
 
+  defp normalize_web_search_mode(nil), do: {:ok, nil}
+
+  defp normalize_web_search_mode(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_web_search_mode()
+  end
+
+  defp normalize_web_search_mode(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "disabled" -> {:ok, :disabled}
+      "cached" -> {:ok, :cached}
+      "live" -> {:ok, :live}
+      other -> {:error, {:invalid_web_search_mode, other}}
+    end
+  end
+
+  defp normalize_web_search_mode(other), do: {:error, {:invalid_web_search_mode, other}}
+
+  defp resolve_web_search_mode(mode, enabled, mode_provided?, enabled_provided?, config) do
+    cond do
+      mode_provided? and not is_nil(mode) ->
+        mode
+
+      enabled_provided? ->
+        if enabled, do: :live, else: :disabled
+
+      true ->
+        case web_search_mode_from_config(config) do
+          nil -> :disabled
+          config_mode -> config_mode
+        end
+    end
+  end
+
+  defp web_search_mode_from_config(%{} = config) do
+    case fetch_any(config, [:web_search, "web_search", :webSearch, "webSearch"]) do
+      mode when mode in [:disabled, "disabled"] -> :disabled
+      mode when mode in [:cached, "cached"] -> :cached
+      mode when mode in [:live, "live"] -> :live
+      _ -> web_search_mode_from_features(fetch_any(config, [:features, "features"]))
+    end
+  end
+
+  defp web_search_mode_from_config(_), do: nil
+
+  defp web_search_mode_from_features(%{} = features) do
+    cached =
+      fetch_any(features, [
+        :web_search_cached,
+        "web_search_cached",
+        :webSearchCached,
+        "webSearchCached"
+      ])
+
+    live =
+      fetch_any(features, [
+        :web_search_request,
+        "web_search_request",
+        :webSearchRequest,
+        "webSearchRequest"
+      ])
+
+    cond do
+      cached in [true, "true"] -> :cached
+      live in [true, "true"] -> :live
+      true -> nil
+    end
+  end
+
+  defp web_search_mode_from_features(_), do: nil
+
+  defp normalize_personality(nil), do: {:ok, nil}
+
+  defp normalize_personality(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_personality()
+  end
+
+  defp normalize_personality(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "" -> {:ok, nil}
+      "friendly" -> {:ok, :friendly}
+      "pragmatic" -> {:ok, :pragmatic}
+      other -> {:error, {:invalid_personality, other}}
+    end
+  end
+
+  defp normalize_personality(other), do: {:error, {:invalid_personality, other}}
+
+  defp normalize_collaboration_mode(nil), do: {:ok, nil}
+
+  defp normalize_collaboration_mode(%CollaborationMode{} = mode),
+    do: {:ok, mode}
+
+  defp normalize_collaboration_mode(%{} = mode) do
+    normalized =
+      mode
+      |> Enum.map(fn {key, value} ->
+        key = normalize_collaboration_key(key)
+        {key, normalize_collaboration_value(key, value)}
+      end)
+      |> Map.new()
+
+    {:ok, CollaborationMode.from_map(normalized)}
+  rescue
+    _ -> {:error, {:invalid_collaboration_mode, mode}}
+  end
+
+  defp normalize_collaboration_mode(other), do: {:error, {:invalid_collaboration_mode, other}}
+
+  defp normalize_collaboration_key(key) when is_atom(key),
+    do: key |> Atom.to_string() |> normalize_collaboration_key()
+
+  defp normalize_collaboration_key("reasoningEffort"), do: "reasoning_effort"
+  defp normalize_collaboration_key("reasoning_effort"), do: "reasoning_effort"
+  defp normalize_collaboration_key("developerInstructions"), do: "developer_instructions"
+  defp normalize_collaboration_key("developer_instructions"), do: "developer_instructions"
+  defp normalize_collaboration_key(key) when is_binary(key), do: key
+
+  defp normalize_collaboration_value("mode", value) when is_atom(value),
+    do: Atom.to_string(value)
+
+  defp normalize_collaboration_value("reasoning_effort", value) when is_atom(value),
+    do: Atom.to_string(value)
+
+  defp normalize_collaboration_value(_key, value), do: value
+
   defp normalize_config_overrides(nil), do: {:ok, []}
 
   defp normalize_config_overrides(%{} = overrides) do
@@ -750,4 +959,10 @@ defmodule Codex.Thread.Options do
       end
     end)
   end
+
+  defp has_any_key?(map, keys) when is_map(map) and is_list(keys) do
+    Enum.any?(keys, &Map.has_key?(map, &1))
+  end
+
+  defp has_any_key?(_map, _keys), do: false
 end

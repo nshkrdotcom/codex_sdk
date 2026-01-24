@@ -2,6 +2,7 @@ defmodule Codex.EventsTest do
   use ExUnit.Case, async: true
 
   alias Codex.{Events, Items}
+  alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
   describe "parse!/1" do
     test "converts thread.started event map into typed struct" do
@@ -249,7 +250,7 @@ defmodule Codex.EventsTest do
                "success" => true
              } = Events.to_map(login)
 
-      rate_limits = %{"primary" => %{"remaining" => 10}}
+      rate_limits = %{"primary" => %{"usedPercent" => 10.0}}
 
       rate_event =
         Events.parse!(%{
@@ -259,15 +260,101 @@ defmodule Codex.EventsTest do
         })
 
       assert %Events.AccountRateLimitsUpdated{
-               rate_limits: ^rate_limits,
+               rate_limits: %RateLimitSnapshot.Snapshot{
+                 primary: %RateLimitSnapshot.Window{used_percent: 10.0}
+               },
                thread_id: "thread_1"
              } = rate_event
 
       assert %{
                "type" => "account/rateLimits/updated",
-               "rate_limits" => ^rate_limits,
+               "rate_limits" => %{"primary" => %{"used_percent" => 10.0}},
                "thread_id" => "thread_1"
              } = Events.to_map(rate_event)
+    end
+
+    test "parses session configured events with initial messages" do
+      event =
+        Events.parse!(%{
+          "type" => "sessionConfigured",
+          "sessionId" => "sess_1",
+          "forkedFromId" => "sess_0",
+          "model" => "gpt-5.1-codex",
+          "modelProviderId" => "openai",
+          "approvalPolicy" => "untrusted",
+          "sandboxPolicy" => %{"type" => "read-only"},
+          "cwd" => "/tmp",
+          "reasoningEffort" => "high",
+          "historyLogId" => 12,
+          "historyEntryCount" => 3,
+          "initialMessages" => [%{"type" => "warning", "message" => "heads up"}],
+          "rolloutPath" => "/tmp/rollout"
+        })
+
+      assert %Events.SessionConfigured{
+               session_id: "sess_1",
+               forked_from_id: "sess_0",
+               model: "gpt-5.1-codex",
+               model_provider_id: "openai",
+               approval_policy: "untrusted",
+               sandbox_policy: %{"type" => "read-only"},
+               cwd: "/tmp",
+               reasoning_effort: "high",
+               history_log_id: 12,
+               history_entry_count: 3,
+               initial_messages: [%Events.Warning{message: "heads up"}],
+               rollout_path: "/tmp/rollout"
+             } = event
+    end
+
+    test "parses request user input events" do
+      event =
+        Events.parse!(%{
+          "type" => "request_user_input",
+          "id" => "req_1",
+          "turn_id" => "turn_1",
+          "questions" => [
+            %{
+              "id" => "q1",
+              "header" => "Pick one",
+              "question" => "Which?",
+              "options" => [%{"label" => "A", "description" => "Option A"}]
+            }
+          ]
+        })
+
+      assert %Events.RequestUserInput{id: "req_1", turn_id: "turn_1", questions: [question]} =
+               event
+
+      assert %Codex.Protocol.RequestUserInput.Question{
+               id: "q1",
+               header: "Pick one",
+               question: "Which?",
+               options: [%Codex.Protocol.RequestUserInput.Option{label: "A"}]
+             } = question
+    end
+
+    test "parses MCP startup updates with status maps" do
+      event =
+        Events.parse!(%{
+          "type" => "mcp_startup_update",
+          "server" => "mcp",
+          "status" => %{"state" => "failed", "error" => "boom"}
+        })
+
+      assert %Events.McpStartupUpdate{server_name: "mcp", status: "failed", message: "boom"} =
+               event
+    end
+
+    test "parses config warnings" do
+      event =
+        Events.parse!(%{
+          "type" => "configWarning",
+          "summary" => "Deprecated setting",
+          "details" => "Use new flag"
+        })
+
+      assert %Events.ConfigWarning{summary: "Deprecated setting", details: "Use new flag"} = event
     end
 
     test "parses compaction notifications and carries thread context" do

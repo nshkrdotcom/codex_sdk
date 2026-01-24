@@ -19,6 +19,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
+| `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, request_user_input, rate limits) |
 | `Codex.OutputSchemaFile` | JSON schema file management |
 
 ---
@@ -1233,10 +1234,18 @@ Global Codex configuration.
   telemetry_prefix: [atom()],
   model: String.t() | nil,
   reasoning_effort: Codex.Models.reasoning_effort() | nil,
+  model_personality: :friendly | :pragmatic | nil,
   model_reasoning_summary: String.t() | nil,
   model_verbosity: String.t() | nil,
   model_context_window: pos_integer() | nil,
-  model_supports_reasoning_summaries: boolean() | nil
+  model_supports_reasoning_summaries: boolean() | nil,
+  model_auto_compact_token_limit: pos_integer() | nil,
+  review_model: String.t() | nil,
+  history_persistence: String.t() | nil,
+  history_max_bytes: non_neg_integer() | nil,
+  hide_agent_reasoning: boolean(),
+  tool_output_token_limit: pos_integer() | nil,
+  agent_max_threads: pos_integer() | nil
 }
 ```
 
@@ -1247,12 +1256,18 @@ Global Codex configuration.
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override (defaults to `Codex.Models.default_model/0`)
 - `reasoning_effort`: Reasoning effort override (defaults to `Codex.Models.default_reasoning_effort/1`)
+- `model_personality`: Personality preference (`:friendly` or `:pragmatic`)
 - `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)
 - `model_verbosity`: Response verbosity (`low`, `medium`, `high`)
 - `model_context_window`: Context window size override, in tokens
 - `model_supports_reasoning_summaries`: Force-enable reasoning summaries for non-default models
+- `model_auto_compact_token_limit`: Auto-compaction token threshold
+- `review_model`: Model override for review mode runs
 - `history_persistence`: History persistence mode override (mirrors `history.persistence`)
 - `history_max_bytes`: History size cap in bytes (mirrors `history.max_bytes`)
+- `hide_agent_reasoning`: Hide reasoning summaries even when supported
+- `tool_output_token_limit`: Token cap for tool outputs (per turn)
+- `agent_max_threads`: Limit for max concurrent agent threads
 
 **Example**:
 ```elixir
@@ -1295,6 +1310,12 @@ Thread-specific configuration.
   skip_git_repo_check: boolean(),
   network_access_enabled: boolean() | nil,
   web_search_enabled: boolean(),
+  web_search_mode: :disabled | :cached | :live,
+  personality: :friendly | :pragmatic | nil,
+  collaboration_mode: Codex.Protocol.CollaborationMode.t() | nil,
+  compact_prompt: String.t() | nil,
+  show_raw_agent_reasoning: boolean(),
+  output_schema: map() | nil,
   apply_patch_freeform_enabled: boolean() | nil,
   view_image_tool_enabled: boolean() | nil,
   unified_exec_enabled: boolean() | nil,
@@ -1345,7 +1366,13 @@ Thread-specific configuration.
 - `additional_directories`: Extra writable roots (`--add-dir`)
 - `skip_git_repo_check`: Allow running outside a Git repo
 - `network_access_enabled`: Workspace-write network access override for exec (`--config sandbox_workspace_write.network_access=...`)
-- `web_search_enabled`: Enable web search (`--config features.web_search_request=...`)
+- `web_search_enabled`: Legacy web search toggle (deprecated; use `web_search_mode`)
+- `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`)
+- `personality`: Thread-level personality override
+- `collaboration_mode`: Collaboration mode preset for app-server turns
+- `compact_prompt`: Override prompt used for context compaction
+- `show_raw_agent_reasoning`: Emit raw reasoning content in reasoning items
+- `output_schema`: Default JSON schema for structured outputs (turn options override)
 - `apply_patch_freeform_enabled`: Enable the freeform apply_patch tool (`features.apply_patch_freeform`)
 - `view_image_tool_enabled`: Enable the view_image tool (`features.view_image_tool`)
 - `unified_exec_enabled`: Enable unified exec tool (`features.unified_exec`)

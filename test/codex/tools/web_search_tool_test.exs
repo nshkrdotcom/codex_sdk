@@ -259,7 +259,6 @@ defmodule Codex.Tools.WebSearchToolTest do
 
       {:ok, thread_opts} =
         ThreadOptions.new(%{
-          web_search_enabled: false,
           config: %{"features" => %{"web_search_request" => true}}
         })
 

@@ -25,16 +25,20 @@ defmodule CodexExamples.LiveAppServerBasic do
     {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)
 
     try do
+      personality = :friendly
+
       {:ok, thread} =
         Codex.start_thread(codex_opts, %{
           transport: {:app_server, conn},
-          working_directory: File.cwd!()
+          working_directory: File.cwd!(),
+          personality: personality
         })
 
       {:ok, result} = Codex.Thread.run(thread, prompt, %{timeout_ms: 120_000})
 
       IO.puts("""
       App-server turn completed.
+        personality: #{personality}
         thread_id: #{inspect(result.thread.thread_id)}
         final_response: #{extract_text(result.final_response)}
       """)

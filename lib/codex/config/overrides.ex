@@ -21,6 +21,11 @@ defmodule Codex.Config.Overrides do
       )
     )
     |> maybe_put_override(
+      "model_personality",
+      pick(thread_value(thread_opts, :personality), codex_opts.model_personality)
+      |> encode_personality()
+    )
+    |> maybe_put_override(
       "model_verbosity",
       pick(thread_value(thread_opts, :model_verbosity), codex_opts.model_verbosity)
     )
@@ -29,12 +34,25 @@ defmodule Codex.Config.Overrides do
       pick(thread_value(thread_opts, :model_context_window), codex_opts.model_context_window)
     )
     |> maybe_put_override(
+      "model_auto_compact_token_limit",
+      codex_opts.model_auto_compact_token_limit
+    )
+    |> maybe_put_override("review_model", codex_opts.review_model)
+    |> maybe_put_override(
       "model_supports_reasoning_summaries",
       pick(
         thread_value(thread_opts, :model_supports_reasoning_summaries),
         codex_opts.model_supports_reasoning_summaries
       )
     )
+    |> maybe_put_override("compact_prompt", thread_value(thread_opts, :compact_prompt))
+    |> maybe_put_override("hide_agent_reasoning", codex_opts.hide_agent_reasoning)
+    |> maybe_put_override(
+      "show_raw_agent_reasoning",
+      thread_value(thread_opts, :show_raw_agent_reasoning)
+    )
+    |> maybe_put_override("tool_output_token_limit", codex_opts.tool_output_token_limit)
+    |> maybe_put_override("agents.max_threads", codex_opts.agent_max_threads)
     |> maybe_put_override(
       "history.persistence",
       pick(thread_value(thread_opts, :history_persistence), codex_opts.history_persistence)
@@ -56,9 +74,10 @@ defmodule Codex.Config.Overrides do
       thread_value(thread_opts, :unified_exec_enabled)
     )
     |> maybe_put_override("features.skills", thread_value(thread_opts, :skills_enabled))
+    |> maybe_put_override("web_search", web_search_mode_override(thread_opts))
     |> maybe_put_override_true(
       "features.web_search_request",
-      thread_value(thread_opts, :web_search_enabled)
+      web_search_request_override(thread_opts)
     )
     |> add_shell_environment_policy_overrides(
       thread_value(thread_opts, :shell_environment_policy)
@@ -135,6 +154,38 @@ defmodule Codex.Config.Overrides do
 
   defp pick(nil, fallback), do: fallback
   defp pick(value, _fallback), do: value
+
+  defp encode_personality(nil), do: nil
+  defp encode_personality(value) when is_atom(value), do: Atom.to_string(value)
+  defp encode_personality(value) when is_binary(value), do: value
+  defp encode_personality(_), do: nil
+
+  defp web_search_mode_override(%ThreadOptions{} = opts) do
+    case thread_value(opts, :web_search_mode) do
+      :cached -> "cached"
+      :live -> "live"
+      "cached" -> "cached"
+      "live" -> "live"
+      _ -> nil
+    end
+  end
+
+  defp web_search_mode_override(_), do: nil
+
+  defp web_search_request_override(%ThreadOptions{} = opts) do
+    case thread_value(opts, :web_search_mode) do
+      :live -> true
+      "live" -> true
+      :cached -> nil
+      "cached" -> nil
+      :disabled -> nil
+      "disabled" -> nil
+      nil -> thread_value(opts, :web_search_enabled)
+      _ -> thread_value(opts, :web_search_enabled)
+    end
+  end
+
+  defp web_search_request_override(_), do: nil
 
   defp normalize_config_map(nil), do: %{}
   defp normalize_config_map(%{} = config), do: config

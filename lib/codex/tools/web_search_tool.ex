@@ -337,6 +337,12 @@ defmodule Codex.Tools.WebSearchTool do
 
   defp enabled?(context, _metadata) do
     case Map.get(context, :thread) do
+      %{thread_opts: %{web_search_mode: mode}} when mode in [:cached, :live] ->
+        true
+
+      %{thread_opts: %{web_search_mode: :disabled}} ->
+        false
+
       %{thread_opts: %{web_search_enabled: true}} ->
         true
 
@@ -354,6 +360,22 @@ defmodule Codex.Tools.WebSearchTool do
   defp feature_enabled_from_config(%{config: %{"features" => %{"web_search_request" => value}}})
        when is_boolean(value),
        do: value
+
+  defp feature_enabled_from_config(%{config: %{"web_search" => mode}})
+       when mode in ["cached", "live", :cached, :live],
+       do: true
+
+  defp feature_enabled_from_config(%{config: %{"web_search" => mode}})
+       when mode in ["disabled", :disabled],
+       do: false
+
+  defp feature_enabled_from_config(%{config: %{web_search: mode}})
+       when mode in ["cached", "live", :cached, :live],
+       do: true
+
+  defp feature_enabled_from_config(%{config: %{web_search: mode}})
+       when mode in ["disabled", :disabled],
+       do: false
 
   defp feature_enabled_from_config(_opts), do: false
 

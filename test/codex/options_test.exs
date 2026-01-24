@@ -62,6 +62,17 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
+    test "coerces unsupported reasoning effort values" do
+      {:ok, opts} =
+        Options.new(%{
+          model: "gpt-5.1-codex-mini",
+          reasoning_effort: :xhigh
+        })
+
+      assert opts.model == "gpt-5.1-codex-mini"
+      assert opts.reasoning_effort == :high
+    end
+
     test "accepts reasoning summary and verbosity options" do
       {:ok, opts} =
         Options.new(%{
@@ -99,9 +110,33 @@ defmodule Codex.OptionsTest do
       assert opts_from_map.history_max_bytes == 24_000
     end
 
+    test "accepts model personality and agent limits" do
+      {:ok, opts} =
+        Options.new(%{
+          model_personality: :friendly,
+          model_auto_compact_token_limit: 512,
+          review_model: "gpt-5.2",
+          hide_agent_reasoning: true,
+          tool_output_token_limit: 256,
+          agent_max_threads: 3
+        })
+
+      assert opts.model_personality == :friendly
+      assert opts.model_auto_compact_token_limit == 512
+      assert opts.review_model == "gpt-5.2"
+      assert opts.hide_agent_reasoning == true
+      assert opts.tool_output_token_limit == 256
+      assert opts.agent_max_threads == 3
+    end
+
     test "rejects invalid reasoning summary" do
       assert {:error, {:invalid_model_reasoning_summary, "loud"}} =
                Options.new(%{model_reasoning_summary: "loud"})
+    end
+
+    test "rejects invalid tool output token limit" do
+      assert {:error, {:invalid_tool_output_token_limit, 0}} =
+               Options.new(%{tool_output_token_limit: 0})
     end
 
     test "loads API key from CLI auth file when env is absent" do

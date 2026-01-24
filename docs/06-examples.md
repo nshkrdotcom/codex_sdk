@@ -19,7 +19,8 @@ Auth defaults: all examples prefer `CODEX_API_KEY` (or `auth.json` `OPENAI_API_K
 11. [Live Usage & Compaction](#live-usage--compaction)
 12. [Live Exec Controls](#live-exec-controls)
 13. [Live Telemetry Stream](#live-telemetry-stream)
-14. [App-server Transport](#app-server-transport)
+14. [Additional Live Examples](#additional-live-examples)
+15. [App-server Transport](#app-server-transport)
 
 ---
 
@@ -1288,6 +1289,8 @@ Run it with:
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
 
+Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.1-codex-mini` by default, but `examples/conversation_and_resume.exs`, `examples/live_session_walkthrough.exs`, and `examples/live_mcp_and_sessions.exs` explicitly set `model: "gpt-5.2-codex"` to avoid mini reasoning-effort limits. Update those scripts if you want a different model.
+
 ## Live Exec Controls
 
 `examples/live_exec_controls.exs` streams against the live Codex CLI while forwarding per-turn env,
@@ -1326,6 +1329,14 @@ mix run examples/live_telemetry_stream.exs
 
 Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
+## Additional Live Examples
+
+- `examples/live_collaboration_modes.exs` — lists collaboration presets and runs a turn
+- `examples/live_personality.exs` — compares friendly vs pragmatic personality overrides
+- `examples/live_thread_management.exs` — demonstrates thread read/fork/rollback/loaded list
+- `examples/live_web_search_modes.exs` — toggles web search modes and reports web search items
+- `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage events
+
 ## App-server Transport
 
 App-server (`codex app-server`) is a **stateful, bidirectional** transport that unlocks upstream v2 APIs (threads list/archive, skills/models/config, server-driven approvals, etc.).
@@ -1336,6 +1347,9 @@ See `docs/09-app-server-transport.md` for the complete guide, and run the live s
 mix run examples/live_app_server_basic.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
 mix run examples/live_app_server_approvals.exs
+mix run examples/live_collaboration_modes.exs
+mix run examples/live_personality.exs
+mix run examples/live_thread_management.exs
 ```
 
 Minimal usage with existing thread APIs:

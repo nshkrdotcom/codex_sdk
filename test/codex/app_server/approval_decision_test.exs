@@ -29,5 +29,10 @@ defmodule Codex.AppServer.ApprovalDecisionTest do
     test "encodes deny decision as decline" do
       assert "decline" == ApprovalDecision.from_hook({:deny, "nope"})
     end
+
+    test "encodes cancel decisions" do
+      assert "cancel" == ApprovalDecision.from_hook({:deny, :cancel})
+      assert "cancel" == ApprovalDecision.from_hook(:cancel)
+    end
   end
 end

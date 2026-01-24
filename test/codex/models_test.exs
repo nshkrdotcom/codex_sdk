@@ -139,10 +139,20 @@ defmodule Codex.ModelsTest do
 
   test "normalizes reasoning effort and preserves model helpers" do
     assert Models.normalize_reasoning_effort("none") == {:ok, :none}
+    assert Models.normalize_reasoning_effort("minimal") == {:ok, :minimal}
     assert Models.normalize_reasoning_effort(:none) == {:ok, :none}
     assert Models.reasoning_effort_to_string(:none) == "none"
+    assert Models.normalize_reasoning_effort("xhigh") == {:ok, :xhigh}
+    assert Models.reasoning_effort_to_string(:xhigh) == "xhigh"
     assert Models.supported_in_api?("gpt-5.2-codex") == false
     assert Models.tool_enabled?("gpt-5.1")
+  end
+
+  test "coerces reasoning effort to supported values" do
+    assert Models.coerce_reasoning_effort("gpt-5.1-codex-mini", :xhigh) == :high
+    assert Models.coerce_reasoning_effort("gpt-5.1-codex-mini", :low) == :medium
+    assert Models.coerce_reasoning_effort("gpt-5.1-codex-max", :xhigh) == :xhigh
+    assert Models.coerce_reasoning_effort("unknown-model", :xhigh) == :xhigh
   end
 
   test "parse_client_version supports string and array formats" do

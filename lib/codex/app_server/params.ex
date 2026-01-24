@@ -1,6 +1,10 @@
 defmodule Codex.AppServer.Params do
   @moduledoc false
 
+  alias Codex.Protocol.ByteRange
+  alias Codex.Protocol.CollaborationMode
+  alias Codex.Protocol.TextElement
+
   @spec normalize_map(map() | keyword() | nil) :: map()
   def normalize_map(nil), do: %{}
   def normalize_map(%{} = map), do: map
@@ -75,6 +79,53 @@ defmodule Codex.AppServer.Params do
   def reasoning_effort(value) when is_binary(value), do: value
   def reasoning_effort(_), do: nil
 
+  @spec personality(atom() | String.t() | nil) :: String.t() | nil
+  def personality(nil), do: nil
+  def personality(:friendly), do: "friendly"
+  def personality(:pragmatic), do: "pragmatic"
+  def personality("friendly"), do: "friendly"
+  def personality("pragmatic"), do: "pragmatic"
+  def personality(value) when is_binary(value), do: value
+  def personality(_), do: nil
+
+  @type collaboration_mode_map :: %{optional(String.t()) => term()}
+
+  @spec collaboration_mode(term()) :: collaboration_mode_map() | nil
+  def collaboration_mode(nil), do: nil
+
+  def collaboration_mode(%CollaborationMode{} = mode) do
+    CollaborationMode.to_map(mode)
+  end
+
+  def collaboration_mode(%{} = mode) do
+    normalized =
+      mode
+      |> Enum.map(fn {key, value} ->
+        key = normalize_collaboration_key(key)
+        {key, normalize_collaboration_value(key, value)}
+      end)
+      |> Map.new()
+
+    normalized
+    |> CollaborationMode.from_map()
+    |> CollaborationMode.to_map()
+  rescue
+    _ -> nil
+  end
+
+  def collaboration_mode(_), do: nil
+
+  @spec thread_sort_key(atom() | String.t() | nil) :: String.t() | nil
+  def thread_sort_key(nil), do: nil
+  def thread_sort_key(:created_at), do: "created_at"
+  def thread_sort_key(:updated_at), do: "updated_at"
+  def thread_sort_key("created_at"), do: "created_at"
+  def thread_sort_key("updated_at"), do: "updated_at"
+  def thread_sort_key("createdAt"), do: "created_at"
+  def thread_sort_key("updatedAt"), do: "updated_at"
+  def thread_sort_key(value) when is_binary(value), do: value
+  def thread_sort_key(_), do: nil
+
   @spec merge_strategy(atom() | String.t() | nil) :: String.t() | nil
   def merge_strategy(nil), do: nil
   def merge_strategy(:replace), do: "replace"
@@ -97,18 +148,42 @@ defmodule Codex.AppServer.Params do
 
   defp user_input_block(%{"type" => "text"} = block) do
     %{"type" => "text", "text" => Map.get(block, "text") || ""}
+    |> put_optional("textElements", normalize_text_elements(block))
   end
 
   defp user_input_block(%{type: :text} = block) do
     %{"type" => "text", "text" => Map.get(block, :text) || ""}
+    |> put_optional("textElements", normalize_text_elements(block))
   end
 
   defp user_input_block(%{"type" => "image"} = block) do
-    %{"type" => "image", "url" => Map.get(block, "url") || ""}
+    %{
+      "type" => "image",
+      "url" =>
+        fetch_any(block, [
+          :url,
+          "url",
+          :image_url,
+          "image_url",
+          :imageUrl,
+          "imageUrl"
+        ]) || ""
+    }
   end
 
   defp user_input_block(%{type: :image} = block) do
-    %{"type" => "image", "url" => Map.get(block, :url) || ""}
+    %{
+      "type" => "image",
+      "url" =>
+        fetch_any(block, [
+          :url,
+          "url",
+          :image_url,
+          "image_url",
+          :imageUrl,
+          "imageUrl"
+        ]) || ""
+    }
   end
 
   defp user_input_block(%{"type" => type} = block) when type in ["localImage", "local_image"] do
@@ -117,6 +192,22 @@ defmodule Codex.AppServer.Params do
 
   defp user_input_block(%{type: type} = block) when type in [:local_image, :localImage] do
     %{"type" => "localImage", "path" => Map.get(block, :path) || ""}
+  end
+
+  defp user_input_block(%{"type" => "skill"} = block) do
+    %{
+      "type" => "skill",
+      "name" => fetch_any(block, [:name, "name"]) || "",
+      "path" => fetch_any(block, [:path, "path"]) || ""
+    }
+  end
+
+  defp user_input_block(%{type: :skill} = block) do
+    %{
+      "type" => "skill",
+      "name" => fetch_any(block, [:name, "name"]) || "",
+      "path" => fetch_any(block, [:path, "path"]) || ""
+    }
   end
 
   defp user_input_block(text) when is_binary(text) do
@@ -132,6 +223,86 @@ defmodule Codex.AppServer.Params do
 
   defp ensure_type(%{"type" => _} = block), do: block
   defp ensure_type(block), do: Map.put(block, "type", "text")
+
+  defp normalize_text_elements(%{} = block) do
+    block
+    |> fetch_any([:text_elements, "text_elements", :textElements, "textElements"])
+    |> normalize_text_elements_list()
+  end
+
+  defp normalize_text_elements_list(nil), do: nil
+
+  defp normalize_text_elements_list(elements) when is_list(elements) do
+    elements
+    |> Enum.map(&normalize_text_element/1)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      list -> list
+    end
+  end
+
+  defp normalize_text_elements_list(_), do: nil
+
+  defp normalize_text_element(%TextElement{} = element) do
+    element
+    |> TextElement.to_map()
+    |> normalize_text_element()
+  end
+
+  defp normalize_text_element(%{} = element) do
+    element = normalize_map(element)
+
+    byte_range =
+      element
+      |> fetch_any([:byte_range, "byte_range", :byteRange, "byteRange"])
+      |> normalize_byte_range()
+
+    %{}
+    |> put_optional("byteRange", byte_range)
+    |> put_optional("placeholder", fetch_any(element, [:placeholder, "placeholder"]))
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  defp normalize_text_element(_), do: nil
+
+  defp normalize_byte_range(%ByteRange{} = range) do
+    ByteRange.to_map(range)
+  end
+
+  defp normalize_byte_range(%{} = range) do
+    range = normalize_map(range)
+
+    %{}
+    |> put_optional("start", fetch_any(range, [:start, "start"]))
+    |> put_optional("end", fetch_any(range, [:end, "end"]))
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  defp normalize_byte_range(_), do: nil
+
+  defp normalize_collaboration_key(key) when is_atom(key),
+    do: key |> Atom.to_string() |> normalize_collaboration_key()
+
+  defp normalize_collaboration_key("reasoningEffort"), do: "reasoning_effort"
+  defp normalize_collaboration_key("reasoning_effort"), do: "reasoning_effort"
+  defp normalize_collaboration_key("developerInstructions"), do: "developer_instructions"
+  defp normalize_collaboration_key("developer_instructions"), do: "developer_instructions"
+  defp normalize_collaboration_key(key) when is_binary(key), do: key
+
+  defp normalize_collaboration_value("mode", value) when is_atom(value),
+    do: Atom.to_string(value)
+
+  defp normalize_collaboration_value("reasoning_effort", value) when is_atom(value),
+    do: Atom.to_string(value)
+
+  defp normalize_collaboration_value(_key, value), do: value
 
   defp normalize_sandbox_policy(%{} = policy) do
     type =

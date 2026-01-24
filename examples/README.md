@@ -2,7 +2,7 @@
 
 All examples run with `mix run` from the repository root. The `live_*.exs` scripts hit the live Codex CLI (no mocks, no extra API-key setup required if you are already logged in).
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). Auth-aware defaults are `gpt-5.2-codex` for ChatGPT login and `gpt-5.1-codex-max` for API keys.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). Auth-aware defaults are `gpt-5.2-codex` for ChatGPT login and `gpt-5.1-codex-max` for API keys. A few live scripts explicitly set `model: "gpt-5.2-codex"` to avoid mini limitations (for example, higher reasoning-effort requests); edit those examples if you need a different model.
 
 ## Running everything
 
@@ -31,6 +31,11 @@ Prereqs:
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
 - `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests
 - `examples/live_app_server_mcp.exs` — lists MCP servers via `Codex.AppServer.Mcp.list_servers/2` (uses `mcpServerStatus/list` with fallback)
+- `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a preset
+- `examples/live_personality.exs` — compares friendly vs pragmatic personality overrides
+- `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
+- `examples/live_web_search_modes.exs` — runs turns with `web_search_mode` toggles and reports web search items
+- `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels
 - `examples/live_exec_controls.exs` — demonstrates cancellation/controls on streaming turns
 - `examples/live_tooling_stream.exs` — streams tool calls and approvals

@@ -104,6 +104,12 @@ defmodule Codex.AppServer do
         fetch_any(params, [:developer_instructions, "developer_instructions"])
       )
       |> Params.put_optional(
+        "personality",
+        params
+        |> fetch_any([:personality, "personality"])
+        |> Params.personality()
+      )
+      |> Params.put_optional(
         "experimentalRawEvents",
         fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
       )
@@ -151,6 +157,12 @@ defmodule Codex.AppServer do
         fetch_any(params, [:developer_instructions, "developer_instructions"])
       )
       |> Params.put_optional(
+        "personality",
+        params
+        |> fetch_any([:personality, "personality"])
+        |> Params.personality()
+      )
+      |> Params.put_optional(
         "experimentalRawEvents",
         fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
       )
@@ -164,7 +176,9 @@ defmodule Codex.AppServer do
       %{}
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional("sortKey", Params.thread_sort_key(Keyword.get(opts, :sort_key)))
       |> Params.put_optional("modelProviders", Keyword.get(opts, :model_providers))
+      |> Params.put_optional("archived", Keyword.get(opts, :archived))
 
     Connection.request(conn, "thread/list", wire_params, timeout_ms: 30_000)
   end
@@ -177,6 +191,122 @@ defmodule Codex.AppServer do
       {:ok, _} -> :ok
       {:error, _} = error -> error
     end
+  end
+
+  @spec thread_fork(connection(), String.t(), map() | keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_fork(conn, thread_id, params \\ %{})
+      when is_pid(conn) and is_binary(thread_id) do
+    params = Params.normalize_map(params)
+
+    wire_params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
+      |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+      |> Params.put_optional(
+        "modelProvider",
+        fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
+      )
+      |> Params.put_optional(
+        "cwd",
+        fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+      )
+      |> Params.put_optional(
+        "approvalPolicy",
+        params
+        |> fetch_any([:approval_policy, "approval_policy"])
+        |> Params.ask_for_approval()
+      )
+      |> Params.put_optional(
+        "sandbox",
+        params
+        |> fetch_any([:sandbox, "sandbox"])
+        |> Params.sandbox_mode()
+      )
+      |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
+      |> Params.put_optional(
+        "baseInstructions",
+        fetch_any(params, [:base_instructions, "base_instructions"])
+      )
+      |> Params.put_optional(
+        "developerInstructions",
+        fetch_any(params, [:developer_instructions, "developer_instructions"])
+      )
+
+    Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
+  end
+
+  @spec thread_rollback(connection(), String.t(), pos_integer()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_rollback(conn, thread_id, num_turns)
+      when is_pid(conn) and is_binary(thread_id) and is_integer(num_turns) and num_turns >= 1 do
+    params = %{"threadId" => thread_id, "numTurns" => num_turns}
+    Connection.request(conn, "thread/rollback", params, timeout_ms: 30_000)
+  end
+
+  def thread_rollback(_conn, _thread_id, num_turns) do
+    {:error, {:invalid_num_turns, num_turns}}
+  end
+
+  @spec thread_read(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_read(conn, thread_id, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    params = %{
+      "threadId" => thread_id,
+      "includeTurns" => !!Keyword.get(opts, :include_turns, false)
+    }
+
+    Connection.request(conn, "thread/read", params, timeout_ms: 30_000)
+  end
+
+  @spec thread_loaded_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_loaded_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    params =
+      %{}
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
+
+    Connection.request(conn, "thread/loaded/list", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Writes a skills config entry enabling or disabling a skill by path.
+  """
+  @spec skills_config_write(connection(), String.t(), boolean()) ::
+          {:ok, map()} | {:error, term()}
+  def skills_config_write(conn, path, enabled)
+      when is_pid(conn) and is_binary(path) and is_boolean(enabled) do
+    params = %{"path" => path, "enabled" => enabled}
+    Connection.request(conn, "skills/config/write", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads config requirements enforced by the server (if any).
+  """
+  @spec config_requirements(connection()) :: {:ok, map()} | {:error, term()}
+  def config_requirements(conn) when is_pid(conn) do
+    Connection.request(conn, "configRequirements/read", %{}, timeout_ms: 10_000)
+  end
+
+  @doc """
+  Lists collaboration mode presets (experimental).
+  """
+  @spec collaboration_mode_list(connection()) :: {:ok, map()} | {:error, term()}
+  def collaboration_mode_list(conn) when is_pid(conn) do
+    Connection.request(conn, "collaborationMode/list", %{}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Lists available apps/connectors.
+  """
+  @spec apps_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
+  def apps_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    params =
+      %{}
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
+
+    Connection.request(conn, "app/list", params, timeout_ms: 30_000)
   end
 
   @doc """
@@ -219,6 +349,15 @@ defmodule Codex.AppServer do
       |> Params.put_optional("model", Keyword.get(opts, :model))
       |> Params.put_optional("effort", opts |> Keyword.get(:effort) |> Params.reasoning_effort())
       |> Params.put_optional("summary", Keyword.get(opts, :summary))
+      |> Params.put_optional(
+        "personality",
+        opts |> Keyword.get(:personality) |> Params.personality()
+      )
+      |> Params.put_optional("outputSchema", Keyword.get(opts, :output_schema))
+      |> Params.put_optional(
+        "collaborationMode",
+        opts |> Keyword.get(:collaboration_mode) |> Params.collaboration_mode()
+      )
 
     Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
   end
@@ -276,7 +415,10 @@ defmodule Codex.AppServer do
 
   @spec config_read(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def config_read(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
-    params = %{"includeLayers" => !!Keyword.get(opts, :include_layers, false)}
+    params =
+      %{"includeLayers" => !!Keyword.get(opts, :include_layers, false)}
+      |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
+
     Connection.request(conn, "config/read", params, timeout_ms: 10_000)
   end
 

@@ -240,6 +240,12 @@ defmodule Codex.Config.LayerStack do
   defp put_config_value(acc, nil, "forced_chatgpt_workspace_id", value),
     do: Map.put(acc, "forced_chatgpt_workspace_id", value)
 
+  defp put_config_value(acc, nil, "model", value),
+    do: Map.put(acc, "model", value)
+
+  defp put_config_value(acc, nil, "model_reasoning_effort", value),
+    do: Map.put(acc, "model_reasoning_effort", value)
+
   defp put_config_value(acc, nil, "model_provider", value),
     do: Map.put(acc, "model_provider", value)
 

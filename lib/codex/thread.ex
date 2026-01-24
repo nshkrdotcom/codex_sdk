@@ -10,6 +10,7 @@ defmodule Codex.Thread do
   alias Codex.Events
   alias Codex.GuardrailError
   alias Codex.Items
+  alias Codex.Models
   alias Codex.Options
   alias Codex.OutputSchemaFile
   alias Codex.RunResultStreaming
@@ -45,7 +46,7 @@ defmodule Codex.Thread do
           resume: :last | nil,
           continuation_token: String.t() | nil,
           usage: map(),
-          rate_limits: map() | nil,
+          rate_limits: Codex.Protocol.RateLimit.Snapshot.t() | map() | nil,
           pending_tool_outputs: [map()],
           pending_tool_failures: [map()],
           transport: :exec | {:app_server, pid()},
@@ -488,7 +489,16 @@ defmodule Codex.Thread do
 
   defp build_exec_options(thread, turn_opts) do
     turn_opts_map = Map.new(turn_opts)
-    schema = Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
+
+    schema =
+      case {
+        Map.has_key?(turn_opts_map, :output_schema) ||
+          Map.has_key?(turn_opts_map, "output_schema"),
+        Map.get(turn_opts_map, :output_schema, Map.get(turn_opts_map, "output_schema"))
+      } do
+        {true, value} -> value
+        {false, _} -> thread.thread_opts.output_schema
+      end
 
     with {:ok, encoded_schema} <- OutputSchemaFile.encode(schema),
          {:ok, schema_path, cleanup} <- OutputSchemaFile.create_encoded(encoded_schema) do
@@ -603,7 +613,7 @@ defmodule Codex.Thread do
   @doc """
   Returns the most recent account rate limit snapshot for this thread, if any.
   """
-  @spec rate_limits(t()) :: map() | nil
+  @spec rate_limits(t()) :: Codex.Protocol.RateLimit.Snapshot.t() | map() | nil
   def rate_limits(%__MODULE__{rate_limits: rate_limits}), do: rate_limits
 
   @doc false
@@ -640,6 +650,32 @@ defmodule Codex.Thread do
   end
 
   defp reduce_event(
+         %Events.SessionConfigured{} = configured,
+         {thread, response, usage, continuation},
+         _structured?
+       ) do
+    model = configured.model || thread.codex_opts.model
+
+    effort =
+      configured.reasoning_effort
+      |> normalize_reasoning_effort()
+      |> case do
+        nil -> thread.codex_opts.reasoning_effort
+        value -> value
+      end
+      |> then(&Models.coerce_reasoning_effort(model, &1))
+
+    updated_opts =
+      thread.codex_opts
+      |> maybe_put(:model, model)
+      |> maybe_put(:reasoning_effort, effort)
+
+    updated = %{thread | codex_opts: updated_opts}
+
+    {updated, response, usage, continuation}
+  end
+
+  defp reduce_event(
          %Events.TurnContinuation{continuation_token: token},
          {thread, response, usage, _continuation},
          _structured?
@@ -654,7 +690,12 @@ defmodule Codex.Thread do
          _structured?
        ) do
     updated_usage = apply_usage_update(usage, usage_event)
-    updated_thread = maybe_put(thread, :thread_id, usage_event.thread_id)
+
+    updated_thread =
+      thread
+      |> maybe_put(:thread_id, usage_event.thread_id)
+      |> maybe_put(:rate_limits, usage_event.rate_limits)
+
     {updated_thread, response, updated_usage, continuation}
   end
 
@@ -1382,6 +1423,13 @@ defmodule Codex.Thread do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_reasoning_effort(value) do
+    case Models.normalize_reasoning_effort(value) do
+      {:ok, effort} -> effort
+      _ -> nil
+    end
+  end
 
   defp maybe_put_new(map, _key, nil), do: map
 

@@ -123,6 +123,14 @@ defmodule Codex.AppServer.Mcp do
     end
   end
 
+  @doc """
+  Requests MCP servers to reload configuration and refresh cached tools.
+  """
+  @spec reload(connection()) :: {:ok, map()} | {:error, term()}
+  def reload(conn) when is_pid(conn) do
+    Connection.request(conn, "config/mcpServer/reload", %{}, timeout_ms: 30_000)
+  end
+
   defp unknown_variant_mcp_server_status_list?(%{"code" => -32_600, "message" => message})
        when is_binary(message) do
     String.contains?(message, "unknown variant") and

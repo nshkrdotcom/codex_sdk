@@ -92,6 +92,12 @@ use `Codex.Skills.list/2` and `Codex.Skills.load/2`, which honor `features.skill
   Codex.AppServer.fuzzy_file_search(conn, "readme", roots: ["/path/to/project"])
 ```
 
+Additional v2 APIs include:
+
+- `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
+- `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
+- `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
+
 When `include_layers: true`, `config_read/2` returns a `layers` list. Recent Codex versions encode each layer's `name` as a tagged union (`ConfigLayerSource`), for example:
 
 ```elixir
@@ -108,8 +114,11 @@ See `Codex.AppServer`, Codex.AppServer.Account, and Codex.AppServer.Mcp for the 
 
 Common thread-history operations are exposed via:
 
-- `Codex.AppServer.thread_list/2`
+- `Codex.AppServer.thread_list/2` (supports `sort_key` and `archived`)
 - `Codex.AppServer.thread_archive/2`
+- `Codex.AppServer.thread_read/3` (with optional `include_turns`)
+- `Codex.AppServer.thread_fork/3` and `Codex.AppServer.thread_rollback/3`
+- `Codex.AppServer.thread_loaded_list/2`
 - `Codex.AppServer.thread_resume/3` accepts optional `history` and `path` overrides
 
 ### Removed APIs
@@ -160,6 +169,25 @@ When `experimental_raw_events` is enabled on `thread/start` or
 `%Codex.Events.RawResponseItemCompleted{}` and parses known item types such as
 ghost snapshots and compaction payloads. Deprecation warnings are surfaced as
 `%Codex.Events.DeprecationNotice{}` from `deprecationNotice` notifications.
+
+Config warnings are surfaced as `%Codex.Events.ConfigWarning{}` from
+`configWarning` notifications.
+
+### Request user input
+
+When the agent calls `request_user_input`, app-server sends an
+`item/tool/requestUserInput` request. The SDK emits `%Codex.Events.RequestUserInput{}`.
+Respond with a `Codex.Protocol.RequestUserInput.Response` payload:
+
+```elixir
+response = %Codex.Protocol.RequestUserInput.Response{
+  answers: %{
+    "q1" => %Codex.Protocol.RequestUserInput.Answer{answers: ["yes"]}
+  }
+}
+
+:ok = Codex.AppServer.respond(conn, id, Codex.Protocol.RequestUserInput.Response.to_map(response))
+```
 
 ### Manual approval handling (UI loop)
 

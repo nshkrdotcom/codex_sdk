@@ -13,7 +13,8 @@ defmodule CodexExamples.LiveSessionWalkthrough do
 
     codex_opts =
       Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
+        codex_path_override: fetch_codex_path!(),
+        model: "gpt-5.2-codex"
       })
       |> unwrap!("codex options")
 

@@ -8,6 +8,7 @@ defmodule Codex.AgentRunner do
   alias Codex.Guardrail
   alias Codex.GuardrailError
   alias Codex.Handoff
+  alias Codex.Models
   alias Codex.Options
   alias Codex.RunConfig
   alias Codex.RunResultStreaming
@@ -995,7 +996,8 @@ defmodule Codex.AgentRunner do
          model: model
        }) do
     if is_binary(model) and model != "" do
-      %{thread | codex_opts: %{opts | model: model}}
+      coerced = Models.coerce_reasoning_effort(model, opts.reasoning_effort)
+      %{thread | codex_opts: %{opts | model: model, reasoning_effort: coerced}}
     else
       thread
     end

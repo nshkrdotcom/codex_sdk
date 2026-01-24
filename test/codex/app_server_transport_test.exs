@@ -150,6 +150,105 @@ defmodule Codex.AppServerTransportTest do
     assert %Items.AgentMessage{text: "hi"} = result.final_response
   end
 
+  test "app-server transport emits request user input events" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "item_1",
+      "questions" => [
+        %{
+          "id" => "q1",
+          "header" => "Pick one",
+          "question" => "Which?",
+          "options" => [%{"label" => "A", "description" => "Option A"}]
+        }
+      ]
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_request(5, "item/tool/requestUserInput", request_params)}
+    )
+
+    notifications = [
+      Protocol.encode_notification("turn/started", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "inProgress", "items" => [], "error" => nil}
+      }),
+      Protocol.encode_notification("item/agentMessage/delta", %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "itemId" => "msg_1",
+        "delta" => "ok"
+      }),
+      Protocol.encode_notification("item/completed", %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "item" => %{"type" => "agentMessage", "id" => "msg_1", "text" => "ok"}
+      }),
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ]
+
+    send(conn, {:stdout, os_pid, notifications})
+
+    assert {:ok, result} = Task.await(task, 500)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.RequestUserInput{id: 5, turn_id: "turn_1"} -> true
+             _ -> false
+           end)
+  end
+
   test "Thread.run/3 via app-server accepts multimodal input blocks" do
     bash = System.find_executable("bash") || "/bin/bash"
     {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})

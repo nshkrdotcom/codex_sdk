@@ -2,6 +2,10 @@ defmodule Codex.ThreadTest do
   use ExUnit.Case, async: true
 
   alias Codex.Events
+  alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
+  alias Codex.TestSupport.FixtureScripts
+  alias Codex.Thread.Options, as: ThreadOptions
+  alias Codex.Turn.Result, as: TurnResult
 
   alias Codex.{
     Error,
@@ -13,10 +17,6 @@ defmodule Codex.ThreadTest do
     ToolGuardrail,
     Tools
   }
-
-  alias Codex.TestSupport.FixtureScripts
-  alias Codex.Thread.Options, as: ThreadOptions
-  alias Codex.Turn.Result, as: TurnResult
 
   describe "thread options validation" do
     test "rejects conflicting auto flags" do
@@ -211,6 +211,41 @@ defmodule Codex.ThreadTest do
       schema_path = Enum.at(args, schema_index + 1)
       assert schema_path
       refute File.exists?(schema_path)
+    end
+
+    test "uses thread output_schema when turn opts omit output_schema" do
+      capture_path =
+        Path.join(
+          System.tmp_dir!(),
+          "codex_exec_schema_thread_#{System.unique_integer([:positive])}"
+        )
+
+      script_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path
+        })
+
+      schema = %{"type" => "object", "properties" => %{"ok" => %{"type" => "boolean"}}}
+      {:ok, thread_opts} = ThreadOptions.new(%{output_schema: schema})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:ok, _result} = Thread.run(thread, "Provide status")
+
+      args =
+        capture_path
+        |> File.read!()
+        |> String.trim()
+        |> String.split(~r/\s+/)
+
+      assert Enum.any?(args, &(&1 == "--output-schema"))
     end
 
     test "decodes structured output when schema is provided" do
@@ -755,13 +790,57 @@ defmodule Codex.ThreadTest do
       {:ok, thread_opts} = ThreadOptions.new(%{})
       thread = Thread.build(codex_opts, thread_opts)
 
-      rate_limits = %{"primary" => %{"remaining" => 10}}
+      rate_limits =
+        RateLimitSnapshot.from_map(%{
+          "primary" => %{"usedPercent" => 10.0}
+        })
+
       event = %Events.AccountRateLimitsUpdated{thread_id: "thread_1", rate_limits: rate_limits}
 
       {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})
 
       assert updated.rate_limits == rate_limits
       assert Thread.rate_limits(updated) == rate_limits
+    end
+
+    test "stores token usage rate limits on the thread" do
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      rate_limits =
+        RateLimitSnapshot.from_map(%{
+          "primary" => %{"usedPercent" => 5.0}
+        })
+
+      event = %Events.ThreadTokenUsageUpdated{rate_limits: rate_limits, usage: %{}, delta: nil}
+
+      {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})
+
+      assert updated.rate_limits == rate_limits
+      assert Thread.rate_limits(updated) == rate_limits
+    end
+
+    test "session configured updates model and coerces reasoning effort" do
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          model: "gpt-5.2-codex",
+          reasoning_effort: :xhigh
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      event = %Events.SessionConfigured{
+        model: "gpt-5.1-codex-mini",
+        reasoning_effort: "xhigh"
+      }
+
+      {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})
+
+      assert updated.codex_opts.model == "gpt-5.1-codex-mini"
+      assert updated.codex_opts.reasoning_effort == :high
     end
   end
 

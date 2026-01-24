@@ -131,6 +131,21 @@ defmodule Codex.AppServer.McpTest do
     end
   end
 
+  describe "reload/1" do
+    test "requests config/mcpServer/reload", %{conn: conn, os_pid: os_pid} do
+      task = Task.async(fn -> Mcp.reload(conn) end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok, %{"id" => req_id, "method" => "config/mcpServer/reload"}} =
+               Jason.decode(request_line)
+
+      send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{})})
+
+      assert {:ok, %{}} = Task.await(task, 200)
+    end
+  end
+
   defp encode_error(id, code, message \\ "Method not found") do
     %{"id" => id, "error" => %{"code" => code, "message" => message}}
     |> Jason.encode_to_iodata!()

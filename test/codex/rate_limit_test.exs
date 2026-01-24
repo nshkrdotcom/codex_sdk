@@ -1,7 +1,8 @@
 defmodule Codex.RateLimitTest do
   use ExUnit.Case, async: true
 
-  alias Codex.{Error, RateLimit}
+  alias Codex.{Error, Events, RateLimit}
+  alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
   @moduletag :capture_log
 
@@ -282,6 +283,22 @@ defmodule Codex.RateLimitTest do
       assert {:ok, :success} = result
       # Should have waited at least 50ms
       assert elapsed >= 50
+    end
+  end
+
+  describe "snapshot parsing" do
+    test "parses rate limit snapshots on token usage events" do
+      event =
+        Events.parse!(%{
+          "type" => "thread/tokenUsage/updated",
+          "rateLimits" => %{"primary" => %{"usedPercent" => 10.0}}
+        })
+
+      assert %Events.ThreadTokenUsageUpdated{
+               rate_limits: %RateLimitSnapshot.Snapshot{
+                 primary: %RateLimitSnapshot.Window{used_percent: 10.0}
+               }
+             } = event
     end
   end
 end
