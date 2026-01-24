@@ -14,7 +14,23 @@ defmodule Codex.Telemetry do
     [:codex, :thread, :exception]
   ]
 
-  @trace_events @thread_events
+  @realtime_events [
+    [:codex, :realtime, :session, :start],
+    [:codex, :realtime, :session, :stop],
+    [:codex, :realtime, :audio, :send],
+    [:codex, :realtime, :audio, :receive]
+  ]
+
+  @voice_events [
+    [:codex, :voice, :pipeline, :start],
+    [:codex, :voice, :pipeline, :stop],
+    [:codex, :voice, :transcription, :start],
+    [:codex, :voice, :transcription, :stop],
+    [:codex, :voice, :synthesis, :start],
+    [:codex, :voice, :synthesis, :stop]
+  ]
+
+  @trace_events @thread_events ++ @realtime_events ++ @voice_events
   @otel_handler_id "codex-otel-tracing"
   @default_originator :sdk
   @default_processor_name :codex_sdk_processor
@@ -626,5 +642,129 @@ defmodule Codex.Telemetry do
       is_exception(reason) -> Exception.message(reason)
       true -> inspect(reason)
     end
+  end
+
+  # -- Realtime telemetry helpers ---------------------------------------------
+
+  @doc """
+  Emits telemetry for realtime session start.
+  """
+  @spec realtime_session_start(map()) :: :ok
+  def realtime_session_start(metadata) do
+    :telemetry.execute(
+      [:codex, :realtime, :session, :start],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for realtime session stop.
+  """
+  @spec realtime_session_stop(map(), map()) :: :ok
+  def realtime_session_stop(metadata, measurements \\ %{}) do
+    :telemetry.execute(
+      [:codex, :realtime, :session, :stop],
+      Map.merge(%{system_time: System.system_time()}, measurements),
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for realtime audio send events.
+  """
+  @spec realtime_audio_send(map()) :: :ok
+  def realtime_audio_send(metadata) do
+    :telemetry.execute(
+      [:codex, :realtime, :audio, :send],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for realtime audio receive events.
+  """
+  @spec realtime_audio_receive(map()) :: :ok
+  def realtime_audio_receive(metadata) do
+    :telemetry.execute(
+      [:codex, :realtime, :audio, :receive],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  # -- Voice telemetry helpers ------------------------------------------------
+
+  @doc """
+  Emits telemetry for voice pipeline start.
+  """
+  @spec voice_pipeline_start(map()) :: :ok
+  def voice_pipeline_start(metadata) do
+    :telemetry.execute(
+      [:codex, :voice, :pipeline, :start],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for voice pipeline stop.
+  """
+  @spec voice_pipeline_stop(map(), map()) :: :ok
+  def voice_pipeline_stop(metadata, measurements \\ %{}) do
+    :telemetry.execute(
+      [:codex, :voice, :pipeline, :stop],
+      Map.merge(%{system_time: System.system_time()}, measurements),
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for voice transcription start.
+  """
+  @spec voice_transcription_start(map()) :: :ok
+  def voice_transcription_start(metadata) do
+    :telemetry.execute(
+      [:codex, :voice, :transcription, :start],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for voice transcription stop.
+  """
+  @spec voice_transcription_stop(map(), map()) :: :ok
+  def voice_transcription_stop(metadata, measurements \\ %{}) do
+    :telemetry.execute(
+      [:codex, :voice, :transcription, :stop],
+      Map.merge(%{system_time: System.system_time()}, measurements),
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for voice synthesis start.
+  """
+  @spec voice_synthesis_start(map()) :: :ok
+  def voice_synthesis_start(metadata) do
+    :telemetry.execute(
+      [:codex, :voice, :synthesis, :start],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits telemetry for voice synthesis stop.
+  """
+  @spec voice_synthesis_stop(map(), map()) :: :ok
+  def voice_synthesis_stop(metadata, measurements \\ %{}) do
+    :telemetry.execute(
+      [:codex, :voice, :synthesis, :stop],
+      Map.merge(%{system_time: System.system_time()}, measurements),
+      metadata
+    )
   end
 end

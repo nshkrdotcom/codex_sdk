@@ -20,6 +20,21 @@ defmodule Codex.Error do
           :rate_limit
           | :sandbox_assessment_failed
           | :unknown
+          # Realtime errors
+          | :realtime_connection_failed
+          | :realtime_connection_closed
+          | :realtime_session_error
+          | :realtime_audio_error
+          | :realtime_tool_error
+          | :realtime_handoff_error
+          | :realtime_guardrail_tripped
+          # Voice errors
+          | :voice_stt_error
+          | :voice_stt_connection_error
+          | :voice_tts_error
+          | :voice_workflow_error
+          | :voice_pipeline_error
+          | :unsupported_feature
 
   @type t :: %__MODULE__{
           message: String.t(),
@@ -135,6 +150,130 @@ defmodule Codex.Error do
   @spec retry_after_ms(t()) :: non_neg_integer() | nil
   def retry_after_ms(%__MODULE__{retry_after_ms: ms}) when is_integer(ms) and ms > 0, do: ms
   def retry_after_ms(_), do: nil
+
+  # Realtime error constructors
+
+  @doc """
+  Creates a realtime connection failed error.
+  """
+  @spec realtime_connection_failed(keyword()) :: t()
+  def realtime_connection_failed(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime connection failed")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_connection_failed, message, details)
+  end
+
+  @doc """
+  Creates a realtime connection closed error.
+  """
+  @spec realtime_connection_closed(keyword()) :: t()
+  def realtime_connection_closed(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime connection closed")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_connection_closed, message, details)
+  end
+
+  @doc """
+  Creates a realtime session error.
+  """
+  @spec realtime_session_error(keyword()) :: t()
+  def realtime_session_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime session error")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_session_error, message, details)
+  end
+
+  @doc """
+  Creates a realtime audio error.
+  """
+  @spec realtime_audio_error(keyword()) :: t()
+  def realtime_audio_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime audio error")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_audio_error, message, details)
+  end
+
+  @doc """
+  Creates a realtime tool error.
+  """
+  @spec realtime_tool_error(keyword()) :: t()
+  def realtime_tool_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime tool error")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_tool_error, message, details)
+  end
+
+  @doc """
+  Creates a realtime handoff error.
+  """
+  @spec realtime_handoff_error(keyword()) :: t()
+  def realtime_handoff_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime handoff error")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_handoff_error, message, details)
+  end
+
+  @doc """
+  Creates a realtime guardrail tripped error.
+  """
+  @spec realtime_guardrail_tripped(keyword()) :: t()
+  def realtime_guardrail_tripped(opts \\ []) do
+    message = Keyword.get(opts, :message, "Realtime guardrail tripped")
+    details = Keyword.get(opts, :details, %{})
+    new(:realtime_guardrail_tripped, message, details)
+  end
+
+  # Voice error constructors
+
+  @doc """
+  Creates a voice STT (speech-to-text) error.
+  """
+  @spec voice_stt_error(keyword()) :: t()
+  def voice_stt_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Voice STT error")
+    details = Keyword.get(opts, :details, %{})
+    new(:voice_stt_error, message, details)
+  end
+
+  @doc """
+  Creates a voice STT connection error.
+  """
+  @spec voice_stt_connection_error(keyword()) :: t()
+  def voice_stt_connection_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Voice STT connection error")
+    details = Keyword.get(opts, :details, %{})
+    new(:voice_stt_connection_error, message, details)
+  end
+
+  @doc """
+  Creates a voice TTS (text-to-speech) error.
+  """
+  @spec voice_tts_error(keyword()) :: t()
+  def voice_tts_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Voice TTS error")
+    details = Keyword.get(opts, :details, %{})
+    new(:voice_tts_error, message, details)
+  end
+
+  @doc """
+  Creates a voice workflow error.
+  """
+  @spec voice_workflow_error(keyword()) :: t()
+  def voice_workflow_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Voice workflow error")
+    details = Keyword.get(opts, :details, %{})
+    new(:voice_workflow_error, message, details)
+  end
+
+  @doc """
+  Creates a voice pipeline error.
+  """
+  @spec voice_pipeline_error(keyword()) :: t()
+  def voice_pipeline_error(opts \\ []) do
+    message = Keyword.get(opts, :message, "Voice pipeline error")
+    details = Keyword.get(opts, :details, %{})
+    new(:voice_pipeline_error, message, details)
+  end
 
   defp normalize_map(payload) do
     message =
