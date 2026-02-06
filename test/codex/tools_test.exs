@@ -84,6 +84,11 @@ defmodule Codex.ToolsTest do
     assert Tools.metrics() == %{}
   end
 
+  test "metrics table uses supervised heir ownership" do
+    _ = Tools.metrics()
+    assert is_pid(Process.whereis(Codex.Tools.MetricsHeir))
+  end
+
   test "telemetry events emitted for tool invocations" do
     {:ok, _} = Tools.register(ResultTool, name: "result_tool")
 

@@ -30,6 +30,8 @@ defmodule Codex.Voice.Input do
 
   @default_sample_rate 24_000
 
+  alias Codex.StreamQueue
+
   defmodule AudioInput do
     @moduledoc """
     A single, complete audio input buffer.
@@ -176,11 +178,11 @@ defmodule Codex.Voice.Input do
     @doc """
     Create a new streamed audio input.
 
-    Starts an Agent process to manage the audio chunk queue.
+    Starts a stream queue process to manage the audio chunk queue.
     """
     @spec new() :: t()
     def new do
-      {:ok, queue} = Agent.start_link(fn -> :queue.new() end)
+      {:ok, queue} = StreamQueue.start_link()
       %__MODULE__{queue: queue}
     end
 
@@ -195,7 +197,7 @@ defmodule Codex.Voice.Input do
     """
     @spec add(t(), binary()) :: :ok
     def add(%__MODULE__{queue: queue}, data) when is_binary(data) do
-      Agent.update(queue, fn q -> :queue.in(data, q) end)
+      StreamQueue.push(queue, data)
       :ok
     end
 
@@ -207,7 +209,7 @@ defmodule Codex.Voice.Input do
     """
     @spec close(t()) :: :ok
     def close(%__MODULE__{queue: queue}) do
-      Agent.update(queue, fn q -> :queue.in(:eof, q) end)
+      StreamQueue.close(queue)
       :ok
     end
 
@@ -221,13 +223,12 @@ defmodule Codex.Voice.Input do
     """
     @spec get(t()) :: {:ok, binary()} | :eof | :empty
     def get(%__MODULE__{queue: queue}) do
-      Agent.get_and_update(queue, fn q ->
-        case :queue.out(q) do
-          {{:value, :eof}, q2} -> {:eof, q2}
-          {{:value, data}, q2} -> {{:ok, data}, q2}
-          {:empty, q} -> {:empty, q}
-        end
-      end)
+      case StreamQueue.try_pop(queue) do
+        {:ok, data} -> {:ok, data}
+        :done -> :eof
+        {:error, _reason} -> :eof
+        :empty -> :empty
+      end
     end
 
     @doc """
@@ -245,16 +246,15 @@ defmodule Codex.Voice.Input do
       Stream.resource(
         fn -> input end,
         fn input ->
-          case get(input) do
+          case StreamQueue.pop(input.queue, :infinity) do
             {:ok, data} ->
               {[data], input}
 
-            :eof ->
+            :done ->
               {:halt, input}
 
-            :empty ->
-              Process.sleep(10)
-              {[], input}
+            {:error, _reason} ->
+              {:halt, input}
           end
         end,
         fn _ -> :ok end

@@ -16,6 +16,8 @@ defmodule Codex.Exec do
   alias Codex.Files.Attachment
   alias Codex.Models
   alias Codex.Options
+  alias Codex.Runtime.Env, as: RuntimeEnv
+  alias Codex.Runtime.Erlexec
   alias Codex.TransportError
 
   @default_timeout_ms 3_600_000
@@ -105,12 +107,7 @@ defmodule Codex.Exec do
   end
 
   defp ensure_erlexec_started do
-    case Application.ensure_all_started(:erlexec) do
-      {:ok, _apps} -> :ok
-      {:error, {:erlexec, {:already_started, _pid}}} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    Erlexec.ensure_started()
   end
 
   defp start_process(command, exec_opts) do
@@ -666,20 +663,13 @@ defmodule Codex.Exec do
 
   defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env} = exec_opts) do
     base_env =
-      []
-      |> maybe_put_key("CODEX_API_KEY", opts.api_key)
-      |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
-      |> maybe_put_key(
-        "OPENAI_BASE_URL",
-        if(opts.base_url != "https://api.openai.com/v1", do: opts.base_url, else: nil)
-      )
-      |> Map.new()
+      RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
 
     merged =
       base_env
       |> Map.merge(env, fn _key, _base, custom -> custom end)
 
-    merged_list = Enum.map(merged, fn {key, value} -> {key, value} end)
+    merged_list = RuntimeEnv.to_charlist_env(merged)
 
     if clear_env?(exec_opts) do
       preserve = preserved_env()
@@ -707,10 +697,6 @@ defmodule Codex.Exec do
     end)
     |> Enum.reverse()
   end
-
-  defp maybe_put_key(env, _key, nil), do: env
-  defp maybe_put_key(env, _key, ""), do: env
-  defp maybe_put_key(env, key, value), do: [{key, value} | env]
 
   defp maybe_put_env(opts, []), do: opts
   defp maybe_put_env(opts, env), do: [{:env, env} | opts]

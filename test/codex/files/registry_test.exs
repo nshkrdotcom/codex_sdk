@@ -125,6 +125,59 @@ defmodule Codex.Files.RegistryTest do
     assert [] = GenServer.call(pid, :list)
   end
 
+  test "coalesces concurrent stage calls for the same checksum" do
+    {:ok, pid} =
+      Registry.start_link(
+        name: @registry_name,
+        manifest_table: @table_name,
+        file_module: BlockingFile
+      )
+
+    allow_initial_cleanup()
+
+    task_one =
+      Task.async(fn ->
+        GenServer.call(pid, {:stage, stage_opts("same-checksum", "a.txt", 60_000)}, 15_000)
+      end)
+
+    assert_receive {:blocking_file, :cp_started, worker_pid}
+
+    task_two =
+      Task.async(fn ->
+        GenServer.call(pid, {:stage, stage_opts("same-checksum", "a.txt", 60_000)}, 15_000)
+      end)
+
+    Process.sleep(25)
+    send(worker_pid, :allow_cp)
+
+    duplicate_copy? =
+      receive do
+        {:blocking_file, :cp_started, duplicate_worker} ->
+          send(duplicate_worker, :allow_cp)
+          true
+      after
+        150 ->
+          false
+      end
+
+    assert {:ok, %Attachment{checksum: "same-checksum"} = first} = Task.await(task_one, 15_000)
+    assert {:ok, %Attachment{checksum: "same-checksum"} = second} = Task.await(task_two, 15_000)
+
+    assert first.path == second.path
+    refute duplicate_copy?
+  end
+
+  test "ensure_started/0 does not start an unsupervised registry" do
+    remove_default_registry_child()
+
+    on_exit(fn ->
+      restore_default_registry_child()
+    end)
+
+    assert {:error, :not_started} = Registry.ensure_started()
+    assert Process.whereis(Codex.Files.Registry) == nil
+  end
+
   defp allow_initial_cleanup do
     assert_receive {:blocking_file, :rm_started, _path, worker_pid}
     send(worker_pid, :allow_rm)
@@ -140,5 +193,18 @@ defmodule Codex.Files.RegistryTest do
       source_path: "/tmp/source.txt",
       destination_path: "/tmp/codex/#{name}"
     }
+  end
+
+  defp remove_default_registry_child do
+    if Process.whereis(Codex.Supervisor) && Process.whereis(Codex.Files.Registry) do
+      :ok = Supervisor.terminate_child(Codex.Supervisor, Codex.Files.Registry)
+      :ok = Supervisor.delete_child(Codex.Supervisor, Codex.Files.Registry)
+    end
+  end
+
+  defp restore_default_registry_child do
+    if Process.whereis(Codex.Supervisor) && is_nil(Process.whereis(Codex.Files.Registry)) do
+      {:ok, _pid} = Supervisor.start_child(Codex.Supervisor, {Codex.Files.Registry, []})
+    end
   end
 end

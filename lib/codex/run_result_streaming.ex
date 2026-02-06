@@ -155,9 +155,9 @@ defmodule Codex.RunResultStreaming.Control do
     case Task.Supervisor.start_child(Codex.TaskSupervisor, starter) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, _} -> Task.start_link(starter)
+      {:error, _} -> Task.start(starter)
     end
   catch
-    :exit, _ -> Task.start_link(starter)
+    :exit, _ -> Task.start(starter)
   end
 end

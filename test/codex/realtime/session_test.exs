@@ -477,6 +477,62 @@ defmodule Codex.Realtime.SessionTest do
     end
   end
 
+  describe "terminate cleanup" do
+    test "close/1 terminates pending tool tasks", %{agent: _agent} do
+      parent = self()
+
+      agent = %{
+        name: "CleanupAgent",
+        model: "gpt-4o-realtime-preview",
+        instructions: "Use tools",
+        tools: [
+          %{
+            name: "blocking_tool",
+            on_invoke: fn _args, _ctx ->
+              send(parent, :blocking_tool_started)
+
+              receive do
+                :release_tool -> "released"
+              end
+            end
+          }
+        ]
+      }
+
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      tool_call =
+        ModelEvents.tool_call(
+          name: "blocking_tool",
+          call_id: "call_cleanup",
+          arguments: "{}",
+          id: "item_cleanup"
+        )
+
+      send(session, {:model_event, tool_call})
+      assert_receive :blocking_tool_started
+
+      pending_pid = wait_for_pending_tool_pid(session)
+
+      on_exit(fn ->
+        if is_pid(pending_pid) and Process.alive?(pending_pid) do
+          send(pending_pid, :release_tool)
+        end
+      end)
+
+      assert Process.alive?(pending_pid)
+      Session.close(session)
+      refute wait_until_alive(pending_pid, 300)
+    end
+  end
+
   describe "error handling" do
     test "forwards error events to subscribers", %{agent: agent} do
       {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
@@ -634,6 +690,53 @@ defmodule Codex.Realtime.SessionTest do
              end)
 
       Session.close(session)
+    end
+  end
+
+  defp wait_for_pending_tool_pid(session) do
+    wait_for_value(fn ->
+      case :sys.get_state(session).pending_tool_calls |> Map.values() do
+        [%{pid: pid}] when is_pid(pid) -> {:ok, pid}
+        _ -> :retry
+      end
+    end)
+  end
+
+  defp wait_for_value(fun) do
+    started = System.monotonic_time(:millisecond)
+    do_wait_for_value(fun, started)
+  end
+
+  defp do_wait_for_value(fun, started) do
+    case fun.() do
+      {:ok, value} ->
+        value
+
+      :retry ->
+        if System.monotonic_time(:millisecond) - started > 1_000 do
+          flunk("timed out waiting for pending tool task")
+        else
+          Process.sleep(10)
+          do_wait_for_value(fun, started)
+        end
+    end
+  end
+
+  defp wait_until_alive(pid, timeout_ms) do
+    started = System.monotonic_time(:millisecond)
+    do_wait_until_alive(pid, timeout_ms, started)
+  end
+
+  defp do_wait_until_alive(pid, timeout_ms, started) do
+    if Process.alive?(pid) do
+      if System.monotonic_time(:millisecond) - started > timeout_ms do
+        true
+      else
+        Process.sleep(10)
+        do_wait_until_alive(pid, timeout_ms, started)
+      end
+    else
+      false
     end
   end
 end

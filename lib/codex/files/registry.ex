@@ -21,11 +21,13 @@ defmodule Codex.Files.Registry do
           required(:destination_path) => Path.t()
         }
 
+  @type stage_request :: {GenServer.from(), stage_opts(), DateTime.t()}
+
   @type work_item ::
-          {:stage, GenServer.from(), stage_opts(), DateTime.t()}
-          | {:force_cleanup, GenServer.from(), [{String.t(), Attachment.t()}]}
-          | {:cleanup_tick, [{String.t(), Attachment.t()}]}
-          | {:reset, GenServer.from(), [Attachment.t()], Path.t()}
+          {:stage, String.t(), stage_opts()}
+          | {:force_cleanup, GenServer.from(), DateTime.t()}
+          | {:cleanup_tick, DateTime.t()}
+          | {:reset, GenServer.from(), Path.t()}
           | :cleanup_orphaned_staging
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -36,24 +38,15 @@ defmodule Codex.Files.Registry do
   end
 
   @doc """
-  Ensures the registry is running, starting it under the current process when necessary.
+  Ensures the registry is running under application supervision.
   """
   @spec ensure_started() :: {:ok, pid()} | {:error, term()}
   def ensure_started do
-    case Process.whereis(@registry) do
-      nil ->
-        case start_unlinked() do
-          {:ok, pid} -> {:ok, pid}
-          {:error, {:already_started, pid}} -> {:ok, pid}
-          {:error, _} = error -> error
-        end
-
-      pid when is_pid(pid) ->
-        if Process.alive?(pid) do
-          {:ok, pid}
-        else
-          ensure_started()
-        end
+    with :ok <- ensure_application_started(),
+         {:ok, pid} <- fetch_or_restart_registry() do
+      {:ok, pid}
+    else
+      {:error, _} = error -> error
     end
   catch
     :exit, reason -> {:error, reason}
@@ -100,8 +93,65 @@ defmodule Codex.Files.Registry do
     GenServer.call(@registry, {:reset, staging_dir})
   end
 
-  defp start_unlinked do
-    GenServer.start(__MODULE__, [], name: @registry)
+  defp ensure_application_started do
+    case Application.ensure_all_started(:codex_sdk) do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp fetch_or_restart_registry do
+    case wait_for_registry_pid(200) do
+      {:ok, pid} -> {:ok, pid}
+      :error -> restart_registry_child()
+    end
+  end
+
+  defp restart_registry_child do
+    with true <- is_pid(Process.whereis(Codex.Supervisor)) || {:error, :not_started},
+         {:ok, pid} <- restart_registry_child_under_supervisor() do
+      {:ok, pid}
+    else
+      {:error, _} = error -> error
+    end
+  end
+
+  defp restart_registry_child_under_supervisor do
+    case Supervisor.restart_child(Codex.Supervisor, @registry) do
+      {:ok, pid} when is_pid(pid) -> {:ok, pid}
+      {:error, :running} -> wait_for_registry_or_not_started()
+      {:error, :restarting} -> wait_for_registry_or_not_started()
+      {:error, :not_found} -> {:error, :not_started}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp wait_for_registry_or_not_started do
+    case wait_for_registry_pid(200) do
+      {:ok, pid} -> {:ok, pid}
+      :error -> {:error, :not_started}
+    end
+  end
+
+  defp wait_for_registry_pid(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0 do
+    start = System.monotonic_time(:millisecond)
+    do_wait_for_registry_pid(start, timeout_ms)
+  end
+
+  defp do_wait_for_registry_pid(start, timeout_ms) do
+    case Process.whereis(@registry) do
+      pid when is_pid(pid) ->
+        {:ok, pid}
+
+      nil ->
+        if System.monotonic_time(:millisecond) - start >= timeout_ms do
+          :error
+        else
+          Process.sleep(10)
+          do_wait_for_registry_pid(start, timeout_ms)
+        end
+    end
   end
 
   # GenServer callbacks
@@ -129,7 +179,8 @@ defmodule Codex.Files.Registry do
       cleanup_interval_ms: interval,
       cleanup_timer: schedule_cleanup(interval),
       work_queue: :queue.new(),
-      in_flight: nil
+      in_flight: nil,
+      pending_stage_requests: %{}
     }
 
     {:ok, state, {:continue, :cleanup_orphaned_staging}}
@@ -153,36 +204,57 @@ defmodule Codex.Files.Registry do
         {:reply, {:ok, updated}, state}
 
       [] ->
-        state = state |> enqueue_work({:stage, from, opts, now}) |> maybe_start_work()
-        {:noreply, state}
+        request = {from, opts, now}
+
+        case Map.get(state.pending_stage_requests, opts.checksum) do
+          nil ->
+            pending_stage_requests =
+              Map.put(state.pending_stage_requests, opts.checksum, [request])
+
+            state =
+              %{state | pending_stage_requests: pending_stage_requests}
+              |> enqueue_work({:stage, opts.checksum, opts})
+              |> maybe_start_work()
+
+            {:noreply, state}
+
+          requests ->
+            pending_stage_requests =
+              Map.put(state.pending_stage_requests, opts.checksum, [request | requests])
+
+            {:noreply, %{state | pending_stage_requests: pending_stage_requests}}
+        end
     end
   end
 
-  def handle_call(:list, _from, state) do
-    {:reply, list_attachments(state.table), state}
+  def handle_call(:list, from, state) do
+    reply_async(from, fn -> list_attachments(state.table) end)
+    {:noreply, state}
   end
 
-  def handle_call(:metrics, _from, state) do
-    metrics = :ets.foldl(&accumulate_metrics/2, initial_metrics(), state.table)
-    {:reply, metrics, state}
+  def handle_call(:metrics, from, state) do
+    reply_async(from, fn ->
+      :ets.foldl(&accumulate_metrics/2, initial_metrics(), state.table)
+    end)
+
+    {:noreply, state}
   end
 
   def handle_call(:force_cleanup, from, state) do
-    expired = expired_entries(state.table, DateTime.utc_now())
-    state = state |> enqueue_work({:force_cleanup, from, expired}) |> maybe_start_work()
+    now = DateTime.utc_now() |> DateTime.truncate(:millisecond)
+    state = state |> enqueue_work({:force_cleanup, from, now}) |> maybe_start_work()
     {:noreply, state}
   end
 
   def handle_call({:reset, staging_dir}, from, state) do
-    attachments = list_attachments(state.table)
-    state = state |> enqueue_work({:reset, from, attachments, staging_dir}) |> maybe_start_work()
+    state = state |> enqueue_work({:reset, from, staging_dir}) |> maybe_start_work()
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:cleanup_tick, state) do
-    expired = expired_entries(state.table, DateTime.utc_now())
-    state = state |> enqueue_work({:cleanup_tick, expired}) |> maybe_start_work()
+    now = DateTime.utc_now() |> DateTime.truncate(:millisecond)
+    state = state |> enqueue_work({:cleanup_tick, now}) |> maybe_start_work()
     {:noreply, state}
   end
 
@@ -221,6 +293,8 @@ defmodule Codex.Files.Registry do
   def terminate(_reason, state) do
     _ = Process.cancel_timer(state.cleanup_timer)
 
+    reply_pending_stage_requests(state.pending_stage_requests, :closed)
+
     if state.in_flight do
       Process.demonitor(state.in_flight.ref, [:flush])
 
@@ -258,7 +332,7 @@ defmodule Codex.Files.Registry do
     parent = self()
 
     runner = fn ->
-      result = perform_work(state.file_module, work)
+      result = perform_work(state, work)
       send(parent, {:work_result, self(), result})
     end
 
@@ -278,119 +352,175 @@ defmodule Codex.Files.Registry do
     :exit, _ -> Task.start(fun)
   end
 
-  defp perform_work(file_module, {:stage, _from, opts, _now}) do
+  defp perform_work(%{file_module: file_module}, {:stage, _checksum, opts}) do
     file_module.mkdir_p!(Path.dirname(opts.destination_path))
     file_module.cp!(opts.source_path, opts.destination_path)
     :ok
   end
 
-  defp perform_work(file_module, {:force_cleanup, _from, entries}) do
+  defp perform_work(%{file_module: file_module, table: table}, {:force_cleanup, _from, now}) do
+    entries = expired_entries(table, now)
+
     Enum.each(entries, fn {_checksum, attachment} ->
       _ = file_module.rm_rf(attachment.path)
     end)
 
-    :ok
+    {:ok, entries}
   end
 
-  defp perform_work(file_module, {:cleanup_tick, entries}) do
+  defp perform_work(%{file_module: file_module, table: table}, {:cleanup_tick, now}) do
+    entries = expired_entries(table, now)
+
     Enum.each(entries, fn {_checksum, attachment} ->
       _ = file_module.rm_rf(attachment.path)
     end)
 
-    :ok
+    {:ok, entries}
   end
 
-  defp perform_work(file_module, {:reset, _from, attachments, staging_dir}) do
+  defp perform_work(%{file_module: file_module, table: table}, {:reset, _from, staging_dir}) do
+    attachments = list_attachments(table)
+
     Enum.each(attachments, fn attachment ->
       _ = file_module.rm_rf(attachment.path)
     end)
 
     _ = file_module.rm_rf(staging_dir)
-    :ok
+    {:ok, attachments}
   end
 
-  defp perform_work(file_module, :cleanup_orphaned_staging) do
+  defp perform_work(%{file_module: file_module}, :cleanup_orphaned_staging) do
     _ = file_module.rm_rf(Codex.Files.staging_dir())
     :ok
-  end
-
-  defp handle_completed_work(state, work, :ok) do
-    handle_succeeded_work(state, work)
   end
 
   defp handle_completed_work(state, work, {:error, reason}) do
     handle_failed_work(state, work, reason)
   end
 
-  defp handle_completed_work(state, work, other) do
+  defp handle_completed_work(state, work, result) do
+    handle_succeeded_work(state, work, result)
+  end
+
+  defp handle_succeeded_work(state, {:stage, checksum, _opts}, :ok) do
+    {requests, pending_stage_requests} =
+      Map.pop(state.pending_stage_requests, checksum, [])
+
+    requests =
+      requests
+      |> Enum.reverse()
+
+    case requests do
+      [] ->
+        %{state | pending_stage_requests: pending_stage_requests}
+
+      [{from, opts, now} | rest] ->
+        first_attachment = build_attachment(opts, now)
+        :ets.insert(state.table, {first_attachment.checksum, first_attachment})
+        emit_staged(first_attachment, cached?: false)
+        GenServer.reply(from, {:ok, first_attachment})
+
+        _final_attachment =
+          Enum.reduce(rest, first_attachment, fn {reply_from, req_opts, req_now}, current ->
+            updated = merge_attachment(current, req_opts, req_now)
+            :ets.insert(state.table, {updated.checksum, updated})
+            emit_staged(updated, cached?: true)
+            GenServer.reply(reply_from, {:ok, updated})
+            updated
+          end)
+
+        %{state | pending_stage_requests: pending_stage_requests}
+    end
+  end
+
+  defp handle_succeeded_work(state, {:force_cleanup, from, _now}, {:ok, entries}) do
+    apply_cleanup_entries(state.table, entries)
+    GenServer.reply(from, :ok)
+    reschedule_cleanup(state)
+  end
+
+  defp handle_succeeded_work(state, {:cleanup_tick, _now}, {:ok, entries}) do
+    apply_cleanup_entries(state.table, entries)
+    reschedule_cleanup(state)
+  end
+
+  defp handle_succeeded_work(state, {:reset, from, _staging_dir}, {:ok, _attachments}) do
+    :ets.delete_all_objects(state.table)
+    GenServer.reply(from, :ok)
+    reschedule_cleanup(state)
+  end
+
+  defp handle_succeeded_work(state, :cleanup_orphaned_staging, :ok), do: state
+
+  defp handle_succeeded_work(state, work, other) do
     handle_failed_work(state, work, {:unexpected_work_result, other})
   end
 
-  defp handle_succeeded_work(state, {:stage, from, opts, now}) do
-    attachment = build_attachment(opts, now)
-    :ets.insert(state.table, {attachment.checksum, attachment})
-    emit_staged(attachment, cached?: false)
-    GenServer.reply(from, {:ok, attachment})
-    state
-  end
+  defp handle_failed_work(state, {:stage, checksum, _opts}, reason) do
+    {requests, pending_stage_requests} =
+      Map.pop(state.pending_stage_requests, checksum, [])
 
-  defp handle_succeeded_work(state, {:force_cleanup, from, entries}) do
-    apply_cleanup_entries(state.table, entries)
-    GenServer.reply(from, :ok)
-    reschedule_cleanup(state)
-  end
-
-  defp handle_succeeded_work(state, {:cleanup_tick, entries}) do
-    apply_cleanup_entries(state.table, entries)
-    reschedule_cleanup(state)
-  end
-
-  defp handle_succeeded_work(state, {:reset, from, attachments, _staging_dir}) do
-    Enum.each(attachments, fn attachment ->
-      :ets.delete(state.table, attachment.checksum)
+    Enum.each(requests, fn {from, _opts, _now} ->
+      GenServer.reply(from, {:error, reason})
     end)
 
-    GenServer.reply(from, :ok)
-    reschedule_cleanup(state)
+    %{state | pending_stage_requests: pending_stage_requests}
   end
 
-  defp handle_succeeded_work(state, :cleanup_orphaned_staging), do: state
-
-  defp handle_failed_work(state, {:stage, from, _opts, _now}, reason) do
-    GenServer.reply(from, {:error, reason})
-    state
-  end
-
-  defp handle_failed_work(state, {:force_cleanup, from, _entries}, reason) do
+  defp handle_failed_work(state, {:force_cleanup, from, _now}, reason) do
     GenServer.reply(from, {:error, reason})
     reschedule_cleanup(state)
   end
 
-  defp handle_failed_work(state, {:cleanup_tick, _entries}, _reason) do
+  defp handle_failed_work(state, {:cleanup_tick, _now}, _reason) do
     reschedule_cleanup(state)
   end
 
-  defp handle_failed_work(state, {:reset, from, _attachments, _staging_dir}, reason) do
+  defp handle_failed_work(state, {:reset, from, _staging_dir}, reason) do
     GenServer.reply(from, {:error, reason})
     reschedule_cleanup(state)
   end
 
   defp handle_failed_work(state, :cleanup_orphaned_staging, _reason), do: state
 
-  defp reply_work_error({:stage, from, _opts, _now}, reason) do
+  defp reply_work_error({:stage, _checksum, _opts}, _reason), do: :ok
+
+  defp reply_work_error({:force_cleanup, from, _now}, reason) do
     GenServer.reply(from, {:error, reason})
   end
 
-  defp reply_work_error({:force_cleanup, from, _entries}, reason) do
+  defp reply_work_error({:reset, from, _staging_dir}, reason) do
     GenServer.reply(from, {:error, reason})
   end
 
-  defp reply_work_error({:reset, from, _attachments, _staging_dir}, reason) do
-    GenServer.reply(from, {:error, reason})
-  end
-
-  defp reply_work_error({:cleanup_tick, _entries}, _reason), do: :ok
+  defp reply_work_error({:cleanup_tick, _now}, _reason), do: :ok
   defp reply_work_error(:cleanup_orphaned_staging, _reason), do: :ok
+
+  defp reply_pending_stage_requests(pending_stage_requests, reason) do
+    Enum.each(pending_stage_requests, fn {_checksum, requests} ->
+      Enum.each(requests, fn {from, _opts, _now} ->
+        GenServer.reply(from, {:error, reason})
+      end)
+    end)
+  end
+
+  defp reply_async(from, fun) when is_function(fun, 0) do
+    runner = fn ->
+      reply =
+        try do
+          fun.()
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      GenServer.reply(from, reply)
+    end
+
+    {:ok, _pid} = start_task(runner)
+    :ok
+  end
 
   defp merge_attachment(%Attachment{} = existing, opts, now) do
     ttl_ms = normalize_ttl(existing.ttl_ms, opts.ttl_ms, opts.persist)

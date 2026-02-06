@@ -63,6 +63,7 @@ defmodule Codex.Tools.ShellTool do
 
   @behaviour Codex.Tool
 
+  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
   alias Codex.Tools.Hosted
 
   @default_timeout_ms 60_000
@@ -232,17 +233,21 @@ defmodule Codex.Tools.ShellTool do
 
   @doc false
   def default_executor(command, cwd, timeout_ms) do
-    ensure_erlexec_started()
+    case ensure_erlexec_started() do
+      :ok ->
+        opts =
+          [:stdout, :stderr, :monitor]
+          |> maybe_add_cd(cwd)
 
-    opts =
-      [:stdout, :stderr, :monitor]
-      |> maybe_add_cd(cwd)
+        exec_command = build_exec_command(command)
 
-    exec_command = build_exec_command(command)
+        case :exec.run(exec_command, opts) do
+          {:ok, pid, os_pid} ->
+            collect_output(os_pid, pid, timeout_ms)
 
-    case :exec.run(exec_command, opts) do
-      {:ok, pid, os_pid} ->
-        collect_output(os_pid, pid, timeout_ms)
+          {:error, reason} ->
+            {:error, {:exec_start_failed, reason}}
+        end
 
       {:error, reason} ->
         {:error, {:exec_start_failed, reason}}
@@ -294,12 +299,7 @@ defmodule Codex.Tools.ShellTool do
   defp maybe_add_cd(opts, cwd), do: [{:cd, to_charlist(cwd)} | opts]
 
   defp ensure_erlexec_started do
-    case Application.ensure_all_started(:erlexec) do
-      {:ok, _apps} -> :ok
-      {:error, {:erlexec, {:already_started, _}}} -> :ok
-      {:error, {:already_started, _}} -> :ok
-      {:error, reason} -> raise "Failed to start erlexec: #{inspect(reason)}"
-    end
+    RuntimeErlexec.ensure_started()
   end
 
   defp collect_output(os_pid, pid, timeout_ms) do

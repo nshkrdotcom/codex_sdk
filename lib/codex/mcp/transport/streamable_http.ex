@@ -313,10 +313,10 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
     case Task.Supervisor.start_child(Codex.TaskSupervisor, fun) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, _} -> Task.start_link(fun)
+      {:error, _} -> Task.start(fun)
     end
   catch
-    :exit, _ -> Task.start_link(fun)
+    :exit, _ -> Task.start(fun)
   end
 
   defp post_json(%State{} = state, message, timeout_ms) do

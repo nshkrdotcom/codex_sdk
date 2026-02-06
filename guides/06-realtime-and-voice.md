@@ -7,7 +7,7 @@ This guide covers the Realtime API integration for bidirectional voice interacti
 The Realtime and Voice modules are **ported from the OpenAI Agents Python SDK** (`openai-agents-python`). Unlike the main Codex SDK features (`Codex.start_thread/2`, `Codex.resume_thread/3`), these modules make **direct API calls** to OpenAI rather than wrapping the `codex` CLI.
 
 This means:
-- **Realtime/Voice use API key auth via `Codex.Auth` precedence**:
+- **Realtime/Voice use API key auth precedence**:
   `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
 - Realtime uses WebSocket connections to `wss://api.openai.com/v1/realtime`
 - Voice uses HTTP calls to OpenAI's STT/TTS endpoints

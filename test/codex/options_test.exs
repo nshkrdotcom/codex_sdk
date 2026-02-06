@@ -4,7 +4,7 @@ defmodule Codex.OptionsTest do
   alias Codex.Options
 
   setup do
-    env_keys = ~w(CODEX_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME)
+    env_keys = ~w(CODEX_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME OPENAI_BASE_URL)
 
     original_env =
       env_keys
@@ -46,6 +46,20 @@ defmodule Codex.OptionsTest do
       assert opts.telemetry_prefix == [:codex, :test]
       assert opts.model == "gpt-5.3-codex"
       assert opts.reasoning_effort == :high
+    end
+
+    test "uses OPENAI_BASE_URL when base_url is not provided" do
+      System.put_env("OPENAI_BASE_URL", "https://gateway.example.com/v1")
+
+      assert {:ok, opts} = Options.new(%{})
+      assert opts.base_url == "https://gateway.example.com/v1"
+    end
+
+    test "explicit base_url overrides OPENAI_BASE_URL" do
+      System.put_env("OPENAI_BASE_URL", "https://gateway.example.com/v1")
+
+      assert {:ok, opts} = Options.new(%{base_url: "https://explicit.example.com/v1"})
+      assert opts.base_url == "https://explicit.example.com/v1"
     end
 
     test "allows API key to be omitted" do

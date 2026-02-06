@@ -1,5 +1,5 @@
 defmodule Codex.FilesTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Codex.Files
 
@@ -98,6 +98,24 @@ defmodule Codex.FilesTest do
   end
 
   describe "error contracts" do
+    test "list_staged_result/0 returns {:error, reason} when registry cannot start" do
+      stop_registry()
+      table = create_conflicting_manifest_table()
+
+      on_exit(fn -> cleanup_conflicting_manifest_table(table) end)
+
+      assert {:error, _reason} = Files.list_staged_result()
+    end
+
+    test "list_staged/0 preserves legacy empty-list fallback on startup failure" do
+      stop_registry()
+      table = create_conflicting_manifest_table()
+
+      on_exit(fn -> cleanup_conflicting_manifest_table(table) end)
+
+      assert [] = Files.list_staged()
+    end
+
     test "force_cleanup/0 returns {:error, reason} when registry cannot start" do
       stop_registry()
       table = create_conflicting_manifest_table()

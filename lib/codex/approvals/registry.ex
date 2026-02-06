@@ -88,20 +88,17 @@ defmodule Codex.Approvals.Registry do
     cutoff = now - max_age_ms
 
     deleted_count =
-      :ets.foldl(
-        fn {ref, metadata}, acc ->
-          registered_at = Map.get(metadata, :registered_at, 0)
-
-          if registered_at < cutoff do
-            :ets.delete(@table_name, ref)
-            acc + 1
-          else
-            acc
-          end
-        end,
-        0,
-        @table_name
-      )
+      :ets.select_delete(@table_name, [
+        {
+          {:"$1", :"$2"},
+          [
+            {:is_map, :"$2"},
+            {:is_map_key, :registered_at, :"$2"},
+            {:<, {:map_get, :registered_at, :"$2"}, cutoff}
+          ],
+          [true]
+        }
+      ])
 
     {:reply, deleted_count, state}
   end

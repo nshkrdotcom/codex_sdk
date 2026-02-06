@@ -21,6 +21,7 @@ The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PAT
 ## Connect / Disconnect
 
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
+If the application supervision tree is unavailable, `connect/2` returns `{:error, :supervisor_unavailable}`.
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{api_key: System.get_env("CODEX_API_KEY")})

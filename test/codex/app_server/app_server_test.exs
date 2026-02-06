@@ -40,4 +40,39 @@ defmodule Codex.AppServerTest do
     :ok = AppServer.disconnect(conn)
     assert_receive {:DOWN, ^ref, :process, ^conn, _reason}
   end
+
+  test "connect/2 fails when app-server supervisor is unavailable" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    remove_connection_supervisor()
+
+    on_exit(fn ->
+      restore_connection_supervisor()
+    end)
+
+    assert {:error, :supervisor_unavailable} =
+             AppServer.connect(codex_opts,
+               subprocess: {AppServerSubprocess, owner: self()},
+               init_timeout_ms: 200
+             )
+  end
+
+  defp remove_connection_supervisor do
+    if Process.whereis(Codex.Supervisor) && Process.whereis(Codex.AppServer.Supervisor) do
+      :ok = Supervisor.terminate_child(Codex.Supervisor, Codex.AppServer.Supervisor)
+      :ok = Supervisor.delete_child(Codex.Supervisor, Codex.AppServer.Supervisor)
+    end
+  end
+
+  defp restore_connection_supervisor do
+    if pid = Process.whereis(Codex.AppServer.Supervisor) do
+      Process.exit(pid, :shutdown)
+      Process.sleep(20)
+    end
+
+    if Process.whereis(Codex.Supervisor) && is_nil(Process.whereis(Codex.AppServer.Supervisor)) do
+      {:ok, _pid} = Supervisor.start_child(Codex.Supervisor, {Codex.AppServer.Supervisor, []})
+    end
+  end
 end

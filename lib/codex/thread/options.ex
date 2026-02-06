@@ -5,6 +5,7 @@ defmodule Codex.Thread.Options do
 
   # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
 
+  alias Codex.Config.OptionNormalizers
   alias Codex.FileSearch
   alias Codex.Protocol.CollaborationMode
 
@@ -638,65 +639,14 @@ defmodule Codex.Thread.Options do
   defp normalize_color(value) when is_binary(value), do: {:ok, value}
   defp normalize_color(value), do: {:error, {:invalid_color, value}}
 
-  defp normalize_history_persistence(nil), do: {:ok, nil}
-
-  defp normalize_history_persistence(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_history_persistence()
-  end
-
-  defp normalize_history_persistence(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> {:ok, nil}
-      trimmed -> {:ok, trimmed}
-    end
-  end
-
   defp normalize_history_persistence(value),
-    do: {:error, {:invalid_history_persistence, value}}
+    do: OptionNormalizers.normalize_history_persistence(value, :invalid_history_persistence)
 
-  defp normalize_reasoning_summary(nil), do: {:ok, nil}
+  defp normalize_reasoning_summary(value),
+    do: OptionNormalizers.normalize_reasoning_summary(value, :invalid_model_reasoning_summary)
 
-  defp normalize_reasoning_summary(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_reasoning_summary()
-  end
-
-  defp normalize_reasoning_summary(value) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "" -> {:ok, nil}
-      "auto" -> {:ok, "auto"}
-      "concise" -> {:ok, "concise"}
-      "detailed" -> {:ok, "detailed"}
-      "none" -> {:ok, "none"}
-      other -> {:error, {:invalid_model_reasoning_summary, other}}
-    end
-  end
-
-  defp normalize_reasoning_summary(other),
-    do: {:error, {:invalid_model_reasoning_summary, other}}
-
-  defp normalize_model_verbosity(nil), do: {:ok, nil}
-
-  defp normalize_model_verbosity(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_model_verbosity()
-  end
-
-  defp normalize_model_verbosity(value) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "" -> {:ok, nil}
-      "low" -> {:ok, "low"}
-      "medium" -> {:ok, "medium"}
-      "high" -> {:ok, "high"}
-      other -> {:error, {:invalid_model_verbosity, other}}
-    end
-  end
-
-  defp normalize_model_verbosity(other), do: {:error, {:invalid_model_verbosity, other}}
+  defp normalize_model_verbosity(value),
+    do: OptionNormalizers.normalize_model_verbosity(value, :invalid_model_verbosity)
 
   defp normalize_web_search_mode(nil), do: {:ok, nil}
 

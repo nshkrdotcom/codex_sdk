@@ -1,10 +1,12 @@
 defmodule Codex.Voice.PipelineTest do
   use ExUnit.Case, async: true
 
+  alias Codex.StreamQueue
   alias Codex.Voice.Config
   alias Codex.Voice.Config.TTSSettings
   alias Codex.Voice.Events.VoiceStreamEventAudio
   alias Codex.Voice.Events.VoiceStreamEventLifecycle
+  alias Codex.Voice.Input.StreamedAudioInput
   alias Codex.Voice.Pipeline
   alias Codex.Voice.Result
 
@@ -189,7 +191,7 @@ defmodule Codex.Voice.PipelineTest do
       :ok = Result.done(result)
 
       events = drain_queue(result.queue)
-      assert [%VoiceStreamEventLifecycle{event: :session_ended}, :done] = events
+      assert [%VoiceStreamEventLifecycle{event: :session_ended}] = events
     end
   end
 
@@ -202,7 +204,7 @@ defmodule Codex.Voice.PipelineTest do
       :ok = Result.add_error(result, error)
 
       events = drain_queue(result.queue)
-      assert [%Codex.Voice.Events.VoiceStreamEventError{error: ^error}, :done] = events
+      assert [%Codex.Voice.Events.VoiceStreamEventError{error: ^error}] = events
     end
 
     test "wraps non-exception errors" do
@@ -212,7 +214,7 @@ defmodule Codex.Voice.PipelineTest do
       :ok = Result.add_error(result, {:error, :some_reason})
 
       events = drain_queue(result.queue)
-      assert [%Codex.Voice.Events.VoiceStreamEventError{error: %RuntimeError{}}, :done] = events
+      assert [%Codex.Voice.Events.VoiceStreamEventError{error: %RuntimeError{}}] = events
     end
   end
 
@@ -248,6 +250,27 @@ defmodule Codex.Voice.PipelineTest do
     end
   end
 
+  describe "pipeline worker lifecycle" do
+    test "run/2 worker is not linked to the caller process" do
+      previous_flag = Process.flag(:trap_exit, true)
+
+      on_exit(fn ->
+        Process.flag(:trap_exit, previous_flag)
+      end)
+
+      pipeline = Pipeline.new(workflow: %SimpleWorkflow{})
+      audio = StreamedAudioInput.new()
+
+      {:ok, result} = Pipeline.run(pipeline, audio)
+
+      assert %Task{pid: task_pid} = result.task
+      assert Process.alive?(task_pid)
+
+      Process.exit(task_pid, :boom)
+      refute_receive {:EXIT, ^task_pid, :boom}, 100
+    end
+  end
+
   # Helper function to drain all items from an Agent-backed queue
   defp drain_queue(queue_pid) do
     drain_queue_acc(queue_pid, [])
@@ -263,11 +286,11 @@ defmodule Codex.Voice.PipelineTest do
   end
 
   defp dequeue_from_agent(queue_pid) do
-    Agent.get_and_update(queue_pid, fn q ->
-      case :queue.out(q) do
-        {{:value, item}, q2} -> {item, q2}
-        {:empty, q} -> {:empty, q}
-      end
-    end)
+    case StreamQueue.try_pop(queue_pid) do
+      {:ok, item} -> item
+      :done -> :empty
+      {:error, _reason} -> :empty
+      :empty -> :empty
+    end
   end
 end

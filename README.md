@@ -65,6 +65,7 @@ For authentication, sign in with your ChatGPT account (this stores credentials f
 ```bash
 codex
 # Select "Sign in with ChatGPT"
+```
 
 Alternatively, set `CODEX_API_KEY` before starting your BEAM node. The SDK prefers `CODEX_API_KEY`,
 then `auth.json` `OPENAI_API_KEY`, and otherwise falls back to your CLI login tokens stored under
@@ -78,7 +79,9 @@ When `cli_auth_credentials_store = "auto"` and keyring is unavailable, the SDK f
 
 When an API key is supplied, the SDK forwards it as both `CODEX_API_KEY` and `OPENAI_API_KEY`
 to the codex subprocess to align with provider expectations.
-```
+
+Base URL precedence is: explicit `:base_url` in `Codex.Options.new/1`, then `OPENAI_BASE_URL`,
+then the OpenAI default (`https://api.openai.com/v1`).
 
 Default model: `gpt-5.3-codex` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`).
 
@@ -515,6 +518,9 @@ thread_opts =
 Query `Codex.Files.metrics/0` for staging stats and force cleanup with `Codex.Files.force_cleanup/0`.
 `Codex.Files.force_cleanup/0`, `Codex.Files.reset!/0`, and `Codex.Files.metrics/0` return
 `{:error, reason}` if the registry is unavailable.
+Use `Codex.Files.list_staged_result/0` for explicit `{:ok, list} | {:error, reason}` responses;
+`Codex.Files.list_staged/0` remains available as a compatibility helper that falls back to `[]` on
+startup errors.
 Staged files are runtime-scoped; the registry clears the staging directory on startup, so re-stage
 attachments after restarts.
 

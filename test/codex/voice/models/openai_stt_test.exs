@@ -176,6 +176,29 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
       assert :sys.get_state(pid).api_key == "sk-codex-priority"
       OpenAISTTSession.close(pid)
     end
+
+    test "removes dead transcript waiters on caller DOWN" do
+      input = StreamedAudioInput.new()
+      settings = STTSettings.new()
+
+      {:ok, pid} =
+        OpenAISTTSession.start_link(
+          input: input,
+          settings: settings
+        )
+
+      waiter =
+        spawn(fn ->
+          _ = GenServer.call(pid, :get_transcript, :infinity)
+        end)
+
+      wait_for_waiter_count(pid, 1)
+      Process.exit(waiter, :kill)
+      Process.sleep(50)
+
+      assert waiter_count(pid) == 0
+      OpenAISTTSession.close(pid)
+    end
   end
 
   describe "transcribe/5 (integration)" do
@@ -205,6 +228,29 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
       _pid ->
         Task.Supervisor.async_nolink(Codex.TaskSupervisor, fun)
     end
+  end
+
+  defp wait_for_waiter_count(pid, expected) do
+    started = System.monotonic_time(:millisecond)
+    do_wait_for_waiter_count(pid, expected, started)
+  end
+
+  defp do_wait_for_waiter_count(pid, expected, started) do
+    if waiter_count(pid) == expected do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) - started > 500 do
+        flunk("timed out waiting for waiter count #{expected}")
+      else
+        Process.sleep(10)
+        do_wait_for_waiter_count(pid, expected, started)
+      end
+    end
+  end
+
+  defp waiter_count(pid) do
+    state = :sys.get_state(pid)
+    length(state.waiters)
   end
 
   defp restore_env(key, nil), do: System.delete_env(key)

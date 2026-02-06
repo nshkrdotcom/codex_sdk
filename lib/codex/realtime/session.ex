@@ -395,6 +395,8 @@ defmodule Codex.Realtime.Session do
 
   @impl true
   def terminate(_reason, state) do
+    _ = drain_pending_tool_calls(state)
+
     if state.websocket_pid do
       ws_module = state.websocket_module || WebSockex
 
@@ -709,6 +711,22 @@ defmodule Codex.Realtime.Session do
         state = finish_tool_call(state, pending_tool_call, output)
         {:noreply, state}
     end
+  end
+
+  defp drain_pending_tool_calls(state) do
+    Enum.each(state.pending_tool_calls, fn
+      {pid, %{monitor_ref: monitor_ref}} ->
+        Process.demonitor(monitor_ref, [:flush])
+
+        if is_pid(pid) and Process.alive?(pid) do
+          Process.exit(pid, :shutdown)
+        end
+
+      {_pid, _pending_tool_call} ->
+        :ok
+    end)
+
+    :ok
   end
 
   @spec start_tool_task((-> any())) :: {:ok, pid()}

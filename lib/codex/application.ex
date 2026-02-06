@@ -15,6 +15,7 @@ defmodule Codex.Application do
       {Codex.AppServer.Supervisor, []},
       {Codex.Files.Registry, []},
       {Codex.Approvals.Registry, []},
+      {Codex.Tools.MetricsHeir, []},
       {Task.Supervisor, name: Codex.TaskSupervisor}
     ]
 

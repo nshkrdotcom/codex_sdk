@@ -546,7 +546,8 @@ Staging and attachment helpers that keep file workflows deterministic.
 
 - `stage/2` — copies a source file into the staging directory, returning `%Codex.Files.Attachment{}` with checksum, size, and persistence metadata.
 - `attach/2` — appends a staged attachment to `Codex.Thread.Options`, deduplicating by checksum.
-- `list_staged/0` / `cleanup!/0` / `reset!/0` — inspect and manage staged files.
+- `list_staged_result/0` — explicit `{:ok, [attachment]} | {:error, reason}` listing API.
+- `list_staged/0` / `cleanup!/0` / `reset!/0` — compatibility helpers to inspect and manage staged files.
 
 Staged files are scoped to the current runtime; the registry clears the staging directory on
 startup, so re-stage attachments after restarts.
@@ -1254,7 +1255,7 @@ Global Codex configuration.
 
 **Fields**:
 - `codex_path_override`: Custom path to codex binary (defaults to system PATH)
-- `base_url`: OpenAI API base URL (defaults to official URL)
+- `base_url`: OpenAI API base URL (precedence: explicit option, then `OPENAI_BASE_URL`, then official default)
 - `api_key`: OpenAI API key (overrides `CODEX_API_KEY`; optional if CLI login is present)
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override (defaults to `Codex.Models.default_model/0`)

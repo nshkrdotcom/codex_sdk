@@ -207,7 +207,7 @@ defmodule Codex.Voice.Pipeline do
     result = Result.new(pipeline.tts_model, tts_settings, pipeline.config)
 
     task =
-      Task.async(fn ->
+      start_pipeline_task(fn ->
         try do
           # Transcribe audio to text
           stt_settings = pipeline.config.stt_settings || %STTSettings{}
@@ -255,7 +255,7 @@ defmodule Codex.Voice.Pipeline do
     result = Result.new(pipeline.tts_model, tts_settings, pipeline.config)
 
     task =
-      Task.async(fn ->
+      start_pipeline_task(fn ->
         try do
           # Call on_start if workflow supports it
           maybe_call_on_start(pipeline.workflow, result)
@@ -327,5 +327,23 @@ defmodule Codex.Voice.Pipeline do
   defp apply_workflow(workflow, fun, args) do
     module = workflow.__struct__
     apply(module, fun, [workflow | args])
+  end
+
+  defp start_pipeline_task(fun) when is_function(fun, 0) do
+    case Process.whereis(Codex.TaskSupervisor) do
+      pid when is_pid(pid) ->
+        Task.Supervisor.async_nolink(Codex.TaskSupervisor, fun)
+
+      nil ->
+        {:ok, supervisor} = Task.Supervisor.start_link()
+
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          try do
+            fun.()
+          after
+            Process.exit(supervisor, :shutdown)
+          end
+        end)
+    end
   end
 end

@@ -7,13 +7,13 @@ defmodule Codex.Options do
 
   require Bitwise
   alias Codex.Auth
+  alias Codex.Config.BaseURL
+  alias Codex.Config.OptionNormalizers
   alias Codex.Models
-
-  @default_base_url "https://api.openai.com/v1"
 
   @enforce_keys []
   defstruct api_key: nil,
-            base_url: @default_base_url,
+            base_url: BaseURL.default(),
             codex_path_override: nil,
             telemetry_prefix: [:codex],
             model: Models.default_model(),
@@ -145,7 +145,7 @@ defmodule Codex.Options do
   end
 
   defp fetch_base_url(attrs) do
-    case pick(attrs, [:base_url, "base_url"], @default_base_url) do
+    case BaseURL.resolve(attrs) do
       url when is_binary(url) and url != "" -> {:ok, url}
       _ -> {:error, :invalid_base_url}
     end
@@ -364,45 +364,11 @@ defmodule Codex.Options do
 
   defp normalize_string(_), do: nil
 
-  defp normalize_reasoning_summary(nil), do: {:ok, nil}
+  defp normalize_reasoning_summary(value),
+    do: OptionNormalizers.normalize_reasoning_summary(value, :invalid_model_reasoning_summary)
 
-  defp normalize_reasoning_summary(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_reasoning_summary()
-  end
-
-  defp normalize_reasoning_summary(value) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "" -> {:ok, nil}
-      "auto" -> {:ok, "auto"}
-      "concise" -> {:ok, "concise"}
-      "detailed" -> {:ok, "detailed"}
-      "none" -> {:ok, "none"}
-      other -> {:error, {:invalid_model_reasoning_summary, other}}
-    end
-  end
-
-  defp normalize_reasoning_summary(other),
-    do: {:error, {:invalid_model_reasoning_summary, other}}
-
-  defp normalize_history_persistence(nil), do: {:ok, nil}
-
-  defp normalize_history_persistence(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_history_persistence()
-  end
-
-  defp normalize_history_persistence(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> {:ok, nil}
-      trimmed -> {:ok, trimmed}
-    end
-  end
-
-  defp normalize_history_persistence(other),
-    do: {:error, {:invalid_history_persistence, other}}
+  defp normalize_history_persistence(value),
+    do: OptionNormalizers.normalize_history_persistence(value, :invalid_history_persistence)
 
   defp validate_history_max_bytes(nil), do: {:ok, nil}
 
@@ -411,25 +377,8 @@ defmodule Codex.Options do
   defp validate_history_max_bytes(other),
     do: {:error, {:invalid_history_max_bytes, other}}
 
-  defp normalize_model_verbosity(nil), do: {:ok, nil}
-
-  defp normalize_model_verbosity(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_model_verbosity()
-  end
-
-  defp normalize_model_verbosity(value) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "" -> {:ok, nil}
-      "low" -> {:ok, "low"}
-      "medium" -> {:ok, "medium"}
-      "high" -> {:ok, "high"}
-      other -> {:error, {:invalid_model_verbosity, other}}
-    end
-  end
-
-  defp normalize_model_verbosity(other), do: {:error, {:invalid_model_verbosity, other}}
+  defp normalize_model_verbosity(value),
+    do: OptionNormalizers.normalize_model_verbosity(value, :invalid_model_verbosity)
 
   defp normalize_personality(nil), do: {:ok, nil}
 

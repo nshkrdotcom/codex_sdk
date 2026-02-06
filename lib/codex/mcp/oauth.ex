@@ -3,10 +3,9 @@ defmodule Codex.MCP.OAuth do
   Stores and refreshes OAuth credentials for streamable HTTP MCP servers.
   """
 
-  require Logger
-
   alias Codex.Auth
   alias Codex.Config.LayerStack
+  alias Codex.Runtime.KeyringWarning
 
   @typedoc "Where to store OAuth credentials."
   @type store_mode :: :auto | :file | :keyring
@@ -475,12 +474,11 @@ defmodule Codex.MCP.OAuth do
 
       false ->
         if mode in [:auto, :keyring] and keyring_supported?() do
-          Logger.warning(
+          KeyringWarning.warn_once(
+            @keyring_warning_key,
             "codex_sdk does not support keyring auth for MCP OAuth (mcp_oauth_credentials_store=#{mode}); falling back to file"
           )
         end
-
-        :persistent_term.put(@keyring_warning_key, true)
     end
   end
 end

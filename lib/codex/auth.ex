@@ -1,9 +1,8 @@
 defmodule Codex.Auth do
   @moduledoc false
 
-  require Logger
-
   alias Codex.Config.LayerStack
+  alias Codex.Runtime.KeyringWarning
 
   @keyring_warning_key {__MODULE__, :keyring_warning_emitted}
 
@@ -199,16 +198,9 @@ defmodule Codex.Auth do
   end
 
   defp warn_keyring_unsupported(mode) do
-    case :persistent_term.get(@keyring_warning_key, false) do
-      true ->
-        :ok
-
-      false ->
-        Logger.warning(
-          "codex_sdk does not support keyring auth (cli_auth_credentials_store=#{mode}); remote model fetch is disabled"
-        )
-
-        :persistent_term.put(@keyring_warning_key, true)
-    end
+    KeyringWarning.warn_once(
+      @keyring_warning_key,
+      "codex_sdk does not support keyring auth (cli_auth_credentials_store=#{mode}); remote model fetch is disabled"
+    )
   end
 end

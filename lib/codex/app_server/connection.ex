@@ -8,6 +8,8 @@ defmodule Codex.AppServer.Connection do
   alias Codex.AppServer.Protocol
   alias Codex.AppServer.Subprocess.Erlexec
   alias Codex.Options
+  alias Codex.Runtime.Env, as: RuntimeEnv
+  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
   @default_init_timeout_ms 10_000
   @default_request_timeout_ms 30_000
@@ -424,12 +426,7 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp ensure_erlexec_started(Erlexec) do
-    case Application.ensure_all_started(:erlexec) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-      {:error, {:erlexec, {:already_started, _}}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    RuntimeErlexec.ensure_started()
   end
 
   defp ensure_erlexec_started(_other), do: :ok
@@ -453,22 +450,10 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp build_env(%Options{} = opts) do
-    base_env =
-      []
-      |> maybe_put_key("CODEX_API_KEY", opts.api_key)
-      |> maybe_put_key("OPENAI_API_KEY", opts.api_key)
-      |> maybe_put_key(
-        "OPENAI_BASE_URL",
-        if(opts.base_url != "https://api.openai.com/v1", do: opts.base_url, else: nil)
-      )
-      |> Map.new()
-
-    Enum.map(base_env, fn {key, value} -> {key, value} end)
+    opts.api_key
+    |> RuntimeEnv.base_overrides(opts.base_url)
+    |> RuntimeEnv.to_charlist_env()
   end
-
-  defp maybe_put_key(env, _key, nil), do: env
-  defp maybe_put_key(env, _key, ""), do: env
-  defp maybe_put_key(env, key, value), do: [{key, value} | env]
 
   defp send_iolist(%State{} = state, data) do
     state.subprocess_mod.send(state.subprocess_pid, data, state.subprocess_opts)

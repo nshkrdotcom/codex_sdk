@@ -4,6 +4,7 @@ defmodule Codex.Models do
   """
 
   alias Codex.Auth
+  alias Codex.Config.BaseURL
   alias Codex.Config.LayerStack
 
   @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
@@ -741,13 +742,7 @@ defmodule Codex.Models do
   end
 
   defp models_url do
-    base =
-      System.get_env("OPENAI_BASE_URL")
-      |> case do
-        nil -> "https://api.openai.com/v1"
-        value -> value
-      end
-
+    base = BaseURL.resolve()
     base = String.trim_trailing(base, "/")
     client_version = client_version()
 

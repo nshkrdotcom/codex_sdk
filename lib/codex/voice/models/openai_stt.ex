@@ -207,7 +207,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
           listener_task: Task.t() | nil,
           stream_task: Task.t() | nil,
           transcripts: [String.t()],
-          waiters: [GenServer.from()]
+          waiters: [{GenServer.from(), reference()}]
         }
 
   @default_turn_detection %{"type" => "semantic_vad"}
@@ -277,14 +277,16 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
       [] ->
         # No transcripts available, add to waiters
-        {:noreply, %{state | waiters: state.waiters ++ [from]}}
+        monitor_ref = monitor_waiter(from)
+        {:noreply, %{state | waiters: state.waiters ++ [{from, monitor_ref}]}}
     end
   end
 
   @impl GenServer
   def handle_info({:transcript, text}, state) do
     case state.waiters do
-      [waiter | rest] ->
+      [{waiter, monitor_ref} | rest] ->
+        Process.demonitor(monitor_ref, [:flush])
         GenServer.reply(waiter, {:ok, text})
         {:noreply, %{state | waiters: rest}}
 
@@ -294,9 +296,20 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
   end
 
   @impl GenServer
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    waiters =
+      Enum.reject(state.waiters, fn {_waiter, monitor_ref} ->
+        monitor_ref == ref
+      end)
+
+    {:noreply, %{state | waiters: waiters}}
+  end
+
+  @impl GenServer
   def handle_info(:session_complete, state) do
     # Notify all waiters that we're done
-    for waiter <- state.waiters do
+    for {waiter, monitor_ref} <- state.waiters do
+      Process.demonitor(monitor_ref, [:flush])
       GenServer.reply(waiter, :done)
     end
 
@@ -306,7 +319,8 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
   @impl GenServer
   def handle_info({:error, reason}, state) do
     # Notify all waiters of the error
-    for waiter <- state.waiters do
+    for {waiter, monitor_ref} <- state.waiters do
+      Process.demonitor(monitor_ref, [:flush])
       GenServer.reply(waiter, {:error, reason})
     end
 
@@ -315,7 +329,8 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   @impl GenServer
   def terminate(_reason, state) do
-    Enum.each(state.waiters, fn waiter ->
+    Enum.each(state.waiters, fn {waiter, monitor_ref} ->
+      Process.demonitor(monitor_ref, [:flush])
       GenServer.reply(waiter, {:error, :closed})
     end)
 
@@ -360,4 +375,8 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
   end
 
   defp shutdown_task(_), do: :ok
+
+  defp monitor_waiter({pid, _tag}) when is_pid(pid) do
+    Process.monitor(pid)
+  end
 end

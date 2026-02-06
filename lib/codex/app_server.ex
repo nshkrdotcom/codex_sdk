@@ -46,19 +46,23 @@ defmodule Codex.AppServer do
   end
 
   defp ensure_connection_supervisor do
-    case Process.whereis(ConnectionSupervisor) do
-      nil ->
-        case DynamicSupervisor.start_link(strategy: :one_for_one, name: ConnectionSupervisor) do
-          {:ok, pid} -> {:ok, pid}
-          {:error, {:already_started, pid}} -> {:ok, pid}
-          {:error, _} = error -> error
-        end
-
-      pid ->
-        {:ok, pid}
+    with :ok <- ensure_application_started(),
+         pid when is_pid(pid) <- Process.whereis(ConnectionSupervisor) do
+      {:ok, pid}
+    else
+      nil -> {:error, :supervisor_unavailable}
+      {:error, _} = error -> error
     end
   catch
     :exit, reason -> {:error, reason}
+  end
+
+  defp ensure_application_started do
+    case Application.ensure_all_started(:codex_sdk) do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @spec disconnect(connection()) :: :ok

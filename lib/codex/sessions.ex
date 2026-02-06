@@ -4,6 +4,7 @@ defmodule Codex.Sessions do
   """
 
   alias Codex.Items
+  alias Codex.Runtime.Erlexec
 
   @default_sessions_dir Path.expand("~/.codex/sessions")
   @default_apply_timeout_ms 60_000
@@ -496,12 +497,7 @@ defmodule Codex.Sessions do
   end
 
   defp ensure_erlexec_started do
-    case Application.ensure_all_started(:erlexec) do
-      {:ok, _apps} -> :ok
-      {:error, {:erlexec, {:already_started, _pid}}} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    Erlexec.ensure_started()
   end
 
   defp normalize_ghost_commit(%Items.GhostSnapshot{ghost_commit: ghost_commit}),

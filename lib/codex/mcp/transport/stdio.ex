@@ -9,6 +9,7 @@ defmodule Codex.MCP.Transport.Stdio do
 
   alias Codex.AppServer.Subprocess.Erlexec
   alias Codex.MCP.Protocol
+  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
   defmodule State do
     @moduledoc false
@@ -110,8 +111,13 @@ defmodule Codex.MCP.Transport.Stdio do
     {:noreply, state}
   end
 
-  def handle_info({:DOWN, _ref, :process, pid, reason}, %State{os_pid: pid} = state) do
+  def handle_info({:DOWN, os_pid, :process, _pid, reason}, %State{os_pid: os_pid} = state) do
     Logger.debug("MCP subprocess exited: #{inspect(reason)}")
+
+    state =
+      state
+      |> drain_waiters({:error, :closed})
+
     {:stop, :normal, state}
   end
 
@@ -131,6 +137,7 @@ defmodule Codex.MCP.Transport.Stdio do
 
   @impl true
   def terminate(_reason, %State{} = state) do
+    _ = drain_waiters(state, {:error, :closed})
     state.subprocess_mod.stop(state.subprocess_pid, state.subprocess_opts)
     :ok
   end
@@ -164,6 +171,15 @@ defmodule Codex.MCP.Transport.Stdio do
     end
   end
 
+  defp drain_waiters(%State{} = state, reply) do
+    Enum.each(state.waiters, fn {from, timer_ref} ->
+      _ = Process.cancel_timer(timer_ref)
+      GenServer.reply(from, reply)
+    end)
+
+    %{state | waiters: []}
+  end
+
   defp pop_waiter(waiters, target) do
     {match, rest} =
       Enum.reduce(waiters, {nil, []}, fn {from, ref}, {found, acc} ->
@@ -178,12 +194,7 @@ defmodule Codex.MCP.Transport.Stdio do
   end
 
   defp ensure_erlexec_started(Erlexec) do
-    case Application.ensure_all_started(:erlexec) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-      {:error, {:erlexec, {:already_started, _}}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    RuntimeErlexec.ensure_started()
   end
 
   defp ensure_erlexec_started(_other), do: :ok

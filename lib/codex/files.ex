@@ -95,9 +95,19 @@ defmodule Codex.Files do
   """
   @spec list_staged() :: [Attachment.t()]
   def list_staged do
-    case Registry.ensure_started() do
-      {:ok, _pid} -> Registry.list()
+    case list_staged_result() do
+      {:ok, attachments} -> attachments
       {:error, _reason} -> []
+    end
+  end
+
+  @doc """
+  Lists staged attachments with explicit success/error tuples.
+  """
+  @spec list_staged_result() :: {:ok, [Attachment.t()]} | {:error, term()}
+  def list_staged_result do
+    with {:ok, _pid} <- Registry.ensure_started() do
+      safe_registry_call(fn -> {:ok, Registry.list()} end)
     end
   end
 

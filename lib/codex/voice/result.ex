@@ -35,6 +35,7 @@ defmodule Codex.Voice.Result do
   to the queue, while `stream/1` consumes them.
   """
 
+  alias Codex.StreamQueue
   alias Codex.Voice.Config
   alias Codex.Voice.Config.TTSSettings
   alias Codex.Voice.Events
@@ -46,7 +47,7 @@ defmodule Codex.Voice.Result do
           tts_settings: TTSSettings.t(),
           config: Config.t(),
           queue: pid(),
-          task: Task.t() | nil,
+          task: term() | nil,
           total_output_text: String.t()
         }
 
@@ -69,7 +70,7 @@ defmodule Codex.Voice.Result do
   """
   @spec new(struct(), TTSSettings.t(), Config.t()) :: t()
   def new(tts_model, tts_settings, config) do
-    {:ok, queue} = Agent.start_link(fn -> :queue.new() end)
+    {:ok, queue} = StreamQueue.start_link()
 
     %__MODULE__{
       tts_model: tts_model,
@@ -98,49 +99,12 @@ defmodule Codex.Voice.Result do
       |> Enum.each(&handle_event/1)
   """
   @spec stream(t()) :: Enumerable.t()
-  def stream(%__MODULE__{queue: queue}) do
-    Stream.resource(
-      fn -> queue end,
-      &stream_next/1,
-      fn _ -> :ok end
-    )
-  end
-
-  @spec stream_next(pid()) ::
-          {[Events.t()], pid()} | {:halt, pid()}
-  defp stream_next(queue) do
-    item = dequeue_item(queue)
-    handle_stream_item(item, queue)
-  end
-
-  @spec dequeue_item(pid()) :: term()
-  defp dequeue_item(queue) do
-    Agent.get_and_update(queue, fn q ->
-      case :queue.out(q) do
-        {{:value, item}, q2} -> {item, q2}
-        {:empty, q} -> {:empty, q}
-      end
-    end)
-  end
-
-  @spec handle_stream_item(term(), pid()) :: {[Events.t()], pid()} | {:halt, pid()}
-  defp handle_stream_item(:done, queue), do: {:halt, queue}
-
-  defp handle_stream_item({:error, reason}, queue) do
-    {[Events.error(wrap_error(reason))], queue}
-  end
-
-  defp handle_stream_item(:empty, queue) do
-    Process.sleep(10)
-    {[], queue}
-  end
-
-  defp handle_stream_item(event, queue), do: {[event], queue}
+  def stream(%__MODULE__{queue: queue}), do: StreamQueue.stream(queue)
 
   # Internal functions for pipeline
 
   @doc false
-  @spec set_task(t(), Task.t()) :: t()
+  @spec set_task(t(), term()) :: t()
   def set_task(%__MODULE__{} = result, task) do
     %{result | task: task}
   end
@@ -154,7 +118,7 @@ defmodule Codex.Voice.Result do
 
     Enum.each(audio_stream, fn chunk ->
       event = Events.audio(chunk)
-      Agent.update(result.queue, fn q -> :queue.in(event, q) end)
+      StreamQueue.push(result.queue, event)
     end)
 
     # Track total output text
@@ -167,30 +131,30 @@ defmodule Codex.Voice.Result do
   @spec turn_started(t()) :: :ok
   def turn_started(%__MODULE__{queue: queue}) do
     event = Events.lifecycle(:turn_started)
-    Agent.update(queue, fn q -> :queue.in(event, q) end)
+    StreamQueue.push(queue, event)
   end
 
   @doc false
   @spec turn_done(t()) :: :ok
   def turn_done(%__MODULE__{queue: queue}) do
     event = Events.lifecycle(:turn_ended)
-    Agent.update(queue, fn q -> :queue.in(event, q) end)
+    StreamQueue.push(queue, event)
   end
 
   @doc false
   @spec done(t()) :: :ok
   def done(%__MODULE__{queue: queue}) do
     event = Events.lifecycle(:session_ended)
-    Agent.update(queue, fn q -> :queue.in(event, q) end)
-    Agent.update(queue, fn q -> :queue.in(:done, q) end)
+    StreamQueue.push(queue, event)
+    StreamQueue.close(queue)
   end
 
   @doc false
   @spec add_error(t(), term()) :: :ok
   def add_error(%__MODULE__{queue: queue}, error) do
     event = Events.error(wrap_error(error))
-    Agent.update(queue, fn q -> :queue.in(event, q) end)
-    Agent.update(queue, fn q -> :queue.in(:done, q) end)
+    StreamQueue.push(queue, event)
+    StreamQueue.close(queue)
   end
 
   @spec wrap_error(term()) :: Exception.t()

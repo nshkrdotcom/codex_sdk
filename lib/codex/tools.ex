@@ -4,10 +4,10 @@ defmodule Codex.Tools do
   """
 
   alias Codex.Tool
+  alias Codex.Tools.MetricsHeir
   alias Codex.Tools.Registry
 
   @metrics_table :codex_tool_metrics
-  @metrics_heir :codex_tool_metrics_heir
 
   defmodule Handle do
     @moduledoc """
@@ -186,31 +186,21 @@ defmodule Codex.Tools do
   end
 
   defp ensure_metrics_heir do
-    case Process.whereis(@metrics_heir) do
-      nil ->
-        pid = spawn(fn -> metrics_heir_loop() end)
-
-        try do
-          Process.register(pid, @metrics_heir)
-          pid
-        rescue
-          ArgumentError ->
-            Process.exit(pid, :kill)
-            ensure_metrics_heir()
-        end
-
-      pid ->
+    case Process.whereis(MetricsHeir) do
+      pid when is_pid(pid) ->
         pid
-    end
-  end
 
-  defp metrics_heir_loop do
-    receive do
-      {:"ETS-TRANSFER", @metrics_table, _from, _data} ->
-        metrics_heir_loop()
+      nil ->
+        case Application.ensure_all_started(:codex_sdk) do
+          {:ok, _} ->
+            Process.whereis(MetricsHeir) || self()
 
-      _other ->
-        metrics_heir_loop()
+          {:error, {:already_started, _}} ->
+            Process.whereis(MetricsHeir) || self()
+
+          {:error, _} ->
+            self()
+        end
     end
   end
 
