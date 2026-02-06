@@ -13,7 +13,8 @@ This SDK contains two distinct subsystems with different authentication:
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
-   - Requires `OPENAI_API_KEY` environment variable
+   - Uses `Codex.Auth` API key precedence:
+     `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
 By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.3-codex` (override by exporting `CODEX_MODEL` before running). A few live scripts also explicitly set `model: "gpt-5.3-codex"`; edit those examples if you need a different model.
@@ -65,7 +66,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
 
-## Realtime Voice Examples (OpenAI Agents SDK - requires OPENAI_API_KEY)
+## Realtime Voice Examples (OpenAI Agents SDK)
 
 These examples use the OpenAI Realtime API directly (not via Codex CLI). They demonstrate real-time bidirectional voice interactions:
 
@@ -83,7 +84,10 @@ All realtime examples use real audio:
 ### Prerequisites for Realtime Examples
 
 ```bash
-export OPENAI_API_KEY=your-key-here
+# One of:
+export CODEX_API_KEY=your-key-here
+# or export OPENAI_API_KEY=your-key-here
+# or populate auth.json OPENAI_API_KEY under CODEX_HOME
 mix run examples/realtime_basic.exs
 
 # Play the output audio:
@@ -93,7 +97,7 @@ aplay -f S16_LE -r 24000 -c 1 /tmp/codex_realtime_basic.pcm
 sox -t raw -r 24000 -b 16 -c 1 -e signed-integer /tmp/codex_realtime_basic.pcm /tmp/response.wav
 ```
 
-## Voice Pipeline Examples (OpenAI Agents SDK - requires OPENAI_API_KEY)
+## Voice Pipeline Examples (OpenAI Agents SDK)
 
 These examples use OpenAI's STT/TTS APIs directly (not via Codex CLI). They demonstrate the voice pipeline (STT → Workflow → TTS):
 
@@ -110,7 +114,10 @@ All voice pipeline examples use real audio:
 ### Prerequisites for Voice Pipeline Examples
 
 ```bash
-export OPENAI_API_KEY=your-key-here
+# One of:
+export CODEX_API_KEY=your-key-here
+# or export OPENAI_API_KEY=your-key-here
+# or populate auth.json OPENAI_API_KEY under CODEX_HOME
 mix run examples/voice_pipeline.exs
 
 # Play the output audio:

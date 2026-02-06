@@ -36,9 +36,12 @@ defmodule VoiceWithAgentExample do
   def run do
     IO.puts("=== Voice with Agent Example ===\n")
 
-    # Check for API key
-    unless System.get_env("OPENAI_API_KEY") do
-      IO.puts("Error: OPENAI_API_KEY environment variable not set")
+    # Voice auth follows Codex.Auth precedence.
+    unless Codex.Auth.api_key() do
+      IO.puts(
+        "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
+      )
+
       System.halt(1)
     end
 

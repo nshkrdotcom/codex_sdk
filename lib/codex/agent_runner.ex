@@ -229,12 +229,9 @@ defmodule Codex.AgentRunner do
     with :ok <-
            run_guardrails(:output, state.guardrails.output, final_output, %{agent: state.agent}) do
       final_thread =
-        processed.thread
-        |> Map.put(:continuation_token, nil)
-        |> Map.put(:usage, state.usage)
-        |> Map.put(:pending_tool_outputs, [])
-        |> Map.put(:pending_tool_failures, [])
-        |> annotate_conversation(state.run_config)
+        finalize_processed_thread(processed.thread, state.usage, state.run_config,
+          clear_continuation?: true
+        )
 
       {:ok,
        %Result{
@@ -422,12 +419,9 @@ defmodule Codex.AgentRunner do
          ) do
       :ok ->
         final_thread =
-          processed.thread
-          |> Map.put(:continuation_token, nil)
-          |> Map.put(:usage, state.usage)
-          |> Map.put(:pending_tool_outputs, [])
-          |> Map.put(:pending_tool_failures, [])
-          |> annotate_conversation(state.run_config)
+          finalize_processed_thread(processed.thread, state.usage, state.run_config,
+            clear_continuation?: true
+          )
 
         close_queue(
           state.queue,
@@ -503,6 +497,20 @@ defmodule Codex.AgentRunner do
         :final
     end
   end
+
+  defp finalize_processed_thread(%Thread{} = thread, usage, run_config, opts) do
+    thread
+    |> maybe_clear_continuation(Keyword.get(opts, :clear_continuation?, false))
+    |> Map.put(:usage, usage)
+    |> Thread.clear_pending_tool_payloads()
+    |> annotate_conversation(run_config)
+  end
+
+  defp maybe_clear_continuation(%Thread{} = thread, true) do
+    %{thread | continuation_token: nil}
+  end
+
+  defp maybe_clear_continuation(%Thread{} = thread, false), do: thread
 
   defp finalize_streamed_without_continuation(%State{} = state, %Result{} = processed, _hooks) do
     case run_guardrails(

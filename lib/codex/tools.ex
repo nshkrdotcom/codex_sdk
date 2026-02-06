@@ -7,6 +7,7 @@ defmodule Codex.Tools do
   alias Codex.Tools.Registry
 
   @metrics_table :codex_tool_metrics
+  @metrics_heir :codex_tool_metrics_heir
 
   defmodule Handle do
     @moduledoc """
@@ -130,35 +131,34 @@ defmodule Codex.Tools do
   @doc false
   @spec record_invocation(String.t(), :success | :failure, non_neg_integer(), term()) :: :ok
   def record_invocation(tool, outcome, latency_ms, error \\ nil) when is_binary(tool) do
-    ensure_metrics_table()
-    ensure_metric_entry(tool)
+    with_metrics_table(fn ->
+      ensure_metric_entry(tool)
 
-    :ets.update_element(@metrics_table, tool, {4, latency_ms})
-    :ets.update_counter(@metrics_table, tool, {5, latency_ms})
+      :ets.update_element(@metrics_table, tool, {4, latency_ms})
+      :ets.update_counter(@metrics_table, tool, {5, latency_ms})
 
-    case outcome do
-      :success ->
-        :ets.update_counter(@metrics_table, tool, {2, 1})
-        :ets.update_element(@metrics_table, tool, {6, nil})
+      case outcome do
+        :success ->
+          :ets.update_counter(@metrics_table, tool, {2, 1})
+          :ets.update_element(@metrics_table, tool, {6, nil})
 
-      :failure ->
-        :ets.update_counter(@metrics_table, tool, {3, 1})
-        :ets.update_element(@metrics_table, tool, {6, error})
-    end
+        :failure ->
+          :ets.update_counter(@metrics_table, tool, {3, 1})
+          :ets.update_element(@metrics_table, tool, {6, error})
+      end
 
-    :ok
+      :ok
+    end)
   end
 
   defp ensure_metrics_table do
     case :ets.whereis(@metrics_table) do
       :undefined ->
-        :ets.new(@metrics_table, [
-          :named_table,
-          :public,
-          :set,
-          read_concurrency: true,
-          write_concurrency: true
-        ])
+        try do
+          :ets.new(@metrics_table, metrics_table_opts())
+        rescue
+          ArgumentError -> :ok
+        end
 
       _ ->
         :ok
@@ -170,5 +170,56 @@ defmodule Codex.Tools do
 
     :ets.insert_new(@metrics_table, {tool, 0, 0, 0, 0, nil})
     :ok
+  end
+
+  defp metrics_table_opts do
+    heir = ensure_metrics_heir()
+
+    [
+      {:heir, heir, :metrics},
+      :named_table,
+      :public,
+      :set,
+      read_concurrency: true,
+      write_concurrency: true
+    ]
+  end
+
+  defp ensure_metrics_heir do
+    case Process.whereis(@metrics_heir) do
+      nil ->
+        pid = spawn(fn -> metrics_heir_loop() end)
+
+        try do
+          Process.register(pid, @metrics_heir)
+          pid
+        rescue
+          ArgumentError ->
+            Process.exit(pid, :kill)
+            ensure_metrics_heir()
+        end
+
+      pid ->
+        pid
+    end
+  end
+
+  defp metrics_heir_loop do
+    receive do
+      {:"ETS-TRANSFER", @metrics_table, _from, _data} ->
+        metrics_heir_loop()
+
+      _other ->
+        metrics_heir_loop()
+    end
+  end
+
+  defp with_metrics_table(fun) when is_function(fun, 0) do
+    ensure_metrics_table()
+    fun.()
+  rescue
+    ArgumentError ->
+      ensure_metrics_table()
+      fun.()
   end
 end

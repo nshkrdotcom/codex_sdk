@@ -304,6 +304,47 @@ defmodule Codex.Realtime.ConfigTest do
       assert Config.ModelConfig.resolve_api_key(config) == "sk-dynamic-key"
     end
 
+    test "falls back to Codex auth precedence when api_key is nil" do
+      original_codex_key = System.get_env("CODEX_API_KEY")
+      original_openai_key = System.get_env("OPENAI_API_KEY")
+
+      System.put_env("CODEX_API_KEY", "sk-codex-priority")
+      System.put_env("OPENAI_API_KEY", "sk-openai-secondary")
+
+      on_exit(fn ->
+        restore_env("CODEX_API_KEY", original_codex_key)
+        restore_env("OPENAI_API_KEY", original_openai_key)
+      end)
+
+      config = %Config.ModelConfig{api_key: nil}
+      assert Config.ModelConfig.resolve_api_key(config) == "sk-codex-priority"
+    end
+
+    test "loads auth.json OPENAI_API_KEY fallback when env vars are absent" do
+      original_codex_home = System.get_env("CODEX_HOME")
+      original_codex_key = System.get_env("CODEX_API_KEY")
+      original_openai_key = System.get_env("OPENAI_API_KEY")
+
+      codex_home =
+        Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(codex_home)
+      File.write!(Path.join(codex_home, "auth.json"), ~s({"OPENAI_API_KEY":"sk-auth-file"}))
+
+      System.put_env("CODEX_HOME", codex_home)
+      System.delete_env("CODEX_API_KEY")
+      System.delete_env("OPENAI_API_KEY")
+
+      on_exit(fn ->
+        restore_env("CODEX_HOME", original_codex_home)
+        restore_env("CODEX_API_KEY", original_codex_key)
+        restore_env("OPENAI_API_KEY", original_openai_key)
+      end)
+
+      config = %Config.ModelConfig{api_key: nil}
+      assert Config.ModelConfig.resolve_api_key(config) == "sk-auth-file"
+    end
+
     test "builds URL with model name" do
       config = %Config.ModelConfig{url: "wss://api.openai.com/v1/realtime"}
       url = Config.ModelConfig.build_url(config, "gpt-4o-realtime-preview")
@@ -397,4 +438,7 @@ defmodule Codex.Realtime.ConfigTest do
       assert settings.turn_detection.interrupt_response == true
     end
   end
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
 end

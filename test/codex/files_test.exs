@@ -97,6 +97,35 @@ defmodule Codex.FilesTest do
     end
   end
 
+  describe "error contracts" do
+    test "force_cleanup/0 returns {:error, reason} when registry cannot start" do
+      stop_registry()
+      table = create_conflicting_manifest_table()
+
+      on_exit(fn -> cleanup_conflicting_manifest_table(table) end)
+
+      assert {:error, _reason} = Files.force_cleanup()
+    end
+
+    test "reset!/0 returns {:error, reason} when registry cannot start" do
+      stop_registry()
+      table = create_conflicting_manifest_table()
+
+      on_exit(fn -> cleanup_conflicting_manifest_table(table) end)
+
+      assert {:error, _reason} = Files.reset!()
+    end
+
+    test "metrics/0 returns {:error, reason} when registry cannot start" do
+      stop_registry()
+      table = create_conflicting_manifest_table()
+
+      on_exit(fn -> cleanup_conflicting_manifest_table(table) end)
+
+      assert {:error, _reason} = Files.metrics()
+    end
+  end
+
   describe "telemetry" do
     test "emits staged and cleaned events" do
       handler_id = "files-telemetry-#{System.unique_integer([:positive])}"
@@ -140,6 +169,31 @@ defmodule Codex.FilesTest do
     path = Path.join(dir, name)
     File.write!(path, contents)
     path
+  end
+
+  defp stop_registry do
+    case Process.whereis(Codex.Files.Registry) do
+      pid when is_pid(pid) -> GenServer.stop(pid, :normal)
+      _ -> :ok
+    end
+  end
+
+  defp create_conflicting_manifest_table do
+    :ets.new(:codex_files_manifest, [:named_table, :set, :public])
+  end
+
+  defp cleanup_conflicting_manifest_table(table) do
+    if :ets.info(table) != :undefined do
+      try do
+        :ets.delete(table)
+      rescue
+        ArgumentError -> :ok
+      catch
+        :error, _ -> :ok
+      end
+    end
+
+    stop_registry()
   end
 
   def forward_event(event, measurements, metadata, pid) do

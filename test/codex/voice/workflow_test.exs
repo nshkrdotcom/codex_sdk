@@ -92,11 +92,13 @@ defmodule Codex.Voice.WorkflowTest do
 
   describe "Workflow behaviour" do
     test "SimpleWorkflow implements Workflow behaviour" do
+      assert Code.ensure_loaded?(SimpleWorkflow)
       assert function_exported?(SimpleWorkflow, :run, 2)
       assert function_exported?(SimpleWorkflow, :on_start, 1)
     end
 
     test "AgentWorkflow implements Workflow behaviour" do
+      assert Code.ensure_loaded?(AgentWorkflow)
       assert function_exported?(AgentWorkflow, :run, 2)
       assert function_exported?(AgentWorkflow, :on_start, 1)
     end

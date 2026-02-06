@@ -193,7 +193,7 @@ defmodule Codex.Config.Overrides do
 
   defp has_config_key?(%{} = config, key) when is_binary(key) do
     Map.has_key?(config, key) ||
-      Map.has_key?(config, String.to_atom(key)) ||
+      has_existing_atom_key?(config, key) ||
       has_nested_key?(config, String.split(key, "."))
   end
 
@@ -216,16 +216,27 @@ defmodule Codex.Config.Overrides do
   end
 
   defp fetch_key(map, segment) when is_map(map) and is_binary(segment) do
-    cond do
-      Map.has_key?(map, segment) ->
-        Map.get(map, segment)
-
-      Map.has_key?(map, String.to_atom(segment)) ->
-        Map.get(map, String.to_atom(segment))
-
-      true ->
-        nil
+    if Map.has_key?(map, segment) do
+      Map.get(map, segment)
+    else
+      case existing_atom(segment) do
+        {:ok, atom} -> Map.get(map, atom)
+        :error -> nil
+      end
     end
+  end
+
+  defp has_existing_atom_key?(map, key) do
+    case existing_atom(key) do
+      {:ok, atom} -> Map.has_key?(map, atom)
+      :error -> false
+    end
+  end
+
+  defp existing_atom(value) when is_binary(value) do
+    {:ok, String.to_existing_atom(value)}
+  rescue
+    ArgumentError -> :error
   end
 
   defp add_shell_environment_policy_overrides(overrides, nil), do: overrides

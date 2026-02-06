@@ -7,7 +7,8 @@ This guide covers the Realtime API integration for bidirectional voice interacti
 The Realtime and Voice modules are **ported from the OpenAI Agents Python SDK** (`openai-agents-python`). Unlike the main Codex SDK features (`Codex.start_thread/2`, `Codex.resume_thread/3`), these modules make **direct API calls** to OpenAI rather than wrapping the `codex` CLI.
 
 This means:
-- **Realtime/Voice require `OPENAI_API_KEY`** (not `codex login` authentication)
+- **Realtime/Voice use API key auth via `Codex.Auth` precedence**:
+  `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
 - Realtime uses WebSocket connections to `wss://api.openai.com/v1/realtime`
 - Voice uses HTTP calls to OpenAI's STT/TTS endpoints
 
@@ -23,10 +24,15 @@ The Codex SDK provides two complementary approaches for voice-based interactions
 Both Realtime and Voice features require an OpenAI API key with access to the relevant models:
 
 ```bash
-export OPENAI_API_KEY=your-api-key-here
-```
+# Recommended
+export CODEX_API_KEY=your-api-key-here
 
-> **Note**: This is separate from `codex login` authentication. You need an actual OpenAI API key.
+# Also supported
+export OPENAI_API_KEY=your-api-key-here
+
+# Or store OPENAI_API_KEY in auth.json under CODEX_HOME
+```
+`codex login` tokens alone are not used for these direct API paths.
 
 For realtime examples with actual audio capture/playback, you'll need appropriate audio hardware and libraries.
 
@@ -195,6 +201,11 @@ greeter_with_handoffs = greeter
 ```
 
 ### Session Lifecycle
+
+Session behavior notes:
+- `subscribe/2` and `unsubscribe/2` are idempotent.
+- Tool execution runs outside the session callback path so other session messages stay responsive.
+- WebSocket process exits are trapped and surfaced as session error events; the session process does not crash from linked socket exits.
 
 ```elixir
 # Stop the session

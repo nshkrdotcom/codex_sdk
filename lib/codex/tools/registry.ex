@@ -17,13 +17,10 @@ defmodule Codex.Tools.Registry do
   def register(%{name: name, module: module, metadata: metadata}) do
     ensure_table()
 
-    case :ets.lookup(@table, name) do
-      [] ->
-        true = :ets.insert(@table, {name, module, metadata})
-        {:ok, %Handle{name: name, module: module}}
-
-      _ ->
-        {:error, {:already_registered, name}}
+    if :ets.insert_new(@table, {name, module, metadata}) do
+      {:ok, %Handle{name: name, module: module}}
+    else
+      {:error, {:already_registered, name}}
     end
   end
 

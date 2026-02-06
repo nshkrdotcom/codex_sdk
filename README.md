@@ -273,6 +273,8 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 ### Realtime Voice Interactions
 
 For bidirectional voice interactions using the OpenAI Realtime API:
+- Auth precedence for realtime/voice API keys is:
+  `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`.
 
 ```elixir
 alias Codex.Realtime
@@ -303,6 +305,9 @@ Realtime.subscribe(session, self())
 # Send audio and receive responses
 Realtime.send_audio(session, audio_data)
 ```
+
+`Realtime.Session` also traps linked WebSocket exits and keeps processing other session
+messages while tool calls are running.
 
 ### Voice Pipeline (Non-Realtime)
 
@@ -508,6 +513,8 @@ thread_opts =
 ```
 
 Query `Codex.Files.metrics/0` for staging stats and force cleanup with `Codex.Files.force_cleanup/0`.
+`Codex.Files.force_cleanup/0`, `Codex.Files.reset!/0`, and `Codex.Files.metrics/0` return
+`{:error, reason}` if the registry is unavailable.
 Staged files are runtime-scoped; the registry clears the staging directory on startup, so re-stage
 attachments after restarts.
 
@@ -548,6 +555,7 @@ The SDK provides MCP client helpers for discovering and invoking tools from MCP 
 
 `Codex.MCP.Transport.StreamableHTTP` provides JSON-RPC over HTTP with bearer/OAuth
 auth support for remote MCP servers.
+Transport failures are normalized to `{:error, reason}` tuples.
 
 Tool name qualification follows the OpenAI convention (`^[a-zA-Z0-9_-]+$`). Names exceeding
 64 characters are truncated with a SHA1 hash suffix for disambiguation:

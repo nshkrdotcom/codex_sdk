@@ -69,7 +69,7 @@ defmodule Codex.Realtime.Session do
     :context,
     :playback_tracker,
     history: [],
-    subscribers: [],
+    subscribers: %{},
     pending_tool_calls: %{},
     item_transcripts: %{},
     item_guardrail_run_counts: %{},
@@ -85,8 +85,8 @@ defmodule Codex.Realtime.Session do
           context: map(),
           playback_tracker: PlaybackTracker.t(),
           history: [Items.item()],
-          subscribers: [pid()],
-          pending_tool_calls: map(),
+          subscribers: %{optional(pid()) => reference()},
+          pending_tool_calls: %{optional(pid()) => map()},
           item_transcripts: %{String.t() => String.t()},
           item_guardrail_run_counts: %{String.t() => non_neg_integer()},
           interrupted_response_ids: MapSet.t(String.t())
@@ -236,6 +236,8 @@ defmodule Codex.Realtime.Session do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
+
     agent = Keyword.fetch!(opts, :agent)
     config = Keyword.get(opts, :config, %ModelConfig{})
     run_config = Keyword.get(opts, :run_config, %Config.RunConfig{})
@@ -256,28 +258,44 @@ defmodule Codex.Realtime.Session do
     }
 
     if websocket_pid do
-      # Testing mode - use provided mock WebSocket
       {:ok, state}
     else
-      # Production mode - start real WebSocket
-      case start_websocket(state) do
-        {:ok, ws_pid} ->
-          {:ok, %{state | websocket_pid: ws_pid}}
+      {:ok, state, {:continue, :connect_websocket}}
+    end
+  end
 
-        {:error, reason} ->
-          {:stop, reason}
-      end
+  @impl true
+  def handle_continue(:connect_websocket, state) do
+    case start_websocket(state) do
+      {:ok, ws_pid} ->
+        {:noreply, %{state | websocket_pid: ws_pid}}
+
+      {:error, reason} ->
+        {:stop, reason, state}
     end
   end
 
   @impl true
   def handle_call({:subscribe, pid}, _from, state) do
-    Process.monitor(pid)
-    {:reply, :ok, %{state | subscribers: [pid | state.subscribers]}}
+    case Map.fetch(state.subscribers, pid) do
+      {:ok, _ref} ->
+        {:reply, :ok, state}
+
+      :error ->
+        ref = Process.monitor(pid)
+        {:reply, :ok, %{state | subscribers: Map.put(state.subscribers, pid, ref)}}
+    end
   end
 
   def handle_call({:unsubscribe, pid}, _from, state) do
-    {:reply, :ok, %{state | subscribers: List.delete(state.subscribers, pid)}}
+    case Map.pop(state.subscribers, pid) do
+      {nil, _subscribers} ->
+        {:reply, :ok, state}
+
+      {ref, subscribers} ->
+        Process.demonitor(ref, [:flush])
+        {:reply, :ok, %{state | subscribers: subscribers}}
+    end
   end
 
   def handle_call({:send_audio, audio, commit}, _from, state) do
@@ -333,8 +351,42 @@ defmodule Codex.Realtime.Session do
     end
   end
 
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    {:noreply, %{state | subscribers: List.delete(state.subscribers, pid)}}
+  def handle_info({:EXIT, pid, reason}, %{websocket_pid: pid} = state) do
+    event =
+      Events.error(
+        %{"type" => "websocket_exit", "reason" => format_reason(reason)},
+        state.context
+      )
+
+    notify_subscribers(state, event)
+    {:noreply, %{state | websocket_pid: nil}}
+  end
+
+  def handle_info({:EXIT, _pid, _reason}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info({:tool_call_result, pid, output}, state) when is_pid(pid) do
+    case Map.pop(state.pending_tool_calls, pid) do
+      {nil, _pending} ->
+        {:noreply, state}
+
+      {pending_tool_call, pending} ->
+        Process.demonitor(pending_tool_call.monitor_ref, [:flush])
+        state = %{state | pending_tool_calls: pending}
+        state = finish_tool_call(state, pending_tool_call, output)
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
+    case pop_subscriber_by_ref(state.subscribers, pid, ref) do
+      {:ok, subscribers} ->
+        {:noreply, %{state | subscribers: subscribers}}
+
+      :error ->
+        handle_tool_call_down(state, ref, pid, reason)
+    end
   end
 
   def handle_info(_msg, state) do
@@ -343,10 +395,16 @@ defmodule Codex.Realtime.Session do
 
   @impl true
   def terminate(_reason, state) do
-    if state.websocket_pid && Process.alive?(state.websocket_pid) do
-      # Use the appropriate module to send close frame
+    if state.websocket_pid do
       ws_module = state.websocket_module || WebSockex
-      ws_module.send_frame(state.websocket_pid, :close)
+
+      try do
+        ws_module.send_frame(state.websocket_pid, :close)
+      rescue
+        _ -> :ok
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     :ok
@@ -439,7 +497,6 @@ defmodule Codex.Realtime.Session do
   end
 
   defp handle_model_event(%ModelEvents.ToolCallEvent{} = tool_call, state) do
-    # Execute tool and send result
     execute_tool_call(tool_call, state)
   end
 
@@ -572,26 +629,106 @@ defmodule Codex.Realtime.Session do
     tools = get_agent_tools(state.agent)
     tool = find_tool(tools, tool_call.name)
 
-    # Emit tool start event
     event = Events.tool_start(state.agent, tool, tool_call.arguments, state.context)
     notify_subscribers(state, event)
 
-    # Execute tool
-    output =
-      if tool do
-        execute_tool(tool, tool_call.arguments, state.context)
-      else
-        "Error: Unknown tool #{tool_call.name}"
-      end
+    {:ok, pid} =
+      start_tool_task(fn ->
+        resolve_tool_output(tool, tool_call, state.context)
+      end)
 
-    # Emit tool end event
-    event = Events.tool_end(state.agent, tool, tool_call.arguments, output, state.context)
+    monitor_ref = Process.monitor(pid)
+
+    pending_tool_call = %{
+      pid: pid,
+      monitor_ref: monitor_ref,
+      tool_call: tool_call,
+      tool: tool
+    }
+
+    %{state | pending_tool_calls: Map.put(state.pending_tool_calls, pid, pending_tool_call)}
+  end
+
+  defp resolve_tool_output(nil, tool_call, _context) do
+    "Error: Unknown tool #{tool_call.name}"
+  end
+
+  defp resolve_tool_output(tool, tool_call, context) do
+    execute_tool(tool, tool_call.arguments, context)
+  end
+
+  defp finish_tool_call(state, pending_tool_call, output) do
+    event =
+      Events.tool_end(
+        state.agent,
+        pending_tool_call.tool,
+        pending_tool_call.tool_call.arguments,
+        output,
+        state.context
+      )
+
     notify_subscribers(state, event)
 
-    # Send tool output to model
-    send_to_websocket(state, ModelInputs.send_tool_output(tool_call, output, true))
+    send_to_websocket(
+      state,
+      ModelInputs.send_tool_output(pending_tool_call.tool_call, output, true)
+    )
 
     state
+  end
+
+  defp handle_tool_call_down(state, ref, pid, :normal) do
+    case Map.pop(state.pending_tool_calls, pid) do
+      {nil, _pending} ->
+        {:noreply, state}
+
+      {%{monitor_ref: ^ref}, pending} ->
+        {:noreply, %{state | pending_tool_calls: pending}}
+
+      {pending_tool_call, pending} ->
+        Process.demonitor(pending_tool_call.monitor_ref, [:flush])
+        {:noreply, %{state | pending_tool_calls: pending}}
+    end
+  end
+
+  defp handle_tool_call_down(state, ref, pid, reason) do
+    case Map.pop(state.pending_tool_calls, pid) do
+      {nil, _pending} ->
+        {:noreply, state}
+
+      {%{monitor_ref: ^ref} = pending_tool_call, pending} ->
+        state = %{state | pending_tool_calls: pending}
+        output = "Error: Tool execution failed - #{format_reason(reason)}"
+        state = finish_tool_call(state, pending_tool_call, output)
+        {:noreply, state}
+
+      {pending_tool_call, pending} ->
+        Process.demonitor(pending_tool_call.monitor_ref, [:flush])
+        state = %{state | pending_tool_calls: pending}
+        output = "Error: Tool execution failed - #{format_reason(reason)}"
+        state = finish_tool_call(state, pending_tool_call, output)
+        {:noreply, state}
+    end
+  end
+
+  @spec start_tool_task((-> any())) :: {:ok, pid()}
+  defp start_tool_task(fun) do
+    parent = self()
+
+    runner = fn ->
+      output = fun.()
+      send(parent, {:tool_call_result, self(), output})
+    end
+
+    try do
+      case Task.Supervisor.start_child(Codex.TaskSupervisor, runner) do
+        {:ok, pid} -> {:ok, pid}
+        {:error, {:already_started, pid}} -> {:ok, pid}
+        {:error, _} -> Task.start_link(runner)
+      end
+    catch
+      :exit, _ -> Task.start_link(runner)
+    end
   end
 
   defp find_tool(tools, name) do
@@ -649,8 +786,18 @@ defmodule Codex.Realtime.Session do
   end
 
   defp notify_subscribers(state, event) do
-    Enum.each(state.subscribers, fn pid ->
+    Enum.each(Map.keys(state.subscribers), fn pid ->
       send(pid, {:session_event, event})
     end)
   end
+
+  defp pop_subscriber_by_ref(subscribers, pid, ref) do
+    case Map.get(subscribers, pid) do
+      ^ref -> {:ok, Map.delete(subscribers, pid)}
+      _ -> :error
+    end
+  end
+
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_reason(reason), do: inspect(reason)
 end

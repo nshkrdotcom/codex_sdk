@@ -67,6 +67,7 @@ defmodule Codex.Tools.WebSearchTool do
 
   @behaviour Codex.Tool
 
+  alias Codex.HTTPClient
   alias Codex.Tools.Hosted
 
   @default_max_results 10
@@ -212,7 +213,7 @@ defmodule Codex.Tools.WebSearchTool do
 
     headers = [{"Content-Type", "application/json"}]
 
-    case http_client().post(url, body, headers) do
+    case HTTPClient.post(url, body, headers) do
       {:ok, %{status: 200, body: resp_body}} ->
         parse_tavily_response(resp_body)
 
@@ -239,7 +240,7 @@ defmodule Codex.Tools.WebSearchTool do
       {"X-API-KEY", api_key}
     ]
 
-    case http_client().post(url, body, headers) do
+    case HTTPClient.post(url, body, headers) do
       {:ok, %{status: 200, body: resp_body}} ->
         parse_serper_response(resp_body)
 
@@ -329,10 +330,6 @@ defmodule Codex.Tools.WebSearchTool do
           end
         end)
     }
-  end
-
-  defp http_client do
-    Application.get_env(:codex_sdk, :http_client, Codex.HTTPClient)
   end
 
   defp enabled?(context, _metadata) do

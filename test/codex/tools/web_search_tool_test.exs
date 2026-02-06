@@ -26,6 +26,16 @@ defmodule Codex.Tools.WebSearchToolTest do
     :ok
   end
 
+  defmodule RaisingHTTPClient do
+    @behaviour Codex.HTTPClient
+
+    @impl true
+    def get(_url, _headers), do: raise("unexpected get/2 call")
+
+    @impl true
+    def post(_url, _body, _headers), do: raise("unexpected post/3 call")
+  end
+
   describe "metadata/0" do
     test "returns valid tool metadata" do
       meta = WebSearchTool.metadata()
@@ -204,6 +214,33 @@ defmodule Codex.Tools.WebSearchToolTest do
       # Should not return missing_api_key error
       result = WebSearchTool.invoke(args, context)
       refute match?({:error, {:missing_api_key, _}}, result)
+    end
+
+    test "ignores legacy :http_client config and uses :http_client_impl" do
+      original_impl = Application.get_env(:codex_sdk, :http_client_impl)
+      original_client = Application.get_env(:codex_sdk, :http_client)
+
+      Application.put_env(:codex_sdk, :http_client_impl, Codex.HTTPClient.Mock)
+      Application.put_env(:codex_sdk, :http_client, RaisingHTTPClient)
+
+      on_exit(fn ->
+        if original_impl do
+          Application.put_env(:codex_sdk, :http_client_impl, original_impl)
+        else
+          Application.delete_env(:codex_sdk, :http_client_impl)
+        end
+
+        if original_client do
+          Application.put_env(:codex_sdk, :http_client, original_client)
+        else
+          Application.delete_env(:codex_sdk, :http_client)
+        end
+      end)
+
+      args = %{"query" => "test"}
+      context = %{metadata: %{provider: :tavily, api_key: "tavily-key"}}
+
+      assert {:ok, _result} = WebSearchTool.invoke(args, context)
     end
   end
 

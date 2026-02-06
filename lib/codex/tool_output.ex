@@ -59,6 +59,21 @@ defmodule Codex.ToolOutput do
           }
   end
 
+  @image_key_map %{
+    "url" => :url,
+    "detail" => :detail,
+    "file_id" => :file_id,
+    "data" => :data
+  }
+
+  @file_key_map %{
+    "file_id" => :file_id,
+    "data" => :data,
+    "url" => :url,
+    "filename" => :filename,
+    "mime_type" => :mime_type
+  }
+
   @type t :: Text.t() | Image.t() | FileContent.t() | map() | list()
 
   @doc """
@@ -71,14 +86,16 @@ defmodule Codex.ToolOutput do
   Convenience constructor for image tool outputs.
   """
   @spec image(keyword() | map()) :: Image.t()
-  def image(attrs) when is_map(attrs), do: struct!(Image, normalize_keys(attrs))
+  def image(attrs) when is_map(attrs), do: struct!(Image, normalize_keys(attrs, @image_key_map))
   def image(attrs) when is_list(attrs), do: attrs |> Map.new() |> image()
 
   @doc """
   Convenience constructor for file content tool outputs.
   """
   @spec file(keyword() | map()) :: FileContent.t()
-  def file(attrs) when is_map(attrs), do: struct!(FileContent, normalize_keys(attrs))
+  def file(attrs) when is_map(attrs),
+    do: struct!(FileContent, normalize_keys(attrs, @file_key_map))
+
   def file(attrs) when is_list(attrs), do: attrs |> Map.new() |> file()
 
   @doc """
@@ -194,16 +211,15 @@ defmodule Codex.ToolOutput do
   defp stringify_key(key) when is_binary(key), do: key
   defp stringify_key(key), do: to_string(key)
 
-  defp normalize_keys(map) when is_map(map) do
+  defp normalize_keys(map, key_map) when is_map(map) and is_map(key_map) do
     Map.new(map, fn {key, value} ->
-      normalized_key =
-        case key do
-          k when is_atom(k) -> k
-          k when is_binary(k) -> String.to_atom(k)
-          other -> other
-        end
+      normalized_key = normalize_key(key, key_map)
 
       {normalized_key, value}
     end)
   end
+
+  defp normalize_key(key, _key_map) when is_atom(key), do: key
+  defp normalize_key(key, key_map) when is_binary(key), do: Map.get(key_map, key, key)
+  defp normalize_key(other, _key_map), do: other
 end

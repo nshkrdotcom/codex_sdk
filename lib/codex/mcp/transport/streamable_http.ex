@@ -133,6 +133,17 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   def handle_info(_msg, %State{} = state), do: {:noreply, state}
 
+  @impl true
+  def terminate(_reason, %State{} = state) do
+    maybe_cleanup_in_flight(state.in_flight)
+
+    state.work_queue
+    |> :queue.to_list()
+    |> Enum.each(&reply_job_error(&1, :closed))
+
+    :ok
+  end
+
   defp resolve_bearer_token(opts) do
     opts
     |> Keyword.get(:bearer_token)
@@ -191,16 +202,23 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   defp execute_work(%State{} = state, {_kind, _from, message, timeout_ms}) do
     case post_json(state, message, timeout_ms) do
-      {:ok, messages, updated} -> {:ok, messages, updated.oauth_tokens}
-      {:error, reason, updated} -> {:error, reason, updated.oauth_tokens}
+      {:ok, messages, updated} ->
+        {:ok, %{messages: messages, oauth_tokens: updated.oauth_tokens}}
+
+      {:error, reason, updated} ->
+        {:error, %{reason: reason, oauth_tokens: updated.oauth_tokens}}
     end
   rescue
-    error -> {:error, error, state.oauth_tokens}
+    error -> {:error, %{reason: error, oauth_tokens: state.oauth_tokens}}
   catch
-    kind, reason -> {:error, {kind, reason}, state.oauth_tokens}
+    kind, reason -> {:error, %{reason: {kind, reason}, oauth_tokens: state.oauth_tokens}}
   end
 
-  defp handle_work_result(%State{} = state, job, {:ok, messages, oauth_tokens}) do
+  defp handle_work_result(
+         %State{} = state,
+         job,
+         {:ok, %{messages: messages, oauth_tokens: oauth_tokens}}
+       ) do
     state = update_oauth_tokens(state, oauth_tokens)
 
     case job do
@@ -215,9 +233,25 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
     end
   end
 
-  defp handle_work_result(%State{} = state, job, {:error, reason, oauth_tokens}) do
+  defp handle_work_result(
+         %State{} = state,
+         job,
+         {:error, %{reason: reason, oauth_tokens: oauth_tokens}}
+       ) do
     state = update_oauth_tokens(state, oauth_tokens)
 
+    case job do
+      {:send, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+
+      {:recv, from, _message, _timeout_ms} ->
+        GenServer.reply(from, {:error, reason})
+        state
+    end
+  end
+
+  defp handle_work_result(%State{} = state, job, {:error, reason}) do
     case job do
       {:send, from, _message, _timeout_ms} ->
         GenServer.reply(from, {:error, reason})
@@ -241,6 +275,26 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
     end
   end
 
+  defp maybe_cleanup_in_flight(nil), do: :ok
+
+  defp maybe_cleanup_in_flight(%{pid: pid, ref: ref, job: job}) do
+    Process.demonitor(ref, [:flush])
+
+    if Process.alive?(pid) do
+      Process.exit(pid, :shutdown)
+    end
+
+    reply_job_error(job, :closed)
+  end
+
+  defp reply_job_error({:send, from, _message, _timeout_ms}, reason) do
+    GenServer.reply(from, {:error, reason})
+  end
+
+  defp reply_job_error({:recv, from, _message, _timeout_ms}, reason) do
+    GenServer.reply(from, {:error, reason})
+  end
+
   defp update_oauth_tokens(%State{} = state, nil), do: state
 
   defp update_oauth_tokens(%State{} = state, tokens) do
@@ -259,8 +313,10 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
     case Task.Supervisor.start_child(Codex.TaskSupervisor, fun) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, _} -> Task.start(fun)
+      {:error, _} -> Task.start_link(fun)
     end
+  catch
+    :exit, _ -> Task.start_link(fun)
   end
 
   defp post_json(%State{} = state, message, timeout_ms) do

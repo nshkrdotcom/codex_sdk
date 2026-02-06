@@ -22,6 +22,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
   @behaviour Codex.Voice.Model.STTModel
 
+  alias Codex.Auth
   alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Input.AudioInput
   alias Codex.Voice.Input.StreamedAudioInput
@@ -104,7 +105,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
         _trace_include_sensitive_data,
         _trace_include_sensitive_audio_data
       ) do
-    api_key = model.api_key || System.get_env("OPENAI_API_KEY")
+    api_key = model.api_key || Auth.api_key()
 
     {filename, wav_data, content_type} = AudioInput.to_audio_file(input)
 
@@ -175,6 +176,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   use GenServer
 
+  alias Codex.Auth
   alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Input.StreamedAudioInput
 
@@ -257,7 +259,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
       input: input,
       settings: settings,
       model: Keyword.get(opts, :model, "gpt-4o-transcribe"),
-      api_key: Keyword.get(opts, :api_key, System.get_env("OPENAI_API_KEY")),
+      api_key: Keyword.get(opts, :api_key, Auth.api_key()),
       trace_include_sensitive_data: Keyword.get(opts, :trace_include_sensitive_data, true),
       trace_include_sensitive_audio_data:
         Keyword.get(opts, :trace_include_sensitive_audio_data, false)
@@ -313,15 +315,49 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   @impl GenServer
   def terminate(_reason, state) do
-    # Clean up WebSocket connection if present
-    if state.websocket do
-      # Close websocket
-      :ok
-    end
+    Enum.each(state.waiters, fn waiter ->
+      GenServer.reply(waiter, {:error, :closed})
+    end)
+
+    close_websocket(state.websocket)
+    shutdown_task(state.listener_task)
+    shutdown_task(state.stream_task)
 
     :ok
   end
 
   @doc false
   def default_turn_detection, do: @default_turn_detection
+
+  defp close_websocket(pid) when is_pid(pid) do
+    if Process.alive?(pid) do
+      Process.exit(pid, :shutdown)
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp close_websocket(_), do: :ok
+
+  defp shutdown_task(%Task{} = task) do
+    case task.pid do
+      pid when is_pid(pid) ->
+        if Process.alive?(pid) do
+          Process.exit(pid, :kill)
+        end
+
+        :ok
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp shutdown_task(_), do: :ok
 end

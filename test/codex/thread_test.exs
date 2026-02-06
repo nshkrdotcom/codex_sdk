@@ -90,6 +90,24 @@ defmodule Codex.ThreadTest do
       assert after_monitors == before_monitors
       assert thread.transport_ref == nil
     end
+
+    test "clear_pending_tool_payloads/1 clears pending tool fields" do
+      {:ok, codex_opts} = Options.new(%{api_key: "test"})
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+
+      thread =
+        Thread.build(codex_opts, thread_opts,
+          pending_tool_outputs: [%{call_id: "tool-1", output: %{"ok" => true}}],
+          pending_tool_failures: [%{call_id: "tool-2", error: %{"message" => "failed"}}]
+        )
+
+      cleared = Thread.clear_pending_tool_payloads(thread)
+
+      assert cleared.pending_tool_outputs == []
+      assert cleared.pending_tool_failures == []
+      assert cleared.thread_id == thread.thread_id
+      assert cleared.codex_opts == thread.codex_opts
+    end
   end
 
   describe "run/3" do

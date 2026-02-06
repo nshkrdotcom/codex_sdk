@@ -23,30 +23,56 @@ defmodule Codex.AppServer do
   def connect(%Options{} = codex_opts, opts \\ []) do
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
 
-    child_spec =
-      {Connection, {codex_opts, opts}}
-      |> Supervisor.child_spec(restart: :temporary)
+    with {:ok, _pid} <- ensure_connection_supervisor() do
+      child_spec =
+        {Connection, {codex_opts, opts}}
+        |> Supervisor.child_spec(restart: :temporary)
 
-    case DynamicSupervisor.start_child(ConnectionSupervisor, child_spec) do
-      {:ok, conn} ->
-        case Connection.await_ready(conn, init_timeout_ms) do
-          :ok ->
-            {:ok, conn}
+      case DynamicSupervisor.start_child(ConnectionSupervisor, child_spec) do
+        {:ok, conn} ->
+          case Connection.await_ready(conn, init_timeout_ms) do
+            :ok ->
+              {:ok, conn}
 
-          {:error, _reason} = error ->
-            _ = DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
-            error
+            {:error, _reason} = error ->
+              _ = DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
+              error
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
+
+  defp ensure_connection_supervisor do
+    case Process.whereis(ConnectionSupervisor) do
+      nil ->
+        case DynamicSupervisor.start_link(strategy: :one_for_one, name: ConnectionSupervisor) do
+          {:ok, pid} -> {:ok, pid}
+          {:error, {:already_started, pid}} -> {:ok, pid}
+          {:error, _} = error -> error
         end
 
-      {:error, _} = error ->
-        error
+      pid ->
+        {:ok, pid}
     end
+  catch
+    :exit, reason -> {:error, reason}
   end
 
   @spec disconnect(connection()) :: :ok
   def disconnect(conn) when is_pid(conn) do
-    _ = DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
+    _ = safe_terminate_child(conn)
     :ok
+  end
+
+  defp safe_terminate_child(conn) do
+    DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
+  catch
+    :exit, :normal -> :ok
+    :exit, {:normal, _} -> :ok
+    :exit, _ -> :ok
   end
 
   @spec alive?(connection()) :: boolean()

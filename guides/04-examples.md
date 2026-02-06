@@ -1502,7 +1502,8 @@ end
 
 Run realtime examples:
 ```bash
-export OPENAI_API_KEY=your-key
+export CODEX_API_KEY=your-key
+# or export OPENAI_API_KEY=your-key
 mix run examples/realtime_basic.exs
 mix run examples/realtime_tools.exs
 mix run examples/realtime_handoffs.exs
@@ -1648,7 +1649,8 @@ end
 
 Run voice pipeline examples:
 ```bash
-export OPENAI_API_KEY=your-key
+export CODEX_API_KEY=your-key
+# or export OPENAI_API_KEY=your-key
 mix run examples/voice_pipeline.exs
 mix run examples/voice_multi_turn.exs
 mix run examples/voice_with_agent.exs

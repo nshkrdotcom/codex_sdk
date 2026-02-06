@@ -38,6 +38,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
 
   @behaviour Codex.Voice.Model.TTSModel
 
+  alias Codex.Auth
   alias Codex.Voice.Config.TTSSettings
 
   defstruct [:model, :client, :api_key, :base_url]
@@ -110,7 +111,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
   """
   @spec run(t(), String.t(), TTSSettings.t()) :: Enumerable.t()
   def run(%__MODULE__{} = model, text, %TTSSettings{} = settings) do
-    api_key = model.api_key || System.get_env("OPENAI_API_KEY")
+    api_key = model.api_key || Auth.api_key()
     voice = voice_to_string(settings.voice || @default_voice)
 
     body =

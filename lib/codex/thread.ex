@@ -81,6 +81,12 @@ defmodule Codex.Thread do
     )
   end
 
+  @doc false
+  @spec clear_pending_tool_payloads(t()) :: t()
+  def clear_pending_tool_payloads(%__MODULE__{} = thread) do
+    %{thread | pending_tool_outputs: [], pending_tool_failures: []}
+  end
+
   @type user_input_block :: map()
   @type user_input :: String.t() | [user_input_block()]
 
@@ -574,8 +580,7 @@ defmodule Codex.Thread do
     updated_thread =
       updated_thread
       |> Map.put(:usage, usage || thread.usage)
-      |> Map.put(:pending_tool_outputs, [])
-      |> Map.put(:pending_tool_failures, [])
+      |> clear_pending_tool_payloads()
       |> then(fn t ->
         if early_exit?(events) do
           reset_conversation(t)
@@ -1363,15 +1368,13 @@ defmodule Codex.Thread do
 
   defp reset_conversation(%__MODULE__{} = thread) do
     %__MODULE__{
-      thread
+      clear_pending_tool_payloads(thread)
       | thread_id: nil,
         metadata: %{},
         labels: %{},
         resume: nil,
         continuation_token: nil,
-        usage: %{},
-        pending_tool_outputs: [],
-        pending_tool_failures: []
+        usage: %{}
     }
   end
 

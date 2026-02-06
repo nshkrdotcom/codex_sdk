@@ -428,6 +428,55 @@ defmodule Codex.Realtime.SessionTest do
     end
   end
 
+  describe "tool execution responsiveness" do
+    test "processes model events while a slow tool is running", %{agent: _agent} do
+      agent = %{
+        name: "SlowToolAgent",
+        model: "gpt-4o-realtime-preview",
+        instructions: "Use tools",
+        tools: [
+          %{
+            name: "slow_tool",
+            on_invoke: fn _args, _ctx ->
+              Process.sleep(300)
+              "slow-result"
+            end
+          }
+        ]
+      }
+
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+
+      tool_call =
+        ModelEvents.tool_call(
+          name: "slow_tool",
+          call_id: "call_slow",
+          arguments: "{}",
+          id: "item_slow"
+        )
+
+      send(session, {:model_event, tool_call})
+      assert_receive {:session_event, %Events.ToolStartEvent{}}
+
+      send(session, {:model_event, ModelEvents.error(%{"message" => "while_tool_running"})})
+
+      assert_receive {:session_event,
+                      %Events.ErrorEvent{error: %{"message" => "while_tool_running"}}},
+                     120
+
+      Session.close(session)
+    end
+  end
+
   describe "error handling" do
     test "forwards error events to subscribers", %{agent: agent} do
       {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
@@ -478,6 +527,75 @@ defmodule Codex.Realtime.SessionTest do
 
       # Session should still work and not crash
       assert Process.alive?(session)
+      Session.close(session)
+    end
+
+    test "subscribe is idempotent and does not duplicate event delivery", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      :ok = Session.subscribe(session, self())
+
+      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+
+      assert_receive {:session_event, %Events.AgentStartEvent{}}
+      refute_receive {:session_event, %Events.AgentStartEvent{}}, 50
+
+      Session.close(session)
+    end
+
+    test "unsubscribe is idempotent and fully removes subscriber", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      :ok = Session.subscribe(session, self())
+      :ok = Session.unsubscribe(session, self())
+
+      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      refute_receive {:session_event, _}, 50
+
+      Session.close(session)
+    end
+  end
+
+  describe "websocket lifecycle" do
+    test "traps exits and handles websocket exits without crashing", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      assert {:trap_exit, true} = Process.info(session, :trap_exit)
+
+      send(session, {:EXIT, mock_ws, :ws_closed})
+
+      assert_receive {:session_event,
+                      %Events.ErrorEvent{
+                        error: %{"type" => "websocket_exit", "reason" => "ws_closed"}
+                      }}
+
+      assert Process.alive?(session)
+      assert :sys.get_state(session).websocket_pid == nil
+
       Session.close(session)
     end
   end

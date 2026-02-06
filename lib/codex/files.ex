@@ -6,7 +6,6 @@ defmodule Codex.Files do
   alias Codex.Files.Registry
   alias Codex.Thread.Options, as: ThreadOptions
 
-  @default_staging_dir Path.join(System.tmp_dir!(), "codex_files")
   @default_ttl_ms 86_400_000
 
   defmodule Attachment do
@@ -53,7 +52,7 @@ defmodule Codex.Files do
   Returns the staging directory path.
   """
   @spec staging_dir() :: Path.t()
-  def staging_dir, do: Application.get_env(:codex_sdk, :staging_dir, @default_staging_dir)
+  def staging_dir, do: Application.get_env(:codex_sdk, :staging_dir, default_staging_dir())
 
   @doc """
   Stages a file for future attachment invocation.
@@ -105,36 +104,36 @@ defmodule Codex.Files do
   @doc """
   Removes staged files that are not marked as persistent.
   """
-  @spec force_cleanup() :: :ok
+  @spec force_cleanup() :: :ok | {:error, term()}
   def force_cleanup do
     with {:ok, _pid} <- Registry.ensure_started() do
-      Registry.force_cleanup()
+      safe_registry_call(fn -> Registry.force_cleanup() end)
     end
   end
 
   @doc """
   Deprecated alias retained for backwards compatibility.
   """
-  @spec cleanup!() :: :ok
+  @spec cleanup!() :: :ok | {:error, term()}
   def cleanup!, do: force_cleanup()
 
   @doc """
   Resets the staging directory and manifest.
   """
-  @spec reset!() :: :ok
+  @spec reset!() :: :ok | {:error, term()}
   def reset! do
     with {:ok, _pid} <- Registry.ensure_started() do
-      Registry.reset(staging_dir())
+      safe_registry_call(fn -> Registry.reset(staging_dir()) end)
     end
   end
 
   @doc """
   Returns high-level staging metrics including counts and total bytes.
   """
-  @spec metrics() :: map()
+  @spec metrics() :: map() | {:error, term()}
   def metrics do
     with {:ok, _pid} <- Registry.ensure_started() do
-      Registry.metrics()
+      safe_registry_call(fn -> Registry.metrics() end)
     end
   end
 
@@ -176,11 +175,21 @@ defmodule Codex.Files do
     Application.get_env(:codex_sdk, :attachment_ttl_ms, @default_ttl_ms)
   end
 
+  defp default_staging_dir do
+    Path.join(System.tmp_dir!(), "codex_files")
+  end
+
   defp ensure_staging_dir do
     File.mkdir_p(staging_dir())
   end
 
   defp attachment_path(checksum, name) do
     Path.join([staging_dir(), checksum, name])
+  end
+
+  defp safe_registry_call(fun) when is_function(fun, 0) do
+    fun.()
+  catch
+    :exit, reason -> {:error, reason}
   end
 end

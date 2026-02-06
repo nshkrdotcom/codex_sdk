@@ -15,7 +15,7 @@
 # To play the output: aplay -f S16_LE -r 24000 -c 1 /tmp/codex_realtime_response.pcm
 #
 # Prerequisites:
-#   - OPENAI_API_KEY environment variable set
+#   - API key available via CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY
 #
 # Usage:
 #   mix run examples/live_realtime_voice.exs
@@ -33,9 +33,12 @@ defmodule LiveRealtimeVoiceDemo do
   def run do
     IO.puts("=== Live Realtime Voice Demo ===\n")
 
-    # Check for API key
-    unless System.get_env("OPENAI_API_KEY") do
-      IO.puts("Error: OPENAI_API_KEY environment variable not set")
+    # Realtime auth follows Codex.Auth precedence.
+    unless Codex.Auth.api_key() do
+      IO.puts(
+        "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
+      )
+
       System.halt(1)
     end
 
