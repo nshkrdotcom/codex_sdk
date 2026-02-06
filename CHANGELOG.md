@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-01-24
+## [0.7.0] - 2026-02-06
 
 ### Added
+
+- Hardcoded local preset support for `gpt-5.3-codex` and made it the SDK default model
 
 - **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions
   - `Codex.Realtime` module with agent builder and session orchestration
@@ -50,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated local model upgrade metadata to target `gpt-5.3-codex` instead of `gpt-5.2-codex`
+- Updated bundled `priv/models.json` upgrade targets to `gpt-5.3-codex` for consistency with SDK presets
+- Unified default model selection across all credential sources (`gpt-5.3-codex`)
+- Updated README, guides, examples, and tests to reflect the new `gpt-5.3-codex` default
 - Removed `live_realtime_voice_stub.exs` placeholder, replaced with working implementation
 
 ### Documentation

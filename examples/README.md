@@ -9,14 +9,14 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.exec/2`, `Codex.run/2`)
    - Wraps the `codex` CLI via erlexec subprocess
    - Uses `codex login` authentication (no separate API key needed)
-   - Auth-aware defaults: `gpt-5.2-codex` for ChatGPT login, `gpt-5.1-codex-max` for API keys
+   - SDK default model: `gpt-5.3-codex`
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
    - Requires `OPENAI_API_KEY` environment variable
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.1-codex-mini` for consistent runs (override by exporting `CODEX_MODEL` before running). A few live scripts explicitly set `model: "gpt-5.2-codex"` to avoid mini limitations (for example, higher reasoning-effort requests); edit those examples if you need a different model.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.3-codex` (override by exporting `CODEX_MODEL` before running). A few live scripts also explicitly set `model: "gpt-5.3-codex"`; edit those examples if you need a different model.
 
 ## Running everything
 

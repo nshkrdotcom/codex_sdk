@@ -80,11 +80,9 @@ When an API key is supplied, the SDK forwards it as both `CODEX_API_KEY` and `OP
 to the codex subprocess to align with provider expectations.
 ```
 
-Model defaults are auth-aware:
-- ChatGPT login: `gpt-5.2-codex` (prefers `codex-auto-balanced` when remote models are enabled and available)
-- API key auth: `gpt-5.1-codex-max`
+Default model: `gpt-5.3-codex` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`).
 
-Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.2-codex` available.
+Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.3-codex` available.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
@@ -384,7 +382,7 @@ apply or undo diffs locally:
     model: "o1",
     reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
     model_personality: :friendly,
-    review_model: "gpt-5.1-codex",
+    review_model: "gpt-5.3-codex",
     tool_output_token_limit: 512,
     history: %{persistence: "local", max_bytes: 1_000_000}
   )

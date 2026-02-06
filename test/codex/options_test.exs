@@ -44,14 +44,14 @@ defmodule Codex.OptionsTest do
       assert opts.api_key == "test"
       assert opts.base_url == "https://example.com"
       assert opts.telemetry_prefix == [:codex, :test]
-      assert opts.model == "gpt-5.1-codex-max"
+      assert opts.model == "gpt-5.3-codex"
       assert opts.reasoning_effort == :high
     end
 
     test "allows API key to be omitted" do
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == nil
-      assert opts.model == "gpt-5.2-codex"
+      assert opts.model == "gpt-5.3-codex"
       assert opts.reasoning_effort == :medium
     end
 

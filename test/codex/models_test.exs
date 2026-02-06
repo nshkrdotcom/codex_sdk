@@ -63,26 +63,26 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.2-codex",
+               "gpt-5.3-codex",
                "gpt-5.1-codex-max",
                "gpt-5.1-codex-mini",
                "gpt-5.2"
              ]
 
-      assert Enum.any?(models, &(&1.id == "gpt-5.2-codex" && &1.is_default))
+      assert Enum.any?(models, &(&1.id == "gpt-5.3-codex" && &1.is_default))
     end)
   end
 
-  test "auth-aware defaults prefer api keys when present" do
+  test "default model remains gpt-5.3-codex across credential sources" do
     with_temp_codex_home(fn home ->
-      assert Models.default_model() == "gpt-5.2-codex"
+      assert Models.default_model() == "gpt-5.3-codex"
 
       System.put_env("CODEX_API_KEY", "sk-test")
-      assert Models.default_model() == "gpt-5.1-codex-max"
+      assert Models.default_model() == "gpt-5.3-codex"
       System.delete_env("CODEX_API_KEY")
 
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
-      assert Models.default_model() == "gpt-5.1-codex-max"
+      assert Models.default_model() == "gpt-5.3-codex"
     end)
   end
 
@@ -107,7 +107,7 @@ defmodule Codex.ModelsTest do
     end)
   end
 
-  test "prefers codex-auto-balanced when available for chatgpt auth" do
+  test "does not override default model when codex-auto-balanced is available" do
     with_temp_codex_home(fn home ->
       write_config!(home, true)
 
@@ -118,7 +118,7 @@ defmodule Codex.ModelsTest do
         )
       ])
 
-      assert Models.default_model() == "codex-auto-balanced"
+      assert Models.default_model() == "gpt-5.3-codex"
     end)
   end
 
@@ -126,10 +126,10 @@ defmodule Codex.ModelsTest do
     with_temp_codex_home(fn home ->
       write_config!(home, true)
 
-      # gpt-5.1-codex-max has an upgrade to gpt-5.2-codex
+      # gpt-5.1-codex-max has an upgrade to gpt-5.3-codex
       upgrade = Models.get_upgrade("gpt-5.1-codex-max")
 
-      assert upgrade.id == "gpt-5.2-codex"
+      assert upgrade.id == "gpt-5.3-codex"
       assert upgrade.migration_config_key == "gpt-5.1-codex-max"
       # The upgrade may have reasoning effort mapping or nil depending on JSON
       # Just verify the upgrade exists and has the expected id
@@ -144,7 +144,7 @@ defmodule Codex.ModelsTest do
     assert Models.reasoning_effort_to_string(:none) == "none"
     assert Models.normalize_reasoning_effort("xhigh") == {:ok, :xhigh}
     assert Models.reasoning_effort_to_string(:xhigh) == "xhigh"
-    assert Models.supported_in_api?("gpt-5.2-codex") == false
+    assert Models.supported_in_api?("gpt-5.3-codex") == false
     assert Models.tool_enabled?("gpt-5.1")
   end
 

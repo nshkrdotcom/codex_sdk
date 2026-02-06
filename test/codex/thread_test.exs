@@ -156,7 +156,7 @@ defmodule Codex.ThreadTest do
 
       assert Enum.chunk_every(args, 2)
              |> Enum.any?(fn
-               ["--model", "gpt-5.1-codex-max"] -> true
+               ["--model", "gpt-5.3-codex"] -> true
                _ -> false
              end)
 
@@ -825,7 +825,7 @@ defmodule Codex.ThreadTest do
       {:ok, codex_opts} =
         Options.new(%{
           api_key: "test",
-          model: "gpt-5.2-codex",
+          model: "gpt-5.3-codex",
           reasoning_effort: :xhigh
         })
 

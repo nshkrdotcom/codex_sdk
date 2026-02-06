@@ -52,7 +52,7 @@ defmodule CodexSdk.MixProject do
       {:websockex, "~> 0.4.3"},
 
       # Testing
-      {:supertester, "~> 0.4.0", only: :test},
+      {:supertester, "~> 0.5.1", only: :test},
       {:mox, "~> 1.0", only: :test},
       {:stream_data, "~> 1.0", only: :test},
 

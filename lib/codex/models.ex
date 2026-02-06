@@ -79,25 +79,24 @@ defmodule Codex.Models do
     "xhigh" => :xhigh
   }
 
-  @default_api_model "gpt-5.1-codex-max"
-  @default_chatgpt_model "gpt-5.2-codex"
-  @codex_auto_balanced "codex-auto-balanced"
+  @default_api_model "gpt-5.3-codex"
+  @default_chatgpt_model "gpt-5.3-codex"
   @remote_models_cache_ttl_seconds 300
 
-  @gpt_52_codex_upgrade %{
-    id: "gpt-5.2-codex",
+  @gpt_53_codex_upgrade %{
+    id: "gpt-5.3-codex",
     reasoning_effort_mapping: nil,
-    migration_config_key: "gpt-5.2-codex",
-    model_link: "https://openai.com/index/introducing-gpt-5-2-codex",
+    migration_config_key: "gpt-5.3-codex",
+    model_link: nil,
     upgrade_copy:
-      "Codex is now powered by gpt-5.2-codex, our latest frontier agentic coding model. It is smarter and faster than its predecessors and capable of long-running project-scale work."
+      "Codex is now powered by gpt-5.3-codex, our latest frontier agentic coding model. It is smarter and faster than its predecessors and capable of long-running project-scale work."
   }
 
   @local_presets [
     %{
-      id: "gpt-5.2-codex",
-      model: "gpt-5.2-codex",
-      display_name: "gpt-5.2-codex",
+      id: "gpt-5.3-codex",
+      model: "gpt-5.3-codex",
+      display_name: "gpt-5.3-codex",
       description: "Latest frontier agentic coding model.",
       default_reasoning_effort: :medium,
       supported_reasoning_efforts: [
@@ -124,7 +123,7 @@ defmodule Codex.Models do
         %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: true,
       supported_in_api: true
     },
@@ -142,7 +141,7 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: true,
       supported_in_api: true
     },
@@ -171,7 +170,7 @@ defmodule Codex.Models do
         %{effort: :xhigh, description: "Extra high reasoning for complex problems"}
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: true,
       supported_in_api: true
     },
@@ -190,7 +189,7 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: false,
       supported_in_api: true
     },
@@ -208,7 +207,7 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: false,
       supported_in_api: true
     },
@@ -227,7 +226,7 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: false,
       supported_in_api: true
     },
@@ -255,7 +254,7 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: false,
       supported_in_api: true
     },
@@ -282,13 +281,14 @@ defmodule Codex.Models do
         }
       ],
       is_default: false,
-      upgrade: @gpt_52_codex_upgrade,
+      upgrade: @gpt_53_codex_upgrade,
       show_in_picker: false,
       supported_in_api: true
     }
   ]
 
   @local_shell_types %{
+    "gpt-5.3-codex" => :shell_command,
     "gpt-5.2-codex" => :shell_command,
     "gpt-5.1-codex-max" => :shell_command,
     "gpt-5.1-codex-mini" => :shell_command,
@@ -492,20 +492,9 @@ defmodule Codex.Models do
       System.get_env("CODEX_MODEL_DEFAULT")
   end
 
-  defp default_model_for_auth(:chatgpt) do
-    if codex_auto_balanced_available?() do
-      @codex_auto_balanced
-    else
-      @default_chatgpt_model
-    end
-  end
+  defp default_model_for_auth(:chatgpt), do: @default_chatgpt_model
 
   defp default_model_for_auth(:api), do: @default_api_model
-
-  defp codex_auto_balanced_available? do
-    list_visible(:chatgpt)
-    |> Enum.any?(&(&1.model == @codex_auto_balanced))
-  end
 
   defp available_presets(auth_mode, cwd) do
     remote_models =

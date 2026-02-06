@@ -170,7 +170,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
     {:ok, codex_opts} =
       Codex.Options.new(%{
         codex_path_override: fetch_codex_path!(),
-        model: "gpt-5.2-codex"
+        model: "gpt-5.3-codex"
       })
 
     {:ok, thread} = Codex.start_thread(codex_opts)
