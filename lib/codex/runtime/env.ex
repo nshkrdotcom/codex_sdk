@@ -1,5 +1,7 @@
 defmodule Codex.Runtime.Env do
-  @moduledoc false
+  @moduledoc """
+  Subprocess environment construction (originator override, API key forwarding).
+  """
 
   alias Codex.Config.BaseURL
 

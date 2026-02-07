@@ -9,37 +9,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Hardcoded local preset support for `gpt-5.3-codex` and made it the SDK default model
-
-- **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions
+- **Realtime API**: Full integration with OpenAI Realtime API for bidirectional voice interactions
   - `Codex.Realtime` module with agent builder and session orchestration
-  - `Codex.Realtime.Session` GenServer for WebSocket-based streaming via WebSockex
-  - `Codex.Realtime.Runner` for managing agent sessions with automatic tool call handling
-  - `Codex.Realtime.Agent` struct with builder functions for agent configuration
-  - Session-level and model-level event types for comprehensive event handling
+  - `Codex.Realtime.Session` WebSocket GenServer via WebSockex with reconnection, PubSub event broadcasting, and trapped linked-socket exits
+  - `Codex.Realtime.Runner` for high-level agent session management with automatic tool call handling, handoff execution, and guardrail integration
+  - `Codex.Realtime.Agent` struct and builder functions for agent configuration (instructions, tools, handoffs)
+  - Session-level and model-level event types (`Codex.Realtime.Events`) for comprehensive event handling
   - Configuration structs: `RealtimeSessionConfig`, `RealtimeModelConfig`, `TurnDetectionConfig`, `InputAudioTranscription`
   - Core types: `Codex.Realtime.Audio` (PCM16/G711), `Codex.Realtime.Item`, `PlaybackTracker`
-  - Handoff execution between agents and guardrail integration
-  - PubSub-based event broadcasting to subscribers
+  - Semantic VAD turn detection with `eagerness` parameter (`:low`, `:medium`, `:high`), `silence_duration_ms`, and `prefix_padding_ms`
+  - Idempotent `subscribe/unsubscribe` with map-based subscriber tracking
+  - Tool calls run outside the session callback path so other session messages stay responsive
 
-- **Voice Pipeline**: Non-realtime voice pipeline for STT -> Workflow -> TTS processing
-  - `Codex.Voice.Pipeline` for single-turn and multi-turn voice flows
+- **Voice Pipeline**: Non-realtime STT -> Workflow -> TTS pipeline
+  - `Codex.Voice.Pipeline` for single-turn and multi-turn voice flows with async `Task`-based execution
   - `Codex.Voice.Result` for streamed audio output handling
-  - `Codex.Voice.Workflow` behaviour for custom processing
-  - `Codex.Voice.SimpleWorkflow` for function-based workflows
-  - `Codex.Voice.AgentWorkflow` wrapping `Codex.Agent` for full agent-based voice interactions
-  - STT model behaviour (`Codex.Voice.Model.STTModel`) and OpenAI implementation (`gpt-4o-transcribe`)
-  - TTS model behaviour (`Codex.Voice.Model.TTSModel`) and OpenAI implementation (`gpt-4o-mini-tts`)
+  - `Codex.Voice.Workflow` behaviour, `Codex.Voice.SimpleWorkflow` (function-based), and `Codex.Voice.AgentWorkflow` (wrapping `Codex.Agent`)
+  - Multi-turn conversation history management and optional greeting support
+  - STT model behaviour (`Codex.Voice.Model.STTModel`) with OpenAI implementation (`gpt-4o-transcribe`)
+  - TTS model behaviour (`Codex.Voice.Model.TTSModel`) with OpenAI implementation (`gpt-4o-mini-tts`)
   - `Codex.Voice.Model.ModelProvider` behaviour for model factories
   - `Codex.Voice.Input.AudioInput` for single audio buffers and `StreamedAudioInput` for streaming
   - `Codex.Voice.Events` for voice stream events (audio, lifecycle, error)
   - `Codex.Voice.Config` for pipeline configuration with STT/TTS settings
   - WAV encoding utilities for audio file handling
 
-- **Main SDK Integration**:
-  - Realtime and voice error types in `Codex.Error`
-  - Telemetry events for realtime session and voice pipeline lifecycle
-  - Delegation functions in main `Codex` module for Realtime/Voice convenience APIs
+- **Options-level global config overrides** (`Codex.Options.config_overrides` / `config`)
+  - Emitted before derived/thread/turn overrides in exec CLI args and app-server config payload
+  - Four-layer precedence: options-level < derived < thread < turn
+  - Input aliases `config` and `config_overrides` with nested map auto-flattening
+
+- **Config override runtime validation** (`Overrides.validate_overrides/1`)
+  - Validates TOML-compatible types: strings, booleans, integers, floats, arrays, nested maps
+  - Rejects `nil`, tuples, PIDs, functions, and non-finite floats with `{:error, {:invalid_config_override_value, path, value}}`
+  - Propagated through `build_args`/`config_override_args` via `{:ok, _} | {:error, _}` return paths in Exec
+
+- **`:none` personality variant** across `ConfigTypes`, `Options`, `Thread.Options`, exec, and app-server
+  - Encode/decode round-trip, `AppServer.Params.personality/1` clauses for `:none` / `"none"`
+  - Works consistently on both exec CLI and app-server transports
+
+- **Nested config override auto-flattening** (`Overrides.flatten_config_map/1`)
+  - Recursive map-to-dotted-path flattening (e.g., `%{"model" => %{"personality" => "friendly"}}` → `[{"model.personality", "friendly"}]`)
+  - Auto-detected in `normalize_config_overrides` for both exec and thread options
+  - Deduplicated normalizer shared between `Exec` and `Thread.Options` via `Overrides.normalize_config_overrides/1`
+
+- **Explicit web search disable tracking** — `Thread.Options` tracks `web_search_mode_explicit` to distinguish user-set `:disabled` from default `:disabled`; only emits `web_search="disabled"` override when explicitly set
+
+- **SDK originator environment variable** — `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` set in `Runtime.Env.base_overrides/2` via `Map.put_new` (caller can override in `env`)
+
+- **Shared runtime modules** extracted from duplicated patterns:
+  - `Codex.Runtime.Erlexec` — unified erlexec startup across Exec, Connection, Sessions, ShellTool, and MCP Stdio
+  - `Codex.Runtime.Env` — subprocess environment construction shared between Exec and AppServer.Connection
+  - `Codex.Runtime.KeyringWarning` — deduplicated warn-once logic from Auth and MCP.OAuth
+  - `Codex.Config.BaseURL` — `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)
+  - `Codex.Config.OptionNormalizers` — shared reasoning summary, verbosity, and history persistence validation across Options and Thread.Options
+
+- **Process lifecycle hardening**:
+  - Supervised `MetricsHeir` GenServer replacing ad-hoc spawn/register for tool metrics ETS heir
+  - Concurrent stage call coalescing in `Files.Registry` via `pending_stage_requests` map
+  - Expired entry collection moved into work queue tasks (non-blocking Registry GenServer)
+  - `drain_waiters/2` in MCP Stdio transport for subprocess exit
+  - Monitor-based cleanup for `StreamQueue` pop waiters and `OpenAISTTSession` transcript waiters on caller DOWN
+  - `Task.start` over `Task.start_link` in StreamableHTTP and RunResultStreaming fallback paths (avoids cascade crashes)
+  - `async_nolink` via ephemeral `TaskSupervisor` in `Voice.Pipeline`
+  - `StreamQueue`-backed queues replacing Agent-backed queues in `Voice.Result` and `StreamedAudioInput` (backpressure + close semantics)
+  - `StreamQueue.try_pop/1` for non-blocking dequeue
+  - `ets.select_delete` replacing `ets.foldl` in `Approvals.Registry`
+  - Drain pending tool calls in `Realtime.Session.terminate/1`
+
+- **Concurrency and safety improvements**:
+  - Work queue in `Files.Registry` for non-blocking file I/O
+  - WebSocket exits trapped in `Realtime.Session`; tool calls run outside callback path
+  - Idempotent subscribe/unsubscribe with map-based subscriber tracking
+  - `terminate/1` cleanup for `StreamableHTTP`, `Registry`, and `STTSession`
+  - `String.to_existing_atom` replacing `String.to_atom` in `Config.Overrides` (atom safety)
+  - Explicit key maps in `ToolOutput` to avoid atom interning from untrusted input
+  - ETS heir process for tool metrics table survival across owner restarts
+  - Atomic tool registration via `insert_new` in `Tools.Registry`
+  - Lazy-start `ConnectionSupervisor` in `AppServer.connect`
+
+- Hardcoded local preset for `gpt-5.3-codex` as the unified SDK default model
+
+- `config_override`, `config_override_value`, and `config_override_scalar` type specs added to `Overrides`, `Options`, and `Thread.Options`
+
+- `Codex.Files.list_staged_result/0` for explicit `{:ok, list} | {:error, reason}` responses
+
+- Main SDK integration: realtime/voice error types in `Codex.Error`, telemetry events for session and pipeline lifecycle, delegation functions in main `Codex` module
 
 - **Examples**:
   - `live_realtime_voice.exs`: Full realtime voice interaction demo
@@ -49,19 +104,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `voice_pipeline.exs`: Basic STT -> Workflow -> TTS pipeline
   - `voice_multi_turn.exs`: Multi-turn streaming conversations
   - `voice_with_agent.exs`: Using `Codex.Agent` with voice pipelines
+  - `live_config_overrides.exs`: Nested config override auto-flattening (thread and turn level)
+  - `live_options_config_overrides.exs`: Options-level global config overrides, precedence, and validation
+  - `live_personality.exs`: Updated to exercise all three personality variants including `:none`
 
 ### Changed
 
-- Updated local model upgrade metadata to target `gpt-5.3-codex` instead of `gpt-5.2-codex`
-- Updated bundled `priv/models.json` upgrade targets to `gpt-5.3-codex` for consistency with SDK presets
-- Unified default model selection across all credential sources (`gpt-5.3-codex`)
-- Updated README, guides, examples, and tests to reflect the new `gpt-5.3-codex` default
-- Removed `live_realtime_voice_stub.exs` placeholder, replaced with working implementation
+- Default model updated to `gpt-5.3-codex` across all credential sources (local presets, upgrade metadata, bundled `priv/models.json`)
+- Removed auth-aware default logic (chatgpt vs api key split) and `codex-auto-balanced` preference for chatgpt auth
+- `Codex.Files.force_cleanup/0`, `reset!/0`, and `metrics/0` return `{:error, reason}` if the registry is unavailable
+- `Codex.Files.Registry.ensure_started` and `AppServer.ensure_connection_supervisor` require application supervision
+- MCP transport failures normalized to `{:error, reason}` tuples
+- Unified Realtime/Voice API key resolution through `Codex.Auth` precedence chain (`CODEX_API_KEY` → `auth.json OPENAI_API_KEY` → `OPENAI_API_KEY`)
+- Replaced `live_realtime_voice_stub.exs` placeholder with working implementation
+- Bumped `supertester` to `~> 0.5.1`
+
+### Fixed
+
+- `String.to_atom` replaced with `String.to_existing_atom` in `Config.Overrides` to prevent atom table exhaustion from untrusted input
+- Explicit key maps in `ToolOutput` to avoid atom interning from untrusted config payloads
+- Web search disable override no longer emitted when defaults are untouched (only when explicitly set via `web_search_mode: :disabled` or `web_search_enabled: false`)
+- Removed hardcoded `http_client/0` helper from `WebSearchTool`
 
 ### Documentation
 
-- Added Realtime and Voice sections to examples/README.md with prerequisites and usage
-- Updated hexdocs module groups to include all Realtime and Voice modules
+- Added Realtime and Voice guide (`guides/06-realtime-and-voice.md`) and sections to examples/README.md
+- Documented four-layer config override precedence (options < derived < thread < turn) in README and guides
+- Documented `:none` personality variant, SDK originator env, and explicit web search disable behavior
+- Updated hexdocs module groups to include all Realtime, Voice, and shared runtime modules
 
 ## [0.6.0] - 2026-01-23
 

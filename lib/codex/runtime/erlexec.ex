@@ -1,5 +1,7 @@
 defmodule Codex.Runtime.Erlexec do
-  @moduledoc false
+  @moduledoc """
+  Unified erlexec startup shared across subprocess modules.
+  """
 
   @spec ensure_started() :: :ok | {:error, term()}
   def ensure_started do

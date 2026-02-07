@@ -26,7 +26,7 @@ defmodule RealtimeToolsExample do
     IO.puts("=== Realtime Tools Example ===\n")
 
     # Realtime auth follows Codex.Auth precedence.
-    unless Codex.Auth.api_key() do
+    unless fetch_api_key() do
       IO.puts(
         "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
       )
@@ -143,6 +143,8 @@ defmodule RealtimeToolsExample do
         IO.puts("\n[Timeout] Event handling complete")
     end
   end
+
+  defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
 RealtimeToolsExample.run()

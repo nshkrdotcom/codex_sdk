@@ -177,6 +177,39 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
       OpenAISTTSession.close(pid)
     end
 
+    test "falls back to OPENAI_API_KEY when Codex key sources are absent" do
+      original_codex_home = System.get_env("CODEX_HOME")
+      original_codex_key = System.get_env("CODEX_API_KEY")
+      original_openai_key = System.get_env("OPENAI_API_KEY")
+
+      codex_home =
+        Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(codex_home)
+      System.put_env("CODEX_HOME", codex_home)
+      System.delete_env("CODEX_API_KEY")
+      System.put_env("OPENAI_API_KEY", "sk-openai-env")
+
+      on_exit(fn ->
+        restore_env("CODEX_HOME", original_codex_home)
+        restore_env("CODEX_API_KEY", original_codex_key)
+        restore_env("OPENAI_API_KEY", original_openai_key)
+        File.rm_rf(codex_home)
+      end)
+
+      input = StreamedAudioInput.new()
+      settings = STTSettings.new()
+
+      {:ok, pid} =
+        OpenAISTTSession.start_link(
+          input: input,
+          settings: settings
+        )
+
+      assert :sys.get_state(pid).api_key == "sk-openai-env"
+      OpenAISTTSession.close(pid)
+    end
+
     test "removes dead transcript waiters on caller DOWN" do
       input = StreamedAudioInput.new()
       settings = STTSettings.new()

@@ -406,7 +406,7 @@ apply or undo diffs locally:
     approval_timeout_ms: 45_000,
     web_search_mode: :cached,  # :disabled | :cached | :live (explicit :disabled forces disable override)
     personality: :pragmatic,   # :friendly | :pragmatic | :none (works consistently on exec/app-server)
-    collaboration_mode: :plan  # :plan | :pair_programming | :execute | :custom (app-server)
+    collaboration_mode: :plan  # :plan | :pair_programming | :code | :default | :execute | :custom (app-server)
   )
 
 {:ok, thread} = Codex.start_thread(codex_options, thread_options)
@@ -852,6 +852,13 @@ The SDK follows a layered architecture built on OTP principles:
 - **`Codex.Events`**: Comprehensive event type definitions
 - **`Codex.Items`**: Thread item structs (messages, commands, file changes, etc.)
 - **`Codex.Options`**: Configuration structs for all levels
+- **`Codex.Config.Overrides`**: Config override serialization, nested map flattening, and TOML value validation
+- **`Codex.Runtime.Erlexec`**: Unified erlexec startup shared across subprocess modules
+- **`Codex.Runtime.Env`**: Subprocess environment construction (sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE`)
+- **`Codex.Config.BaseURL`**: Base URL resolution with option → env → default precedence
+- **`Codex.Config.OptionNormalizers`**: Shared reasoning summary, verbosity, and history validation
+- **`Codex.Realtime`**: Bidirectional voice via OpenAI Realtime API (WebSocket)
+- **`Codex.Voice`**: Non-realtime STT → Workflow → TTS pipeline
 - **`Codex.OutputSchemaFile`**: Helper for managing JSON schema temporary files
 
 ### Process Model

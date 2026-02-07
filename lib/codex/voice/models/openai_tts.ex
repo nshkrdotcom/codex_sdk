@@ -111,7 +111,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
   """
   @spec run(t(), String.t(), TTSSettings.t()) :: Enumerable.t()
   def run(%__MODULE__{} = model, text, %TTSSettings{} = settings) do
-    api_key = model.api_key || Auth.api_key()
+    api_key = model.api_key || Auth.direct_api_key()
     voice = voice_to_string(settings.voice || @default_voice)
 
     body =

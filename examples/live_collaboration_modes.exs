@@ -7,62 +7,163 @@ defmodule LiveCollaborationModes do
   @moduledoc false
 
   @default_prompt "Give a 3-step plan to add coverage for the core modules."
+  @preferred_modes [:pair_programming, :code, :default, :plan, :execute, :custom]
 
   def main(argv) do
-    prompt = parse_prompt(argv)
+    case run(argv) do
+      :ok ->
+        :ok
 
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+
+      {:error, reason} ->
+        IO.puts("Failed to run collaboration mode example: #{inspect(reason)}")
+        System.halt(1)
+    end
+  end
+
+  defp run(argv) do
+    prompt = parse_prompt(argv)
     codex_path = fetch_codex_path!()
     ensure_app_server_supported!(codex_path)
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
-    {:ok, conn} = AppServer.connect(codex_opts, init_timeout_ms: 30_000)
+    with {:ok, codex_opts} <- Options.new(%{codex_path_override: codex_path}),
+         {:ok, conn} <- AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+      try do
+        IO.puts("collaboration_mode/list:")
 
-    try do
-      IO.puts("collaboration_mode/list:")
-
-      case AppServer.collaboration_mode_list(conn) do
-        {:error, %{"code" => -32600, "message" => message}} ->
-          IO.puts("""
-          collaboration_mode/list is not supported by this codex app-server build.
-          Upgrade your Codex CLI and retry.
-          Raw error: #{message}
-          """)
-
-        other ->
-          IO.inspect(other)
+        with {:ok, available_modes} <- list_supported_modes(conn),
+             {:ok, selected_mode} <- choose_mode(available_modes) do
+          run_turn(codex_opts, conn, prompt, selected_mode)
+        end
+      after
+        :ok = AppServer.disconnect(conn)
       end
-
-      model = Models.default_model()
-      effort = Models.default_reasoning_effort(model)
-
-      mode = %CollaborationMode{
-        mode: :pair_programming,
-        model: model,
-        reasoning_effort: effort,
-        developer_instructions: "Keep output brief and practical."
-      }
-
-      {:ok, thread} =
-        Codex.start_thread(codex_opts, %{
-          transport: {:app_server, conn},
-          working_directory: File.cwd!()
-        })
-
-      case Thread.run(thread, prompt, %{collaboration_mode: mode, timeout_ms: 120_000}) do
-        {:ok, result} ->
-          IO.puts("""
-          Turn completed with collaboration_mode=#{mode.mode}.
-            model: #{mode.model}
-            reasoning_effort: #{mode.reasoning_effort || "none"}
-            final_response: #{extract_text(result.final_response)}
-          """)
-
-        {:error, reason} ->
-          IO.puts("Failed to run collaboration mode example: #{inspect(reason)}")
-      end
-    after
-      :ok = AppServer.disconnect(conn)
     end
+  end
+
+  defp list_supported_modes(conn) do
+    case AppServer.collaboration_mode_list(conn) do
+      {:ok, response} ->
+        IO.inspect(response)
+        {:ok, extract_mode_atoms(response)}
+
+      {:error, %{"code" => -32600, "message" => message}} when is_binary(message) ->
+        if unsupported_capability?(message) do
+          {:skip,
+           "collaborationMode/list requires experimental API support in this Codex CLI build"}
+        else
+          {:error, {:collaboration_mode_list_failed, message}}
+        end
+
+      {:error, reason} ->
+        {:error, {:collaboration_mode_list_failed, reason}}
+    end
+  end
+
+  defp run_turn(codex_opts, conn, prompt, selected_mode) do
+    model = Models.default_model()
+    effort = Models.default_reasoning_effort(model)
+
+    mode = %CollaborationMode{
+      mode: selected_mode,
+      model: model,
+      reasoning_effort: effort,
+      developer_instructions: "Keep output brief and practical."
+    }
+
+    with {:ok, thread} <-
+           Codex.start_thread(codex_opts, %{
+             transport: {:app_server, conn},
+             working_directory: File.cwd!()
+           }),
+         {:ok, result} <-
+           Thread.run(thread, prompt, %{collaboration_mode: mode, timeout_ms: 120_000}) do
+      IO.puts("""
+      Turn completed with collaboration_mode=#{mode.mode}.
+        model: #{mode.model}
+        reasoning_effort: #{mode.reasoning_effort || "none"}
+        final_response: #{extract_text(result.final_response)}
+      """)
+
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp choose_mode(available_modes) when is_list(available_modes) do
+    case Enum.find(@preferred_modes, &(&1 in available_modes)) do
+      nil ->
+        {:skip, "no supported collaboration mode was advertised by this Codex build"}
+
+      mode ->
+        {:ok, mode}
+    end
+  end
+
+  defp choose_mode(_), do: {:skip, "unable to determine supported collaboration modes"}
+
+  defp extract_mode_atoms(%{"data" => data}) when is_list(data), do: normalize_mode_entries(data)
+  defp extract_mode_atoms(%{data: data}) when is_list(data), do: normalize_mode_entries(data)
+  defp extract_mode_atoms(_), do: []
+
+  defp normalize_mode_entries(entries) do
+    entries
+    |> Enum.flat_map(&normalize_mode_entry/1)
+    |> Enum.uniq()
+  end
+
+  defp normalize_mode_entry(entry) when is_binary(entry) do
+    case normalize_mode_value(entry) do
+      nil -> []
+      mode -> [mode]
+    end
+  end
+
+  defp normalize_mode_entry(%{} = entry) do
+    [
+      Map.get(entry, "mode"),
+      Map.get(entry, :mode),
+      Map.get(entry, "id"),
+      Map.get(entry, :id),
+      Map.get(entry, "name"),
+      Map.get(entry, :name),
+      get_in(entry, ["preset", "mode"]),
+      get_in(entry, [:preset, :mode])
+    ]
+    |> Enum.map(&normalize_mode_value/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_mode_entry(_), do: []
+
+  defp normalize_mode_value(value) when is_atom(value),
+    do: normalize_mode_value(Atom.to_string(value))
+
+  defp normalize_mode_value(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "pair_programming" -> :pair_programming
+      "pairprogramming" -> :pair_programming
+      "pair-programming" -> :pair_programming
+      "code" -> :code
+      "default" -> :default
+      "plan" -> :plan
+      "execute" -> :execute
+      "custom" -> :custom
+      _ -> nil
+    end
+  end
+
+  defp normalize_mode_value(_), do: nil
+
+  defp unsupported_capability?(message) do
+    lowered = String.downcase(message)
+
+    String.contains?(lowered, "experimentalapi") or
+      String.contains?(lowered, "requires experimentalapi capability") or
+      String.contains?(lowered, "method not found")
   end
 
   defp parse_prompt([prompt | _]), do: prompt

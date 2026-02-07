@@ -35,8 +35,8 @@ defmodule VoiceMultiTurnExample do
   def run do
     IO.puts("=== Multi-Turn Voice Example ===\n")
 
-    # Voice auth follows Codex.Auth precedence.
-    unless Codex.Auth.api_key() do
+    # Voice auth accepts Codex.Auth precedence and OPENAI_API_KEY.
+    unless fetch_api_key() do
       IO.puts(
         "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
       )
@@ -253,6 +253,8 @@ defmodule VoiceMultiTurnExample do
   defp handle_output_event(_event, bytes, turns) do
     {bytes, turns}
   end
+
+  defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
 VoiceMultiTurnExample.run()

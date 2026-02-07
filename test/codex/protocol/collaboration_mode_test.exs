@@ -28,10 +28,32 @@ defmodule Codex.Protocol.CollaborationModeTest do
     }
 
     assert %{
-             "mode" => "pairprogramming",
+             "mode" => "pair_programming",
              "model" => "gpt-5.1-codex",
              "reasoning_effort" => "low"
            } = CollaborationMode.to_map(mode)
+  end
+
+  test "from_map/1 decodes legacy pair programming variants" do
+    assert %CollaborationMode{mode: :pair_programming} =
+             CollaborationMode.from_map(%{
+               "mode" => "pairprogramming",
+               "model" => "gpt-5.1-codex"
+             })
+
+    assert %CollaborationMode{mode: :pair_programming} =
+             CollaborationMode.from_map(%{
+               "mode" => "pair-programming",
+               "model" => "gpt-5.1-codex"
+             })
+  end
+
+  test "from_map/1 decodes code and default modes" do
+    assert %CollaborationMode{mode: :code} =
+             CollaborationMode.from_map(%{"mode" => "code", "model" => "gpt-5.1-codex"})
+
+    assert %CollaborationMode{mode: :default} =
+             CollaborationMode.from_map(%{"mode" => "default", "model" => "gpt-5.1-codex"})
   end
 
   test "unknown modes default to :custom" do

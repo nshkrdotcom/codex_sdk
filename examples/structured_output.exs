@@ -11,7 +11,10 @@ defmodule Examples.StructuredOutput do
 
     case Codex.Thread.run(
            thread,
-           "Provide a quick code-quality summary for the Elixir standard library",
+           """
+           Provide a quick code-quality summary for the Elixir standard library.
+           Return overall_score as an integer from 0 to 100, where 100 is best and 0 is worst.
+           """,
            %{output_schema: schema()}
          ) do
       {:ok, result} ->
@@ -22,7 +25,7 @@ defmodule Examples.StructuredOutput do
 
             issues = data["issues"] || []
 
-            IO.puts("Overall score: #{data["overall_score"]}/100")
+            IO.puts("Overall score (0-100): #{data["overall_score"]}")
             IO.puts("\nIssues:")
 
             if Enum.empty?(issues) do
@@ -47,14 +50,17 @@ defmodule Examples.StructuredOutput do
 
     case Codex.Thread.run(
            thread,
-           "Summarise the top two potential bugs in this test suite",
+           """
+           Summarise the top two potential bugs in this test suite.
+           Return overall_score as an integer from 0 to 100, where 100 is best and 0 is worst.
+           """,
            %{output_schema: schema()}
          ) do
       {:ok, result} ->
         case {result.final_response, TurnResult.json(result)} do
           {%Items.AgentMessage{parsed: parsed}, {:ok, parsed}} ->
             with {:ok, summary} <- Examples.StructuredOutput.CodeAnalysis.from_map(parsed) do
-              IO.puts("Score: #{summary.overall_score}")
+              IO.puts("Score (0-100): #{summary.overall_score}")
               IO.inspect(summary, label: "parsed struct")
             end
 
@@ -72,7 +78,12 @@ defmodule Examples.StructuredOutput do
       "type" => "object",
       "additionalProperties" => false,
       "properties" => %{
-        "overall_score" => %{"type" => "integer", "minimum" => 0, "maximum" => 100},
+        "overall_score" => %{
+          "type" => "integer",
+          "minimum" => 0,
+          "maximum" => 100,
+          "description" => "Overall score on a 0-100 scale where 100 is best."
+        },
         "issues" => %{
           "type" => "array",
           "items" => %{

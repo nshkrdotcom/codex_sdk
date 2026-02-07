@@ -682,22 +682,43 @@ Task.Supervisor.async(MyApp.CodexTaskSupervisor, fn ->
 end)
 ```
 
-## Future Enhancements
+## Shared Runtime Modules
 
-### Realtime and Voice Modules
+Extracted from duplicated patterns across the codebase, these modules centralize cross-cutting concerns:
 
-The SDK includes two additional subsystems for voice interactions:
+- **`Codex.Runtime.Erlexec`**: Unified erlexec startup configuration shared by Exec, Connection, Sessions, ShellTool, and MCP Stdio
+- **`Codex.Runtime.Env`**: Subprocess environment construction shared between Exec and AppServer.Connection; sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` by default
+- **`Codex.Runtime.KeyringWarning`**: Deduplicated warn-once logic from Auth and MCP.OAuth
+- **`Codex.Config.BaseURL`**: `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)
+- **`Codex.Config.OptionNormalizers`**: Shared validation for reasoning summary, verbosity, and history persistence across Options and Thread.Options
+- **`Codex.Config.Overrides`**: Config override serialization, nested map auto-flattening (`flatten_config_map/1`), TOML value validation, and deduplicated `normalize_config_overrides/1`
 
-**Realtime API (`Codex.Realtime.*`)**: Full integration with OpenAI's Realtime API for bidirectional voice streaming.
-- `Codex.Realtime.Session`: WebSocket-based GenServer using WebSockex for real-time communication
-- `Codex.Realtime.Runner`: High-level orchestrator for agent sessions with tool handling
+## Realtime and Voice Modules
+
+The SDK includes two subsystems for voice interactions that make **direct API calls** to OpenAI rather than wrapping the `codex` CLI.
+
+### Realtime API (`Codex.Realtime.*`)
+
+Full integration with OpenAI's Realtime API for bidirectional voice streaming:
+
+- `Codex.Realtime.Session`: WebSocket-based GenServer using WebSockex; traps linked socket exits and runs tool calls outside the callback path so the session stays responsive
+- `Codex.Realtime.Runner`: High-level orchestrator for agent sessions with automatic tool call handling, handoff execution, and guardrail integration
 - `Codex.Realtime.Agent`: Agent configuration with instructions, tools, and handoffs
-- PubSub-based event broadcasting for session events
+- PubSub-based event broadcasting with idempotent subscribe/unsubscribe
+- Semantic VAD turn detection with eagerness, silence duration, and prefix padding
 
-**Voice Pipeline (`Codex.Voice.*`)**: Non-realtime STT -> Workflow -> TTS processing.
-- `Codex.Voice.Pipeline`: Orchestrates speech-to-text, workflow processing, and text-to-speech
-- `Codex.Voice.Workflow`: Behaviour for custom workflow implementations
-- `Codex.Voice.Model.*`: Behaviours and implementations for STT/TTS models
+### Voice Pipeline (`Codex.Voice.*`)
+
+Non-realtime STT -> Workflow -> TTS processing:
+
+- `Codex.Voice.Pipeline`: Orchestrates speech-to-text, workflow processing, and text-to-speech with `async_nolink` via ephemeral `TaskSupervisor`
+- `Codex.Voice.Workflow`: Behaviour for custom workflow implementations (`SimpleWorkflow`, `AgentWorkflow`)
+- `Codex.Voice.Model.*`: Behaviours and implementations for STT/TTS models (OpenAI `gpt-4o-transcribe` and `gpt-4o-mini-tts`)
+- `StreamQueue`-backed audio queues replacing Agent-backed queues for backpressure and close semantics
+
+Auth precedence for both: `CODEX_API_KEY` → `auth.json OPENAI_API_KEY` → `OPENAI_API_KEY`.
+
+## Future Enhancements
 
 ### Potential Improvements
 

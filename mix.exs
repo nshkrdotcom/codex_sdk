@@ -86,7 +86,7 @@ defmodule CodexSdk.MixProject do
         "CHANGELOG.md",
         "guides/01-getting-started.md",
         "guides/02-architecture.md",
-        "guides/03-api-reference.md",
+        "guides/03-api-guide.md",
         "guides/04-examples.md",
         "guides/05-app-server-transport.md",
         "guides/06-realtime-and-voice.md"
@@ -99,7 +99,7 @@ defmodule CodexSdk.MixProject do
           "guides/06-realtime-and-voice.md"
         ],
         Reference: [
-          "guides/03-api-reference.md",
+          "guides/03-api-guide.md",
           "guides/04-examples.md",
           "LICENSE"
         ],

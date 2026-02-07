@@ -300,7 +300,7 @@ defmodule Codex.Realtime.Config do
 
     @doc "Resolve the API key, calling function if needed."
     @spec resolve_api_key(t()) :: String.t() | nil
-    def resolve_api_key(%__MODULE__{api_key: nil}), do: Auth.api_key()
+    def resolve_api_key(%__MODULE__{api_key: nil}), do: Auth.direct_api_key()
     def resolve_api_key(%__MODULE__{api_key: key}) when is_binary(key), do: key
     def resolve_api_key(%__MODULE__{api_key: fun}) when is_function(fun, 0), do: fun.()
 

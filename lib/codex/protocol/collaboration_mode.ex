@@ -5,13 +5,15 @@ defmodule Codex.Protocol.CollaborationMode do
   Collaboration modes define different interaction styles with the model:
   - `:plan` - planning mode with high reasoning
   - `:pair_programming` - interactive coding with medium reasoning
+  - `:code` - coding-focused preset
+  - `:default` - runtime default collaboration preset
   - `:execute` - execution mode with high reasoning
   - `:custom` - custom configuration
   """
 
   use TypedStruct
 
-  @type mode_kind :: :plan | :pair_programming | :execute | :custom
+  @type mode_kind :: :plan | :pair_programming | :code | :default | :execute | :custom
 
   typedstruct do
     @typedoc "Collaboration mode with settings"
@@ -47,12 +49,17 @@ defmodule Codex.Protocol.CollaborationMode do
   defp decode_mode("pair_programming"), do: :pair_programming
   defp decode_mode("pairprogramming"), do: :pair_programming
   defp decode_mode("pair-programming"), do: :pair_programming
+  defp decode_mode("code"), do: :code
+  defp decode_mode("default"), do: :default
   defp decode_mode("execute"), do: :execute
   defp decode_mode("custom"), do: :custom
   defp decode_mode(_), do: :custom
 
   defp encode_mode(:plan), do: "plan"
-  defp encode_mode(:pair_programming), do: "pairprogramming"
+  # Canonical app-server wire value expected by current Codex builds.
+  defp encode_mode(:pair_programming), do: "pair_programming"
+  defp encode_mode(:code), do: "code"
+  defp encode_mode(:default), do: "default"
   defp encode_mode(:execute), do: "execute"
   defp encode_mode(:custom), do: "custom"
 

@@ -1,4 +1,4 @@
-# API Reference
+# API Guide
 
 Complete API documentation for all modules in the Elixir Codex SDK.
 
@@ -20,6 +20,13 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
 | `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, request_user_input, rate limits) |
+| `Codex.Config.Overrides` | Config override serialization, nested map flattening, and TOML value validation |
+| `Codex.Runtime.Erlexec` | Unified erlexec startup shared across subprocess modules |
+| `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding) |
+| `Codex.Config.BaseURL` | Base URL resolution with option → env → default precedence |
+| `Codex.Config.OptionNormalizers` | Shared validation for reasoning summary, verbosity, history persistence |
+| `Codex.Realtime` | Bidirectional voice via OpenAI Realtime API (WebSocket) |
+| `Codex.Voice` | Non-realtime STT → Workflow → TTS pipeline |
 | `Codex.OutputSchemaFile` | JSON schema file management |
 
 ---
@@ -559,7 +566,67 @@ Returning a `%Codex.Files.Attachment{}` from a tool (or passing one to `Codex.To
 
 ## Realtime and Voice
 
-Realtime and voice APIs from the Python SDK are not yet available in Elixir. The stub modules `Codex.Realtime` and `Codex.Voice` return `{:error, %Codex.Error{kind: :unsupported_feature}}` with descriptive messages to make the gap explicit until support lands.
+The SDK provides full Realtime API and Voice Pipeline support ported from the OpenAI Agents Python SDK. These modules make **direct API calls** to OpenAI rather than wrapping the `codex` CLI.
+
+### `Codex.Realtime`
+
+Main module with agent builder and convenience functions for bidirectional voice interactions via WebSocket.
+
+- `agent/1` — builds a `Codex.Realtime.Agent` struct with instructions, tools, and handoffs
+- `start_session/2` — starts a `Codex.Realtime.Session` WebSocket GenServer
+- `subscribe/2` / `unsubscribe/2` — idempotent PubSub event subscription
+- `send_audio/2` / `commit_audio/1` — send PCM16 audio data and commit the buffer
+- `send_tool_result/3` — return tool call results to the session
+- `add_handoff/3` — configure agent-to-agent handoffs
+- `stop_session/1` — stop the session and close the WebSocket
+
+### `Codex.Realtime.Session`
+
+WebSocket-based GenServer using WebSockex for real-time bidirectional streaming. Traps linked WebSocket exits and runs tool calls outside the callback path so the session stays responsive.
+
+### `Codex.Realtime.Runner`
+
+High-level orchestrator for agent sessions with automatic tool call handling, handoff execution, and guardrail integration.
+
+### `Codex.Realtime.Config`
+
+Configuration structs for session and model settings:
+
+- `RunConfig` — top-level session run configuration
+- `SessionModelSettings` — model, voice, turn detection, temperature
+- `TurnDetectionConfig` — semantic VAD or server VAD with eagerness (`:low`, `:medium`, `:high`), `silence_duration_ms`, and `prefix_padding_ms`
+- `InputAudioTranscription` — transcription model and settings
+
+### `Codex.Voice.Pipeline`
+
+Orchestrates STT -> Workflow -> TTS processing for single-turn and multi-turn voice flows. Uses `Task`-based async execution via ephemeral `TaskSupervisor`.
+
+### `Codex.Voice.Workflow`
+
+Behaviour for custom processing logic. Implementations:
+
+- `Codex.Voice.SimpleWorkflow` — function-based workflows with optional greeting
+- `Codex.Voice.AgentWorkflow` — workflows backed by `Codex.Agent` with multi-turn conversation history
+
+### `Codex.Voice.Model.*`
+
+Behaviours and implementations for speech models:
+
+- `Codex.Voice.Model.STTModel` — speech-to-text behaviour; `OpenAISTT` implementation using `gpt-4o-transcribe`
+- `Codex.Voice.Model.TTSModel` — text-to-speech behaviour; `OpenAITTS` implementation using `gpt-4o-mini-tts`
+- `Codex.Voice.Model.ModelProvider` — model factory behaviour; `OpenAIProvider` implementation
+
+### Voice types
+
+- `Codex.Voice.Input.AudioInput` — single audio buffer input
+- `Codex.Voice.Input.StreamedAudioInput` — streaming audio input with `StreamQueue` backpressure
+- `Codex.Voice.Result` — streamed audio output
+- `Codex.Voice.Events` — voice stream events (audio, lifecycle, error)
+- `Codex.Voice.Config` — pipeline configuration with STT/TTS settings
+
+Auth precedence for Realtime/Voice: `CODEX_API_KEY` → `auth.json OPENAI_API_KEY` → `OPENAI_API_KEY`.
+
+See `guides/06-realtime-and-voice.md` for the complete guide.
 
 ---
 
@@ -1656,3 +1723,4 @@ For developers familiar with the TypeScript SDK:
 - [Architecture Guide](02-architecture.md)
 - [Examples](04-examples.md)
 - [App-server Transport](05-app-server-transport.md)
+- [Realtime and Voice](06-realtime-and-voice.md)

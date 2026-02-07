@@ -329,6 +329,38 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "turn_start/4 encodes pair_programming collaboration mode", %{conn: conn, os_pid: os_pid} do
+    collab = %Codex.Protocol.CollaborationMode{
+      mode: :pair_programming,
+      model: "gpt-5.3-codex",
+      reasoning_effort: :medium,
+      developer_instructions: "Keep output practical."
+    }
+
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi", collaboration_mode: collab)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert %{"mode" => "pair_programming", "model" => "gpt-5.3-codex"} =
+             params["collaborationMode"]
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
   test "turn_start/4 encodes none personality", %{conn: conn, os_pid: os_pid} do
     task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", personality: :none) end)
 

@@ -18,12 +18,15 @@ This SDK contains two distinct subsystems with different authentication:
    - Does NOT use the codex CLI
 
 By default, `./examples/run_all.sh` pins `CODEX_MODEL=gpt-5.3-codex` (override by exporting `CODEX_MODEL` before running). A few live scripts also explicitly set `model: "gpt-5.3-codex"`; edit those examples if you need a different model.
+The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 ## Running everything
 
 ```bash
 ./examples/run_all.sh
 ```
+
+If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
 
 ## Live ExUnit tests
 
@@ -48,10 +51,10 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
 - `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests
 - `examples/live_app_server_mcp.exs` — lists MCP servers via `Codex.AppServer.Mcp.list_servers/2` (uses `mcpServerStatus/list` with fallback)
-- `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a preset
+- `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a supported preset (or skips when the connected CLI build lacks collaboration-mode capability)
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
 - `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
-- `examples/live_web_search_modes.exs` — runs turns with `web_search_mode` toggles and reports web search items
+- `examples/live_web_search_modes.exs` — validates web-search event behavior for `web_search_mode` toggles and prints the final response as illustrative output
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels
 - `examples/live_exec_controls.exs` — demonstrates cancellation/controls on streaming turns

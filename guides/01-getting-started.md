@@ -135,6 +135,6 @@ See `guides/06-realtime-and-voice.md` for the complete guide.
 ## Next Steps
 
 - `guides/02-architecture.md` for system layout and transport flow.
-- `guides/03-api-reference.md` for module-level docs.
+- `guides/03-api-guide.md` for module-level docs.
 - `guides/04-examples.md` for runnable patterns.
 - `guides/06-realtime-and-voice.md` for voice interactions.

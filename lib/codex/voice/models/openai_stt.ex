@@ -105,7 +105,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
         _trace_include_sensitive_data,
         _trace_include_sensitive_audio_data
       ) do
-    api_key = model.api_key || Auth.api_key()
+    api_key = model.api_key || Auth.direct_api_key()
 
     {filename, wav_data, content_type} = AudioInput.to_audio_file(input)
 
@@ -259,7 +259,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
       input: input,
       settings: settings,
       model: Keyword.get(opts, :model, "gpt-4o-transcribe"),
-      api_key: Keyword.get(opts, :api_key, Auth.api_key()),
+      api_key: Keyword.get(opts, :api_key, Auth.direct_api_key()),
       trace_include_sensitive_data: Keyword.get(opts, :trace_include_sensitive_data, true),
       trace_include_sensitive_audio_data:
         Keyword.get(opts, :trace_include_sensitive_audio_data, false)

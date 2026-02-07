@@ -1,5 +1,7 @@
 defmodule Codex.Config.BaseURL do
-  @moduledoc false
+  @moduledoc """
+  Base URL resolution with option → env → default precedence.
+  """
 
   @default_base_url "https://api.openai.com/v1"
 

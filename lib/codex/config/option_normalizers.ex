@@ -1,5 +1,7 @@
 defmodule Codex.Config.OptionNormalizers do
-  @moduledoc false
+  @moduledoc """
+  Shared validation for reasoning summary, verbosity, and history persistence.
+  """
 
   @type tagged_error :: {:error, {atom(), term()}}
 

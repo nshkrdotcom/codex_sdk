@@ -33,8 +33,8 @@ defmodule RealtimeBasicExample do
   def run do
     IO.puts("=== Basic Realtime Session Example ===\n")
 
-    # Realtime auth follows Codex.Auth precedence.
-    unless Codex.Auth.api_key() do
+    # Realtime auth accepts Codex.Auth precedence and OPENAI_API_KEY.
+    unless fetch_api_key() do
       IO.puts(
         "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
       )
@@ -216,6 +216,8 @@ defmodule RealtimeBasicExample do
       sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
     """)
   end
+
+  defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
 RealtimeBasicExample.run()

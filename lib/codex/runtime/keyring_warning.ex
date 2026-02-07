@@ -1,5 +1,7 @@
 defmodule Codex.Runtime.KeyringWarning do
-  @moduledoc false
+  @moduledoc """
+  Deduplicated warn-once logic for keyring-related warnings.
+  """
 
   require Logger
 

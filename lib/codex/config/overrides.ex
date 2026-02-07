@@ -1,5 +1,7 @@
 defmodule Codex.Config.Overrides do
-  @moduledoc false
+  @moduledoc """
+  Config override serialization, nested map flattening, and TOML value validation.
+  """
 
   alias Codex.Options
   alias Codex.Thread.Options, as: ThreadOptions

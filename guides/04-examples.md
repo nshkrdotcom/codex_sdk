@@ -1694,4 +1694,4 @@ These examples demonstrate the flexibility and power of the Elixir Codex SDK. Ke
 - **Realtime voice** for bidirectional audio interactions
 - **Voice pipeline** for STT -> Workflow -> TTS processing
 
-Refer to the [API Reference](03-api-reference.md) for complete documentation of all functions and types.
+Refer to the [API Guide](03-api-guide.md) for complete documentation of all functions and types.

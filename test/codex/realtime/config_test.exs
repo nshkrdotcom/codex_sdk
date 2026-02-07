@@ -345,6 +345,30 @@ defmodule Codex.Realtime.ConfigTest do
       assert Config.ModelConfig.resolve_api_key(config) == "sk-auth-file"
     end
 
+    test "falls back to OPENAI_API_KEY when Codex key sources are absent" do
+      original_codex_home = System.get_env("CODEX_HOME")
+      original_codex_key = System.get_env("CODEX_API_KEY")
+      original_openai_key = System.get_env("OPENAI_API_KEY")
+
+      codex_home =
+        Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(codex_home)
+      System.put_env("CODEX_HOME", codex_home)
+      System.delete_env("CODEX_API_KEY")
+      System.put_env("OPENAI_API_KEY", "sk-openai-env")
+
+      on_exit(fn ->
+        restore_env("CODEX_HOME", original_codex_home)
+        restore_env("CODEX_API_KEY", original_codex_key)
+        restore_env("OPENAI_API_KEY", original_openai_key)
+        File.rm_rf(codex_home)
+      end)
+
+      config = %Config.ModelConfig{api_key: nil}
+      assert Config.ModelConfig.resolve_api_key(config) == "sk-openai-env"
+    end
+
     test "builds URL with model name" do
       config = %Config.ModelConfig{url: "wss://api.openai.com/v1/realtime"}
       url = Config.ModelConfig.build_url(config, "gpt-4o-realtime-preview")

@@ -1,5 +1,7 @@
 defmodule Codex.Auth do
-  @moduledoc false
+  @moduledoc """
+  API key resolution with `CODEX_API_KEY` → `auth.json` → `OPENAI_API_KEY` precedence.
+  """
 
   alias Codex.Config.LayerStack
   alias Codex.Runtime.KeyringWarning
@@ -45,6 +47,11 @@ defmodule Codex.Auth do
   @spec api_key() :: String.t() | nil
   def api_key do
     api_key_env() || openai_api_key_from_auth()
+  end
+
+  @spec direct_api_key() :: String.t() | nil
+  def direct_api_key do
+    api_key() || normalize_string(System.get_env("OPENAI_API_KEY"))
   end
 
   @spec chatgpt_access_token() :: String.t() | nil

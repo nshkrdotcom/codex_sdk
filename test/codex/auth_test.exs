@@ -16,10 +16,12 @@ defmodule Codex.AuthTest do
 
     original_home = System.get_env("CODEX_HOME")
     original_api_key = System.get_env("CODEX_API_KEY")
+    original_openai_api_key = System.get_env("OPENAI_API_KEY")
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
 
     System.put_env("CODEX_HOME", codex_home)
     System.delete_env("CODEX_API_KEY")
+    System.delete_env("OPENAI_API_KEY")
     Application.put_env(:codex_sdk, :system_config_path, system_path)
 
     :persistent_term.erase({Codex.Auth, :keyring_warning_emitted})
@@ -33,6 +35,11 @@ defmodule Codex.AuthTest do
       case original_api_key do
         nil -> System.delete_env("CODEX_API_KEY")
         value -> System.put_env("CODEX_API_KEY", value)
+      end
+
+      case original_openai_api_key do
+        nil -> System.delete_env("OPENAI_API_KEY")
+        value -> System.put_env("OPENAI_API_KEY", value)
       end
 
       case original_system_path do
@@ -74,5 +81,22 @@ defmodule Codex.AuthTest do
       end)
 
     assert log =~ "keyring auth"
+  end
+
+  test "direct_api_key/0 falls back to OPENAI_API_KEY when Codex key sources are absent" do
+    System.put_env("OPENAI_API_KEY", "sk-openai-env")
+    assert Auth.api_key() == nil
+    assert Auth.direct_api_key() == "sk-openai-env"
+  end
+
+  test "direct_api_key/0 preserves Codex precedence over OPENAI_API_KEY", %{
+    codex_home: codex_home
+  } do
+    System.put_env("CODEX_API_KEY", "sk-codex-priority")
+    System.put_env("OPENAI_API_KEY", "sk-openai-secondary")
+    File.write!(Path.join(codex_home, "auth.json"), ~s({"OPENAI_API_KEY":"sk-auth-file"}))
+
+    assert Auth.api_key() == "sk-codex-priority"
+    assert Auth.direct_api_key() == "sk-codex-priority"
   end
 end

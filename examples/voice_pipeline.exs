@@ -35,8 +35,8 @@ defmodule VoicePipelineExample do
   def run do
     IO.puts("=== Voice Pipeline Example ===\n")
 
-    # Voice auth follows Codex.Auth precedence.
-    unless Codex.Auth.api_key() do
+    # Voice auth accepts Codex.Auth precedence and OPENAI_API_KEY.
+    unless fetch_api_key() do
       IO.puts(
         "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
       )
@@ -163,6 +163,8 @@ defmodule VoicePipelineExample do
   end
 
   defp handle_event(_event, acc), do: acc
+
+  defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
 VoicePipelineExample.run()
