@@ -330,8 +330,8 @@ defmodule Codex.Exec do
   defp resolve_idle_timeout_ms(_), do: nil
 
   defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts, command_args \\ nil) do
-    with {:ok, binary_path} <- Options.codex_path(opts) do
-      args = build_args(exec_opts, command_args)
+    with {:ok, binary_path} <- Options.codex_path(opts),
+         {:ok, args} <- build_args(exec_opts, command_args) do
       command = Enum.map([binary_path | args], &to_charlist/1)
       {:ok, command}
     end
@@ -340,28 +340,31 @@ defmodule Codex.Exec do
   defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts, command_args) do
     command_args = command_args || command_args_for_run(exec_opts)
 
-    ["exec", "--json"] ++
-      profile_args(exec_opts) ++
-      oss_args(exec_opts) ++
-      local_provider_args(exec_opts) ++
-      full_auto_args(exec_opts) ++
-      dangerously_bypass_args(exec_opts) ++
-      model_args(codex_opts) ++
-      color_args(exec_opts) ++
-      output_last_message_args(exec_opts) ++
-      reasoning_effort_args(exec_opts) ++
-      sandbox_args(exec_opts.thread) ++
-      working_directory_args(exec_opts.thread) ++
-      additional_directories_args(exec_opts.thread) ++
-      skip_git_repo_check_args(exec_opts.thread) ++
-      network_access_args(exec_opts.thread) ++
-      ask_for_approval_args(exec_opts.thread) ++
-      command_args ++
-      continuation_args(exec_opts.continuation_token) ++
-      cancellation_args(exec_opts.cancellation_token) ++
-      attachment_args(exec_opts.attachments) ++
-      schema_args(exec_opts.output_schema_path) ++
-      config_override_args(exec_opts)
+    with {:ok, config_args} <- config_override_args(exec_opts) do
+      {:ok,
+       ["exec", "--json"] ++
+         profile_args(exec_opts) ++
+         oss_args(exec_opts) ++
+         local_provider_args(exec_opts) ++
+         full_auto_args(exec_opts) ++
+         dangerously_bypass_args(exec_opts) ++
+         model_args(codex_opts) ++
+         color_args(exec_opts) ++
+         output_last_message_args(exec_opts) ++
+         reasoning_effort_args(exec_opts) ++
+         sandbox_args(exec_opts.thread) ++
+         working_directory_args(exec_opts.thread) ++
+         additional_directories_args(exec_opts.thread) ++
+         skip_git_repo_check_args(exec_opts.thread) ++
+         network_access_args(exec_opts.thread) ++
+         ask_for_approval_args(exec_opts.thread) ++
+         command_args ++
+         continuation_args(exec_opts.continuation_token) ++
+         cancellation_args(exec_opts.cancellation_token) ++
+         attachment_args(exec_opts.attachments) ++
+         schema_args(exec_opts.output_schema_path) ++
+         config_args}
+    end
   end
 
   defp command_args_for_run(%ExecOptions{} = exec_opts) do
@@ -605,57 +608,38 @@ defmodule Codex.Exec do
   defp attachment_cli_args(_), do: []
 
   defp config_override_args(exec_opts) do
-    derived_overrides = derived_config_overrides(exec_opts)
-    thread_overrides = thread_config_overrides(exec_opts)
-    turn_overrides = turn_config_overrides(exec_opts)
+    with {:ok, global_overrides} <- global_config_overrides(exec_opts),
+         {:ok, thread_overrides} <- thread_config_overrides(exec_opts),
+         {:ok, turn_overrides} <- turn_config_overrides(exec_opts) do
+      derived_overrides = derived_config_overrides(exec_opts)
 
-    (derived_overrides ++ thread_overrides ++ turn_overrides)
-    |> Overrides.cli_args()
+      {:ok,
+       (global_overrides ++ derived_overrides ++ thread_overrides ++ turn_overrides)
+       |> Overrides.cli_args()}
+    end
+  end
+
+  defp global_config_overrides(%ExecOptions{codex_opts: %Options{} = opts}) do
+    opts
+    |> Map.get(:config_overrides, [])
+    |> Overrides.normalize_config_overrides()
   end
 
   defp thread_config_overrides(%ExecOptions{
          thread: %{thread_opts: %Codex.Thread.Options{} = opts}
        }) do
-    List.wrap(Map.get(opts, :config_overrides, []))
+    opts
+    |> Map.get(:config_overrides, [])
+    |> Overrides.normalize_config_overrides()
   end
 
-  defp thread_config_overrides(_), do: []
+  defp thread_config_overrides(_), do: {:ok, []}
 
   defp turn_config_overrides(%ExecOptions{turn_opts: %{} = opts}) do
     opts
     |> fetch_turn_opt(:config_overrides)
-    |> normalize_config_overrides()
+    |> Overrides.normalize_config_overrides()
   end
-
-  defp normalize_config_overrides(nil), do: []
-
-  defp normalize_config_overrides(%{} = overrides) do
-    has_nested? = Enum.any?(overrides, fn {_k, v} -> is_map(v) and map_size(v) > 0 end)
-
-    if has_nested? do
-      Overrides.flatten_config_map(overrides)
-    else
-      Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
-    end
-  end
-
-  defp normalize_config_overrides(overrides) when is_list(overrides) do
-    cond do
-      Keyword.keyword?(overrides) ->
-        Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
-
-      Enum.all?(overrides, &is_binary/1) ->
-        overrides
-
-      Enum.all?(overrides, &match?({_, _}, &1)) ->
-        Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
-
-      true ->
-        []
-    end
-  end
-
-  defp normalize_config_overrides(_), do: []
 
   defp derived_config_overrides(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
     thread_opts =

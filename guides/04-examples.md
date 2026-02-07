@@ -854,6 +854,29 @@ You can also pass CLI config overrides and shell environment policy entries via 
 {:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
 ```
 
+Options-level global overrides are also supported and are emitted before derived/thread/turn
+overrides (later layers win):
+
+```elixir
+{:ok, codex_opts} =
+  Codex.Options.new(
+    config: %{"model_reasoning_summary" => "concise"}
+  )
+
+{:ok, thread_opts} =
+  Codex.Thread.Options.new(
+    config_overrides: %{"model_reasoning_summary" => "detailed"}
+  )
+
+{:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
+
+# Turn-level override wins last:
+{:ok, _result} =
+  Codex.Thread.run(thread, "Reply with exactly ok", %{
+    config_overrides: %{"model_reasoning_summary" => "none"}
+  })
+```
+
 ---
 
 ## Advanced Patterns
@@ -1336,6 +1359,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 - `examples/live_collaboration_modes.exs` — lists collaboration presets and runs a turn
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
+- `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and validation
 - `examples/live_thread_management.exs` — demonstrates thread read/fork/rollback/loaded list
 - `examples/live_web_search_modes.exs` — toggles web search modes and reports web search items (explicit disable emits `web_search="disabled"`)
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage events

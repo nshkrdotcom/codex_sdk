@@ -65,6 +65,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
+- `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and runtime validation
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
 
 ## Realtime Voice Examples (OpenAI Agents SDK)

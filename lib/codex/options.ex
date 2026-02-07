@@ -9,6 +9,7 @@ defmodule Codex.Options do
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
+  alias Codex.Config.Overrides
   alias Codex.Models
 
   @enforce_keys []
@@ -29,7 +30,14 @@ defmodule Codex.Options do
             history_max_bytes: nil,
             hide_agent_reasoning: false,
             tool_output_token_limit: nil,
-            agent_max_threads: nil
+            agent_max_threads: nil,
+            config_overrides: []
+
+  @typep config_override_value_scalar :: String.t() | boolean() | integer() | float()
+  @typep config_override_value ::
+           config_override_value_scalar()
+           | [config_override_value()]
+           | %{optional(String.t() | atom()) => config_override_value()}
 
   @type t :: %__MODULE__{
           api_key: String.t() | nil,
@@ -49,7 +57,10 @@ defmodule Codex.Options do
           history_max_bytes: non_neg_integer() | nil,
           hide_agent_reasoning: boolean(),
           tool_output_token_limit: pos_integer() | nil,
-          agent_max_threads: pos_integer() | nil
+          agent_max_threads: pos_integer() | nil,
+          config_overrides: [
+            String.t() | {String.t(), config_override_value()}
+          ]
         }
 
   @doc """
@@ -79,7 +90,8 @@ defmodule Codex.Options do
          {:ok, history_max_bytes} <- fetch_history_max_bytes(attrs),
          {:ok, hide_agent_reasoning} <- fetch_hide_agent_reasoning(attrs),
          {:ok, tool_output_token_limit} <- fetch_tool_output_token_limit(attrs),
-         {:ok, agent_max_threads} <- fetch_agent_max_threads(attrs) do
+         {:ok, agent_max_threads} <- fetch_agent_max_threads(attrs),
+         {:ok, config_overrides} <- fetch_config_overrides(attrs) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
@@ -99,7 +111,8 @@ defmodule Codex.Options do
          history_max_bytes: history_max_bytes,
          hide_agent_reasoning: hide_agent_reasoning,
          tool_output_token_limit: tool_output_token_limit,
-         agent_max_threads: agent_max_threads
+         agent_max_threads: agent_max_threads,
+         config_overrides: config_overrides
        }}
     end
   end
@@ -350,6 +363,12 @@ defmodule Codex.Options do
       value when is_integer(value) and value > 0 -> {:ok, value}
       other -> {:error, {:invalid_agent_max_threads, other}}
     end
+  end
+
+  defp fetch_config_overrides(attrs) do
+    attrs
+    |> pick([:config_overrides, "config_overrides", :config, "config"], [])
+    |> Overrides.normalize_config_overrides()
   end
 
   defp auth_mode_for(api_key) when is_binary(api_key) and api_key != "", do: :api

@@ -375,7 +375,7 @@ Additional exec helpers:
 
 - `Codex.Exec.review/2` and `Codex.Exec.review_stream/2` run `codex exec review` with a review target (uncommitted, base branch, commit, or custom prompt).
 - Thread/turn options like `profile`, `oss`, `local_provider`, `full_auto`, `dangerously_bypass_approvals_and_sandbox`, `output_last_message`, and `color` are forwarded as CLI flags.
-- `config_overrides` maps to `-c key=value` overrides (TOML parsing on the codex side).
+- `config_overrides` maps to `-c key=value` overrides (TOML parsing on the codex side), with runtime validation for TOML-compatible values.
 - `Codex.resume_thread(:last)` maps to `codex exec resume --last`.
 
 Example:
@@ -1249,7 +1249,11 @@ Global Codex configuration.
   history_max_bytes: non_neg_integer() | nil,
   hide_agent_reasoning: boolean(),
   tool_output_token_limit: pos_integer() | nil,
-  agent_max_threads: pos_integer() | nil
+  agent_max_threads: pos_integer() | nil,
+  config_overrides: [
+    String.t()
+    | {String.t(), String.t() | boolean() | integer() | float() | list() | map()}
+  ]
 }
 ```
 
@@ -1272,13 +1276,15 @@ Global Codex configuration.
 - `hide_agent_reasoning`: Hide reasoning summaries even when supported
 - `tool_output_token_limit`: Token cap for tool outputs (per turn)
 - `agent_max_threads`: Limit for max concurrent agent threads
+- `config_overrides` / `config`: Global config override bag flattened into `--config` flags before derived/thread/turn overrides; use TOML-compatible values only (strings, booleans, numbers, arrays, nested maps)
 
 **Example**:
 ```elixir
 %Codex.Options{
   codex_path_override: "/custom/path/to/codex",
   base_url: "https://api.openai.com",
-  api_key: System.get_env("CODEX_API_KEY")
+  api_key: System.get_env("CODEX_API_KEY"),
+  config_overrides: [{"model_reasoning_summary", "concise"}]
 }
 ```
 
@@ -1334,7 +1340,10 @@ Thread-specific configuration.
   dangerously_bypass_approvals_and_sandbox: boolean(),
   output_last_message: String.t() | nil,
   color: :auto | :always | :never | String.t() | nil,
-  config_overrides: [String.t() | {String.t() | atom(), term()}],
+  config_overrides: [
+    String.t()
+    | {String.t() | atom(), String.t() | boolean() | integer() | float() | list() | map()}
+  ],
   history_persistence: String.t() | nil,
   history_max_bytes: non_neg_integer() | nil,
   model: String.t() | nil,
@@ -1390,6 +1399,7 @@ Thread-specific configuration.
 - `output_last_message`: File path for `--output-last-message`
 - `color`: Output color mode (`--color`)
 - `config_overrides`: Generic `-c key=value` overrides (strings, `{key, value}` pairs, or nested maps that are auto-flattened to dotted paths)
+- `config_overrides` value validation: only TOML-compatible values are accepted (`nil` and unsupported terms error early)
 - `history_persistence` / `history_max_bytes`: History persistence configuration forwarded via config overrides
 - `model` / `model_provider`: App-server thread model overrides
 - `model_reasoning_summary` / `model_verbosity`: Reasoning summary + verbosity settings forwarded via config overrides
@@ -1445,6 +1455,7 @@ Turn-specific configuration passed as a map or keyword list.
 **Fields**:
 - `output_schema`: JSON schema for structured output (nil for natural language)
 - `config_overrides`: Exec `-c key=value` overrides (strings or key/value pairs)
+- `config_overrides` value validation: only TOML-compatible values are accepted (`nil` and unsupported terms error early)
 - `sandbox_policy`: App-server sandbox policy override
 - `model` / `approval_policy` / `cwd`: App-server per-turn overrides
 - `effort` / `summary`: App-server reasoning overrides

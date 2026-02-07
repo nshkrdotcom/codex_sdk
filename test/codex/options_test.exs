@@ -151,6 +151,26 @@ defmodule Codex.OptionsTest do
       assert opts.agent_max_threads == 3
     end
 
+    test "accepts options-level config overrides and flattens nested maps" do
+      {:ok, opts} =
+        Options.new(%{
+          config: %{
+            "approval_policy" => "never",
+            "sandbox_workspace_write" => %{"network_access" => true}
+          }
+        })
+
+      assert {"approval_policy", "never"} in opts.config_overrides
+      assert {"sandbox_workspace_write.network_access", true} in opts.config_overrides
+    end
+
+    test "rejects invalid options-level config override values" do
+      assert {:error, {:invalid_config_override_value, "features.web_search_request", nil}} =
+               Options.new(%{
+                 config: %{"features" => %{"web_search_request" => nil}}
+               })
+    end
+
     test "rejects invalid reasoning summary" do
       assert {:error, {:invalid_model_reasoning_summary, "loud"}} =
                Options.new(%{model_reasoning_summary: "loud"})

@@ -4,6 +4,13 @@ defmodule Codex.Config.Overrides do
   alias Codex.Options
   alias Codex.Thread.Options, as: ThreadOptions
 
+  @type config_override_scalar :: String.t() | boolean() | integer() | float()
+  @type config_override_value ::
+          config_override_scalar
+          | [config_override_value()]
+          | %{optional(String.t() | atom()) => config_override_value()}
+  @type config_override :: String.t() | {String.t(), config_override_value()}
+
   @spec derived_overrides(Options.t(), ThreadOptions.t() | nil) :: [{String.t(), term()}]
   def derived_overrides(%Options{} = codex_opts, thread_opts) do
     []
@@ -89,7 +96,7 @@ defmodule Codex.Config.Overrides do
   @spec merge_config(map() | nil, Options.t(), ThreadOptions.t()) :: map() | nil
   def merge_config(config, %Options{} = codex_opts, %ThreadOptions{} = thread_opts) do
     base = normalize_config_map(config)
-    overrides = derived_overrides(codex_opts, thread_opts)
+    overrides = derived_overrides(codex_opts, thread_opts) ++ options_config_overrides(codex_opts)
 
     merged =
       Enum.reduce(overrides, base, fn {key, value}, acc ->
@@ -157,6 +164,42 @@ defmodule Codex.Config.Overrides do
     |> Enum.flat_map(&config_override_arg/1)
   end
 
+  @spec normalize_config_overrides(term()) :: {:ok, [config_override()]} | {:error, term()}
+  def normalize_config_overrides(nil), do: {:ok, []}
+
+  def normalize_config_overrides(%{} = overrides) do
+    normalized =
+      if has_nested_map?(overrides) do
+        flatten_config_map(overrides)
+      else
+        Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+      end
+
+    validate_overrides(normalized)
+  end
+
+  def normalize_config_overrides(overrides) when is_list(overrides) do
+    cond do
+      Keyword.keyword?(overrides) ->
+        overrides
+        |> Enum.map(fn {key, value} -> {to_string(key), value} end)
+        |> validate_overrides()
+
+      Enum.all?(overrides, &is_binary/1) ->
+        validate_overrides(overrides)
+
+      Enum.all?(overrides, &match?({_, _}, &1)) ->
+        overrides
+        |> Enum.map(fn {key, value} -> {to_string(key), value} end)
+        |> validate_overrides()
+
+      true ->
+        {:error, {:invalid_config_overrides, overrides}}
+    end
+  end
+
+  def normalize_config_overrides(value), do: {:error, {:invalid_config_overrides, value}}
+
   defp config_override_arg({key, value}) do
     ["--config", "#{key}=#{encode_override_value(value)}"]
   end
@@ -184,7 +227,9 @@ defmodule Codex.Config.Overrides do
       end) <> "}"
   end
 
-  defp encode_override_value(value), do: inspect(value)
+  defp encode_override_value(value) do
+    raise ArgumentError, "unsupported config override value: #{inspect(value)}"
+  end
 
   defp encode_override_key(key), do: inspect(to_string(key))
 
@@ -395,6 +440,107 @@ defmodule Codex.Config.Overrides do
   defp normalize_network_access("enabled"), do: true
   defp normalize_network_access("restricted"), do: false
   defp normalize_network_access(_), do: nil
+
+  defp options_config_overrides(%Options{} = codex_opts) do
+    codex_opts
+    |> Map.get(:config_overrides, [])
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      {key, value} -> [{to_string(key), value}]
+      _ -> []
+    end)
+  end
+
+  defp has_nested_map?(map) when is_map(map) do
+    Enum.any?(map, fn {_key, value} -> is_map(value) and map_size(value) > 0 end)
+  end
+
+  defp validate_overrides(overrides) do
+    Enum.reduce_while(overrides, {:ok, []}, fn override, {:ok, acc} ->
+      case validate_override(override) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, list} -> {:ok, Enum.reverse(list)}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp validate_override(value) when is_binary(value) do
+    if String.trim(value) == "" do
+      {:error, {:invalid_config_override, value}}
+    else
+      {:ok, value}
+    end
+  end
+
+  defp validate_override({key, value}) do
+    with {:ok, key} <- validate_override_key(key),
+         :ok <- validate_override_value(value, key) do
+      {:ok, {key, value}}
+    end
+  end
+
+  defp validate_override(other), do: {:error, {:invalid_config_override, other}}
+
+  defp validate_override_key(key) when is_binary(key) do
+    if String.trim(key) == "" do
+      {:error, {:invalid_config_override_key, key}}
+    else
+      {:ok, key}
+    end
+  end
+
+  defp validate_override_key(key), do: key |> to_string() |> validate_override_key()
+
+  defp validate_override_value(nil, path),
+    do: {:error, {:invalid_config_override_value, path, nil}}
+
+  defp validate_override_value(value, _path) when is_binary(value), do: :ok
+  defp validate_override_value(value, _path) when is_boolean(value), do: :ok
+  defp validate_override_value(value, _path) when is_integer(value), do: :ok
+
+  defp validate_override_value(value, path) when is_float(value) do
+    if finite_float?(value) do
+      :ok
+    else
+      {:error, {:invalid_config_override_value, path, value}}
+    end
+  end
+
+  defp validate_override_value(value, path) when is_list(value) do
+    value
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {entry, idx}, :ok ->
+      case validate_override_value(entry, "#{path}[#{idx}]") do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_override_value(%{} = value, path) do
+    Enum.reduce_while(value, :ok, fn {key, entry}, :ok ->
+      with {:ok, normalized_key} <- validate_override_key(key),
+           :ok <- validate_override_value(entry, "#{path}.#{normalized_key}") do
+        {:cont, :ok}
+      else
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_override_value(value, path),
+    do: {:error, {:invalid_config_override_value, path, value}}
+
+  defp finite_float?(value) when is_float(value) do
+    _ = :erlang.float_to_binary(value)
+    true
+  rescue
+    _ -> false
+  end
 
   defp add_provider_tuning_overrides(overrides, %ThreadOptions{} = thread_opts) do
     provider_id = provider_id_for_tuning(thread_opts)

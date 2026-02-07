@@ -392,7 +392,8 @@ apply or undo diffs locally:
     model_personality: :friendly,
     review_model: "gpt-5.3-codex",
     tool_output_token_limit: 512,
-    history: %{persistence: "local", max_bytes: 1_000_000}
+    history: %{persistence: "local", max_bytes: 1_000_000},
+    config: %{"model_reasoning_summary" => "concise"}  # global --config baseline
   )
 
 # Thread-level options
@@ -452,13 +453,15 @@ turn_options = %{
 
 ### Config Overrides
 
-Thread-level and turn-level config overrides are forwarded as `--config key=value` flags
-to the Codex CLI (exec transport) or merged into the structured config payload (app-server
-transport). Three layers of precedence apply — later wins:
+Options-level, thread-level, and turn-level config overrides are forwarded as
+`--config key=value` flags to the Codex CLI (exec transport). For app-server transport,
+typed derived settings plus options-level config overrides are merged into the structured
+config payload when unset. Four layers of precedence apply for exec — later wins:
 
-1. **Derived** — automatically generated from typed `Codex.Options` and `Codex.Thread.Options` fields
-2. **Thread-level** — `Codex.Thread.Options.config_overrides`
-3. **Turn-level** — `config_overrides` in turn opts passed to `Thread.run/3`
+1. **Options-level global** — `Codex.Options.new(config: ...)`
+2. **Derived** — automatically generated from typed `Codex.Options` and `Codex.Thread.Options` fields
+3. **Thread-level** — `Codex.Thread.Options.config_overrides`
+4. **Turn-level** — `config_overrides` in turn opts passed to `Thread.run/3`
 
 Nested maps are auto-flattened to dotted-path keys:
 
@@ -467,6 +470,10 @@ Nested maps are auto-flattened to dotted-path keys:
 config_overrides: %{"features" => %{"web_search_request" => true}}
 config_overrides: [{"features.web_search_request", true}]
 ```
+
+Override values are validated at runtime and must be TOML-compatible primitives:
+strings, booleans, integers/floats, arrays, and nested maps. Unsupported values
+(`nil`, tuples, PIDs, functions, etc.) return an error before the CLI is invoked.
 
 When you explicitly disable web search (`web_search_enabled: false` or
 `web_search_mode: :disabled`), the SDK emits `web_search="disabled"` so that
@@ -931,6 +938,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening (thread and turn level)
+- **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, and validation
 - **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
 - **`live_web_search_modes.exs`** - Web search mode toggles with event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events

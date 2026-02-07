@@ -79,6 +79,13 @@ defmodule Codex.ThreadTest do
                  shell_environment_policy: %{set: %{"FOO" => 1}}
                })
     end
+
+    test "rejects invalid config override values" do
+      assert {:error, {:invalid_config_override_value, "features.web_search_request", nil}} =
+               ThreadOptions.new(%{
+                 config_overrides: %{"features" => %{"web_search_request" => nil}}
+               })
+    end
   end
 
   describe "build/3" do

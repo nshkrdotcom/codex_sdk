@@ -168,6 +168,50 @@ defmodule Codex.ExecTest do
     assert ~s(model="o3") in flag_values(args, "--config")
   end
 
+  test "forwards options-level global config overrides as --config flags" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_global_overrides_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path,
+        config: %{
+          "approval_policy" => "never",
+          "sandbox_workspace_write" => %{"network_access" => true}
+        }
+      })
+
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, _} = Thread.run(thread, "global config overrides")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    configs = flag_values(args, "--config")
+
+    assert ~s(approval_policy="never") in configs
+    assert "sandbox_workspace_write.network_access=true" in configs
+  end
+
   test "uses --json and omits sandbox and approval policy defaults" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_json_args_#{System.unique_integer([:positive])}")
@@ -543,7 +587,7 @@ defmodule Codex.ExecTest do
     assert resume_idx < image_idx, "resume (#{resume_idx}) must precede --image (#{image_idx})"
   end
 
-  test "config override precedence: derived < thread < turn (later wins)" do
+  test "config override precedence: global < derived < thread < turn (later wins)" do
     capture_path =
       Path.join(
         System.tmp_dir!(),
@@ -564,12 +608,12 @@ defmodule Codex.ExecTest do
       Options.new(%{
         api_key: "test",
         codex_path_override: script_path,
-        model_personality: :friendly
+        model_personality: :pragmatic,
+        config: %{"model_personality" => "friendly"}
       })
 
     {:ok, thread_opts} =
       ThreadOptions.new(%{
-        personality: :pragmatic,
         config_overrides: [{"model_personality", "none"}]
       })
 
@@ -592,12 +636,32 @@ defmodule Codex.ExecTest do
       |> Enum.map(fn {_, idx} -> Enum.at(args, idx + 1) end)
       |> Enum.filter(&String.starts_with?(&1, "model_personality="))
 
-    # All three layers should emit their value; last one wins with the CLI
-    assert length(personality_configs) >= 2,
-           "expected multiple model_personality overrides, got: #{inspect(personality_configs)}"
+    assert personality_configs == [
+             ~s(model_personality="friendly"),
+             ~s(model_personality="pragmatic"),
+             ~s(model_personality="none"),
+             ~s(model_personality="override")
+           ]
 
-    # The last emitted value should be the turn-level override (highest precedence)
     assert List.last(personality_configs) == ~s(model_personality="override")
+  end
+
+  test "returns error for invalid turn-level config override value" do
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.cat_fixture()
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:error, {:exec_failed, %Codex.Error{message: message}}} =
+             Thread.run(thread, "invalid turn override", %{
+               config_overrides: %{"features" => %{"web_search_request" => nil}}
+             })
+
+    assert message =~ "invalid_config_override_value"
   end
 
   test "auto-flattens nested config override maps in turn opts" do

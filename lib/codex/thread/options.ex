@@ -110,9 +110,12 @@ defmodule Codex.Thread.Options do
   @type rate_limit_opts :: keyword()
   @type history_persistence :: String.t()
 
-  @type config_override ::
-          String.t()
-          | {String.t() | atom(), term()}
+  @typep config_override_value_scalar :: String.t() | boolean() | integer() | float()
+  @type config_override_value ::
+          config_override_value_scalar()
+          | [config_override_value()]
+          | %{optional(String.t() | atom()) => config_override_value()}
+  @type config_override :: String.t() | {String.t() | atom(), config_override_value()}
 
   @type t :: %__MODULE__{
           metadata: map(),
@@ -794,35 +797,8 @@ defmodule Codex.Thread.Options do
 
   defp normalize_collaboration_value(_key, value), do: value
 
-  defp normalize_config_overrides(nil), do: {:ok, []}
-
-  defp normalize_config_overrides(%{} = overrides) do
-    has_nested? = Enum.any?(overrides, fn {_k, v} -> is_map(v) and map_size(v) > 0 end)
-
-    if has_nested? do
-      {:ok, Overrides.flatten_config_map(overrides)}
-    else
-      {:ok, Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)}
-    end
-  end
-
-  defp normalize_config_overrides(overrides) when is_list(overrides) do
-    cond do
-      Keyword.keyword?(overrides) ->
-        {:ok, Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)}
-
-      Enum.all?(overrides, &is_binary/1) ->
-        {:ok, overrides}
-
-      Enum.all?(overrides, &match?({_, _}, &1)) ->
-        {:ok, Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)}
-
-      true ->
-        {:error, {:invalid_config_overrides, overrides}}
-    end
-  end
-
-  defp normalize_config_overrides(value), do: {:error, {:invalid_config_overrides, value}}
+  defp normalize_config_overrides(overrides),
+    do: Overrides.normalize_config_overrides(overrides)
 
   defp normalize_shell_environment_policy(nil), do: {:ok, nil}
 

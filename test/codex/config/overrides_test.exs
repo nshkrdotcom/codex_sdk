@@ -19,6 +19,29 @@ defmodule Codex.Config.OverridesTest do
     refute atom_exists?(override_key)
   end
 
+  test "merge_config applies options-level config overrides when missing" do
+    {:ok, codex_opts} =
+      Options.new(%{
+        config: %{"sandbox_workspace_write" => %{"network_access" => true}}
+      })
+
+    merged = Overrides.merge_config(%{}, codex_opts, %ThreadOptions{})
+
+    assert merged["sandbox_workspace_write.network_access"] == true
+  end
+
+  test "merge_config preserves derived precedence over options-level config overrides" do
+    {:ok, codex_opts} =
+      Options.new(%{
+        model_personality: :pragmatic,
+        config: %{"model_personality" => "friendly"}
+      })
+
+    merged = Overrides.merge_config(%{}, codex_opts, %ThreadOptions{})
+
+    assert merged["model_personality"] == "pragmatic"
+  end
+
   describe "flatten_config_map/1" do
     test "flattens nested maps to dotted key tuples" do
       input = %{
@@ -89,6 +112,33 @@ defmodule Codex.Config.OverridesTest do
       # Should be flattened to dotted-path tuples
       assert {"model.personality", "friendly"} in opts.config_overrides
       assert {"timeout", 5000} in opts.config_overrides
+    end
+  end
+
+  describe "normalize_config_overrides/1 value validation" do
+    test "accepts valid nested values" do
+      assert {:ok, normalized} =
+               Overrides.normalize_config_overrides(%{
+                 "sandbox_workspace_write" => %{
+                   "network_access" => true,
+                   "writable_roots" => ["/tmp"]
+                 }
+               })
+
+      assert {"sandbox_workspace_write.network_access", true} in normalized
+      assert {"sandbox_workspace_write.writable_roots", ["/tmp"]} in normalized
+    end
+
+    test "rejects nil value" do
+      assert {:error, {:invalid_config_override_value, "features.web_search_request", nil}} =
+               Overrides.normalize_config_overrides(%{
+                 "features" => %{"web_search_request" => nil}
+               })
+    end
+
+    test "rejects unsupported value type" do
+      assert {:error, {:invalid_config_override_value, "retry_budget", {:tuple, 1}}} =
+               Overrides.normalize_config_overrides(%{"retry_budget" => {:tuple, 1}})
     end
   end
 
