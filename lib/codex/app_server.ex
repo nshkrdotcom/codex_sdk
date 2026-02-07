@@ -23,25 +23,28 @@ defmodule Codex.AppServer do
   def connect(%Options{} = codex_opts, opts \\ []) do
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
 
-    with {:ok, _pid} <- ensure_connection_supervisor() do
-      child_spec =
-        {Connection, {codex_opts, opts}}
-        |> Supervisor.child_spec(restart: :temporary)
+    with {:ok, _pid} <- ensure_connection_supervisor(),
+         {:ok, conn} <- start_connection(codex_opts, opts) do
+      await_connection_ready(conn, init_timeout_ms)
+    end
+  end
 
-      case DynamicSupervisor.start_child(ConnectionSupervisor, child_spec) do
-        {:ok, conn} ->
-          case Connection.await_ready(conn, init_timeout_ms) do
-            :ok ->
-              {:ok, conn}
+  defp start_connection(codex_opts, opts) do
+    child_spec =
+      {Connection, {codex_opts, opts}}
+      |> Supervisor.child_spec(restart: :temporary)
 
-            {:error, _reason} = error ->
-              _ = DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
-              error
-          end
+    DynamicSupervisor.start_child(ConnectionSupervisor, child_spec)
+  end
 
-        {:error, _} = error ->
-          error
-      end
+  defp await_connection_ready(conn, timeout) do
+    case Connection.await_ready(conn, timeout) do
+      :ok ->
+        {:ok, conn}
+
+      {:error, _reason} = error ->
+        _ = DynamicSupervisor.terminate_child(ConnectionSupervisor, conn)
+        error
     end
   end
 

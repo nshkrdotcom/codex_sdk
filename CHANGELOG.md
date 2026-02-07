@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-02-06
+
+### Fixed
+
+- OTLP enablement now honors `CODEX_OTLP_ENABLE` values like `1/0` at runtime, including startup banner reporting and telemetry configuration defaults.
+
+### Changed
+
+- Bumped project version metadata to `0.7.2` in `mix.exs`, `VERSION`, README install snippet, and getting-started guide.
+
 ## [0.7.1] - 2026-02-06
 
 ### Changed

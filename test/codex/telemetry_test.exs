@@ -218,11 +218,46 @@ defmodule Codex.TelemetryTest do
     assert log =~ "[codex] thread stop"
   end
 
+  test "otlp_enabled? prefers CODEX_OTLP_ENABLE when present" do
+    assert Telemetry.otlp_enabled?(env: %{"CODEX_OTLP_ENABLE" => "1"}, app_enabled?: false)
+    assert Telemetry.otlp_enabled?(env: %{"CODEX_OTLP_ENABLE" => "true"}, app_enabled?: false)
+    refute Telemetry.otlp_enabled?(env: %{"CODEX_OTLP_ENABLE" => "0"}, app_enabled?: true)
+  end
+
+  test "otlp_enabled? falls back to app config when env flag missing or invalid" do
+    assert Telemetry.otlp_enabled?(env: %{}, app_enabled?: true)
+    refute Telemetry.otlp_enabled?(env: %{}, app_enabled?: false)
+    assert Telemetry.otlp_enabled?(env: %{"CODEX_OTLP_ENABLE" => "bogus"}, app_enabled?: true)
+  end
+
   test "configure is no-op when OTLP endpoint missing" do
     previous = Application.get_env(:codex_sdk, :enable_otlp?, false)
     Application.put_env(:codex_sdk, :enable_otlp?, false)
     on_exit(fn -> Application.put_env(:codex_sdk, :enable_otlp?, previous) end)
     assert :ok = Telemetry.configure(env: %{}, enabled?: false)
+  end
+
+  test "configure reads CODEX_OTLP_ENABLE from env map by default" do
+    previous = Application.get_env(:codex_sdk, :enable_otlp?, false)
+    Application.put_env(:codex_sdk, :enable_otlp?, false)
+
+    on_exit(fn ->
+      Application.put_env(:codex_sdk, :enable_otlp?, previous)
+      _ = Application.stop(:opentelemetry_exporter)
+      _ = Application.stop(:opentelemetry)
+      _ = Application.stop(:tls_certificate_check)
+      :telemetry.detach(Telemetry.tracing_handler_id())
+    end)
+
+    env = %{
+      "CODEX_OTLP_ENABLE" => "1",
+      "CODEX_OTLP_ENDPOINT" => "otlp://test.local"
+    }
+
+    assert :ok = Telemetry.configure(env: env, exporter: {:otel_exporter_pid, self()})
+
+    assert [{:otel_simple_processor, config}] = Application.get_env(:opentelemetry, :processors)
+    assert config.exporter == {:otel_exporter_pid, self()}
   end
 
   test "configure with pid exporter attaches tracing when enabled" do

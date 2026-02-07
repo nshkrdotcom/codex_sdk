@@ -23,7 +23,7 @@ defmodule Codex.Application do
   end
 
   defp maybe_print_otlp_banner do
-    case Application.get_env(:codex_sdk, :enable_otlp?, false) do
+    case Telemetry.otlp_enabled?() do
       true ->
         Logger.info("OTLP telemetry enabled (set CODEX_OTLP_ENABLE=0 to disable)")
 

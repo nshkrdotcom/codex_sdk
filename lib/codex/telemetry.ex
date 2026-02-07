@@ -58,7 +58,7 @@ defmodule Codex.Telemetry do
   @spec configure(keyword()) :: :ok
   def configure(opts \\ []) do
     env = resolve_env(Keyword.get(opts, :env))
-    enabled? = Keyword.get(opts, :enabled?, Application.get_env(:codex_sdk, :enable_otlp?, false))
+    enabled? = Keyword.get(opts, :enabled?, otlp_enabled?(env: env))
 
     if enabled? do
       endpoint = env |> Map.get("CODEX_OTLP_ENDPOINT") |> normalize_string()
@@ -66,23 +66,7 @@ defmodule Codex.Telemetry do
       if is_nil(endpoint) do
         :ok
       else
-        exporter_spec = build_exporter_spec(endpoint, env, opts)
-        processors = build_processors(exporter_spec, opts)
-
-        enable_otel_tracing()
-        reset_otel_apps()
-        Application.put_env(:opentelemetry, :processors, processors)
-
-        with :ok <- maybe_start_exporter(exporter_spec),
-             :ok <- maybe_start_app(:opentelemetry),
-             :ok <- attach_tracing_handler() do
-          set_otlp_configured(true)
-          :ok
-        else
-          {:error, reason} ->
-            Logger.warning("failed to configure OpenTelemetry exporter: #{inspect(reason)}")
-            :ok
-        end
+        configure_with_endpoint(endpoint, env, opts)
       end
     else
       disable_otel_tracing()
@@ -94,6 +78,20 @@ defmodule Codex.Telemetry do
 
       Application.put_env(:opentelemetry, :processors, [])
       :ok
+    end
+  end
+
+  @doc false
+  @spec otlp_enabled?(keyword()) :: boolean()
+  def otlp_enabled?(opts \\ []) do
+    env = resolve_env(Keyword.get(opts, :env))
+
+    app_enabled? =
+      Keyword.get(opts, :app_enabled?, Application.get_env(:codex_sdk, :enable_otlp?, false))
+
+    case parse_boolean(Map.get(env, "CODEX_OTLP_ENABLE")) do
+      {:ok, value} -> value
+      :error -> app_enabled?
     end
   end
 
@@ -291,8 +289,47 @@ defmodule Codex.Telemetry do
 
   # -- configure helpers ----------------------------------------------------
 
+  defp configure_with_endpoint(endpoint, env, opts) do
+    exporter_spec = build_exporter_spec(endpoint, env, opts)
+    processors = build_processors(exporter_spec, opts)
+
+    enable_otel_tracing()
+    reset_otel_apps()
+    Application.put_env(:opentelemetry, :processors, processors)
+
+    with :ok <- maybe_start_exporter(exporter_spec),
+         :ok <- maybe_start_app(:opentelemetry),
+         :ok <- attach_tracing_handler() do
+      set_otlp_configured(true)
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning("failed to configure OpenTelemetry exporter: #{inspect(reason)}")
+        :ok
+    end
+  end
+
   defp resolve_env(nil), do: System.get_env()
   defp resolve_env(env) when is_map(env), do: env
+
+  defp parse_boolean(nil), do: :error
+  defp parse_boolean(value) when is_boolean(value), do: {:ok, value}
+  defp parse_boolean(value) when is_integer(value) and value in [0, 1], do: {:ok, value == 1}
+
+  @truthy_strings ~w(1 true yes on) |> MapSet.new()
+  @falsy_strings ~w(0 false no off) |> MapSet.new()
+
+  defp parse_boolean(value) when is_binary(value) do
+    normalized = value |> String.trim() |> String.downcase()
+
+    cond do
+      normalized in @truthy_strings -> {:ok, true}
+      normalized in @falsy_strings -> {:ok, false}
+      true -> :error
+    end
+  end
+
+  defp parse_boolean(_), do: :error
 
   defp otlp_configured? do
     Application.get_env(:codex_sdk, @otlp_configured_key, false)

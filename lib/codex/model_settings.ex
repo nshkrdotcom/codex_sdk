@@ -122,13 +122,13 @@ defmodule Codex.ModelSettings do
       merged =
         base
         |> Map.from_struct()
-        |> Map.merge(Map.from_struct(override_struct), fn _key, left, right ->
-          if is_nil(right), do: left, else: right
-        end)
+        |> Map.merge(Map.from_struct(override_struct), &prefer_non_nil/3)
 
       {:ok, struct!(__MODULE__, merged)}
     end
   end
+
+  defp prefer_non_nil(_key, left, right), do: if(is_nil(right), do: left, else: right)
 
   defp validate_range(nil, _field, _min, _max), do: :ok
 

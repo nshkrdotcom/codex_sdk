@@ -1,9 +1,21 @@
 import Config
 
+parse_enabled = fn
+  value when is_binary(value) ->
+    normalized =
+      value
+      |> String.trim()
+      |> String.downcase()
+
+    normalized in ["1", "true", "yes", "on"]
+
+  _ ->
+    false
+end
+
 enable_otlp? =
-  System.get_env("CODEX_OTLP_ENABLE", "false")
-  |> String.downcase()
-  |> Kernel.==("true")
+  System.get_env("CODEX_OTLP_ENABLE")
+  |> parse_enabled.()
 
 config :codex_sdk, :enable_otlp?, enable_otlp?
 

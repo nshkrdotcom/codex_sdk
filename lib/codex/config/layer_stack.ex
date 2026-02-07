@@ -15,18 +15,14 @@ defmodule Codex.Config.LayerStack do
   def load(codex_home, cwd \\ nil) when is_binary(codex_home) do
     cwd = normalize_cwd(cwd)
 
-    with {:ok, base_layers} <- load_base_layers(codex_home) do
-      case cwd do
-        nil ->
-          {:ok, base_layers}
-
-        _ ->
-          with {:ok, project_layers} <- load_project_layers(base_layers, cwd) do
-            {:ok, base_layers ++ project_layers}
-          end
-      end
+    with {:ok, base_layers} <- load_base_layers(codex_home),
+         {:ok, project_layers} <- maybe_load_project_layers(base_layers, cwd) do
+      {:ok, base_layers ++ project_layers}
     end
   end
+
+  defp maybe_load_project_layers(_base_layers, nil), do: {:ok, []}
+  defp maybe_load_project_layers(base_layers, cwd), do: load_project_layers(base_layers, cwd)
 
   @spec effective_config([layer()]) :: map()
   def effective_config(layers) when is_list(layers) do

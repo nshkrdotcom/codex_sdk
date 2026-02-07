@@ -1538,20 +1538,24 @@ defmodule Codex.Thread do
 
     case run_tool_guardrails(:input, guardrails.input, event, event.arguments, context, hooks) do
       :ok ->
-        with :ok <- approve_tool(thread, event, context, hooks),
-             {:ok, output} <- invoke_tool(event, context) do
-          case run_tool_guardrails(:output, guardrails.output, event, output, context, hooks) do
-            :ok -> {:ok, output}
-            {:reject_content, message} -> {:ok, ToolOutput.normalize(ToolOutput.text(message))}
-            {:error, reason} -> {:error, reason}
-          end
-        end
+        invoke_and_check_output(thread, event, context, guardrails, hooks)
 
       {:reject_content, message} ->
         {:ok, ToolOutput.normalize(ToolOutput.text(message))}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp invoke_and_check_output(thread, event, context, guardrails, hooks) do
+    with :ok <- approve_tool(thread, event, context, hooks),
+         {:ok, output} <- invoke_tool(event, context) do
+      case run_tool_guardrails(:output, guardrails.output, event, output, context, hooks) do
+        :ok -> {:ok, output}
+        {:reject_content, message} -> {:ok, ToolOutput.normalize(ToolOutput.text(message))}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 

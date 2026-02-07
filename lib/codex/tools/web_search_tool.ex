@@ -137,18 +137,19 @@ defmodule Codex.Tools.WebSearchTool do
   defp invoke_with_provider(args, _context, metadata) do
     with {:ok, action} <- normalize_action(args) do
       case action.type do
-        "search" ->
-          max_results = resolve_max_results(args, metadata)
-          provider = resolve_provider(metadata)
-
-          with {:ok, api_key} <- get_api_key(provider, metadata),
-               {:ok, results} <- search(provider, action.query, max_results, api_key) do
-            {:ok, format_results(results)}
-          end
-
-        other ->
-          {:error, {:unsupported_action, other}}
+        "search" -> perform_search(action, args, metadata)
+        other -> {:error, {:unsupported_action, other}}
       end
+    end
+  end
+
+  defp perform_search(action, args, metadata) do
+    max_results = resolve_max_results(args, metadata)
+    provider = resolve_provider(metadata)
+
+    with {:ok, api_key} <- get_api_key(provider, metadata),
+         {:ok, results} <- search(provider, action.query, max_results, api_key) do
+      {:ok, format_results(results)}
     end
   end
 
