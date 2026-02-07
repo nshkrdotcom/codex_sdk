@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-02-06
+
+### Changed
+
+- Bumped `websockex` from `~> 0.4.3` to `~> 0.5.1` (adds telemetry integration)
+- Bumped `credo` from 1.7.15 to 1.7.16
+- Bumped `ex_doc` from 0.40.0 to 0.40.1
+
 ## [0.7.0] - 2026-02-06
 
 ### Added

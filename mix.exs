@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.7.0"
+  @version "0.7.1"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -49,7 +49,7 @@ defmodule CodexSdk.MixProject do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:req, "~> 0.4"},
-      {:websockex, "~> 0.4.3"},
+      {:websockex, "~> 0.5.1"},
 
       # Testing
       {:supertester, "~> 0.5.1", only: :test},
