@@ -118,6 +118,37 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(task, 200)
   end
 
+  test "thread_start/2 encodes none personality from atom", %{conn: conn, os_pid: os_pid} do
+    task = Task.async(fn -> AppServer.thread_start(conn, personality: :none) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["personality"] == "none"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+
+    assert {:ok, %{"thread" => _}} = Task.await(task, 200)
+  end
+
+  test "thread_resume/3 encodes none personality from string", %{conn: conn, os_pid: os_pid} do
+    task = Task.async(fn -> AppServer.thread_resume(conn, "thr_1", personality: "none") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/resume", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["threadId"] == "thr_1"
+    assert params["personality"] == "none"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+
+    assert {:ok, %{"thread" => _}} = Task.await(task, 200)
+  end
+
   test "thread_fork/3 encodes fork params", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->
@@ -286,6 +317,27 @@ defmodule Codex.AppServer.ApiTest do
     assert params["personality"] == "friendly"
     assert %{"type" => "object"} = params["outputSchema"]
     assert %{"mode" => "plan", "model" => "gpt-5.1-codex"} = params["collaborationMode"]
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
+  test "turn_start/4 encodes none personality", %{conn: conn, os_pid: os_pid} do
+    task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", personality: :none) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["personality"] == "none"
 
     send(
       conn,

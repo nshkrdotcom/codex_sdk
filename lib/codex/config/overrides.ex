@@ -204,16 +204,36 @@ defmodule Codex.Config.Overrides do
   defp encode_personality(_), do: nil
 
   defp web_search_mode_override(%ThreadOptions{} = opts) do
-    case thread_value(opts, :web_search_mode) do
-      :cached -> "cached"
-      :live -> "live"
-      "cached" -> "cached"
-      "live" -> "live"
-      _ -> nil
+    case normalize_web_search_mode(thread_value(opts, :web_search_mode)) do
+      :disabled ->
+        if web_search_mode_explicit?(opts), do: "disabled", else: nil
+
+      :cached ->
+        "cached"
+
+      :live ->
+        "live"
+
+      _ ->
+        nil
     end
   end
 
   defp web_search_mode_override(_), do: nil
+
+  defp normalize_web_search_mode(:disabled), do: :disabled
+  defp normalize_web_search_mode("disabled"), do: :disabled
+  defp normalize_web_search_mode(:cached), do: :cached
+  defp normalize_web_search_mode("cached"), do: :cached
+  defp normalize_web_search_mode(:live), do: :live
+  defp normalize_web_search_mode("live"), do: :live
+  defp normalize_web_search_mode(_), do: nil
+
+  defp web_search_mode_explicit?(%ThreadOptions{web_search_mode_explicit: explicit?})
+       when is_boolean(explicit?),
+       do: explicit?
+
+  defp web_search_mode_explicit?(_), do: false
 
   defp web_search_request_override(%ThreadOptions{} = opts) do
     case thread_value(opts, :web_search_mode) do

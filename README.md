@@ -403,8 +403,8 @@ apply or undo diffs locally:
     auto_run: true,
     sandbox: :strict,
     approval_timeout_ms: 45_000,
-    web_search_mode: :cached,  # :disabled | :cached | :live
-    personality: :pragmatic,   # :friendly | :pragmatic | :none
+    web_search_mode: :cached,  # :disabled | :cached | :live (explicit :disabled forces disable override)
+    personality: :pragmatic,   # :friendly | :pragmatic | :none (works consistently on exec/app-server)
     collaboration_mode: :plan  # :plan | :pair_programming | :execute | :custom (app-server)
   )
 
@@ -433,6 +433,9 @@ turn_options = %{
   timeout_ms: 120_000,
   stream_idle_timeout_ms: 300_000
 }
+
+# The SDK also sets CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir
+# unless you provide your own value in `env`.
 
 {:ok, stream} =
   Codex.Thread.run_streamed(thread, "List three files and echo $CODEX_DEMO_ENV", turn_options)
@@ -464,6 +467,11 @@ Nested maps are auto-flattened to dotted-path keys:
 config_overrides: %{"features" => %{"web_search_request" => true}}
 config_overrides: [{"features.web_search_request", true}]
 ```
+
+When you explicitly disable web search (`web_search_enabled: false` or
+`web_search_mode: :disabled`), the SDK emits `web_search="disabled"` so that
+thread-level intent overrides existing CLI config. If you leave defaults
+untouched, no disable override is injected.
 
 ### Approval Hooks
 

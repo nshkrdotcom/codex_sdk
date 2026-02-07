@@ -26,6 +26,7 @@ defmodule Codex.Thread.Options do
             network_access_enabled: nil,
             web_search_enabled: false,
             web_search_mode: :disabled,
+            web_search_mode_explicit: false,
             personality: nil,
             collaboration_mode: nil,
             compact_prompt: nil,
@@ -129,6 +130,7 @@ defmodule Codex.Thread.Options do
           network_access_enabled: boolean() | nil,
           web_search_enabled: boolean(),
           web_search_mode: web_search_mode(),
+          web_search_mode_explicit: boolean(),
           personality: personality() | nil,
           collaboration_mode: collaboration_mode() | nil,
           compact_prompt: String.t() | nil,
@@ -459,6 +461,13 @@ defmodule Codex.Thread.Options do
           config
         )
 
+      web_search_mode_explicit =
+        explicit_web_search_mode?(
+          web_search_mode,
+          web_search_mode_provided?,
+          web_search_enabled_provided?
+        )
+
       web_search_enabled = web_search_mode != :disabled
       show_raw_agent_reasoning = show_raw_agent_reasoning || false
 
@@ -479,6 +488,7 @@ defmodule Codex.Thread.Options do
          network_access_enabled: network_access_enabled,
          web_search_enabled: web_search_enabled,
          web_search_mode: web_search_mode,
+         web_search_mode_explicit: web_search_mode_explicit,
          personality: personality,
          collaboration_mode: collaboration_mode,
          compact_prompt: compact_prompt,
@@ -683,6 +693,10 @@ defmodule Codex.Thread.Options do
           config_mode -> config_mode
         end
     end
+  end
+
+  defp explicit_web_search_mode?(mode, mode_provided?, enabled_provided?) do
+    (mode_provided? and not is_nil(mode)) or enabled_provided?
   end
 
   defp web_search_mode_from_config(%{} = config) do

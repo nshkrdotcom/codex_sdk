@@ -20,6 +20,10 @@ defmodule LiveWebSearchModes do
   defp run_mode(mode, prompt, codex_path) do
     IO.puts("\n--- web_search_mode=#{mode} ---")
 
+    if mode == :disabled do
+      IO.puts("Disabled mode is passed explicitly (web_search=\"disabled\").")
+    end
+
     {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
     {:ok, thread_opts} = Codex.Thread.Options.new(%{web_search_mode: mode})
     {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)

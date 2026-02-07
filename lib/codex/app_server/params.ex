@@ -83,8 +83,10 @@ defmodule Codex.AppServer.Params do
   def personality(nil), do: nil
   def personality(:friendly), do: "friendly"
   def personality(:pragmatic), do: "pragmatic"
+  def personality(:none), do: "none"
   def personality("friendly"), do: "friendly"
   def personality("pragmatic"), do: "pragmatic"
+  def personality("none"), do: "none"
   def personality(value) when is_binary(value), do: value
   def personality(_), do: nil
 

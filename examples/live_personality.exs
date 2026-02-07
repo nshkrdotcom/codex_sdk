@@ -39,7 +39,7 @@ defmodule LivePersonality do
       Pragmatic response:
       #{pragmatic}
 
-      None (no personality) response:
+      None (:none personality) response:
       #{none_resp}
       """)
     after

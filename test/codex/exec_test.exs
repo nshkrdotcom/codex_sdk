@@ -35,6 +35,53 @@ defmodule Codex.ExecTest do
            end)
   end
 
+  test "sets default exec originator env when not provided" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      echo "{\\"type\\":\\"turn.completed\\",\\"turn_id\\":\\"turn_originator\\",\\"thread_id\\":\\"thread_originator\\",\\"final_response\\":{\\"type\\":\\"text\\",\\"text\\":\\"${CODEX_INTERNAL_ORIGINATOR_OVERRIDE}\\"}}"
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, %{events: events}} = Exec.run("originator", %{codex_opts: codex_opts})
+
+    assert Enum.any?(events, fn
+             %Events.TurnCompleted{final_response: response} ->
+               final_text(response) == "codex_sdk_elixir"
+
+             _ ->
+               false
+           end)
+  end
+
+  test "preserves caller-provided originator env override" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      echo "{\\"type\\":\\"turn.completed\\",\\"turn_id\\":\\"turn_originator_custom\\",\\"thread_id\\":\\"thread_originator_custom\\",\\"final_response\\":{\\"type\\":\\"text\\",\\"text\\":\\"${CODEX_INTERNAL_ORIGINATOR_OVERRIDE}\\"}}"
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    exec_opts = %{
+      codex_opts: codex_opts,
+      env: %{"CODEX_INTERNAL_ORIGINATOR_OVERRIDE" => "caller-set-originator"}
+    }
+
+    assert {:ok, %{events: events}} = Exec.run("originator", exec_opts)
+
+    assert Enum.any?(events, fn
+             %Events.TurnCompleted{final_response: response} ->
+               final_text(response) == "caller-set-originator"
+
+             _ ->
+               false
+           end)
+  end
+
   test "forwards cancellation token flag to codex exec" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_args_#{System.unique_integer([:positive])}")
@@ -153,6 +200,10 @@ defmodule Codex.ExecTest do
 
     refute Enum.any?(flag_values(args, "--config"), fn value ->
              String.starts_with?(value, "approval_policy=")
+           end)
+
+    refute Enum.any?(flag_values(args, "--config"), fn value ->
+             String.starts_with?(value, "web_search=")
            end)
   end
 
@@ -345,6 +396,70 @@ defmodule Codex.ExecTest do
       |> String.split(~r/\s+/, trim: true)
 
     assert "features.web_search_request=true" in flag_values(args, "--config")
+  end
+
+  test "emits web search disabled override when explicitly disabled via web_search_enabled" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_web_search_disabled_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{web_search_enabled: false})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, _} = Thread.run(thread, "web search disabled")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    assert ~s(web_search="disabled") in flag_values(args, "--config")
+  end
+
+  test "emits web search disabled override when explicitly disabled via web_search_mode" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_web_search_mode_disabled_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{web_search_mode: :disabled})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, _} = Thread.run(thread, "web search mode disabled")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    assert ~s(web_search="disabled") in flag_values(args, "--config")
   end
 
   test "forwards dangerously bypass flag to codex exec" do

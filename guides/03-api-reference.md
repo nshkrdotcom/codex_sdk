@@ -1370,9 +1370,9 @@ Thread-specific configuration.
 - `additional_directories`: Extra writable roots (`--add-dir`)
 - `skip_git_repo_check`: Allow running outside a Git repo
 - `network_access_enabled`: Workspace-write network access override for exec (`--config sandbox_workspace_write.network_access=...`)
-- `web_search_enabled`: Legacy web search toggle (deprecated; use `web_search_mode`)
-- `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`)
-- `personality`: Thread-level personality override
+- `web_search_enabled`: Legacy web search toggle (deprecated; use `web_search_mode`); explicit `false` emits `web_search="disabled"`
+- `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`); explicit `:disabled` emits `web_search="disabled"` while untouched defaults emit nothing
+- `personality`: Thread-level personality override (`:friendly`, `:pragmatic`, `:none`), serialized consistently across exec and app-server transports
 - `collaboration_mode`: Collaboration mode preset for app-server turns (`:plan`, `:pair_programming`, `:execute`, or `:custom`)
 - `compact_prompt`: Override prompt used for context compaction
 - `show_raw_agent_reasoning`: Emit raw reasoning content in reasoning items
@@ -1448,7 +1448,7 @@ Turn-specific configuration passed as a map or keyword list.
 - `sandbox_policy`: App-server sandbox policy override
 - `model` / `approval_policy` / `cwd`: App-server per-turn overrides
 - `effort` / `summary`: App-server reasoning overrides
-- `env` / `clear_env?`: Exec env overrides and optional env clearing
+- `env` / `clear_env?`: Exec env overrides and optional env clearing; SDK sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` unless overridden in `env`
 - `cancellation_token`: Exec cancellation token
 - `timeout_ms`: Exec overall timeout (blocking)
 - `stream_idle_timeout_ms`: Exec stream idle timeout

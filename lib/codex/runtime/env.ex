@@ -3,12 +3,16 @@ defmodule Codex.Runtime.Env do
 
   alias Codex.Config.BaseURL
 
+  @originator_env "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+  @sdk_originator "codex_sdk_elixir"
+
   @spec base_overrides(String.t() | nil, String.t() | nil) :: map()
   def base_overrides(api_key, base_url) do
     %{}
     |> maybe_put("CODEX_API_KEY", api_key)
     |> maybe_put("OPENAI_API_KEY", api_key)
     |> maybe_put_openai_base_url(base_url)
+    |> Map.put_new(@originator_env, @sdk_originator)
   end
 
   @spec to_charlist_env(map()) :: [{String.t(), String.t()}]
