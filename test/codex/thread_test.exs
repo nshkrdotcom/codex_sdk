@@ -65,6 +65,14 @@ defmodule Codex.ThreadTest do
       assert opts.rate_limit_opts == [max_attempts: 2]
     end
 
+    test "accepts none personality" do
+      {:ok, opts} = ThreadOptions.new(%{personality: :none})
+      assert opts.personality == :none
+
+      {:ok, opts} = ThreadOptions.new(%{personality: "none"})
+      assert opts.personality == :none
+    end
+
     test "rejects invalid shell environment policy" do
       assert {:error, {:invalid_shell_environment_set, _}} =
                ThreadOptions.new(%{

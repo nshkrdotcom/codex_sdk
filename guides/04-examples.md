@@ -1334,7 +1334,8 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 ## Additional Live Examples
 
 - `examples/live_collaboration_modes.exs` — lists collaboration presets and runs a turn
-- `examples/live_personality.exs` — compares friendly vs pragmatic personality overrides
+- `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
+- `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
 - `examples/live_thread_management.exs` — demonstrates thread read/fork/rollback/loaded list
 - `examples/live_web_search_modes.exs` — toggles web search modes and reports web search items
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage events

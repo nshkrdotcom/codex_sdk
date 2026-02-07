@@ -346,6 +346,39 @@ defmodule Codex.EventsTest do
                event
     end
 
+    test "parses deprecation notice events" do
+      event =
+        Events.parse!(%{
+          "type" => "deprecationNotice",
+          "summary" => "Feature X is deprecated",
+          "details" => "Use feature Y instead"
+        })
+
+      assert %Events.DeprecationNotice{
+               summary: "Feature X is deprecated",
+               details: "Use feature Y instead"
+             } = event
+
+      round_tripped = Events.to_map(event)
+      assert round_tripped["type"] == "deprecationNotice"
+      assert round_tripped["summary"] == "Feature X is deprecated"
+      assert round_tripped["details"] == "Use feature Y instead"
+
+      # Without details
+      event_no_details =
+        Events.parse!(%{
+          "type" => "deprecationNotice",
+          "summary" => "Old API removed"
+        })
+
+      assert %Events.DeprecationNotice{summary: "Old API removed", details: nil} =
+               event_no_details
+
+      map_no_details = Events.to_map(event_no_details)
+      assert map_no_details["summary"] == "Old API removed"
+      refute Map.has_key?(map_no_details, "details")
+    end
+
     test "parses config warnings" do
       event =
         Events.parse!(%{

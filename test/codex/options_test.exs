@@ -124,6 +124,14 @@ defmodule Codex.OptionsTest do
       assert opts_from_map.history_max_bytes == 24_000
     end
 
+    test "accepts none personality" do
+      assert {:ok, opts} = Options.new(%{model_personality: :none})
+      assert opts.model_personality == :none
+
+      assert {:ok, opts} = Options.new(%{model_personality: "none"})
+      assert opts.model_personality == :none
+    end
+
     test "accepts model personality and agent limits" do
       {:ok, opts} =
         Options.new(%{

@@ -19,6 +19,79 @@ defmodule Codex.Config.OverridesTest do
     refute atom_exists?(override_key)
   end
 
+  describe "flatten_config_map/1" do
+    test "flattens nested maps to dotted key tuples" do
+      input = %{
+        "model" => %{
+          "personality" => "friendly",
+          "context_window" => 8192
+        },
+        "features" => %{
+          "web_search_request" => true
+        }
+      }
+
+      result = Overrides.flatten_config_map(input)
+
+      assert {"model.personality", "friendly"} in result
+      assert {"model.context_window", 8192} in result
+      assert {"features.web_search_request", true} in result
+    end
+
+    test "passes through flat key-value pairs without change" do
+      input = %{"model_personality" => "friendly", "timeout" => 5000}
+      result = Overrides.flatten_config_map(input)
+
+      assert {"model_personality", "friendly"} in result
+      assert {"timeout", 5000} in result
+    end
+
+    test "handles deeply nested maps" do
+      input = %{
+        "a" => %{
+          "b" => %{
+            "c" => 42
+          }
+        }
+      }
+
+      result = Overrides.flatten_config_map(input)
+      assert [{"a.b.c", 42}] == result
+    end
+
+    test "handles atom keys by converting to strings" do
+      input = %{model: %{personality: "friendly"}}
+      result = Overrides.flatten_config_map(input)
+      assert {"model.personality", "friendly"} in result
+    end
+
+    test "returns empty list for empty map" do
+      assert [] == Overrides.flatten_config_map(%{})
+    end
+
+    test "returns empty list for nil" do
+      assert [] == Overrides.flatten_config_map(nil)
+    end
+  end
+
+  describe "normalize_config_overrides/1 with nested maps" do
+    test "thread options accept nested config override maps and flatten them" do
+      {:ok, opts} =
+        Codex.Thread.Options.new(%{
+          config_overrides: %{
+            "model" => %{
+              "personality" => "friendly"
+            },
+            "timeout" => 5000
+          }
+        })
+
+      # Should be flattened to dotted-path tuples
+      assert {"model.personality", "friendly"} in opts.config_overrides
+      assert {"timeout", 5000} in opts.config_overrides
+    end
+  end
+
   defp unique_key(prefix) do
     suffix = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
     "#{prefix}_#{suffix}"

@@ -393,6 +393,7 @@ defmodule Codex.Options do
       "" -> {:ok, nil}
       "friendly" -> {:ok, :friendly}
       "pragmatic" -> {:ok, :pragmatic}
+      "none" -> {:ok, :none}
       other -> {:error, {:invalid_model_personality, other}}
     end
   end

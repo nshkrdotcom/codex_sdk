@@ -49,7 +49,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests
 - `examples/live_app_server_mcp.exs` — lists MCP servers via `Codex.AppServer.Mcp.list_servers/2` (uses `mcpServerStatus/list` with fallback)
 - `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a preset
-- `examples/live_personality.exs` — compares friendly vs pragmatic personality overrides
+- `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
 - `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
 - `examples/live_web_search_modes.exs` — runs turns with `web_search_mode` toggles and reports web search items
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
@@ -64,6 +64,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_mcp_and_sessions.exs` — hosted MCP stub with retries/filters and a resumable session flow
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
+- `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
 
 ## Realtime Voice Examples (OpenAI Agents SDK)

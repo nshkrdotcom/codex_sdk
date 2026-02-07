@@ -1238,7 +1238,7 @@ Global Codex configuration.
   telemetry_prefix: [atom()],
   model: String.t() | nil,
   reasoning_effort: Codex.Models.reasoning_effort() | nil,
-  model_personality: :friendly | :pragmatic | nil,
+  model_personality: :friendly | :pragmatic | :none | nil,
   model_reasoning_summary: String.t() | nil,
   model_verbosity: String.t() | nil,
   model_context_window: pos_integer() | nil,
@@ -1260,7 +1260,7 @@ Global Codex configuration.
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override (defaults to `Codex.Models.default_model/0`)
 - `reasoning_effort`: Reasoning effort override (`:none`, `:minimal`, `:low`, `:medium`, `:high`, or `:xhigh`; defaults to `Codex.Models.default_reasoning_effort/1`)
-- `model_personality`: Personality preference (`:friendly` or `:pragmatic`)
+- `model_personality`: Personality preference (`:friendly`, `:pragmatic`, or `:none`)
 - `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)
 - `model_verbosity`: Response verbosity (`low`, `medium`, `high`)
 - `model_context_window`: Context window size override, in tokens
@@ -1315,7 +1315,7 @@ Thread-specific configuration.
   network_access_enabled: boolean() | nil,
   web_search_enabled: boolean(),
   web_search_mode: :disabled | :cached | :live,
-  personality: :friendly | :pragmatic | nil,
+  personality: :friendly | :pragmatic | :none | nil,
   collaboration_mode: Codex.Protocol.CollaborationMode.t() | nil,
   compact_prompt: String.t() | nil,
   show_raw_agent_reasoning: boolean(),
@@ -1389,7 +1389,7 @@ Thread-specific configuration.
 - `full_auto` / `dangerously_bypass_approvals_and_sandbox`: Execution-mode shortcuts (mutually exclusive)
 - `output_last_message`: File path for `--output-last-message`
 - `color`: Output color mode (`--color`)
-- `config_overrides`: Generic `-c key=value` overrides (strings or `{key, value}` pairs)
+- `config_overrides`: Generic `-c key=value` overrides (strings, `{key, value}` pairs, or nested maps that are auto-flattened to dotted paths)
 - `history_persistence` / `history_max_bytes`: History persistence configuration forwarded via config overrides
 - `model` / `model_provider`: App-server thread model overrides
 - `model_reasoning_summary` / `model_verbosity`: Reasoning summary + verbosity settings forwarded via config overrides

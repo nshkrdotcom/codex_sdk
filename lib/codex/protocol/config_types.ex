@@ -4,7 +4,7 @@ defmodule Codex.Protocol.ConfigTypes do
   """
 
   @type web_search_mode :: :disabled | :cached | :live
-  @type personality :: :friendly | :pragmatic
+  @type personality :: :friendly | :pragmatic | :none
   @type trust_level :: :trusted | :untrusted
   @type alt_screen_mode :: :auto | :always | :never
 
@@ -22,11 +22,13 @@ defmodule Codex.Protocol.ConfigTypes do
   @spec encode_personality(personality()) :: String.t()
   def encode_personality(:friendly), do: "friendly"
   def encode_personality(:pragmatic), do: "pragmatic"
+  def encode_personality(:none), do: "none"
 
   @spec decode_personality(String.t() | nil) :: personality() | nil
   def decode_personality(nil), do: nil
   def decode_personality("friendly"), do: :friendly
   def decode_personality("pragmatic"), do: :pragmatic
+  def decode_personality("none"), do: :none
 
   @spec encode_trust_level(trust_level()) :: String.t()
   def encode_trust_level(:trusted), do: "trusted"

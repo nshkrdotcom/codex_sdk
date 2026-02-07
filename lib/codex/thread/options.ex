@@ -6,6 +6,7 @@ defmodule Codex.Thread.Options do
   # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
 
   alias Codex.Config.OptionNormalizers
+  alias Codex.Config.Overrides
   alias Codex.FileSearch
   alias Codex.Protocol.CollaborationMode
 
@@ -734,6 +735,7 @@ defmodule Codex.Thread.Options do
       "" -> {:ok, nil}
       "friendly" -> {:ok, :friendly}
       "pragmatic" -> {:ok, :pragmatic}
+      "none" -> {:ok, :none}
       other -> {:error, {:invalid_personality, other}}
     end
   end
@@ -781,7 +783,13 @@ defmodule Codex.Thread.Options do
   defp normalize_config_overrides(nil), do: {:ok, []}
 
   defp normalize_config_overrides(%{} = overrides) do
-    {:ok, Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)}
+    has_nested? = Enum.any?(overrides, fn {_k, v} -> is_map(v) and map_size(v) > 0 end)
+
+    if has_nested? do
+      {:ok, Overrides.flatten_config_map(overrides)}
+    else
+      {:ok, Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)}
+    end
   end
 
   defp normalize_config_overrides(overrides) when is_list(overrides) do

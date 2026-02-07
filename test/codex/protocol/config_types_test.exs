@@ -17,10 +17,12 @@ defmodule Codex.Protocol.ConfigTypesTest do
   test "personality encoding and decoding" do
     assert "friendly" == ConfigTypes.encode_personality(:friendly)
     assert "pragmatic" == ConfigTypes.encode_personality(:pragmatic)
+    assert "none" == ConfigTypes.encode_personality(:none)
 
     assert nil == ConfigTypes.decode_personality(nil)
     assert :friendly == ConfigTypes.decode_personality("friendly")
     assert :pragmatic == ConfigTypes.decode_personality("pragmatic")
+    assert :none == ConfigTypes.decode_personality("none")
   end
 
   test "trust level encoding and decoding" do

@@ -55,6 +55,7 @@ examples=(
   "examples/live_mcp_and_sessions.exs"
   "examples/live_model_streaming_tracing.exs"
   "examples/live_attachments_and_search.exs"
+  "examples/live_config_overrides.exs"
   "examples/live_parity_and_status.exs"
   "examples/live_realtime_voice.exs"
   "examples/realtime_basic.exs"

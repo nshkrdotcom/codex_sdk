@@ -404,7 +404,7 @@ apply or undo diffs locally:
     sandbox: :strict,
     approval_timeout_ms: 45_000,
     web_search_mode: :cached,  # :disabled | :cached | :live
-    personality: :pragmatic,   # :friendly | :pragmatic
+    personality: :pragmatic,   # :friendly | :pragmatic | :none
     collaboration_mode: :plan  # :plan | :pair_programming | :execute | :custom (app-server)
   )
 
@@ -445,6 +445,24 @@ turn_options = %{
     rate_limit: true,
     rate_limit_opts: [max_attempts: 3]
   )
+```
+
+### Config Overrides
+
+Thread-level and turn-level config overrides are forwarded as `--config key=value` flags
+to the Codex CLI (exec transport) or merged into the structured config payload (app-server
+transport). Three layers of precedence apply — later wins:
+
+1. **Derived** — automatically generated from typed `Codex.Options` and `Codex.Thread.Options` fields
+2. **Thread-level** — `Codex.Thread.Options.config_overrides`
+3. **Turn-level** — `config_overrides` in turn opts passed to `Thread.run/3`
+
+Nested maps are auto-flattened to dotted-path keys:
+
+```elixir
+# These two are equivalent:
+config_overrides: %{"features" => %{"web_search_request" => true}}
+config_overrides: [{"features.web_search_request", true}]
 ```
 
 ### Approval Hooks
@@ -903,7 +921,8 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
-- **`live_personality.exs`** - Personality overrides (friendly vs pragmatic)
+- **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
+- **`live_config_overrides.exs`** - Nested config override auto-flattening (thread and turn level)
 - **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
 - **`live_web_search_modes.exs`** - Web search mode toggles with event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events

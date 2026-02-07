@@ -107,6 +107,49 @@ defmodule Codex.Config.Overrides do
     end
   end
 
+  @doc """
+  Flattens a nested map into a list of `{dotted_key, value}` tuples.
+
+  Nested maps are recursively traversed and their keys are joined with dots.
+  Non-map leaf values are kept as-is.
+
+  ## Examples
+
+      iex> Codex.Config.Overrides.flatten_config_map(%{"model" => %{"personality" => "friendly"}})
+      [{"model.personality", "friendly"}]
+
+      iex> Codex.Config.Overrides.flatten_config_map(%{"timeout" => 5000})
+      [{"timeout", 5000}]
+
+  """
+  @spec flatten_config_map(map() | nil) :: [{String.t(), term()}]
+  def flatten_config_map(nil), do: []
+  def flatten_config_map(map) when map_size(map) == 0, do: []
+
+  def flatten_config_map(%{} = map) do
+    do_flatten(map, [])
+  end
+
+  defp do_flatten(%{} = map, prefix) do
+    Enum.flat_map(map, fn {key, value} ->
+      key_str = to_string(key)
+
+      full_key =
+        case prefix do
+          [] -> key_str
+          parts -> Enum.join(parts ++ [key_str], ".")
+        end
+
+      case value do
+        %{} = nested when map_size(nested) > 0 ->
+          do_flatten(nested, prefix ++ [key_str])
+
+        _ ->
+          [{full_key, value}]
+      end
+    end)
+  end
+
   @spec cli_args([ThreadOptions.config_override()]) :: [String.t()]
   def cli_args(overrides) do
     overrides

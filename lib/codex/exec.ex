@@ -630,7 +630,13 @@ defmodule Codex.Exec do
   defp normalize_config_overrides(nil), do: []
 
   defp normalize_config_overrides(%{} = overrides) do
-    Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+    has_nested? = Enum.any?(overrides, fn {_k, v} -> is_map(v) and map_size(v) > 0 end)
+
+    if has_nested? do
+      Overrides.flatten_config_map(overrides)
+    else
+      Enum.map(overrides, fn {key, value} -> {to_string(key), value} end)
+    end
   end
 
   defp normalize_config_overrides(overrides) when is_list(overrides) do

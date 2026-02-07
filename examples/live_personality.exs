@@ -26,8 +26,11 @@ defmodule LivePersonality do
 
       {friendly, thread} = run_turn(thread, prompt, %{timeout_ms: 120_000})
 
-      {pragmatic, _thread} =
+      {pragmatic, thread} =
         run_turn(thread, prompt, %{personality: :pragmatic, timeout_ms: 120_000})
+
+      {none_resp, _thread} =
+        run_turn(thread, prompt, %{personality: :none, timeout_ms: 120_000})
 
       IO.puts("""
       Friendly response:
@@ -35,6 +38,9 @@ defmodule LivePersonality do
 
       Pragmatic response:
       #{pragmatic}
+
+      None (no personality) response:
+      #{none_resp}
       """)
     after
       :ok = AppServer.disconnect(conn)

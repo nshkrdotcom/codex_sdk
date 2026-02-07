@@ -379,6 +379,154 @@ defmodule Codex.ExecTest do
     assert Enum.any?(args, &(&1 == "--dangerously-bypass-approvals-and-sandbox"))
   end
 
+  test "resume args precede image args in built CLI args" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_resume_image_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    attachment = %Codex.Files.Attachment{
+      id: "att_1",
+      name: "test.png",
+      path: "/tmp/test.png",
+      checksum: "abc",
+      size: 100,
+      persist: false,
+      inserted_at: System.system_time(:millisecond),
+      ttl_ms: 86_400_000
+    }
+
+    {:ok, thread_opts} = ThreadOptions.new(%{attachments: [attachment]})
+    thread = Thread.build(codex_opts, thread_opts, thread_id: "thread_resume_img")
+
+    assert {:ok, _} = Thread.run(thread, "hello")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    resume_idx = Enum.find_index(args, &(&1 == "resume"))
+    image_idx = Enum.find_index(args, &(&1 == "--image"))
+
+    assert resume_idx, "expected resume arg in: #{inspect(args)}"
+    assert image_idx, "expected --image arg in: #{inspect(args)}"
+    assert resume_idx < image_idx, "resume (#{resume_idx}) must precede --image (#{image_idx})"
+  end
+
+  test "config override precedence: derived < thread < turn (later wins)" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_precedence_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path,
+        model_personality: :friendly
+      })
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        personality: :pragmatic,
+        config_overrides: [{"model_personality", "none"}]
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    turn_opts = %{config_overrides: [{"model_personality", "override"}]}
+
+    assert {:ok, _} = Thread.run(thread, "precedence", turn_opts)
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    personality_configs =
+      args
+      |> Enum.with_index()
+      |> Enum.filter(fn {value, _} -> value == "--config" end)
+      |> Enum.map(fn {_, idx} -> Enum.at(args, idx + 1) end)
+      |> Enum.filter(&String.starts_with?(&1, "model_personality="))
+
+    # All three layers should emit their value; last one wins with the CLI
+    assert length(personality_configs) >= 2,
+           "expected multiple model_personality overrides, got: #{inspect(personality_configs)}"
+
+    # The last emitted value should be the turn-level override (highest precedence)
+    assert List.last(personality_configs) == ~s(model_personality="override")
+  end
+
+  test "auto-flattens nested config override maps in turn opts" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_flatten_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    turn_opts = %{
+      config_overrides: %{
+        "model" => %{"personality" => "friendly"},
+        "timeout" => 5000
+      }
+    }
+
+    assert {:ok, _} = Thread.run(thread, "flatten", turn_opts)
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    configs = flag_values(args, "--config")
+
+    assert ~s(model.personality="friendly") in configs
+    assert "timeout=5000" in configs
+  end
+
   test "runs exec review subcommand" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_review_args_#{System.unique_integer([:positive])}")
