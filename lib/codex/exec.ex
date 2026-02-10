@@ -14,6 +14,7 @@ defmodule Codex.Exec do
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
+  alias Codex.IO.Buffer
   alias Codex.Models
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
@@ -151,7 +152,7 @@ defmodule Codex.Exec do
   defp do_collect(%{timeout_ms: timeout_ms} = state, os_pid, events) do
     receive do
       {:stdout, ^os_pid, chunk} ->
-        {decoded, new_buffer, non_json} = decode_lines(state.buffer <> iodata_to_binary(chunk))
+        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
 
         do_collect(
           %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json},
@@ -165,7 +166,7 @@ defmodule Codex.Exec do
       {:DOWN, ^os_pid, :process, _pid, reason} ->
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer)
+            {decoded, _, _} = decode_lines(state.buffer, "")
             {:ok, %{events: events ++ decoded}}
 
           {:ok, status} ->
@@ -226,8 +227,7 @@ defmodule Codex.Exec do
 
     receive do
       {:stdout, ^os_pid, chunk} ->
-        data = state.buffer <> iodata_to_binary(chunk)
-        {decoded, new_buffer, non_json} = decode_lines(data)
+        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
 
         {decoded,
          %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
@@ -238,7 +238,7 @@ defmodule Codex.Exec do
       {:DOWN, ^os_pid, :process, _pid, reason} ->
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer)
+            {decoded, _, _} = decode_lines(state.buffer, "")
             {decoded, %{state | buffer: "", done?: true}}
 
           {:ok, status} ->
@@ -263,8 +263,7 @@ defmodule Codex.Exec do
   defp next_stream_chunk_no_timeout(%{os_pid: os_pid} = state) do
     receive do
       {:stdout, ^os_pid, chunk} ->
-        data = state.buffer <> iodata_to_binary(chunk)
-        {decoded, new_buffer, non_json} = decode_lines(data)
+        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
 
         {decoded,
          %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
@@ -275,7 +274,7 @@ defmodule Codex.Exec do
       {:DOWN, ^os_pid, :process, _pid, reason} ->
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer)
+            {decoded, _, _} = decode_lines(state.buffer, "")
             {decoded, %{state | buffer: "", done?: true}}
 
           {:ok, status} ->
@@ -691,27 +690,15 @@ defmodule Codex.Exec do
   defp maybe_put_env(opts, []), do: opts
   defp maybe_put_env(opts, env), do: [{:env, env} | opts]
 
-  defp decode_lines(data) do
-    {lines, rest} = split_lines(data)
-    {events, non_json} = decode_event_lines(lines)
-    {events, rest, non_json}
+  defp decode_lines(buffer, chunk) do
+    {decoded, rest, non_json} = Buffer.decode_json_lines(buffer, chunk)
+    {events, unsupported} = decode_events(decoded)
+    {events, rest, unsupported ++ non_json}
   end
 
-  defp split_lines(data) do
-    parts = String.split(data, "\n", trim: false)
-
-    case parts do
-      [] -> {[], data}
-      [single] -> {[], single}
-      _ -> {Enum.drop(parts, -1), List.last(parts)}
-    end
-  end
-
-  defp decode_event_lines(lines) do
-    lines
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.reduce({[], []}, fn line, {events, raw} ->
-      case decode_line(line) do
+  defp decode_events(lines) do
+    Enum.reduce(lines, {[], []}, fn line, {events, raw} ->
+      case decode_event(line) do
         {:ok, event} -> {[event | events], raw}
         {:non_json, raw_line} -> {events, [raw_line | raw]}
       end
@@ -719,25 +706,15 @@ defmodule Codex.Exec do
     |> then(fn {events, raw} -> {Enum.reverse(events), Enum.reverse(raw)} end)
   end
 
-  defp decode_line(line) do
-    case Jason.decode(line) do
-      {:ok, decoded} ->
-        try do
-          {:ok, Events.parse!(decoded)}
-        rescue
-          error in ArgumentError ->
-            Logger.warning("Unsupported codex event: #{Exception.message(error)}")
-            {:non_json, line}
-        end
-
-      {:error, reason} ->
-        Logger.warning("Failed to decode codex event: #{inspect(reason)} (#{line})")
-        {:non_json, line}
+  defp decode_event(decoded) do
+    try do
+      {:ok, Events.parse!(decoded)}
+    rescue
+      error in ArgumentError ->
+        Logger.warning("Unsupported codex event: #{Exception.message(error)}")
+        {:non_json, Jason.encode!(decoded)}
     end
   end
-
-  defp iodata_to_binary(data) when is_binary(data), do: data
-  defp iodata_to_binary(data), do: IO.iodata_to_binary(data)
 
   defp merge_stderr(state) do
     stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
