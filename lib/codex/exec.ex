@@ -14,11 +14,10 @@ defmodule Codex.Exec do
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
-  alias Codex.IO.Buffer
+  alias Codex.IO.Transport.Erlexec, as: IOTransport
   alias Codex.Models
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
-  alias Codex.Runtime.Erlexec
   alias Codex.TransportError
 
   @default_timeout_ms 3_600_000
@@ -56,7 +55,6 @@ defmodule Codex.Exec do
   @spec run(String.t(), exec_opts()) :: {:ok, map()} | {:error, term()}
   def run(input, opts) when is_binary(input) do
     with {:ok, exec_opts} <- ExecOptions.new(opts),
-         :ok <- ensure_erlexec_started(),
          {:ok, command} <- build_command(exec_opts),
          {:ok, state} <- start_process(command, exec_opts),
          :ok <- send_prompt(state, input) do
@@ -70,7 +68,6 @@ defmodule Codex.Exec do
   @spec review(term(), exec_opts()) :: {:ok, map()} | {:error, term()}
   def review(target, opts) do
     with {:ok, exec_opts} <- ExecOptions.new(opts),
-         :ok <- ensure_erlexec_started(),
          {:ok, command_args} <- review_args(target),
          {:ok, command} <- build_command(exec_opts, command_args),
          {:ok, state} <- start_process(command, exec_opts),
@@ -86,7 +83,6 @@ defmodule Codex.Exec do
   @spec run_stream(String.t(), exec_opts()) :: {:ok, Enumerable.t()} | {:error, term()}
   def run_stream(input, opts) when is_binary(input) do
     with {:ok, exec_opts} <- ExecOptions.new(opts),
-         :ok <- ensure_erlexec_started(),
          {:ok, command} <- build_command(exec_opts) do
       starter = fn -> start_process(command, exec_opts) end
       {:ok, build_stream(starter, input)}
@@ -99,7 +95,6 @@ defmodule Codex.Exec do
   @spec review_stream(term(), exec_opts()) :: {:ok, Enumerable.t()} | {:error, term()}
   def review_stream(target, opts) do
     with {:ok, exec_opts} <- ExecOptions.new(opts),
-         :ok <- ensure_erlexec_started(),
          {:ok, command_args} <- review_args(target),
          {:ok, command} <- build_command(exec_opts, command_args) do
       starter = fn -> start_process(command, exec_opts) end
@@ -107,28 +102,29 @@ defmodule Codex.Exec do
     end
   end
 
-  defp ensure_erlexec_started do
-    Erlexec.ensure_started()
-  end
-
-  defp start_process(command, exec_opts) do
+  defp start_process([binary_path | args], exec_opts) do
     env = build_env(exec_opts)
     timeout_ms = resolve_timeout_ms(exec_opts)
     idle_timeout_ms = resolve_idle_timeout_ms(exec_opts)
+    transport_ref = make_ref()
 
-    run_opts =
-      [:stdin, {:stdout, self()}, {:stderr, self()}, :monitor]
-      |> maybe_put_env(env)
+    transport_opts =
+      [
+        command: binary_path,
+        args: args,
+        env: env,
+        subscriber: {self(), transport_ref},
+        headless_timeout_ms: :infinity
+      ]
 
-    case :exec.run(command, run_opts) do
-      {:ok, pid, os_pid} ->
+    case IOTransport.start_link(transport_opts) do
+      {:ok, transport} ->
         {:ok,
          %{
-           pid: pid,
-           os_pid: os_pid,
-           buffer: "",
+           transport: transport,
+           transport_ref: transport_ref,
            non_json_stdout: [],
-           stderr: [],
+           stderr: "",
            done?: false,
            timeout_ms: timeout_ms,
            idle_timeout_ms: idle_timeout_ms
@@ -139,47 +135,47 @@ defmodule Codex.Exec do
     end
   end
 
-  defp send_prompt(%{pid: pid}, input) do
-    :ok = :exec.send(pid, input <> "\n")
-    :ok = :exec.send(pid, :eof)
-    :ok
+  defp send_prompt(%{transport: transport}, input) do
+    with :ok <- IOTransport.send(transport, input),
+         :ok <- IOTransport.end_input(transport) do
+      :ok
+    end
   end
 
-  defp collect_events(%{os_pid: os_pid} = state) do
-    do_collect(state, os_pid, [])
+  defp collect_events(state) do
+    do_collect(state, [])
   end
 
-  defp do_collect(%{timeout_ms: timeout_ms} = state, os_pid, events) do
+  defp do_collect(%{timeout_ms: timeout_ms, transport_ref: ref} = state, events) do
     receive do
-      {:stdout, ^os_pid, chunk} ->
-        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
+      {:codex_io_transport, ^ref, {:message, line}} ->
+        {decoded, non_json} = decode_event_line_pair(line)
 
         do_collect(
-          %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json},
-          os_pid,
+          %{state | non_json_stdout: state.non_json_stdout ++ non_json},
           events ++ decoded
         )
 
-      {:stderr, ^os_pid, chunk} ->
-        do_collect(%{state | stderr: [chunk | state.stderr]}, os_pid, events)
+      {:codex_io_transport, ^ref, {:stderr, data}} ->
+        do_collect(%{state | stderr: state.stderr <> data}, events)
 
-      {:DOWN, ^os_pid, :process, _pid, reason} ->
+      {:codex_io_transport, ^ref, {:error, reason}} ->
+        Logger.warning("Transport error during collect: #{inspect(reason)}")
+        do_collect(state, events)
+
+      {:codex_io_transport, ^ref, {:exit, reason}} ->
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer, "")
-            {:ok, %{events: events ++ decoded}}
+            {:ok, %{events: events}}
 
           {:ok, status} ->
-            merged_stderr = merge_stderr(state)
-            {:error, TransportError.new(status, stderr: merged_stderr)}
+            {:error, TransportError.new(status, stderr: state.stderr)}
 
           {:error, down_reason} ->
-            merged_stderr = merge_stderr(state)
-
             {:error,
              TransportError.new(-1,
                message: "codex executable exited: #{inspect(down_reason)}",
-               stderr: merged_stderr,
+               stderr: state.stderr,
                retryable?: false
              )}
         end
@@ -219,77 +215,39 @@ defmodule Codex.Exec do
 
   defp next_stream_chunk(%{done?: true} = state), do: {:halt, state}
 
-  defp next_stream_chunk(%{idle_timeout_ms: nil} = state), do: next_stream_chunk_no_timeout(state)
-
-  defp next_stream_chunk(%{idle_timeout_ms: timeout_ms} = state)
-       when is_integer(timeout_ms) and timeout_ms > 0 do
-    os_pid = state.os_pid
+  defp next_stream_chunk(%{idle_timeout_ms: idle_timeout_ms, transport_ref: ref} = state) do
+    timeout = idle_timeout_ms || :infinity
 
     receive do
-      {:stdout, ^os_pid, chunk} ->
-        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
+      {:codex_io_transport, ^ref, {:message, line}} ->
+        {decoded, non_json} = decode_event_line_pair(line)
+        {decoded, %{state | non_json_stdout: state.non_json_stdout ++ non_json}}
 
-        {decoded,
-         %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
+      {:codex_io_transport, ^ref, {:stderr, data}} ->
+        {[], %{state | stderr: state.stderr <> data}}
 
-      {:stderr, ^os_pid, chunk} ->
-        {[], %{state | stderr: [chunk | state.stderr]}}
+      {:codex_io_transport, ^ref, {:error, reason}} ->
+        Logger.warning("Transport error during stream: #{inspect(reason)}")
+        {[], state}
 
-      {:DOWN, ^os_pid, :process, _pid, reason} ->
+      {:codex_io_transport, ^ref, {:exit, reason}} ->
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer, "")
-            {decoded, %{state | buffer: "", done?: true}}
+            {[], %{state | done?: true}}
 
           {:ok, status} ->
-            merged_stderr = merge_stderr(state)
-            raise TransportError.new(status, stderr: merged_stderr)
+            raise TransportError.new(status, stderr: state.stderr)
 
           {:error, down_reason} ->
-            merged_stderr = merge_stderr(state)
-
             raise TransportError.new(-1,
                     message: "codex executable exited: #{inspect(down_reason)}",
-                    stderr: merged_stderr,
+                    stderr: state.stderr,
                     retryable?: false
                   )
         end
     after
-      timeout_ms ->
-        raise handle_stream_idle_timeout(state, timeout_ms)
-    end
-  end
-
-  defp next_stream_chunk_no_timeout(%{os_pid: os_pid} = state) do
-    receive do
-      {:stdout, ^os_pid, chunk} ->
-        {decoded, new_buffer, non_json} = decode_lines(state.buffer, chunk)
-
-        {decoded,
-         %{state | buffer: new_buffer, non_json_stdout: state.non_json_stdout ++ non_json}}
-
-      {:stderr, ^os_pid, chunk} ->
-        {[], %{state | stderr: [chunk | state.stderr]}}
-
-      {:DOWN, ^os_pid, :process, _pid, reason} ->
-        case exit_status_from_reason(reason) do
-          {:ok, 0} ->
-            {decoded, _, _} = decode_lines(state.buffer, "")
-            {decoded, %{state | buffer: "", done?: true}}
-
-          {:ok, status} ->
-            merged_stderr = merge_stderr(state)
-            raise TransportError.new(status, stderr: merged_stderr)
-
-          {:error, down_reason} ->
-            merged_stderr = merge_stderr(state)
-
-            raise TransportError.new(-1,
-                    message: "codex executable exited: #{inspect(down_reason)}",
-                    stderr: merged_stderr,
-                    retryable?: false
-                  )
-        end
+      timeout ->
+        raise handle_stream_idle_timeout(state, idle_timeout_ms)
     end
   end
 
@@ -304,14 +262,11 @@ defmodule Codex.Exec do
   end
 
   defp safe_stop({:error, _reason}), do: :ok
-  defp safe_stop(%{pid: nil}), do: :ok
+  defp safe_stop(%{transport: nil}), do: :ok
 
-  defp safe_stop(%{pid: pid}) do
-    if Process.alive?(pid) do
-      :exec.stop(pid)
-    else
-      :ok
-    end
+  defp safe_stop(%{transport: transport}) do
+    IOTransport.force_close(transport)
+    :ok
   rescue
     _ -> :ok
   end
@@ -687,44 +642,27 @@ defmodule Codex.Exec do
     |> Enum.reverse()
   end
 
-  defp maybe_put_env(opts, []), do: opts
-  defp maybe_put_env(opts, env), do: [{:env, env} | opts]
+  defp decode_event_line_pair(line) when is_binary(line) do
+    case Jason.decode(line) do
+      {:ok, decoded} ->
+        case decode_event_map(decoded) do
+          {:ok, event} -> {[event], []}
+          {:error, _reason} -> {[], [line]}
+        end
 
-  defp decode_lines(buffer, chunk) do
-    {decoded, rest, non_json} = Buffer.decode_json_lines(buffer, chunk)
-    {events, unsupported} = decode_events(decoded)
-    {events, rest, unsupported ++ non_json}
+      {:error, reason} ->
+        Logger.warning("Failed to decode codex event: #{inspect(reason)} (#{line})")
+        {[], [line]}
+    end
   end
 
-  defp decode_events(lines) do
-    Enum.reduce(lines, {[], []}, fn line, {events, raw} ->
-      case decode_event(line) do
-        {:ok, event} -> {[event | events], raw}
-        {:non_json, raw_line} -> {events, [raw_line | raw]}
-      end
-    end)
-    |> then(fn {events, raw} -> {Enum.reverse(events), Enum.reverse(raw)} end)
-  end
-
-  defp decode_event(decoded) do
+  defp decode_event_map(decoded) do
     try do
       {:ok, Events.parse!(decoded)}
     rescue
       error in ArgumentError ->
         Logger.warning("Unsupported codex event: #{Exception.message(error)}")
-        {:non_json, Jason.encode!(decoded)}
-    end
-  end
-
-  defp merge_stderr(state) do
-    stderr = state.stderr |> Enum.reverse() |> IO.iodata_to_binary()
-    non_json = state.non_json_stdout |> Enum.map_join("\n", & &1)
-
-    if String.trim(non_json) == "" do
-      stderr
-    else
-      [stderr, "\n\n(unparsed stdout)\n", non_json, "\n"]
-      |> IO.iodata_to_binary()
+        {:error, :unsupported_event}
     end
   end
 
