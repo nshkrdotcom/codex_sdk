@@ -15,7 +15,7 @@ defmodule Codex.AppServer.ConnectionTest do
   test "handshake: sends initialize then initialized", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        transport: {AppServerSubprocess, owner: self()},
         client_name: "codex_sdk_test",
         client_version: "0.0.0",
         init_timeout_ms: 200
@@ -42,7 +42,7 @@ defmodule Codex.AppServer.ConnectionTest do
   test "init failure stops subprocess when initialize send fails", %{codex_opts: codex_opts} do
     assert {:error, :send_failed} =
              Connection.start_link(codex_opts,
-               subprocess:
+               transport:
                  {AppServerSubprocess,
                   owner: self(), send_result: {:error, :send_failed}, notify_stop: true},
                init_timeout_ms: 200
@@ -58,7 +58,7 @@ defmodule Codex.AppServer.ConnectionTest do
   } do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        transport: {AppServerSubprocess, owner: self()},
         init_timeout_ms: 200
       )
 
@@ -96,7 +96,7 @@ defmodule Codex.AppServer.ConnectionTest do
   test "request timeouts clean up in-flight state", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        transport: {AppServerSubprocess, owner: self()},
         init_timeout_ms: 200
       )
 
@@ -114,7 +114,7 @@ defmodule Codex.AppServer.ConnectionTest do
   test "ignores invalid subscriber filters without crashing", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        transport: {AppServerSubprocess, owner: self()},
         init_timeout_ms: 200
       )
 

@@ -7,7 +7,9 @@ defmodule Codex.MCP.Transport.Stdio do
 
   require Logger
 
-  alias Codex.AppServer.Subprocess.Erlexec
+  alias Codex.IO.Buffer
+  alias Codex.IO.Transport
+  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.MCP.Protocol
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
@@ -15,11 +17,8 @@ defmodule Codex.MCP.Transport.Stdio do
     @moduledoc false
 
     defstruct [
-      :subprocess_mod,
-      :subprocess_opts,
-      :subprocess_pid,
-      :os_pid,
-      :stdout_buffer,
+      :transport,
+      :transport_ref,
       :messages,
       :waiters
     ]
@@ -47,20 +46,24 @@ defmodule Codex.MCP.Transport.Stdio do
 
   @impl true
   def init(opts) do
-    subprocess_mod = Keyword.get(opts, :subprocess_mod, Erlexec)
-    subprocess_opts = Keyword.get(opts, :subprocess_opts, [])
+    {transport_mod, transport_opts} = resolve_transport(opts)
+    transport_ref = make_ref()
 
-    with :ok <- ensure_erlexec_started(subprocess_mod),
+    with :ok <- maybe_ensure_erlexec(transport_mod),
          {:ok, command} <- build_command(opts),
-         {:ok, subprocess_pid, os_pid} <-
-           subprocess_mod.start(command, start_opts(opts), subprocess_opts) do
+         {:ok, transport} <-
+           transport_mod.start_link(
+             [
+               command: command,
+               cwd: Keyword.get(opts, :cwd),
+               env: build_env(opts),
+               subscriber: {self(), transport_ref}
+             ] ++ transport_opts
+           ) do
       {:ok,
        %State{
-         subprocess_mod: subprocess_mod,
-         subprocess_opts: subprocess_opts,
-         subprocess_pid: subprocess_pid,
-         os_pid: os_pid,
-         stdout_buffer: "",
+         transport: transport,
+         transport_ref: transport_ref,
          messages: :queue.new(),
          waiters: []
        }}
@@ -74,7 +77,7 @@ defmodule Codex.MCP.Transport.Stdio do
   def handle_call({:send, message}, _from, %State{} = state) do
     encoded = Protocol.encode_message(message)
 
-    case state.subprocess_mod.send(state.subprocess_pid, encoded, state.subprocess_opts) do
+    case Transport.send(state.transport, encoded) do
       :ok -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -92,26 +95,43 @@ defmodule Codex.MCP.Transport.Stdio do
   end
 
   @impl true
-  def handle_info({:stdout, os_pid, chunk}, %State{os_pid: os_pid} = state) do
-    {messages, buffer, non_json} = Protocol.decode_lines(state.stdout_buffer, chunk)
+  def handle_info(
+        {:codex_io_transport, ref, {:message, line}},
+        %State{transport_ref: ref} = state
+      ) do
+    state =
+      case Buffer.decode_line(line) do
+        {:ok, msg} ->
+          state
+          |> enqueue_messages([msg])
+          |> flush_waiters()
 
-    Enum.each(non_json, fn raw ->
-      Logger.debug("Ignoring non-JSON MCP output: #{inspect(raw)}")
-    end)
+        {:non_json, raw} ->
+          Logger.debug("Ignoring non-JSON MCP output: #{inspect(raw)}")
+          state
+      end
 
-    state
-    |> enqueue_messages(messages)
-    |> flush_waiters()
-    |> then(fn updated -> {:noreply, %{updated | stdout_buffer: buffer}} end)
+    {:noreply, state}
   end
 
-  def handle_info({:stderr, os_pid, chunk}, %State{os_pid: os_pid} = state) do
+  def handle_info(
+        {:codex_io_transport, ref, {:stderr, chunk}},
+        %State{transport_ref: ref} = state
+      ) do
     text = IO.iodata_to_binary(chunk)
     Logger.debug("MCP stderr: #{String.trim(text)}")
     {:noreply, state}
   end
 
-  def handle_info({:DOWN, os_pid, :process, _pid, reason}, %State{os_pid: os_pid} = state) do
+  def handle_info(
+        {:codex_io_transport, ref, {:error, reason}},
+        %State{transport_ref: ref} = state
+      ) do
+    Logger.debug("MCP transport error: #{inspect(reason)}")
+    {:noreply, state}
+  end
+
+  def handle_info({:codex_io_transport, ref, {:exit, reason}}, %State{transport_ref: ref} = state) do
     Logger.debug("MCP subprocess exited: #{inspect(reason)}")
 
     state =
@@ -138,7 +158,7 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def terminate(_reason, %State{} = state) do
     _ = drain_waiters(state, {:error, :closed})
-    state.subprocess_mod.stop(state.subprocess_pid, state.subprocess_opts)
+    _ = Transport.force_close(state.transport)
     :ok
   end
 
@@ -193,12 +213,6 @@ defmodule Codex.MCP.Transport.Stdio do
     {match, rest}
   end
 
-  defp ensure_erlexec_started(Erlexec) do
-    RuntimeErlexec.ensure_started()
-  end
-
-  defp ensure_erlexec_started(_other), do: :ok
-
   defp build_command(opts) do
     case Keyword.get(opts, :command) do
       nil ->
@@ -214,14 +228,33 @@ defmodule Codex.MCP.Transport.Stdio do
     end
   end
 
-  defp start_opts(opts) do
-    env = build_env(opts)
+  defp resolve_transport(opts) do
+    case Keyword.fetch(opts, :transport) do
+      {:ok, {module, transport_opts}} when is_atom(module) and is_list(transport_opts) ->
+        {module, transport_opts}
 
-    []
-    |> maybe_add_env(env)
-    |> maybe_add_cwd(Keyword.get(opts, :cwd))
-    |> Kernel.++([:stdin, {:stdout, self()}, {:stderr, self()}, :monitor])
+      {:ok, module} when is_atom(module) ->
+        {module, []}
+
+      {:ok, other} ->
+        raise ArgumentError, "invalid transport option: #{inspect(other)}"
+
+      :error ->
+        case Keyword.get(opts, :subprocess_mod) do
+          nil ->
+            {IOTransportErlexec, []}
+
+          module when is_atom(module) ->
+            {module, Keyword.get(opts, :subprocess_opts, [])}
+
+          other ->
+            raise ArgumentError, "invalid subprocess_mod option: #{inspect(other)}"
+        end
+    end
   end
+
+  defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
+  defp maybe_ensure_erlexec(_other), do: :ok
 
   defp build_env(opts) do
     env_vars = Keyword.get(opts, :env_vars, [])
@@ -300,10 +333,4 @@ defmodule Codex.MCP.Transport.Stdio do
         ]
     end
   end
-
-  defp maybe_add_env(opts, []), do: opts
-  defp maybe_add_env(opts, env), do: [{:env, env} | opts]
-
-  defp maybe_add_cwd(opts, nil), do: opts
-  defp maybe_add_cwd(opts, cwd), do: [{:cd, to_charlist(cwd)} | opts]
 end

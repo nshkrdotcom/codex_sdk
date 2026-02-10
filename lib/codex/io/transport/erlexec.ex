@@ -393,7 +393,7 @@ defmodule Codex.IO.Transport.Erlexec do
       |> maybe_put_env(env)
       |> Kernel.++([:stdin, :stdout, :stderr, :monitor])
 
-    argv = [command | List.wrap(args)] |> Enum.map(&to_charlist/1)
+    argv = normalize_command_argv(command, args)
 
     case :exec.run(argv, exec_opts) do
       {:ok, pid, os_pid} ->
@@ -419,6 +419,23 @@ defmodule Codex.IO.Transport.Erlexec do
       [] -> opts
       value -> [{:env, value} | opts]
     end
+  end
+
+  defp normalize_command_argv(command, args) when is_list(command) do
+    cond do
+      command == [] ->
+        Enum.map(List.wrap(args), &to_charlist/1)
+
+      Enum.all?(command, &is_integer/1) ->
+        [to_charlist(command) | Enum.map(List.wrap(args), &to_charlist/1)]
+
+      true ->
+        Enum.map(command ++ List.wrap(args), &to_charlist/1)
+    end
+  end
+
+  defp normalize_command_argv(command, args) do
+    [command | List.wrap(args)] |> Enum.map(&to_charlist/1)
   end
 
   defp normalize_env(nil), do: []

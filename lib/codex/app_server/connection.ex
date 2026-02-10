@@ -5,28 +5,26 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
+  alias Codex.IO.Buffer
+  alias Codex.IO.Transport
+  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.AppServer.Protocol
-  alias Codex.AppServer.Subprocess.Erlexec
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
   @default_init_timeout_ms 10_000
   @default_request_timeout_ms 30_000
-  @stderr_buffer_limit 50
 
   defmodule State do
     @moduledoc false
 
     defstruct [
       :codex_opts,
-      :subprocess_mod,
-      :subprocess_opts,
-      :subprocess_pid,
-      :os_pid,
+      :transport,
+      :transport_ref,
       :phase,
       :next_id,
-      :stdout_buffer,
       :stderr,
       :pending,
       :ready_waiters,
@@ -84,27 +82,31 @@ defmodule Codex.AppServer.Connection do
 
   @impl true
   def init({%Options{} = codex_opts, opts}) do
-    subprocess_mod = resolve_subprocess_module(opts)
-    subprocess_opts = resolve_subprocess_opts(opts)
-
+    {transport_mod, transport_opts} = resolve_transport(opts)
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
 
     client_name = Keyword.get(opts, :client_name, "codex_sdk")
     client_title = Keyword.get(opts, :client_title)
     client_version = Keyword.get(opts, :client_version, default_client_version())
+    transport_ref = make_ref()
 
-    with :ok <- ensure_erlexec_started(subprocess_mod),
+    with :ok <- maybe_ensure_erlexec(transport_mod),
          {:ok, command} <- build_command(codex_opts),
-         {:ok, subprocess_pid, os_pid} <-
-           subprocess_mod.start(command, start_opts(codex_opts), subprocess_opts) do
-      case subprocess_mod.send(
-             subprocess_pid,
+         {:ok, transport} <-
+           transport_mod.start_link(
+             [
+               command: command,
+               env: build_env(codex_opts),
+               subscriber: {self(), transport_ref}
+             ] ++ transport_opts
+           ) do
+      case transport_mod.send(
+             transport,
              Protocol.encode_request(0, "initialize", %{
                "clientInfo" =>
                  %{"name" => client_name, "version" => client_version}
                  |> put_optional("title", client_title)
-             }),
-             subprocess_opts
+             })
            ) do
         :ok ->
           timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
@@ -112,14 +114,11 @@ defmodule Codex.AppServer.Connection do
           {:ok,
            %State{
              codex_opts: codex_opts,
-             subprocess_mod: subprocess_mod,
-             subprocess_opts: subprocess_opts,
-             subprocess_pid: subprocess_pid,
-             os_pid: os_pid,
+             transport: transport,
+             transport_ref: transport_ref,
              phase: :initializing,
              next_id: 1,
-             stdout_buffer: "",
-             stderr: [],
+             stderr: "",
              pending: %{
                0 => %{
                  from: :init,
@@ -134,7 +133,7 @@ defmodule Codex.AppServer.Connection do
            }}
 
         {:error, _} = error ->
-          _ = subprocess_mod.stop(subprocess_pid, subprocess_opts)
+          _ = Transport.force_close(transport)
           error
       end
     else
@@ -218,27 +217,61 @@ defmodule Codex.AppServer.Connection do
   end
 
   @impl true
-  def handle_info({:stdout, os_pid, chunk}, %State{os_pid: os_pid} = state) do
-    {messages, buffer, non_json} = Protocol.decode_lines(state.stdout_buffer, chunk)
+  def handle_info(
+        {:codex_io_transport, ref, {:message, line}},
+        %State{transport_ref: ref} = state
+      ) do
+    case Buffer.decode_line(line) do
+      {:ok, msg} ->
+        {:noreply, handle_incoming_message(state, msg)}
+
+      {:non_json, raw} ->
+        Logger.debug("Ignoring non-JSON app-server output: #{inspect(raw)}")
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(
+        {:codex_io_transport, ref, {:stderr, data}},
+        %State{transport_ref: ref} = state
+      ) do
+    {:noreply, %State{state | stderr: state.stderr <> IO.iodata_to_binary(data)}}
+  end
+
+  def handle_info(
+        {:codex_io_transport, ref, {:error, reason}},
+        %State{transport_ref: ref} = state
+      ) do
+    Logger.debug("Transport error from codex app-server: #{inspect(reason)}")
+    {:noreply, state}
+  end
+
+  def handle_info({:codex_io_transport, ref, {:exit, reason}}, %State{transport_ref: ref} = state) do
+    Logger.warning("codex app-server exited: #{inspect(reason)}")
+    {:stop, {:app_server_down, reason}, state}
+  end
+
+  # Backward-compatibility for tests that still send legacy subprocess-shaped messages.
+  def handle_info({:stdout, ref, chunk}, %State{transport_ref: ref} = state) do
+    {messages, _buffer, non_json} = Protocol.decode_lines("", chunk)
 
     Enum.each(non_json, fn raw ->
       Logger.debug("Ignoring non-JSON app-server output: #{inspect(raw)}")
     end)
 
     state =
-      Enum.reduce(messages, %State{state | stdout_buffer: buffer}, fn msg, acc ->
+      Enum.reduce(messages, state, fn msg, acc ->
         handle_incoming_message(acc, msg)
       end)
 
     {:noreply, state}
   end
 
-  def handle_info({:stderr, os_pid, chunk}, %State{os_pid: os_pid} = state) do
-    stderr = [chunk | state.stderr] |> Enum.take(@stderr_buffer_limit)
-    {:noreply, %State{state | stderr: stderr}}
+  def handle_info({:stderr, ref, data}, %State{transport_ref: ref} = state) do
+    {:noreply, %State{state | stderr: state.stderr <> IO.iodata_to_binary(data)}}
   end
 
-  def handle_info({:DOWN, os_pid, :process, _pid, reason}, %State{os_pid: os_pid} = state) do
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %State{transport_ref: ref} = state) do
     Logger.warning("codex app-server exited: #{inspect(reason)}")
     {:stop, {:app_server_down, reason}, state}
   end
@@ -409,28 +442,6 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp resolve_subprocess_module(opts) do
-    case Keyword.get(opts, :subprocess) do
-      nil -> Erlexec
-      {module, _} when is_atom(module) -> module
-      module when is_atom(module) -> module
-      other -> raise ArgumentError, "invalid subprocess option: #{inspect(other)}"
-    end
-  end
-
-  defp resolve_subprocess_opts(opts) do
-    case Keyword.get(opts, :subprocess) do
-      {_module, sub_opts} when is_list(sub_opts) -> sub_opts
-      _ -> []
-    end
-  end
-
-  defp ensure_erlexec_started(Erlexec) do
-    RuntimeErlexec.ensure_started()
-  end
-
-  defp ensure_erlexec_started(_other), do: :ok
-
   defp build_command(%Options{} = opts) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
       command = Enum.map([binary_path, "app-server"], &to_charlist/1)
@@ -438,29 +449,49 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp start_opts(%Options{} = opts) do
-    env = build_env(opts)
-    base = [:stdin, {:stdout, self()}, {:stderr, self()}, :monitor]
+  defp resolve_transport(opts) do
+    case Keyword.fetch(opts, :transport) do
+      {:ok, {module, transport_opts}} when is_atom(module) and is_list(transport_opts) ->
+        {module, transport_opts}
 
-    if env == [] do
-      base
-    else
-      [{:env, env} | base]
+      {:ok, module} when is_atom(module) ->
+        {module, []}
+
+      {:ok, other} ->
+        raise ArgumentError, "invalid transport option: #{inspect(other)}"
+
+      :error ->
+        case Keyword.get(opts, :subprocess) do
+          nil ->
+            {IOTransportErlexec, []}
+
+          {module, transport_opts} when is_atom(module) and is_list(transport_opts) ->
+            {module, transport_opts}
+
+          module when is_atom(module) ->
+            {module, []}
+
+          other ->
+            raise ArgumentError, "invalid subprocess option: #{inspect(other)}"
+        end
     end
+  end
+
+  defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
+  defp maybe_ensure_erlexec(_other), do: :ok
+
+  defp send_iolist(%State{} = state, data) do
+    Transport.send(state.transport, data)
+  end
+
+  defp stop_subprocess(%State{} = state) do
+    Transport.force_close(state.transport)
   end
 
   defp build_env(%Options{} = opts) do
     opts.api_key
     |> RuntimeEnv.base_overrides(opts.base_url)
     |> RuntimeEnv.to_charlist_env()
-  end
-
-  defp send_iolist(%State{} = state, data) do
-    state.subprocess_mod.send(state.subprocess_pid, data, state.subprocess_opts)
-  end
-
-  defp stop_subprocess(%State{} = state) do
-    state.subprocess_mod.stop(state.subprocess_pid, state.subprocess_opts)
   end
 
   defp default_client_version do
