@@ -48,6 +48,8 @@ defmodule Codex.Realtime.Session do
 
   use GenServer
 
+  alias Codex.Handoff
+  alias Codex.Realtime.Agent, as: RealtimeAgent
   alias Codex.Realtime.Config
   alias Codex.Realtime.Config.ModelConfig
   alias Codex.Realtime.Config.SessionModelSettings
@@ -595,8 +597,112 @@ defmodule Codex.Realtime.Session do
 
   defp resolve_instructions(_, _), do: ""
 
+  defp get_agent_tools(%{tools: tools, handoffs: handoffs})
+       when is_list(tools) and is_list(handoffs) do
+    tools ++ handoff_tools(handoffs)
+  end
+
   defp get_agent_tools(%{tools: tools}) when is_list(tools), do: tools
+  defp get_agent_tools(%{handoffs: handoffs}) when is_list(handoffs), do: handoff_tools(handoffs)
   defp get_agent_tools(_), do: []
+
+  defp handoff_tools(handoffs) when is_list(handoffs) do
+    handoffs
+    |> Enum.map(&handoff_tool_schema/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp handoff_tool_schema(handoff) do
+    case handoff_tool_name(handoff) do
+      name when is_binary(name) ->
+        %{
+          "type" => "function",
+          "name" => name,
+          "description" => handoff_tool_description(handoff),
+          "parameters" => handoff_input_schema(handoff)
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp handoff_tool_name(%Handoff{tool_name: name}) when is_binary(name), do: name
+
+  defp handoff_tool_name(%RealtimeAgent{name: name}) when is_binary(name),
+    do: default_handoff_tool_name(name)
+
+  defp handoff_tool_name(%{name: name}) when is_binary(name), do: default_handoff_tool_name(name)
+
+  defp handoff_tool_name(%{"name" => name}) when is_binary(name),
+    do: default_handoff_tool_name(name)
+
+  defp handoff_tool_name(_), do: nil
+
+  defp handoff_tool_description(%Handoff{tool_description: description})
+       when is_binary(description),
+       do: description
+
+  defp handoff_tool_description(%Handoff{agent_name: agent_name}),
+    do: default_handoff_tool_description(agent_name, nil)
+
+  defp handoff_tool_description(%RealtimeAgent{name: name, handoff_description: description}),
+    do: default_handoff_tool_description(name, description)
+
+  defp handoff_tool_description(%{name: name, handoff_description: description}),
+    do: default_handoff_tool_description(name, description)
+
+  defp handoff_tool_description(%{"name" => name, "handoff_description" => description}),
+    do: default_handoff_tool_description(name, description)
+
+  defp handoff_tool_description(%{name: name}),
+    do: default_handoff_tool_description(name, nil)
+
+  defp handoff_tool_description(%{"name" => name}),
+    do: default_handoff_tool_description(name, nil)
+
+  defp handoff_tool_description(_), do: "Handoff to another agent."
+
+  defp handoff_input_schema(%Handoff{input_schema: %{} = schema}) when map_size(schema) > 0,
+    do: schema
+
+  defp handoff_input_schema(_), do: %{"type" => "object", "properties" => %{}}
+
+  defp default_handoff_tool_name(name) do
+    safe_name =
+      name
+      |> to_string()
+      |> String.trim()
+      |> String.replace(~r/\s+/, "_")
+      |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
+      |> String.downcase()
+
+    "transfer_to_#{safe_name}"
+  end
+
+  defp default_handoff_tool_description(name, description) do
+    agent_name =
+      case name do
+        value when is_binary(value) -> value
+        value when is_atom(value) -> Atom.to_string(value)
+        value -> inspect(value)
+      end
+
+    base = "Handoff to the #{agent_name} agent to handle the request."
+
+    description_text =
+      case description do
+        nil -> ""
+        value when is_binary(value) -> String.trim(value)
+        value -> value |> inspect() |> String.trim()
+      end
+
+    if description_text == "" do
+      base
+    else
+      "#{base} #{description_text}"
+    end
+  end
 
   defp update_history(history, item) do
     case Enum.find_index(history, &(&1.item_id == item.item_id)) do
@@ -634,22 +740,96 @@ defmodule Codex.Realtime.Session do
     event = Events.tool_start(state.agent, tool, tool_call.arguments, state.context)
     notify_subscribers(state, event)
 
-    {:ok, pid} =
-      start_tool_task(fn ->
-        resolve_tool_output(tool, tool_call, state.context)
-      end)
+    case handle_handoff_tool_call(tool_call, tool, state) do
+      {:ok, state, output} ->
+        finish_tool_call(state, %{tool_call: tool_call, tool: tool}, output)
 
-    monitor_ref = Process.monitor(pid)
+      :not_handoff ->
+        {:ok, pid} =
+          start_tool_task(fn ->
+            resolve_tool_output(tool, tool_call, state.context)
+          end)
 
-    pending_tool_call = %{
-      pid: pid,
-      monitor_ref: monitor_ref,
-      tool_call: tool_call,
-      tool: tool
-    }
+        monitor_ref = Process.monitor(pid)
 
-    %{state | pending_tool_calls: Map.put(state.pending_tool_calls, pid, pending_tool_call)}
+        pending_tool_call = %{
+          pid: pid,
+          monitor_ref: monitor_ref,
+          tool_call: tool_call,
+          tool: tool
+        }
+
+        %{state | pending_tool_calls: Map.put(state.pending_tool_calls, pid, pending_tool_call)}
+    end
   end
+
+  defp handle_handoff_tool_call(tool_call, _tool, state) do
+    case resolve_handoff_target(state.agent, tool_call.name, tool_call.arguments, state.context) do
+      {:ok, nil} ->
+        {:ok, state, "Error: Handoff failed - target agent was nil"}
+
+      {:ok, to_agent} ->
+        from_agent = state.agent
+        state = %{state | agent: to_agent}
+
+        send_initial_config(state)
+        notify_subscribers(state, Events.handoff(from_agent, to_agent, state.context))
+
+        output = "Handoff complete. You are now connected to #{agent_display_name(to_agent)}."
+        {:ok, state, output}
+
+      {:error, :not_found} ->
+        :not_handoff
+
+      {:error, reason} ->
+        {:ok, state, "Error: Handoff failed - #{format_reason(reason)}"}
+    end
+  end
+
+  defp resolve_handoff_target(agent, tool_name, arguments_json, context) do
+    case find_handoff(get_agent_handoffs(agent), tool_name) do
+      nil ->
+        {:error, :not_found}
+
+      %Handoff{agent: target_agent} when not is_nil(target_agent) ->
+        {:ok, target_agent}
+
+      %Handoff{on_invoke_handoff: invoke} when is_function(invoke, 2) ->
+        args = decode_tool_arguments(arguments_json)
+        {:ok, invoke.(context, args)}
+
+      %Handoff{on_invoke_handoff: invoke} when is_function(invoke, 1) ->
+        {:ok, invoke.(context)}
+
+      target ->
+        {:ok, target}
+    end
+  rescue
+    error -> {:error, error}
+  end
+
+  defp get_agent_handoffs(%{handoffs: handoffs}) when is_list(handoffs), do: handoffs
+  defp get_agent_handoffs(_), do: []
+
+  defp find_handoff(handoffs, tool_name) do
+    Enum.find(handoffs, fn handoff ->
+      handoff_tool_name(handoff) == tool_name
+    end)
+  end
+
+  defp decode_tool_arguments(arguments_json) when is_binary(arguments_json) do
+    case Jason.decode(arguments_json) do
+      {:ok, args} when is_map(args) -> args
+      {:ok, _} -> %{}
+      {:error, _} -> %{}
+    end
+  end
+
+  defp decode_tool_arguments(_), do: %{}
+
+  defp agent_display_name(%{name: name}) when is_binary(name) and name != "", do: name
+  defp agent_display_name(%{"name" => name}) when is_binary(name) and name != "", do: name
+  defp agent_display_name(_), do: "the selected agent"
 
   defp resolve_tool_output(nil, tool_call, _context) do
     "Error: Unknown tool #{tool_call.name}"
@@ -754,6 +934,7 @@ defmodule Codex.Realtime.Session do
       case tool do
         %{name: ^name} -> true
         %{"name" => ^name} -> true
+        %Handoff{tool_name: ^name} -> true
         _ -> false
       end
     end)

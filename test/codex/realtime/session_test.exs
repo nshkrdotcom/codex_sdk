@@ -1,6 +1,7 @@
 defmodule Codex.Realtime.SessionTest do
   use ExUnit.Case, async: true
 
+  alias Codex.Realtime
   alias Codex.Realtime.Config.SessionModelSettings
   alias Codex.Realtime.Events
   alias Codex.Realtime.Items
@@ -687,6 +688,124 @@ defmodule Codex.Realtime.SessionTest do
       assert Enum.any?(messages, fn msg ->
                msg["type"] == "session.update" and
                  get_in(msg, ["session", "instructions"]) == "Hello Alice!"
+             end)
+
+      Session.close(session)
+    end
+  end
+
+  describe "handoffs" do
+    test "includes handoff tools in initial session.update payload", %{agent: _agent} do
+      tech_support =
+        Realtime.agent(
+          name: "TechSupport",
+          instructions: "Handle technical support issues."
+        )
+
+      billing =
+        Realtime.agent(
+          name: "BillingAgent",
+          instructions: "Handle billing issues."
+        )
+
+      greeter =
+        Realtime.agent(
+          name: "Greeter",
+          instructions: "Route users to specialists.",
+          handoffs: [tech_support, billing]
+        )
+
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: greeter,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+
+      assert_receive {:session_event, %Events.AgentStartEvent{}}
+
+      tools =
+        mock_ws
+        |> MockWebSocket.get_sent_messages()
+        |> Enum.find(&(&1["type"] == "session.update"))
+        |> get_in(["session", "tools"])
+
+      tool_names = Enum.map(tools, &Map.get(&1, "name"))
+
+      assert "transfer_to_techsupport" in tool_names
+      assert "transfer_to_billingagent" in tool_names
+
+      Session.close(session)
+    end
+
+    test "handoff tool call switches active agent and sends tool output", %{agent: _agent} do
+      tech_support =
+        Realtime.agent(
+          name: "TechSupport",
+          instructions: "You are now technical support."
+        )
+
+      greeter =
+        Realtime.agent(
+          name: "Greeter",
+          instructions: "You route requests.",
+          handoffs: [tech_support]
+        )
+
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: greeter,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      assert_receive {:session_event, %Events.AgentStartEvent{}}
+      :ok = MockWebSocket.clear_sent_messages(mock_ws)
+
+      handoff_call =
+        ModelEvents.tool_call(
+          name: "transfer_to_techsupport",
+          call_id: "call_handoff_1",
+          arguments: "{}",
+          id: "item_handoff_1"
+        )
+
+      send(session, {:model_event, handoff_call})
+
+      assert_receive {:session_event, %Events.ToolStartEvent{}}
+
+      assert_receive {:session_event,
+                      %Events.HandoffEvent{from_agent: from_agent, to_agent: to_agent}},
+                     200
+
+      assert from_agent.name == "Greeter"
+      assert to_agent.name == "TechSupport"
+
+      assert_receive {:session_event, %Events.ToolEndEvent{output: output}}, 200
+      assert output =~ "TechSupport"
+
+      assert Session.current_agent(session).name == "TechSupport"
+
+      messages = MockWebSocket.get_sent_messages(mock_ws)
+
+      assert Enum.any?(messages, fn msg ->
+               msg["type"] == "session.update" and
+                 get_in(msg, ["session", "instructions"]) == "You are now technical support."
+             end)
+
+      assert Enum.any?(messages, fn msg ->
+               msg["type"] == "conversation.item.create" and
+                 get_in(msg, ["item", "type"]) == "function_call_output" and
+                 get_in(msg, ["item", "call_id"]) == "call_handoff_1"
              end)
 
       Session.close(session)

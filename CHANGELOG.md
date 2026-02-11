@@ -12,7 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Codex.IO.Transport behaviour** with 10 callbacks (`start/1`, `start_link/1`, `send/2`, `end_input/1`, `subscribe/2,3`, `close/1`, `force_close/1`, `status/1`, `stderr/1`) providing a unified I/O transport layer modeled on the amp_sdk gold standard
+- **Realtime handoff execution** in `Codex.Realtime.Session`:
+  - Handoff tool schema generation — agent `handoffs` list is automatically converted to `transfer_to_*` function tools in the `session.update` payload
+  - `handle_handoff_tool_call/3` switches `state.agent`, sends new `session.update` config, and emits `%Events.HandoffEvent{}`
+  - `resolve_handoff_target/4` supports `Codex.Handoff` structs (with `agent`, `on_invoke_handoff`, `input_schema`), `Codex.Realtime.Agent` structs, and plain maps
+  - `get_agent_tools/1` merges regular tools and handoff tools; `find_tool/2` matches `%Handoff{tool_name: name}`
+
+- **Codex.IO.Transport behaviour** with 10 callbacks (`start/1`, `start_link/1`, `send/2`, `end_input/1`, `subscribe/2,3`, `close/1`, `force_close/1`, `status/1`, `stderr/1`) providing a unified I/O transport layer
 
 - **Codex.IO.Transport.Erlexec GenServer** implementation:
   - Task-isolated `safe_call/3` via `TaskSupervisor.async_nolink` with timeout and noproc/death handling
@@ -30,51 +36,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaces identical `split_lines/1` copies in Exec, AppServer.Protocol, and MCP.Protocol
 
 - **Codex.TaskSupport** — async task helper with automatic `Codex.TaskSupervisor` noproc retry and `Application.ensure_all_started` fallback
-  - `async_nolink/1,2` and `await_task_result/2` extracted from IO.Transport.Erlexec
+  - `async_nolink/1,2` extracted from IO.Transport.Erlexec
 
 - `Codex.TaskSupervisor` added to application supervision tree
 
+- **Voice TTS `:client` injection** — Added configurable `:client` option to `OpenAITTS.new/2` for request client injection (testability)
+
 ### Changed
+
+- **Realtime API surface cleanup**:
+  - `Realtime.start_session/2` renamed to `Realtime.run/2`
+  - `Realtime.send_audio/2` now takes a keyword third argument; use `Realtime.send_audio/3` with `commit: true` on the final chunk instead of separate `commit_audio/1`
+  - `Realtime.stop_session/1` renamed to `Realtime.close/1`
+  - Removed `Realtime.commit_audio/1` and `Realtime.add_handoff/3` (handoffs are now declared via the `:handoffs` option in `Realtime.agent/1`)
+  - Added `Realtime.send_message/2`, `Realtime.update_session/2`, `Realtime.current_agent/1`, `Realtime.history/1`
 
 - **Codex.Exec migrated to IO.Transport.Erlexec**:
   - Replaced `start_process/2` direct `:exec.run` with `IO.Transport.Erlexec.start_link` using tagged subscription ref
   - Replaced `do_collect/3` and `next_stream_chunk/1` raw `{:stdout, os_pid, chunk}` receive with tagged `{:codex_io_transport, ref, {:message, line}}` events
-  - Replaced `safe_stop/1` with `IO.Transport.force_close/1`
-  - Removed `pid`, `os_pid`, `buffer`, `stderr` from internal state; added `transport` and `transport_ref`
+  - Replaced direct `:exec.stop` in `safe_stop/1` with monitor-based shutdown cascade via IO.Transport
+  - Removed `pid`, `os_pid`, `buffer` from internal state; changed `stderr` from list to string; added `transport` and `transport_ref`
   - Deleted `ensure_erlexec_started/0`, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
 
 - **AppServer.Connection migrated to IO.Transport.Erlexec**:
-  - Removed `subprocess_mod`, `subprocess_opts`, `subprocess_pid`, `os_pid` from State; added `transport` and `transport_ref`
+  - Removed `subprocess_mod`, `subprocess_opts`, `subprocess_pid`, `os_pid`, `stdout_buffer` from State; added `transport_mod`, `transport`, and `transport_ref`
   - Replaced raw erlexec message handlers with tagged transport events
   - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, `ensure_erlexec_started/1`, `start_opts/1`
 
 - **MCP.Transport.Stdio migrated to IO.Transport.Erlexec** (same pattern as Connection)
 
 - **Transport lifecycle hardening** (Codex.Exec):
-  - Replaced bare `force_close` with monitor-based graceful shutdown escalation: `force_close` → `Process.exit(:shutdown)` → `Process.exit(:kill)` with configurable grace periods (2s / 250ms / 250ms)
+  - `safe_stop/1` now uses monitor-based graceful shutdown escalation: `force_close` → `Process.exit(:shutdown)` → `Process.exit(:kill)` with configurable grace periods (2s / 250ms / 250ms)
   - Added `flush_transport_messages/1` to drain tagged events after shutdown
   - Simplified `send_prompt/2` from with-chain to case-chain
-  - Moved `decode_event_map/1` rescue outside try block
+  - Extracted `decode_event_map/1` with function-level rescue (was inline `try`/`rescue` in `decode_line`)
 
 - **Transport module dispatch** (Connection, MCP.Transport.Stdio):
   - Added `transport_mod` field to State structs for dynamic transport dispatch
   - Added guard clauses to `send_iolist/2` and `stop_subprocess/1` for disconnected transport safety
-  - Refactored `resolve_transport/1` into `normalize_transport_option/2` and `normalize_transport_value/2` clause chain
+  - Connection: refactored `resolve_transport/1` into `normalize_transport_option/2` and `normalize_transport_value/2` clause chain
 
 - IO.Transport.Erlexec `init/1` simplified from with-chain to case expression
 - `normalize_payload/1` split: lists try `IO.iodata_to_binary` first, falling back to `Jason.encode!` on `ArgumentError`; added map-specific clause
-
-- Voice example: replaced `Task.await(output_task, :infinity)` with `Task.yield/2` + `Task.shutdown/2` using 60s timeout
+- `Config.merge_settings` tool serialization refactored into `serialize_tool/1` to handle non-struct tools
 
 - Rewired Exec, AppServer.Protocol, and MCP.Protocol to delegate line-splitting/decoding to `Codex.IO.Buffer`
+
+- **Example hardening** (all realtime examples):
+  - Added `main/0` entry points with `:ok` / `{:skip, reason}` / `{:error, reason}` return pattern
+  - `insufficient_quota` detection and graceful `SKIPPED:` output instead of `System.halt(1)`
+  - `safe_close/1` with rescue in all session teardown paths
+  - Stats/audit collection replacing raw event printing in `realtime_basic.exs`, `live_realtime_voice.exs`, and `live_app_server_approvals.exs`
+  - `Realtime.send_audio/3` calls updated with `commit: true` on final chunk
+  - Voice example (`voice_multi_turn.exs`): replaced `Task.await(output_task, :infinity)` with `Task.yield/2` + `Task.shutdown/2` using 60s timeout
+
+- **Voice TTS `instructions` field** — `maybe_add_instructions/2` now puts `instructions` as a top-level request body field instead of nesting under `extra_body`
+
+- Updated README, getting-started guide, API guide, examples guide, and realtime-and-voice guide to reflect renamed Realtime API surface and new handoff patterns
 
 ### Removed
 
 - Deleted `lib/codex/app_server/subprocess.ex` and `lib/codex/app_server/subprocess/erlexec.ex` (superseded by IO.Transport)
 - Deleted triplicated `split_lines/1`, `decode_lines`, `decode_line` private functions from Exec, AppServer.Protocol, and MCP.Protocol
+- Removed `Realtime.commit_audio/1`, `Realtime.add_handoff/3`, `Realtime.start_session/2`, `Realtime.stop_session/1` (replaced by `run/2`, `close/1`, agent-level `:handoffs`, and `send_audio/3` `commit:` option)
 
 ### Fixed
 
+- `Config.merge_settings` now preserves explicit falsy override values (was using `||` which dropped `false`; changed to `if is_nil(override_val)`)
+- Voice TTS instructions sent as top-level request body field instead of nested under `extra_body`
 - Stderr test race condition resolved with sleep+ordering adjustment
 - Stdio transport test fixed to track correct PIDs (fake vs wrapper)
 - Added `Kernel.send/2` import guards in test fakes to avoid Transport behaviour `send/2` conflicts

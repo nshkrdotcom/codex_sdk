@@ -300,13 +300,13 @@ config = %Codex.Realtime.Config.RunConfig{
 }
 
 # Start a realtime session
-{:ok, session} = Realtime.start_session(agent, config)
+{:ok, session} = Realtime.run(agent, config: config)
 
 # Subscribe to events
 Realtime.subscribe(session, self())
 
-# Send audio and receive responses
-Realtime.send_audio(session, audio_data)
+# Send audio and receive responses (commit on final chunk)
+Realtime.send_audio(session, audio_data, commit: true)
 ```
 
 `Realtime.Session` also traps linked WebSocket exits and keeps processing other session

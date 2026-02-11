@@ -573,12 +573,13 @@ The SDK provides full Realtime API and Voice Pipeline support ported from the Op
 Main module with agent builder and convenience functions for bidirectional voice interactions via WebSocket.
 
 - `agent/1` — builds a `Codex.Realtime.Agent` struct with instructions, tools, and handoffs
-- `start_session/2` — starts a `Codex.Realtime.Session` WebSocket GenServer
+- `run/2` — starts a `Codex.Realtime.Session` WebSocket GenServer
 - `subscribe/2` / `unsubscribe/2` — idempotent PubSub event subscription
-- `send_audio/2` / `commit_audio/1` — send PCM16 audio data and commit the buffer
-- `send_tool_result/3` — return tool call results to the session
-- `add_handoff/3` — configure agent-to-agent handoffs
-- `stop_session/1` — stop the session and close the WebSocket
+- `send_audio/3` — send PCM16 audio data (`commit: true` marks end-of-turn audio)
+- `send_message/2` — send text or structured user message input
+- `update_session/2` — send `session.update` settings changes mid-session
+- `current_agent/1` / `history/1` — inspect active agent and item history
+- `close/1` — stop the session and close the WebSocket
 
 ### `Codex.Realtime.Session`
 

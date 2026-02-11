@@ -448,6 +448,20 @@ defmodule Codex.Realtime.ConfigTest do
       assert merged.modalities == [:text, :audio]
       assert merged.input_audio_format == :pcm16
     end
+
+    test "preserves explicit false override values" do
+      base = %Config.SessionModelSettings{
+        prompt: "existing-prompt"
+      }
+
+      override = %Config.SessionModelSettings{
+        prompt: false
+      }
+
+      merged = Config.merge_settings(base, override)
+
+      assert merged.prompt == false
+    end
   end
 
   describe "default_session_settings/0" do

@@ -1,18 +1,18 @@
 Mix.Task.run("app.start")
 
-alias Codex.RunResultStreaming
 alias Codex.Events
 alias Codex.Items
+alias Codex.RunResultStreaming
 
 defmodule CodexExamples.LiveAppServerApprovals do
   @moduledoc false
 
-  @default_prompt "Run `pwd` and `ls -la` in the current working directory, then reply with exactly ok."
+  @default_prompt """
+  Run `pwd` and `ls -la` in the current working directory, then report the observed command output.
+  """
 
-  @approval_methods [
-    "item/commandExecution/requestApproval",
-    "item/fileChange/requestApproval"
-  ]
+  @command_approval_method "item/commandExecution/requestApproval"
+  @file_approval_method "item/fileChange/requestApproval"
 
   def main(argv) do
     prompt =
@@ -36,7 +36,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
       {:ok, approval_pid} =
         Task.start_link(fn ->
-          :ok = Codex.AppServer.subscribe(conn, methods: @approval_methods)
+          # Subscribe without method filters so request logging stays useful if method names evolve.
+          :ok = Codex.AppServer.subscribe(conn)
           send(parent, {:approvals_ready, self()})
           approval_loop(conn, parent)
         end)
@@ -54,14 +55,18 @@ defmodule CodexExamples.LiveAppServerApprovals do
       Streaming over app-server with manual approvals.
         prompt: #{prompt}
 
-      If Codex requests approval for a command or file change, this example auto-responds.
+      This run prints:
+        - proposed commandExecution/fileChange items
+        - incoming app-server request methods
+        - approval responses sent
+        - completion status for command/file items
       """)
 
       case Codex.Thread.run_streamed(thread, prompt, %{timeout_ms: 120_000}) do
         {:ok, stream} ->
           stream
           |> RunResultStreaming.raw_events()
-          |> Enum.each(&print_event/1)
+          |> Enum.each(&print_event(&1, parent))
 
           IO.puts("\nusage: #{inspect(RunResultStreaming.usage(stream))}")
 
@@ -69,13 +74,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
           Mix.raise("Streaming run failed: #{inspect(reason)}")
       end
 
-      handled = drain_handled_approvals([])
-
-      if handled == [] do
-        IO.puts("No approval requests were observed for this prompt.")
-      else
-        IO.puts("Handled approvals: #{Enum.join(Enum.reverse(handled), ", ")}")
-      end
+      audit = drain_audit_messages(new_audit_state())
+      print_audit_summary(audit)
 
       send(approval_pid, :stop)
     after
@@ -88,15 +88,26 @@ defmodule CodexExamples.LiveAppServerApprovals do
       :stop ->
         :ok
 
-      {:codex_request, id, "item/commandExecution/requestApproval", params} ->
-        decision = command_decision(params)
-        :ok = Codex.AppServer.respond(conn, id, %{decision: decision})
-        send(parent, {:approval_handled, "commandExecution"})
-        approval_loop(conn, parent)
+      {:codex_request, id, method, params} ->
+        IO.puts("\n[codex_request] method=#{method}")
+        send(parent, {:audit, {:request_received, method}})
 
-      {:codex_request, id, "item/fileChange/requestApproval", _params} ->
-        :ok = Codex.AppServer.respond(conn, id, %{decision: "accept"})
-        send(parent, {:approval_handled, "fileChange"})
+        case method do
+          @command_approval_method ->
+            decision = command_decision(params)
+            :ok = Codex.AppServer.respond(conn, id, %{decision: decision})
+            IO.puts("[approval] responded to commandExecution request")
+            send(parent, {:audit, {:response_sent, method}})
+
+          @file_approval_method ->
+            :ok = Codex.AppServer.respond(conn, id, %{decision: "accept"})
+            IO.puts("[approval] responded to fileChange request")
+            send(parent, {:audit, {:response_sent, method}})
+
+          _other ->
+            IO.puts("[codex_request] no handler configured for #{method}")
+        end
+
         approval_loop(conn, parent)
 
       _other ->
@@ -119,32 +130,135 @@ defmodule CodexExamples.LiveAppServerApprovals do
     end
   end
 
-  defp drain_handled_approvals(acc) do
-    receive do
-      {:approval_handled, kind} ->
-        drain_handled_approvals([kind | acc])
-    after
-      0 ->
-        acc
-    end
-  end
-
-  defp print_event(%Events.ItemAgentMessageDelta{item: %{"text" => delta}})
+  defp print_event(%Events.ItemAgentMessageDelta{item: %{"text" => delta}}, _parent)
        when is_binary(delta) do
     IO.write(delta)
   end
 
-  defp print_event(%Events.ItemCompleted{item: %Items.AgentMessage{text: text}}) do
+  defp print_event(%Events.ItemStarted{item: %Items.CommandExecution{} = item}, parent) do
+    IO.puts("""
+
+    [item.started commandExecution]
+      command: #{item.command}
+      cwd: #{inspect(item.cwd)}
+      status: #{inspect(item.status)}
+    """)
+
+    send(parent, {:audit, :command_proposed})
+  end
+
+  defp print_event(%Events.ItemStarted{item: %Items.FileChange{} = item}, parent) do
+    IO.puts("""
+
+    [item.started fileChange]
+      changes: #{length(item.changes)}
+      status: #{inspect(item.status)}
+    """)
+
+    send(parent, {:audit, :file_proposed})
+  end
+
+  defp print_event(%Events.ItemCompleted{item: %Items.CommandExecution{} = item}, parent) do
+    IO.puts("""
+
+    [item.completed commandExecution]
+      status: #{inspect(item.status)}
+      exit_code: #{inspect(item.exit_code)}
+      command: #{item.command}
+    """)
+
+    send(parent, {:audit, {:command_completed, item.status}})
+  end
+
+  defp print_event(%Events.ItemCompleted{item: %Items.FileChange{} = item}, parent) do
+    IO.puts("""
+
+    [item.completed fileChange]
+      status: #{inspect(item.status)}
+      changes: #{length(item.changes)}
+    """)
+
+    send(parent, {:audit, {:file_completed, item.status}})
+  end
+
+  defp print_event(%Events.ItemCompleted{item: %Items.AgentMessage{text: text}}, _parent) do
     if is_binary(text) and String.trim(text) != "" do
       IO.puts("\n\n[agent_message.completed]\n#{text}\n")
     end
   end
 
-  defp print_event(%Events.TurnCompleted{status: status}) do
+  defp print_event(%Events.TurnCompleted{status: status}, _parent) do
     IO.puts("\n[turn.completed] status=#{inspect(status)}")
   end
 
-  defp print_event(_other), do: :ok
+  defp print_event(_other, _parent), do: :ok
+
+  defp new_audit_state do
+    %{
+      command_proposed?: false,
+      file_proposed?: false,
+      approval_request_methods: MapSet.new(),
+      approval_response_methods: MapSet.new(),
+      command_completed_statuses: [],
+      file_completed_statuses: []
+    }
+  end
+
+  defp drain_audit_messages(state) do
+    receive do
+      {:audit, :command_proposed} ->
+        drain_audit_messages(%{state | command_proposed?: true})
+
+      {:audit, :file_proposed} ->
+        drain_audit_messages(%{state | file_proposed?: true})
+
+      {:audit, {:request_received, method}} ->
+        methods = MapSet.put(state.approval_request_methods, method)
+        drain_audit_messages(%{state | approval_request_methods: methods})
+
+      {:audit, {:response_sent, method}} ->
+        methods = MapSet.put(state.approval_response_methods, method)
+        drain_audit_messages(%{state | approval_response_methods: methods})
+
+      {:audit, {:command_completed, status}} ->
+        drain_audit_messages(%{
+          state
+          | command_completed_statuses: [status | state.command_completed_statuses]
+        })
+
+      {:audit, {:file_completed, status}} ->
+        drain_audit_messages(%{
+          state
+          | file_completed_statuses: [status | state.file_completed_statuses]
+        })
+    after
+      0 ->
+        state
+    end
+  end
+
+  defp print_audit_summary(audit) do
+    IO.puts("\nAudit summary:")
+    IO.puts("  command/file item proposed? #{audit.command_proposed? or audit.file_proposed?}")
+    IO.puts("  commandExecution proposed? #{audit.command_proposed?}")
+    IO.puts("  fileChange proposed? #{audit.file_proposed?}")
+
+    IO.puts(
+      "  approval request methods: #{inspect(MapSet.to_list(audit.approval_request_methods))}"
+    )
+
+    IO.puts(
+      "  approval response methods: #{inspect(MapSet.to_list(audit.approval_response_methods))}"
+    )
+
+    IO.puts(
+      "  commandExecution completed statuses: #{inspect(Enum.reverse(audit.command_completed_statuses))}"
+    )
+
+    IO.puts(
+      "  fileChange completed statuses: #{inspect(Enum.reverse(audit.file_completed_statuses))}"
+    )
+  end
 
   defp fetch_codex_path! do
     System.get_env("CODEX_PATH") ||

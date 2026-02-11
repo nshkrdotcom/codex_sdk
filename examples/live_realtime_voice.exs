@@ -21,48 +21,84 @@
 #   mix run examples/live_realtime_voice.exs
 
 defmodule LiveRealtimeVoiceDemo do
-  @moduledoc """
-  Demonstrates live realtime voice interaction with real audio.
-  """
+  @moduledoc false
 
   alias Codex.Realtime
+  alias Codex.Realtime.Config.RunConfig
+  alias Codex.Realtime.Config.SessionModelSettings
+  alias Codex.Realtime.Config.TurnDetectionConfig
   alias Codex.Realtime.Events
 
   @output_audio_path "/tmp/codex_realtime_response.pcm"
 
+  def main do
+    case run() do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+
+      {:error, reason} ->
+        IO.puts("[Error] #{inspect(reason)}")
+        System.halt(1)
+    end
+  end
+
   def run do
     IO.puts("=== Live Realtime Voice Demo ===\n")
 
-    # Realtime auth accepts Codex.Auth precedence and OPENAI_API_KEY.
     unless fetch_api_key() do
-      IO.puts(
-        "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
-      )
+      {:error, "no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"}
+    else
+      with {:ok, audio_pcm_data} <- load_fixture_audio(),
+           :ok <- initialize_output_file(),
+           {:ok, session} <- start_session() do
+        Realtime.subscribe(session, self())
 
-      System.halt(1)
+        result =
+          try do
+            Process.sleep(500)
+            run_demos(session, audio_pcm_data)
+          after
+            safe_close(session)
+          end
+
+        case result do
+          {:ok, stats} ->
+            show_output_info(stats)
+            :ok
+
+          other ->
+            other
+        end
+      else
+        {:error, reason} -> maybe_skip_quota(reason)
+      end
     end
+  end
 
-    # Load real audio from test fixture
+  defp load_fixture_audio do
     audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
 
-    audio_pcm_data =
-      case File.read(audio_file_path) do
-        {:ok, wav_data} ->
-          # Strip WAV header (44 bytes) to get raw PCM
-          <<_header::binary-size(44), pcm_data::binary>> = wav_data
-          IO.puts("[OK] Loaded audio file: #{byte_size(pcm_data)} bytes of PCM data")
-          pcm_data
+    case File.read(audio_file_path) do
+      {:ok, wav_data} ->
+        <<_header::binary-size(44), pcm_data::binary>> = wav_data
+        IO.puts("[OK] Loaded audio file: #{byte_size(pcm_data)} bytes of PCM data")
+        {:ok, pcm_data}
 
-        {:error, reason} ->
-          IO.puts("[Error] Could not load #{audio_file_path}: #{inspect(reason)}")
-          System.halt(1)
-      end
+      {:error, reason} ->
+        {:error, {:audio_fixture_read_failed, reason}}
+    end
+  end
 
-    # Initialize output file
+  defp initialize_output_file do
     File.write!(@output_audio_path, "")
     IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
+    :ok
+  end
 
-    # Create a realtime agent
+  defp start_session do
     agent =
       Realtime.agent(
         name: "VoiceAssistant",
@@ -73,64 +109,60 @@ defmodule LiveRealtimeVoiceDemo do
         model: "gpt-4o-realtime-preview"
       )
 
-    IO.puts("[OK] Created agent: #{agent.name}")
-    IO.puts("Starting realtime session...")
+    config = %RunConfig{
+      model_settings: %SessionModelSettings{
+        voice: "alloy",
+        turn_detection: %TurnDetectionConfig{
+          type: :semantic_vad,
+          eagerness: :medium
+        }
+      }
+    }
 
-    # Start the session
-    case Realtime.run(agent) do
+    IO.puts("[OK] Created agent: #{agent.name}")
+    IO.puts("Starting realtime session with voice=#{config.model_settings.voice}...")
+
+    case Realtime.run(agent, config: config) do
       {:ok, session} ->
         IO.puts("[OK] Session started! Session PID: #{inspect(session)}")
-
-        # Subscribe to events
-        Realtime.subscribe(session, self())
-
-        # Wait for session setup
-        Process.sleep(500)
-
-        # Demo 1: Send text first to get audio response
-        IO.puts("\n--- Demo 1: Text prompt with audio response ---")
-        prompt = "Say hello in a friendly way!"
-        IO.puts(">>> Sending text: #{prompt}")
-        Realtime.send_message(session, prompt)
-
-        # Handle events for a bit
-        handle_events(session, 5000)
-
-        # Demo 2: Send real audio input
-        IO.puts("\n--- Demo 2: Real audio input (voice_sample.wav) ---")
-        IO.puts(">>> Sending audio from file...")
-        send_audio_in_chunks(session, audio_pcm_data)
-
-        # Handle events for audio response
-        handle_events(session, 10000)
-
-        # Demo 3: Another text prompt
-        IO.puts("\n--- Demo 3: Follow-up text prompt ---")
-        prompt2 = "What did I just say to you?"
-        IO.puts(">>> Sending text: #{prompt2}")
-        Realtime.send_message(session, prompt2)
-
-        # Handle final events
-        handle_events(session, 5000)
-
-        # Close session
-        IO.puts("\nClosing session...")
-        Realtime.close(session)
-
-        # Show output statistics
-        show_output_info()
+        {:ok, session}
 
       {:error, reason} ->
-        IO.puts("[Error] Failed to start session: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
-  defp send_audio_in_chunks(session, audio_data) do
-    # Send audio in chunks (4800 bytes = 100ms at 24kHz, 16-bit mono)
-    chunk_size = 4800
-    chunks = for <<chunk::binary-size(chunk_size) <- audio_data>>, do: chunk
+  defp run_demos(session, audio_pcm_data) do
+    stats = new_stats()
 
-    # Handle any remaining partial chunk
+    IO.puts("\n--- Demo 1: Text prompt with audio response ---")
+    prompt = "Say hello in a friendly way!"
+    IO.puts(">>> Sending text: #{prompt}")
+    Realtime.send_message(session, prompt)
+
+    with {:ok, stats} <- collect_stage_stats(5_000, stats),
+         :ok <- run_audio_stage(session, audio_pcm_data),
+         {:ok, stats} <- collect_stage_stats(10_000, stats) do
+      IO.puts("\n--- Demo 3: Follow-up text prompt ---")
+      prompt2 = "What did I just say to you?"
+      IO.puts(">>> Sending text: #{prompt2}")
+      Realtime.send_message(session, prompt2)
+
+      collect_stage_stats(5_000, stats)
+    end
+  end
+
+  defp run_audio_stage(session, audio_pcm_data) do
+    IO.puts("\n--- Demo 2: Real audio input (voice_sample.wav) ---")
+    IO.puts(">>> Sending audio from file...")
+    send_audio_in_chunks(session, audio_pcm_data)
+    :ok
+  end
+
+  defp send_audio_in_chunks(session, audio_data) do
+    # 4800 bytes = 100ms at 24kHz, 16-bit mono
+    chunk_size = 4_800
+    full_chunks = for <<chunk::binary-size(chunk_size) <- audio_data>>, do: chunk
     remaining_size = rem(byte_size(audio_data), chunk_size)
 
     chunks =
@@ -138,92 +170,154 @@ defmodule LiveRealtimeVoiceDemo do
         last_chunk =
           binary_part(audio_data, byte_size(audio_data) - remaining_size, remaining_size)
 
-        chunks ++ [last_chunk]
+        full_chunks ++ [last_chunk]
       else
-        chunks
+        full_chunks
       end
 
-    IO.puts("Sending #{length(chunks)} audio chunks...")
+    total_chunks = length(chunks)
+    IO.puts("Sending #{total_chunks} audio chunks (commit on final chunk)...")
 
-    for chunk <- chunks do
-      Realtime.send_audio(session, chunk)
+    chunks
+    |> Enum.with_index(1)
+    |> Enum.each(fn {chunk, idx} ->
+      Realtime.send_audio(session, chunk, commit: idx == total_chunks)
       IO.write(".")
       Process.sleep(100)
-    end
+    end)
 
-    IO.puts(" [#{length(chunks)} chunks sent]")
+    IO.puts(" [#{total_chunks} chunks sent]")
   end
 
-  defp handle_events(session, timeout) do
-    start_time = System.monotonic_time(:millisecond)
-    do_handle_events(session, start_time, timeout)
-  end
+  defp collect_stage_stats(timeout_ms, accumulated) do
+    stage_stats = handle_events(timeout_ms)
+    merged = merge_stats(accumulated, stage_stats)
 
-  defp do_handle_events(session, start_time, timeout) do
-    remaining = timeout - (System.monotonic_time(:millisecond) - start_time)
-
-    if remaining <= 0 do
-      IO.puts("\n[Timeout] Event handling complete")
+    if merged.insufficient_quota? do
+      {:skip, "insufficient_quota"}
     else
-      receive do
-        # Session events
-        {:session_event, %Events.AgentStartEvent{agent: agent}} ->
-          IO.puts("\n[Agent] Session started with: #{agent.name}")
-          do_handle_events(session, start_time, timeout)
+      {:ok, merged}
+    end
+  end
 
-        {:session_event, %Events.AgentEndEvent{}} ->
-          IO.puts("\n[Agent] Turn ended")
-          do_handle_events(session, start_time, timeout)
+  defp new_stats do
+    %{
+      audio_delta_count: 0,
+      audio_bytes: 0,
+      error_count: 0,
+      event_counts: %{},
+      insufficient_quota?: false
+    }
+  end
 
-        {:session_event, %Events.AudioEvent{audio: audio}} ->
-          # Save audio to file
-          if audio && audio.data do
-            File.write!(@output_audio_path, audio.data, [:append])
-          end
+  defp merge_stats(left, right) do
+    %{
+      audio_delta_count: left.audio_delta_count + right.audio_delta_count,
+      audio_bytes: left.audio_bytes + right.audio_bytes,
+      error_count: left.error_count + right.error_count,
+      event_counts: Map.merge(left.event_counts, right.event_counts, fn _k, a, b -> a + b end),
+      insufficient_quota?: left.insufficient_quota? or right.insufficient_quota?
+    }
+  end
 
-          IO.write(".")
-          do_handle_events(session, start_time, timeout)
+  defp handle_events(timeout) do
+    start_time = System.monotonic_time(:millisecond)
+    do_handle_events(start_time, timeout, new_stats())
+  end
 
-        {:session_event, %Events.AudioEndEvent{}} ->
-          IO.puts("\n[Audio] Audio segment complete")
-          do_handle_events(session, start_time, timeout)
+  defp do_handle_events(start_time, timeout, stats) do
+    if stats.insufficient_quota? do
+      stats
+    else
+      remaining = timeout - (System.monotonic_time(:millisecond) - start_time)
 
-        {:session_event, %Events.ToolStartEvent{tool: tool}} ->
-          IO.puts("\n[Tool] Calling: #{inspect(tool)}")
-          do_handle_events(session, start_time, timeout)
+      if remaining <= 0 do
+        IO.puts("\n[Timeout] Event handling complete")
+        stats
+      else
+        receive do
+          {:session_event, %Events.AgentStartEvent{agent: agent} = event} ->
+            IO.puts("\n[Agent] Session started with: #{agent.name}")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
 
-        {:session_event, %Events.ToolEndEvent{tool: tool, output: output}} ->
-          IO.puts("[Tool] #{inspect(tool)} completed: #{inspect(output)}")
-          do_handle_events(session, start_time, timeout)
+          {:session_event, %Events.AgentEndEvent{} = event} ->
+            IO.puts("\n[Agent] Turn ended")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
 
-        {:session_event, %Events.HandoffEvent{from_agent: from, to_agent: to}} ->
-          IO.puts("\n[Handoff] #{from.name} -> #{to.name}")
-          do_handle_events(session, start_time, timeout)
+          {:session_event, %Events.AudioEvent{audio: audio} = event} ->
+            updated =
+              stats
+              |> increment_event(event)
+              |> Map.update!(:audio_delta_count, &(&1 + 1))
+              |> Map.update!(:audio_bytes, &(&1 + byte_size(audio.data || <<>>)))
 
-        {:session_event, %Events.ErrorEvent{error: error}} ->
-          IO.puts("\n[Error] #{inspect(error)}")
-          do_handle_events(session, start_time, timeout)
+            if is_binary(audio.data) and audio.data != <<>> do
+              File.write!(@output_audio_path, audio.data, [:append])
+            end
 
-        {:session_event, %Events.HistoryAddedEvent{item: item}} ->
-          IO.puts("\n[History] Added: #{inspect(item.__struct__)}")
-          do_handle_events(session, start_time, timeout)
+            IO.write(".")
+            do_handle_events(start_time, timeout, updated)
 
-        {:session_event, event} ->
-          IO.puts("\n[Event] #{inspect(event.__struct__)}")
-          do_handle_events(session, start_time, timeout)
+          {:session_event, %Events.AudioEndEvent{} = event} ->
+            IO.puts("\n[Audio] Audio segment complete")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
 
-        other ->
-          IO.puts("\n[Unknown] #{inspect(other)}")
-          do_handle_events(session, start_time, timeout)
-      after
-        remaining ->
-          IO.puts("\n[Timeout] Event handling complete")
+          {:session_event, %Events.ToolStartEvent{tool: tool} = event} ->
+            IO.puts("\n[Tool] Calling: #{inspect(tool)}")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
+
+          {:session_event, %Events.ToolEndEvent{tool: tool, output: output} = event} ->
+            IO.puts("[Tool] #{inspect(tool)} completed: #{inspect(output)}")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
+
+          {:session_event, %Events.HandoffEvent{from_agent: from, to_agent: to} = event} ->
+            IO.puts("\n[Handoff] #{from.name} -> #{to.name}")
+            do_handle_events(start_time, timeout, increment_event(stats, event))
+
+          {:session_event, %Events.ErrorEvent{error: error} = event} ->
+            updated =
+              stats
+              |> increment_event(event)
+              |> Map.update!(:error_count, &(&1 + 1))
+              |> Map.put(:insufficient_quota?, insufficient_quota_error?(error))
+
+            if updated.insufficient_quota? do
+              IO.puts("\n[Error] insufficient_quota from API")
+            else
+              IO.puts("\n[Error] #{inspect(error)}")
+            end
+
+            do_handle_events(start_time, timeout, updated)
+
+          {:session_event, event} ->
+            do_handle_events(start_time, timeout, increment_event(stats, event))
+        after
+          remaining ->
+            IO.puts("\n[Timeout] Event handling complete")
+            stats
+        end
       end
     end
   end
 
-  defp show_output_info do
+  defp increment_event(stats, event) do
+    name = event.__struct__ |> Module.split() |> List.last()
+    counts = Map.update(stats.event_counts, name, 1, &(&1 + 1))
+    %{stats | event_counts: counts}
+  end
+
+  defp show_output_info(stats) do
     output_size = File.stat!(@output_audio_path).size
+
+    if output_size == 0 do
+      IO.puts("""
+      [Debug] No output audio was written.
+        audio delta events: #{stats.audio_delta_count}
+        bytes in audio deltas: #{stats.audio_bytes}
+        error events: #{stats.error_count}
+        event summary: #{inspect(stats.event_counts)}
+      """)
+    end
 
     IO.puts("""
 
@@ -240,7 +334,29 @@ defmodule LiveRealtimeVoiceDemo do
     """)
   end
 
+  defp safe_close(session) do
+    IO.puts("\nClosing session...")
+    Realtime.close(session)
+  rescue
+    _ -> :ok
+  end
+
+  defp maybe_skip_quota(reason) do
+    if insufficient_quota_error?(reason) do
+      {:skip, "insufficient_quota"}
+    else
+      {:error, reason}
+    end
+  end
+
+  defp insufficient_quota_error?(error) do
+    error
+    |> inspect(limit: :infinity)
+    |> String.downcase()
+    |> String.contains?("insufficient_quota")
+  end
+
   defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
-LiveRealtimeVoiceDemo.run()
+LiveRealtimeVoiceDemo.main()

@@ -7,15 +7,14 @@ defmodule Codex.LiveAppServerTest do
   @moduletag :live
   @moduletag timeout: 120_000
 
-  @skip_reason "Live tests are opt-in. Run with CODEX_TEST_LIVE=true mix test --only live --include live (requires codex CLI + auth)."
-
   @live_enabled System.get_env("CODEX_TEST_LIVE")
                 |> to_string()
                 |> String.downcase()
                 |> then(&(&1 in ["1", "true", "yes"]))
 
   if not @live_enabled do
-    @moduletag skip: @skip_reason
+    @moduletag skip:
+                 "Live tests are opt-in. Run with CODEX_TEST_LIVE=true mix test --only live --include live (requires codex CLI + auth)."
   end
 
   setup_all do

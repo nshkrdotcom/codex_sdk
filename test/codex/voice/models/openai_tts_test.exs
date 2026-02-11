@@ -91,4 +91,64 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
       # assert Enum.all?(chunks, &is_binary/1)
     end
   end
+
+  describe "run/3 request body" do
+    test "sends instructions as a top-level field" do
+      test_pid = self()
+
+      client = fn url, opts ->
+        send(test_pid, {:tts_request, url, opts})
+
+        ref = make_ref()
+        send(test_pid, {ref, {:data, <<1, 2, 3>>}})
+        send(test_pid, {ref, :done})
+
+        {:ok, %{}}
+      end
+
+      model =
+        OpenAITTS.new("gpt-4o-mini-tts",
+          api_key: "sk-test",
+          base_url: "https://example.test/v1",
+          client: client
+        )
+
+      settings = TTSSettings.new(voice: :nova, instructions: "Read exactly as written.")
+
+      chunks =
+        model
+        |> OpenAITTS.run("Hello from TTS", settings)
+        |> Enum.to_list()
+
+      assert chunks == [<<1, 2, 3>>]
+
+      assert_receive {:tts_request, "https://example.test/v1/audio/speech", opts}
+      assert opts[:json][:instructions] == "Read exactly as written."
+    end
+
+    test "does not nest instructions under extra_body" do
+      test_pid = self()
+
+      client = fn _url, opts ->
+        send(test_pid, {:tts_body, opts[:json]})
+
+        ref = make_ref()
+        send(test_pid, {ref, :done})
+
+        {:ok, %{}}
+      end
+
+      model =
+        OpenAITTS.new("gpt-4o-mini-tts",
+          api_key: "sk-test",
+          base_url: "https://example.test/v1",
+          client: client
+        )
+
+      _ = OpenAITTS.run(model, "Hello", TTSSettings.new()) |> Enum.to_list()
+
+      assert_receive {:tts_body, body}
+      refute Map.has_key?(body, :extra_body)
+    end
+  end
 end

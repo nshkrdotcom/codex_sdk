@@ -233,14 +233,18 @@ defmodule Codex.Realtime.Config do
     defp tools_to_json(nil), do: nil
 
     defp tools_to_json(tools) do
-      Enum.map(tools, fn tool ->
-        if function_exported?(tool.__struct__, :to_function_schema, 1) do
-          tool.__struct__.to_function_schema(tool)
-        else
-          tool
-        end
-      end)
+      Enum.map(tools, &serialize_tool/1)
     end
+
+    defp serialize_tool(%{__struct__: struct_module} = struct_tool) do
+      if function_exported?(struct_module, :to_function_schema, 1) do
+        struct_module.to_function_schema(struct_tool)
+      else
+        struct_tool
+      end
+    end
+
+    defp serialize_tool(other), do: other
 
     defp maybe_put(map, _key, nil), do: map
     defp maybe_put(map, key, value), do: Map.put(map, key, value)
@@ -337,7 +341,7 @@ defmodule Codex.Realtime.Config do
 
     merged =
       Map.merge(base_map, override_map, fn _key, base_val, override_val ->
-        override_val || base_val
+        if is_nil(override_val), do: base_val, else: override_val
       end)
 
     struct!(SessionModelSettings, merged)

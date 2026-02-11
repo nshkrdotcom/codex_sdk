@@ -115,9 +115,9 @@ For voice-based interactions, the SDK provides two options:
 alias Codex.Realtime
 
 agent = Realtime.agent(name: "Assistant", instructions: "You are helpful.")
-{:ok, session} = Realtime.start_session(agent)
+{:ok, session} = Realtime.run(agent)
 Realtime.subscribe(session, self())
-Realtime.send_audio(session, audio_data)
+Realtime.send_audio(session, audio_data, commit: true)
 ```
 
 ### Voice Pipeline (STT -> Workflow -> TTS)

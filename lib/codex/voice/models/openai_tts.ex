@@ -125,17 +125,19 @@ defmodule Codex.Voice.Models.OpenAITTS do
       |> maybe_add_instructions(settings.instructions)
 
     Stream.resource(
-      fn -> start_streaming_request(model.base_url, api_key, body) end,
+      fn -> start_streaming_request(model.base_url, api_key, body, model.client) end,
       &receive_chunk/1,
       &cleanup_request/1
     )
   end
 
-  @spec start_streaming_request(String.t(), String.t(), map()) ::
+  @spec start_streaming_request(String.t(), String.t(), map(), term()) ::
           {:streaming, Req.Response.t()} | {:error, term()}
-  defp start_streaming_request(base_url, api_key, body) do
+  defp start_streaming_request(base_url, api_key, body, client) do
+    request_client = resolve_request_client(client)
+
     # Create a streaming request
-    case Req.post("#{base_url}/audio/speech",
+    case request_client.("#{base_url}/audio/speech",
            headers: [
              {"Authorization", "Bearer #{api_key}"},
              {"Content-Type", "application/json"}
@@ -149,6 +151,13 @@ defmodule Codex.Voice.Models.OpenAITTS do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp resolve_request_client(nil), do: &Req.post/2
+  defp resolve_request_client(client) when is_function(client, 2), do: client
+
+  defp resolve_request_client(client) when is_atom(client) do
+    &client.post/2
   end
 
   @spec receive_chunk({:streaming, Req.Response.t()} | {:error, term()}) ::
@@ -194,6 +203,6 @@ defmodule Codex.Voice.Models.OpenAITTS do
   defp maybe_add_instructions(body, nil), do: body
 
   defp maybe_add_instructions(body, instructions) do
-    Map.put(body, :extra_body, %{instructions: instructions})
+    Map.put(body, :instructions, instructions)
   end
 end

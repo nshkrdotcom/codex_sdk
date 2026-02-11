@@ -1418,13 +1418,11 @@ defmodule RealtimeExample do
   alias Codex.Realtime.Config.{RunConfig, SessionModelSettings, TurnDetectionConfig}
 
   def start_session do
-    # Create a realtime agent
     agent = Realtime.agent(
       name: "VoiceAssistant",
       instructions: "You are a helpful voice assistant."
     )
 
-    # Configure session with voice and turn detection
     config = %RunConfig{
       model_settings: %SessionModelSettings{
         voice: "alloy",
@@ -1435,28 +1433,22 @@ defmodule RealtimeExample do
       }
     }
 
-    # Start the session
-    {:ok, session} = Realtime.start_session(agent, config)
-
-    # Subscribe to events
+    {:ok, session} = Realtime.run(agent, config: config)
     Realtime.subscribe(session, self())
-
-    # Session is now ready for audio
     session
   end
 
   def handle_events do
     receive do
-      {:realtime_event, %Codex.Realtime.Events.RealtimeAudioEvent{} = event} ->
-        # Handle audio from the agent
-        play_audio(event.audio)
+      {:session_event, %Codex.Realtime.Events.AudioEvent{audio: audio}} ->
+        play_audio(audio.data)
         handle_events()
 
-      {:realtime_event, %Codex.Realtime.Events.RealtimeAgentStateEvent{state: state}} ->
-        IO.puts("Agent state: #{state}")
+      {:session_event, %Codex.Realtime.Events.AgentStartEvent{agent: agent}} ->
+        IO.puts("Agent started: #{agent.name}")
         handle_events()
 
-      {:realtime_event, event} ->
+      {:session_event, event} ->
         IO.inspect(event, label: "Event")
         handle_events()
     after
@@ -1510,15 +1502,18 @@ defmodule RealtimeHandoffsExample do
       instructions: "Greet users and hand off to specialists."
     )
 
-    specialist = Realtime.agent(
-      name: "TechSupport",
-      instructions: "Provide technical assistance."
-    )
+    specialist =
+      Realtime.agent(
+        name: "TechSupport",
+        instructions: "Provide technical assistance."
+      )
 
-    # Configure greeter to hand off to specialist
-    greeter_with_handoff = Realtime.add_handoff(greeter, specialist,
-      condition: "When user needs technical help"
-    )
+    greeter_with_handoff =
+      Realtime.agent(
+        name: greeter.name,
+        instructions: greeter.instructions,
+        handoffs: [specialist]
+      )
 
     {greeter_with_handoff, specialist}
   end
