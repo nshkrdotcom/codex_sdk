@@ -112,6 +112,38 @@ defmodule Codex.ExecTest do
     assert Enum.at(args, idx + 1) == "cancel-me"
   end
 
+  test "enriches thread.started metadata with effective model and reasoning effort" do
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.cat_fixture()
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path,
+        model: "gpt-5.3-codex",
+        reasoning_effort: :medium
+      })
+
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, result} = Thread.run(thread, "metadata")
+
+    started =
+      Enum.find(result.events, fn
+        %Events.ThreadStarted{} -> true
+        _ -> false
+      end)
+
+    assert started != nil
+    assert started.metadata["labels"] == %{"topic" => "demo"}
+    assert started.metadata["model"] == "gpt-5.3-codex"
+    assert started.metadata["reasoning_effort"] == "medium"
+    assert get_in(started.metadata, ["config", "model_reasoning_effort"]) == "medium"
+  end
+
   test "forwards exec CLI flags and config overrides" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_flags_#{System.unique_integer([:positive])}")

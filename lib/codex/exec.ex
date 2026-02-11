@@ -126,6 +126,7 @@ defmodule Codex.Exec do
          %{
            transport: transport,
            transport_ref: transport_ref,
+           exec_opts: exec_opts,
            non_json_stdout: [],
            stderr: "",
            done?: false,
@@ -152,7 +153,7 @@ defmodule Codex.Exec do
   defp do_collect(%{timeout_ms: timeout_ms, transport_ref: ref} = state, events) do
     receive do
       {:codex_io_transport, ^ref, {:message, line}} ->
-        {decoded, non_json} = decode_event_line_pair(line)
+        {decoded, non_json} = decode_event_line_pair(line, state.exec_opts)
 
         do_collect(
           %{state | non_json_stdout: state.non_json_stdout ++ non_json},
@@ -223,7 +224,7 @@ defmodule Codex.Exec do
 
     receive do
       {:codex_io_transport, ^ref, {:message, line}} ->
-        {decoded, non_json} = decode_event_line_pair(line)
+        {decoded, non_json} = decode_event_line_pair(line, state.exec_opts)
         {decoded, %{state | non_json_stdout: state.non_json_stdout ++ non_json}}
 
       {:codex_io_transport, ^ref, {:stderr, data}} ->
@@ -655,10 +656,10 @@ defmodule Codex.Exec do
     |> Enum.reverse()
   end
 
-  defp decode_event_line_pair(line) when is_binary(line) do
+  defp decode_event_line_pair(line, exec_opts) when is_binary(line) do
     case Jason.decode(line) do
       {:ok, decoded} ->
-        case decode_event_map(decoded) do
+        case decode_event_map(decoded, exec_opts) do
           {:ok, event} -> {[event], []}
           {:error, _reason} -> {[], [line]}
         end
@@ -669,12 +670,86 @@ defmodule Codex.Exec do
     end
   end
 
-  defp decode_event_map(decoded) do
-    {:ok, Events.parse!(decoded)}
+  defp decode_event_map(decoded, exec_opts) do
+    event = Events.parse!(decoded)
+    {:ok, enrich_event(event, exec_opts)}
   rescue
     error in ArgumentError ->
       Logger.warning("Unsupported codex event: #{Exception.message(error)}")
       {:error, :unsupported_event}
+  end
+
+  defp enrich_event(%Events.ThreadStarted{} = event, %ExecOptions{codex_opts: %Options{} = opts}) do
+    %Events.ThreadStarted{
+      event
+      | metadata: enrich_thread_started_metadata(event.metadata, opts)
+    }
+  end
+
+  defp enrich_event(event, _exec_opts), do: event
+
+  defp enrich_thread_started_metadata(metadata, %Options{} = opts) do
+    metadata =
+      case metadata do
+        value when is_map(value) -> value
+        _ -> %{}
+      end
+
+    model = normalize_string(opts.model)
+    reasoning_effort = normalize_reasoning(opts.reasoning_effort)
+
+    metadata
+    |> put_if_missing("model", model)
+    |> put_reasoning_if_missing(reasoning_effort)
+    |> put_reasoning_config_if_missing(reasoning_effort)
+  end
+
+  defp normalize_string(value) when is_binary(value) and value != "", do: value
+  defp normalize_string(_), do: nil
+
+  defp normalize_reasoning(value) when is_atom(value) do
+    case Models.normalize_reasoning_effort(value) do
+      {:ok, effort} when is_atom(effort) and not is_nil(effort) ->
+        Models.reasoning_effort_to_string(effort)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp normalize_reasoning(value) when is_binary(value) and value != "", do: value
+  defp normalize_reasoning(_), do: nil
+
+  defp put_if_missing(map, _key, nil), do: map
+
+  defp put_if_missing(map, key, value) do
+    if Map.has_key?(map, key), do: map, else: Map.put(map, key, value)
+  end
+
+  defp put_reasoning_if_missing(map, nil), do: map
+
+  defp put_reasoning_if_missing(map, value) do
+    if Map.has_key?(map, "reasoning_effort") or Map.has_key?(map, "reasoningEffort") do
+      map
+    else
+      Map.put(map, "reasoning_effort", value)
+    end
+  end
+
+  defp put_reasoning_config_if_missing(map, nil), do: map
+
+  defp put_reasoning_config_if_missing(map, value) do
+    case Map.get(map, "config") do
+      config when is_map(config) ->
+        if Map.has_key?(config, "model_reasoning_effort") do
+          map
+        else
+          Map.put(map, "config", Map.put(config, "model_reasoning_effort", value))
+        end
+
+      _ ->
+        Map.put(map, "config", %{"model_reasoning_effort" => value})
+    end
   end
 
   defp exit_status_from_reason(:normal), do: {:ok, 0}
