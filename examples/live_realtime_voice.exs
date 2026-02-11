@@ -193,10 +193,9 @@ defmodule LiveRealtimeVoiceDemo do
     stage_stats = handle_events(timeout_ms)
     merged = merge_stats(accumulated, stage_stats)
 
-    if merged.insufficient_quota? do
-      {:skip, "insufficient_quota"}
-    else
-      {:ok, merged}
+    case merged.skip_reason do
+      reason when is_binary(reason) -> {:skip, reason}
+      _ -> {:ok, merged}
     end
   end
 
@@ -206,7 +205,7 @@ defmodule LiveRealtimeVoiceDemo do
       audio_bytes: 0,
       error_count: 0,
       event_counts: %{},
-      insufficient_quota?: false
+      skip_reason: nil
     }
   end
 
@@ -216,7 +215,7 @@ defmodule LiveRealtimeVoiceDemo do
       audio_bytes: left.audio_bytes + right.audio_bytes,
       error_count: left.error_count + right.error_count,
       event_counts: Map.merge(left.event_counts, right.event_counts, fn _k, a, b -> a + b end),
-      insufficient_quota?: left.insufficient_quota? or right.insufficient_quota?
+      skip_reason: left.skip_reason || right.skip_reason
     }
   end
 
@@ -226,7 +225,7 @@ defmodule LiveRealtimeVoiceDemo do
   end
 
   defp do_handle_events(start_time, timeout, stats) do
-    if stats.insufficient_quota? do
+    if is_binary(stats.skip_reason) do
       stats
     else
       remaining = timeout - (System.monotonic_time(:millisecond) - start_time)
@@ -275,14 +274,16 @@ defmodule LiveRealtimeVoiceDemo do
             do_handle_events(start_time, timeout, increment_event(stats, event))
 
           {:session_event, %Events.ErrorEvent{error: error} = event} ->
+            skip_reason = skip_reason_for_error(error)
+
             updated =
               stats
               |> increment_event(event)
               |> Map.update!(:error_count, &(&1 + 1))
-              |> Map.put(:insufficient_quota?, insufficient_quota_error?(error))
+              |> Map.put(:skip_reason, skip_reason)
 
-            if updated.insufficient_quota? do
-              IO.puts("\n[Error] insufficient_quota from API")
+            if is_binary(skip_reason) do
+              IO.puts("\n[Error] #{skip_reason} from API")
             else
               IO.puts("\n[Error] #{inspect(error)}")
             end
@@ -342,18 +343,29 @@ defmodule LiveRealtimeVoiceDemo do
   end
 
   defp maybe_skip_quota(reason) do
-    if insufficient_quota_error?(reason) do
-      {:skip, "insufficient_quota"}
-    else
-      {:error, reason}
+    case skip_reason_for_error(reason) do
+      nil -> {:error, reason}
+      skip_reason -> {:skip, skip_reason}
     end
   end
 
-  defp insufficient_quota_error?(error) do
-    error
-    |> inspect(limit: :infinity)
-    |> String.downcase()
-    |> String.contains?("insufficient_quota")
+  defp skip_reason_for_error(error) do
+    normalized =
+      error
+      |> inspect(limit: :infinity)
+      |> String.downcase()
+
+    cond do
+      String.contains?(normalized, "insufficient_quota") ->
+        "insufficient_quota"
+
+      String.contains?(normalized, "model_not_found") or
+          String.contains?(normalized, "do not have access") ->
+        "realtime_model_unavailable"
+
+      true ->
+        nil
+    end
   end
 
   defp fetch_api_key, do: Codex.Auth.direct_api_key()

@@ -227,8 +227,7 @@ defmodule Codex.Realtime.Config do
     defp tool_choice_to_json(:none), do: "none"
     defp tool_choice_to_json(:required), do: "required"
 
-    defp tool_choice_to_json({:function, name}),
-      do: %{"type" => "function", "function" => %{"name" => name}}
+    defp tool_choice_to_json({:function, name}), do: %{"type" => "function", "name" => name}
 
     defp tools_to_json(nil), do: nil
 

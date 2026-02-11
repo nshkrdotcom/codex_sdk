@@ -27,6 +27,7 @@ The runner executes CLI-backed examples first, then runs realtime/voice examples
 ```
 
 If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
+If credentials exist but direct API access is unavailable (for example `insufficient_quota` or missing realtime model access), direct API examples print `SKIPPED: <reason>`.
 
 ## Live ExUnit tests
 

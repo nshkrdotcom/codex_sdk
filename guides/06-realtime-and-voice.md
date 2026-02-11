@@ -15,7 +15,7 @@ Realtime/Voice auth precedence:
 2. `auth.json` `OPENAI_API_KEY` (under `CODEX_HOME`)
 3. `OPENAI_API_KEY`
 
-If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). The live examples now print `SKIPPED: insufficient_quota` and exit cleanly.
+If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. Live examples print `SKIPPED` with the detected reason and exit cleanly.
 
 ## Realtime API
 
@@ -139,7 +139,7 @@ If output audio is empty:
 1. Confirm a voice is configured (`SessionModelSettings.voice`).
 2. Confirm audio input boundaries are committed (`commit: true` on final chunk).
 3. Log `%Events.ErrorEvent{}` and count `%Events.AudioEvent{}` deltas.
-4. Check for quota/auth errors (`insufficient_quota`, unauthorized API key, etc.).
+4. Check for quota/auth errors (`insufficient_quota`, unauthorized API key, etc.). Realtime `response.done` failures are surfaced as `%Events.ErrorEvent{}`.
 
 ### Session lifecycle helpers
 
@@ -181,7 +181,7 @@ for event <- result_stream do
       # play/store audio_chunk
       :ok
 
-    %Codex.Voice.Events.VoiceStreamEventLifecycle{event: :completed} ->
+    %Codex.Voice.Events.VoiceStreamEventLifecycle{event: :session_ended} ->
       IO.puts("pipeline complete")
 
     %Codex.Voice.Events.VoiceStreamEventError{error: error} ->

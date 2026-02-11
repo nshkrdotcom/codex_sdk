@@ -26,6 +26,7 @@ defmodule VoiceMultiTurnExample do
   alias Codex.Voice.Events.VoiceStreamEventLifecycle
   alias Codex.Voice.Events.VoiceStreamEventError
   alias Codex.Voice.Input.StreamedAudioInput
+  alias Codex.Voice.Models.OpenAITTS
   alias Codex.Voice.Pipeline
   alias Codex.Voice.Result
   alias Codex.Voice.SimpleWorkflow
@@ -33,131 +34,111 @@ defmodule VoiceMultiTurnExample do
   @output_audio_path "/tmp/codex_voice_multi_turn.pcm"
   @output_wait_timeout_ms 60_000
 
+  def main do
+    case run() do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+
+      {:error, reason} ->
+        IO.puts("[Error] #{inspect(reason)}")
+        System.halt(1)
+    end
+  end
+
   def run do
     IO.puts("=== Multi-Turn Voice Example ===\n")
 
     # Voice auth accepts Codex.Auth precedence and OPENAI_API_KEY.
     unless fetch_api_key() do
-      IO.puts(
-        "Error: no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"
-      )
+      {:error, "no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"}
+    else
+      with {:ok, audio_data} <- load_fixture_audio(),
+           :ok <- initialize_output_file(),
+           :ok <- preflight_tts_quota_check() do
+        # Create a conversational workflow
+        workflow =
+          SimpleWorkflow.new(
+            fn text ->
+              IO.puts("\n[User said] #{text}")
 
-      System.halt(1)
-    end
+              response =
+                cond do
+                  String.contains?(String.downcase(text), "hello") ->
+                    "Hello! Nice to meet you. What would you like to talk about?"
 
-    # Load real audio from test fixture
-    audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
+                  String.contains?(String.downcase(text), "weather") ->
+                    "The weather is looking great today! Is there anything else you'd like to know?"
 
-    audio_data =
-      case File.read(audio_file_path) do
-        {:ok, wav_data} ->
-          # Strip WAV header (44 bytes) to get raw PCM for streaming
-          <<_header::binary-size(44), pcm_data::binary>> = wav_data
-          IO.puts("[OK] Loaded audio file: #{byte_size(pcm_data)} bytes of PCM data")
-          pcm_data
+                  String.contains?(String.downcase(text), "goodbye") ->
+                    "Goodbye! It was nice talking with you!"
 
-        {:error, reason} ->
-          IO.puts("[Error] Could not load #{audio_file_path}: #{inspect(reason)}")
-          System.halt(1)
+                  true ->
+                    "I heard you say: #{text}. Tell me more!"
+                end
+
+              IO.puts("[Response] #{response}")
+              [response]
+            end,
+            greeting: "Hello! I'm ready to have a conversation with you."
+          )
+
+        IO.puts("[OK] Created multi-turn workflow")
+
+        # Create pipeline configuration
+        config = %Config{
+          workflow_name: "MultiTurnDemo",
+          tts_settings: %TTSSettings{
+            voice: :echo,
+            speed: 1.0
+          }
+        }
+
+        # Create the pipeline
+        pipeline =
+          Pipeline.new(
+            workflow: workflow,
+            config: config
+          )
+
+        IO.puts("[OK] Pipeline ready for streaming input")
+        IO.puts("Starting multi-turn session...\n")
+
+        # Create streaming input
+        streamed_input = StreamedAudioInput.new()
+
+        # Start the pipeline with streaming input
+        # Pipeline.run always returns {:ok, result} - errors are delivered as events
+        {:ok, result} = Pipeline.run(pipeline, streamed_input)
+
+        # Spawn a task to handle the output stream
+        output_task =
+          Task.async(fn ->
+            stream_output(result)
+          end)
+
+        # Stream real audio in chunks (simulating multiple turns)
+        stream_audio_turns(streamed_input, audio_data)
+
+        output_result =
+          case Task.yield(output_task, @output_wait_timeout_ms) ||
+                 Task.shutdown(output_task, :brutal_kill) do
+            {:ok, stats} ->
+              evaluate_stream_result(stats)
+
+            {:exit, reason} ->
+              {:error, {:output_stream_exited, reason}}
+
+            nil ->
+              {:error, {:output_timeout, @output_wait_timeout_ms}}
+          end
+
+        show_output_info()
+        output_result
       end
-
-    # Initialize output file
-    File.write!(@output_audio_path, "")
-    IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
-
-    # Create a conversational workflow
-    workflow =
-      SimpleWorkflow.new(
-        fn text ->
-          IO.puts("\n[User said] #{text}")
-
-          response =
-            cond do
-              String.contains?(String.downcase(text), "hello") ->
-                "Hello! Nice to meet you. What would you like to talk about?"
-
-              String.contains?(String.downcase(text), "weather") ->
-                "The weather is looking great today! Is there anything else you'd like to know?"
-
-              String.contains?(String.downcase(text), "goodbye") ->
-                "Goodbye! It was nice talking with you!"
-
-              true ->
-                "I heard you say: #{text}. Tell me more!"
-            end
-
-          IO.puts("[Response] #{response}")
-          [response]
-        end,
-        greeting: "Hello! I'm ready to have a conversation with you."
-      )
-
-    IO.puts("[OK] Created multi-turn workflow")
-
-    # Create pipeline configuration
-    config = %Config{
-      workflow_name: "MultiTurnDemo",
-      tts_settings: %TTSSettings{
-        voice: :echo,
-        speed: 1.0
-      }
-    }
-
-    # Create the pipeline
-    pipeline =
-      Pipeline.new(
-        workflow: workflow,
-        config: config
-      )
-
-    IO.puts("[OK] Pipeline ready for streaming input")
-    IO.puts("Starting multi-turn session...\n")
-
-    # Create streaming input
-    streamed_input = StreamedAudioInput.new()
-
-    # Start the pipeline with streaming input
-    # Pipeline.run always returns {:ok, result} - errors are delivered as events
-    {:ok, result} = Pipeline.run(pipeline, streamed_input)
-
-    # Spawn a task to handle the output stream
-    output_task =
-      Task.async(fn ->
-        stream_output(result)
-      end)
-
-    # Stream real audio in chunks (simulating multiple turns)
-    stream_audio_turns(streamed_input, audio_data)
-
-    # Wait for output to complete, but avoid hanging forever on API stalls/quota failures.
-    case Task.yield(output_task, @output_wait_timeout_ms) ||
-           Task.shutdown(output_task, :brutal_kill) do
-      {:ok, _result} ->
-        :ok
-
-      {:exit, reason} ->
-        IO.puts("[Warning] Output stream task exited: #{inspect(reason)}")
-
-      nil ->
-        IO.puts(
-          "[Timeout] Output stream did not complete within #{@output_wait_timeout_ms}ms; continuing."
-        )
     end
-
-    # Show output file info and playback instructions
-    output_size = File.stat!(@output_audio_path).size
-
-    IO.puts("""
-
-    Audio saved to: #{@output_audio_path}
-    Output file size: #{output_size} bytes
-
-    To play the response audio:
-      aplay -f S16_LE -r 24000 -c 1 #{@output_audio_path}
-
-    Or convert to WAV:
-      sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
-    """)
   end
 
   defp stream_audio_turns(input, audio_data) do
@@ -219,55 +200,152 @@ defmodule VoiceMultiTurnExample do
   end
 
   defp stream_output(result) do
-    {audio_bytes, turns} =
+    stats =
       result
       |> Result.stream()
-      |> Enum.reduce({0, 0}, fn event, {bytes, turns} ->
-        handle_output_event(event, bytes, turns)
+      |> Enum.reduce(new_stats(), fn event, stats ->
+        handle_output_event(event, stats)
       end)
 
-    IO.puts("\n[Session Complete]")
-    IO.puts("  Total audio bytes: #{audio_bytes}")
-    IO.puts("  Total turns: #{turns}")
+    stats
   end
 
-  defp handle_output_event(%VoiceStreamEventAudio{data: data}, bytes, turns)
+  defp handle_output_event(%VoiceStreamEventAudio{data: data}, stats)
        when is_binary(data) do
     # Append audio to output file
     File.write!(@output_audio_path, data, [:append])
     IO.write(".")
-    {bytes + byte_size(data), turns}
+    %{stats | audio_bytes: stats.audio_bytes + byte_size(data)}
   end
 
-  defp handle_output_event(%VoiceStreamEventAudio{data: nil}, bytes, turns) do
-    {bytes, turns}
+  defp handle_output_event(%VoiceStreamEventAudio{data: nil}, stats) do
+    stats
   end
 
-  defp handle_output_event(%VoiceStreamEventLifecycle{event: :turn_started}, bytes, turns) do
-    IO.puts("\n[Turn #{turns + 1} started]")
-    {bytes, turns}
+  defp handle_output_event(%VoiceStreamEventLifecycle{event: :turn_started}, stats) do
+    IO.puts("\n[Turn #{stats.turns + 1} started]")
+    stats
   end
 
-  defp handle_output_event(%VoiceStreamEventLifecycle{event: :turn_ended}, bytes, turns) do
-    IO.puts("\n[Turn #{turns + 1} completed]")
-    {bytes, turns + 1}
+  defp handle_output_event(%VoiceStreamEventLifecycle{event: :turn_ended}, stats) do
+    IO.puts("\n[Turn #{stats.turns + 1} completed]")
+    %{stats | turns: stats.turns + 1}
   end
 
-  defp handle_output_event(%VoiceStreamEventLifecycle{event: :session_ended}, bytes, turns) do
+  defp handle_output_event(%VoiceStreamEventLifecycle{event: :session_ended}, stats) do
     IO.puts("\n[Session ended]")
-    {bytes, turns}
+    %{stats | session_ended?: true}
   end
 
-  defp handle_output_event(%VoiceStreamEventError{error: error}, bytes, turns) do
+  defp handle_output_event(%VoiceStreamEventError{error: error}, stats) do
     IO.puts("\n[Error] #{inspect(error)}")
-    {bytes, turns}
+
+    %{
+      stats
+      | error_count: stats.error_count + 1,
+        insufficient_quota?: stats.insufficient_quota? or insufficient_quota_error?(error)
+    }
   end
 
-  defp handle_output_event(_event, bytes, turns) do
-    {bytes, turns}
+  defp handle_output_event(_event, stats) do
+    stats
+  end
+
+  defp load_fixture_audio do
+    audio_file_path = Path.join([__DIR__, "..", "test", "fixtures", "audio", "voice_sample.wav"])
+
+    case File.read(audio_file_path) do
+      {:ok, wav_data} ->
+        # Strip WAV header (44 bytes) to get raw PCM for streaming
+        <<_header::binary-size(44), pcm_data::binary>> = wav_data
+        IO.puts("[OK] Loaded audio file: #{byte_size(pcm_data)} bytes of PCM data")
+        {:ok, pcm_data}
+
+      {:error, reason} ->
+        {:error, {:audio_fixture_read_failed, reason}}
+    end
+  end
+
+  defp preflight_tts_quota_check do
+    model = OpenAITTS.new()
+    settings = %TTSSettings{voice: :echo, speed: 1.0}
+
+    try do
+      _ = model |> OpenAITTS.run("Preflight quota check.", settings) |> Enum.take(1)
+      :ok
+    rescue
+      error ->
+        if insufficient_quota_error?(error) do
+          {:skip, "insufficient_quota"}
+        else
+          {:error, {:tts_preflight_failed, error}}
+        end
+    end
+  end
+
+  defp initialize_output_file do
+    File.write!(@output_audio_path, "")
+    IO.puts("[OK] Output audio will be saved to: #{@output_audio_path}")
+    :ok
+  end
+
+  defp new_stats do
+    %{
+      audio_bytes: 0,
+      turns: 0,
+      error_count: 0,
+      session_ended?: false,
+      insufficient_quota?: false
+    }
+  end
+
+  defp evaluate_stream_result(%{insufficient_quota?: true}) do
+    {:skip, "insufficient_quota"}
+  end
+
+  defp evaluate_stream_result(%{error_count: errors, session_ended?: false})
+       when errors > 0 do
+    {:error, :voice_multi_turn_failed}
+  end
+
+  defp evaluate_stream_result(%{session_ended?: false}) do
+    {:error, :voice_multi_turn_incomplete}
+  end
+
+  defp evaluate_stream_result(stats) do
+    IO.puts("\n[Session Complete]")
+    IO.puts("  Total audio bytes: #{stats.audio_bytes}")
+    IO.puts("  Total turns: #{stats.turns}")
+    :ok
+  end
+
+  defp show_output_info do
+    output_size = File.stat!(@output_audio_path).size
+
+    IO.puts("""
+
+    Audio saved to: #{@output_audio_path}
+    Output file size: #{output_size} bytes
+
+    To play the response audio:
+      aplay -f S16_LE -r 24000 -c 1 #{@output_audio_path}
+
+    Or convert to WAV:
+      sox -t raw -r 24000 -b 16 -c 1 -e signed-integer #{@output_audio_path} /tmp/response.wav
+    """)
+  end
+
+  defp insufficient_quota_error?(error) do
+    normalized =
+      error
+      |> inspect(limit: :infinity)
+      |> String.downcase()
+
+    String.contains?(normalized, "insufficient_quota") or
+      String.contains?(normalized, "api_error, 429")
   end
 
   defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end
 
-VoiceMultiTurnExample.run()
+VoiceMultiTurnExample.main()

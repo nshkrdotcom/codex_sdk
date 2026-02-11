@@ -343,6 +343,8 @@ defmodule Codex.Realtime.Session do
   end
 
   def handle_info({:websocket_event, json}, state) do
+    state = maybe_emit_response_done_error(json, state)
+
     case ModelEvents.from_json(json) do
       {:ok, event} ->
         state = handle_model_event(event, state)
@@ -443,6 +445,45 @@ defmodule Codex.Realtime.Session do
 
   defp do_send_to_websocket(ws_module, pid, msg) when is_map(msg) do
     ws_module.send_frame(pid, {:text, Jason.encode!(msg)})
+  end
+
+  defp maybe_emit_response_done_error(
+         %{"type" => "response.done", "response" => %{"status" => "failed"} = response},
+         state
+       ) do
+    error = response_done_error(response)
+    notify_subscribers(state, Events.error(error, state.context))
+    state
+  end
+
+  defp maybe_emit_response_done_error(_json, state), do: state
+
+  defp response_done_error(%{} = response) do
+    base =
+      case Map.get(response, "status_details") do
+        %{"error" => %{} = error} -> error
+        %{"error" => error} when is_binary(error) -> %{"message" => error}
+        %{"reason" => reason} when is_binary(reason) -> %{"message" => reason}
+        _ -> %{}
+      end
+
+    base
+    |> maybe_put_error_field("status", response["status"])
+    |> maybe_put_error_field("response_id", response["id"])
+    |> Map.put("source_event", "response.done")
+    |> ensure_error_message(response)
+  end
+
+  defp maybe_put_error_field(map, _key, nil), do: map
+  defp maybe_put_error_field(map, key, value), do: Map.put(map, key, value)
+
+  defp ensure_error_message(%{"message" => message} = error, _response)
+       when is_binary(message) and byte_size(message) > 0 do
+    error
+  end
+
+  defp ensure_error_message(error, response) do
+    Map.put(error, "message", "response.done failed (status=#{inspect(response["status"])})")
   end
 
   # Event Handlers
@@ -552,6 +593,19 @@ defmodule Codex.Realtime.Session do
   defp handle_model_event(%ModelEvents.InputAudioTimeoutTriggeredEvent{}, state) do
     event = Events.input_audio_timeout_triggered(state.context)
     notify_subscribers(state, event)
+    state
+  end
+
+  defp handle_model_event(
+         %ModelEvents.RawServerEvent{
+           data: %{"type" => "response.done", "response" => %{"status" => "failed"} = response}
+         } = event,
+         state
+       ) do
+    notify_subscribers(state, Events.error(response_done_error(response), state.context))
+
+    wrapped = Events.raw_model_event(event, state.context)
+    notify_subscribers(state, wrapped)
     state
   end
 

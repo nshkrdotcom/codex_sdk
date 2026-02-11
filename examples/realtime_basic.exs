@@ -142,7 +142,7 @@ defmodule RealtimeBasicExample do
     Realtime.send_message(session, "Hello! Can you hear me?")
 
     case handle_events(5_000) do
-      %{insufficient_quota?: true} -> {:skip, "insufficient_quota"}
+      %{skip_reason: reason} when is_binary(reason) -> {:skip, reason}
       _stats -> :ok
     end
   end
@@ -152,8 +152,8 @@ defmodule RealtimeBasicExample do
     send_audio(session, audio_pcm_data)
 
     case handle_events(8_000) do
-      %{insufficient_quota?: true} ->
-        {:skip, "insufficient_quota"}
+      %{skip_reason: reason} when is_binary(reason) ->
+        {:skip, reason}
 
       stats ->
         IO.puts("\n[OK] Session complete")
@@ -199,12 +199,12 @@ defmodule RealtimeBasicExample do
       audio_bytes: 0,
       error_count: 0,
       event_counts: %{},
-      insufficient_quota?: false
+      skip_reason: nil
     })
   end
 
   defp do_handle_events(start_time, timeout, stats) do
-    if stats.insufficient_quota? do
+    if is_binary(stats.skip_reason) do
       stats
     else
       remaining = timeout - (System.monotonic_time(:millisecond) - start_time)
@@ -237,14 +237,16 @@ defmodule RealtimeBasicExample do
             do_handle_events(start_time, timeout, updated)
 
           {:session_event, %Events.ErrorEvent{error: error} = event} ->
+            skip_reason = skip_reason_for_error(error)
+
             updated =
               stats
               |> increment_event(event)
               |> Map.update!(:error_count, &(&1 + 1))
-              |> Map.put(:insufficient_quota?, insufficient_quota_error?(error))
+              |> Map.put(:skip_reason, skip_reason)
 
-            if updated.insufficient_quota? do
-              IO.puts("\n[Error] insufficient_quota from API")
+            if is_binary(skip_reason) do
+              IO.puts("\n[Error] #{skip_reason} from API")
             else
               IO.puts("\n[Error] #{inspect(error)}")
             end
@@ -303,18 +305,29 @@ defmodule RealtimeBasicExample do
   end
 
   defp maybe_skip_quota(reason) do
-    if insufficient_quota_error?(reason) do
-      {:skip, "insufficient_quota"}
-    else
-      {:error, reason}
+    case skip_reason_for_error(reason) do
+      nil -> {:error, reason}
+      skip_reason -> {:skip, skip_reason}
     end
   end
 
-  defp insufficient_quota_error?(error) do
-    error
-    |> inspect(limit: :infinity)
-    |> String.downcase()
-    |> String.contains?("insufficient_quota")
+  defp skip_reason_for_error(error) do
+    normalized =
+      error
+      |> inspect(limit: :infinity)
+      |> String.downcase()
+
+    cond do
+      String.contains?(normalized, "insufficient_quota") ->
+        "insufficient_quota"
+
+      String.contains?(normalized, "model_not_found") or
+          String.contains?(normalized, "do not have access") ->
+        "realtime_model_unavailable"
+
+      true ->
+        nil
+    end
   end
 
   defp return_error(message), do: {:error, message}

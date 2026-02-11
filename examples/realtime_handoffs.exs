@@ -11,6 +11,8 @@ defmodule RealtimeHandoffsExample do
   @moduledoc false
 
   alias Codex.Realtime
+  alias Codex.Realtime.Config.RunConfig
+  alias Codex.Realtime.Config.SessionModelSettings
   alias Codex.Realtime.Events
 
   def main do
@@ -50,22 +52,22 @@ defmodule RealtimeHandoffsExample do
             handle_events(30_000, %{
               handoff_seen?: false,
               tool_calls: 0,
-              insufficient_quota?: false
+              skip_reason: nil
             })
           after
             safe_close(session)
           end
 
         case result do
-          %{insufficient_quota?: true} ->
-            {:skip, "insufficient_quota"}
+          %{skip_reason: reason} when is_binary(reason) ->
+            {:skip, reason}
 
           %{handoff_seen?: true} ->
             :ok
 
           %{handoff_seen?: false, tool_calls: tool_calls} ->
             IO.puts("No handoff observed (tool_calls=#{tool_calls}).")
-            :ok
+            {:error, {:handoff_not_observed, tool_calls}}
         end
       else
         {:error, reason} -> maybe_skip_quota(reason)
@@ -111,11 +113,19 @@ defmodule RealtimeHandoffsExample do
     IO.puts("    -> #{billing_agent.name}: #{billing_agent.handoff_description}")
     IO.puts("\nStarting realtime session...")
 
-    Realtime.run(greeter)
+    config = %RunConfig{
+      model_settings: %SessionModelSettings{
+        voice: "alloy",
+        # Force a deterministic handoff tool call for demo stability.
+        tool_choice: {:function, "transfer_to_techsupport"}
+      }
+    }
+
+    Realtime.run(greeter, config: config)
   end
 
   defp handle_events(timeout, state) do
-    if state.insufficient_quota? do
+    if is_binary(state.skip_reason) do
       state
     else
       receive do
@@ -141,12 +151,14 @@ defmodule RealtimeHandoffsExample do
           handle_events(timeout, state)
 
         {:session_event, %Events.ErrorEvent{error: error}} ->
-          if insufficient_quota_error?(error) do
-            IO.puts("\n[Error] insufficient_quota from API")
-            %{state | insufficient_quota?: true}
-          else
-            IO.puts("\n[Error] #{inspect(error)}")
-            handle_events(timeout, state)
+          case skip_reason_for_error(error) do
+            reason when is_binary(reason) ->
+              IO.puts("\n[Error] #{reason} from API")
+              %{state | skip_reason: reason}
+
+            _ ->
+              IO.puts("\n[Error] #{inspect(error)}")
+              handle_events(timeout, state)
           end
 
         {:session_event, event} ->
@@ -168,18 +180,29 @@ defmodule RealtimeHandoffsExample do
   end
 
   defp maybe_skip_quota(reason) do
-    if insufficient_quota_error?(reason) do
-      {:skip, "insufficient_quota"}
-    else
-      {:error, reason}
+    case skip_reason_for_error(reason) do
+      nil -> {:error, reason}
+      skip_reason -> {:skip, skip_reason}
     end
   end
 
-  defp insufficient_quota_error?(error) do
-    error
-    |> inspect(limit: :infinity)
-    |> String.downcase()
-    |> String.contains?("insufficient_quota")
+  defp skip_reason_for_error(error) do
+    normalized =
+      error
+      |> inspect(limit: :infinity)
+      |> String.downcase()
+
+    cond do
+      String.contains?(normalized, "insufficient_quota") ->
+        "insufficient_quota"
+
+      String.contains?(normalized, "model_not_found") or
+          String.contains?(normalized, "do not have access") ->
+        "realtime_model_unavailable"
+
+      true ->
+        nil
+    end
   end
 
   defp fetch_api_key, do: Codex.Auth.direct_api_key()

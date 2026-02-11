@@ -44,6 +44,16 @@ defmodule Codex.Realtime.ConfigTest do
       assert json["modalities"] == ["text", "audio"]
     end
 
+    test "serializes function tool_choice with name at top-level" do
+      settings = %Config.SessionModelSettings{
+        tool_choice: {:function, "transfer_to_techsupport"}
+      }
+
+      json = Config.SessionModelSettings.to_json(settings)
+
+      assert json["tool_choice"] == %{"type" => "function", "name" => "transfer_to_techsupport"}
+    end
+
     test "serializes nested configs to JSON" do
       settings = %Config.SessionModelSettings{
         model_name: "gpt-4o-realtime-preview",

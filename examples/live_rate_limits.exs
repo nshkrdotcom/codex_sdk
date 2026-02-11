@@ -26,6 +26,12 @@ defmodule LiveRateLimits do
           IO.puts("\nFinal response:\n#{state.final_response || "<none>"}")
           IO.puts("\nLatest rate limit snapshot:")
           IO.inspect(state.last_snapshot || "<none>")
+
+          if is_nil(state.last_snapshot) do
+            IO.puts(
+              "No rate-limit update event was emitted during this turn; this can happen for short/local runs."
+            )
+          end
         rescue
           error in [Error, TransportError] ->
             render_transport_error(error)

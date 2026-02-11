@@ -146,7 +146,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
            into: :self
          ) do
       {:ok, response} ->
-        {:streaming, response}
+        normalize_stream_start_response(response)
 
       {:error, reason} ->
         {:error, reason}
@@ -164,8 +164,8 @@ defmodule Codex.Voice.Models.OpenAITTS do
           {[binary()], {:streaming, Req.Response.t()}}
           | {:halt, {:streaming, Req.Response.t()}}
           | {:halt, {:error, term()}}
-  defp receive_chunk({:error, _reason} = state) do
-    {:halt, state}
+  defp receive_chunk({:error, reason}) do
+    raise RuntimeError, message: "TTS request failed: #{format_reason(reason)}"
   end
 
   defp receive_chunk({:streaming, _response} = state) do
@@ -177,14 +177,13 @@ defmodule Codex.Voice.Models.OpenAITTS do
         {:halt, state}
 
       {_ref, {:error, reason}} ->
-        {:halt, {:error, reason}}
+        raise RuntimeError, message: "TTS stream failed: #{format_reason(reason)}"
 
-      {:DOWN, _ref, :process, _pid, _reason} ->
-        {:halt, state}
+      {:DOWN, _ref, :process, _pid, reason} ->
+        raise RuntimeError, message: "TTS stream terminated: #{format_reason(reason)}"
     after
       30_000 ->
-        # Timeout after 30 seconds of no data
-        {:halt, {:error, :timeout}}
+        raise RuntimeError, message: "TTS stream timed out after 30000ms"
     end
   end
 
@@ -205,4 +204,32 @@ defmodule Codex.Voice.Models.OpenAITTS do
   defp maybe_add_instructions(body, instructions) do
     Map.put(body, :instructions, instructions)
   end
+
+  @spec normalize_stream_start_response(term()) ::
+          {:streaming, Req.Response.t() | map()} | {:error, term()}
+  defp normalize_stream_start_response(response) do
+    status = response_status(response)
+
+    if success_status?(status) do
+      {:streaming, response}
+    else
+      {:error, {:api_error, status, response_body(response)}}
+    end
+  end
+
+  @spec success_status?(integer() | nil) :: boolean()
+  defp success_status?(status) when is_integer(status), do: status >= 200 and status < 300
+  defp success_status?(_), do: true
+
+  @spec response_status(term()) :: integer() | nil
+  defp response_status(%{status: status}) when is_integer(status), do: status
+  defp response_status(_), do: nil
+
+  @spec response_body(term()) :: term()
+  defp response_body(%{body: body}), do: body
+  defp response_body(_), do: nil
+
+  @spec format_reason(term()) :: String.t()
+  defp format_reason(reason) when is_binary(reason), do: reason
+  defp format_reason(reason), do: inspect(reason)
 end

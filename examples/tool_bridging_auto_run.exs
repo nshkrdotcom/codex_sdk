@@ -26,6 +26,12 @@ defmodule Examples.ToolBridging do
     tool_outputs = result.raw[:tool_outputs] || []
     tool_failures = result.raw[:tool_failures] || []
 
+    IO.puts("""
+    Note: with the default `codex exec --json` transport, tool outputs are not injected back
+    into the CLI turn. Empty arrays below are expected unless you switch to a tool-capable
+    transport (for example app-server/MCP-hosted tools).
+    """)
+
     IO.inspect(tool_outputs, label: "tool outputs captured by SDK")
     IO.inspect(tool_failures, label: "tool failures captured by SDK")
     IO.inspect(result.thread.pending_tool_outputs, label: "pending outputs after turn")

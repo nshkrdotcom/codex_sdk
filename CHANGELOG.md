@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Realtime `tool_choice` serialization for `{:function, name}` now emits `%{"type" => "function", "name" => name}` for `session.update` compatibility.
+- Realtime and voice live examples now self-report API skip reasons (`insufficient_quota`, `realtime_model_unavailable`) and exit cleanly instead of misreporting success.
+- App-server approvals demo now uses a prompt that exercises approvals more reliably and waits briefly for trailing audit messages before summarizing.
+- Tool-bridging and rate-limit examples now print explicit runtime notes when transport/rate-limit data is absent so empty output is not mistaken for SDK failure.
+
+### Fixed
+
+- Realtime now surfaces `response.done` failed status payloads as `%Codex.Realtime.Events.ErrorEvent{}` (including failures received via raw server events), enabling deterministic skip/error handling in examples.
+- Realtime handoff demo now uses deterministic function tool choice and correctly skips when realtime model access is unavailable.
+- Voice TTS streaming now fails fast on non-success HTTP statuses and stream transport errors instead of silently yielding empty/invalid audio chunks.
+- Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
+- Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
+
 
 ## [0.8.0] - 2026-02-10
 
@@ -43,13 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Voice TTS `:client` injection** — Added configurable `:client` option to `OpenAITTS.new/2` for request client injection (testability)
 
 ### Changed
-
-- **Realtime API surface cleanup**:
-  - `Realtime.start_session/2` renamed to `Realtime.run/2`
-  - `Realtime.send_audio/2` now takes a keyword third argument; use `Realtime.send_audio/3` with `commit: true` on the final chunk instead of separate `commit_audio/1`
-  - `Realtime.stop_session/1` renamed to `Realtime.close/1`
-  - Removed `Realtime.commit_audio/1` and `Realtime.add_handoff/3` (handoffs are now declared via the `:handoffs` option in `Realtime.agent/1`)
-  - Added `Realtime.send_message/2`, `Realtime.update_session/2`, `Realtime.current_agent/1`, `Realtime.history/1`
 
 - **Codex.Exec migrated to IO.Transport.Erlexec**:
   - Replaced `start_process/2` direct `:exec.run` with `IO.Transport.Erlexec.start_link` using tagged subscription ref
@@ -92,13 +100,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Voice TTS `instructions` field** — `maybe_add_instructions/2` now puts `instructions` as a top-level request body field instead of nesting under `extra_body`
 
-- Updated README, getting-started guide, API guide, examples guide, and realtime-and-voice guide to reflect renamed Realtime API surface and new handoff patterns
+- Updated README, getting-started guide, API guide, examples guide, and realtime-and-voice guide to reflect new handoff patterns
 
 ### Removed
 
 - Deleted `lib/codex/app_server/subprocess.ex` and `lib/codex/app_server/subprocess/erlexec.ex` (superseded by IO.Transport)
 - Deleted triplicated `split_lines/1`, `decode_lines`, `decode_line` private functions from Exec, AppServer.Protocol, and MCP.Protocol
-- Removed `Realtime.commit_audio/1`, `Realtime.add_handoff/3`, `Realtime.start_session/2`, `Realtime.stop_session/1` (replaced by `run/2`, `close/1`, agent-level `:handoffs`, and `send_audio/3` `commit:` option)
 
 ### Fixed
 

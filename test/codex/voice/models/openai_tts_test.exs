@@ -150,5 +150,56 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
       assert_receive {:tts_body, body}
       refute Map.has_key?(body, :extra_body)
     end
+
+    test "raises with api_error details for non-success status responses" do
+      client = fn _url, _opts ->
+        {:ok,
+         %{
+           status: 429,
+           body: %{
+             "error" => %{
+               "code" => "insufficient_quota",
+               "message" => "You exceeded your current quota."
+             }
+           }
+         }}
+      end
+
+      model =
+        OpenAITTS.new("gpt-4o-mini-tts",
+          api_key: "sk-test",
+          base_url: "https://example.test/v1",
+          client: client
+        )
+
+      assert_raise RuntimeError, ~r/insufficient_quota/, fn ->
+        model
+        |> OpenAITTS.run("Hello", TTSSettings.new())
+        |> Enum.to_list()
+      end
+    end
+
+    test "raises when the stream reports a transport error" do
+      test_pid = self()
+
+      client = fn _url, _opts ->
+        ref = make_ref()
+        send(test_pid, {ref, {:error, :socket_closed}})
+        {:ok, %{status: 200}}
+      end
+
+      model =
+        OpenAITTS.new("gpt-4o-mini-tts",
+          api_key: "sk-test",
+          base_url: "https://example.test/v1",
+          client: client
+        )
+
+      assert_raise RuntimeError, ~r/socket_closed/, fn ->
+        model
+        |> OpenAITTS.run("Hello", TTSSettings.new())
+        |> Enum.to_list()
+      end
+    end
   end
 end

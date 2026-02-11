@@ -8,7 +8,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
   @moduledoc false
 
   @default_prompt """
-  Run `pwd` and `ls -la` in the current working directory, then report the observed command output.
+  Run `pwd` and `ls -la` in the current working directory, then create a small file named
+  `approval_demo.txt` containing the current directory path and report exactly what completed.
   """
 
   @command_approval_method "item/commandExecution/requestApproval"
@@ -232,7 +233,7 @@ defmodule CodexExamples.LiveAppServerApprovals do
           | file_completed_statuses: [status | state.file_completed_statuses]
         })
     after
-      0 ->
+      250 ->
         state
     end
   end
@@ -258,6 +259,12 @@ defmodule CodexExamples.LiveAppServerApprovals do
     IO.puts(
       "  fileChange completed statuses: #{inspect(Enum.reverse(audit.file_completed_statuses))}"
     )
+
+    if MapSet.size(audit.approval_request_methods) == 0 do
+      IO.puts(
+        "  note: no approval requests observed for this prompt/policy combination; check item events above to confirm whether tools were invoked."
+      )
+    end
   end
 
   defp fetch_codex_path! do

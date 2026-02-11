@@ -114,7 +114,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
     File.write!(
       path,
       Base.decode64!(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg=="
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO3Z6xQAAAAASUVORK5CYII="
       )
     )
 

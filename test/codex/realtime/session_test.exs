@@ -694,6 +694,99 @@ defmodule Codex.Realtime.SessionTest do
     end
   end
 
+  describe "response.done failure handling" do
+    test "emits an error event when response.done reports failed status", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+
+      send(session, {
+        :websocket_event,
+        %{
+          "type" => "response.done",
+          "response" => %{
+            "id" => "resp_failed_1",
+            "status" => "failed",
+            "status_details" => %{
+              "error" => %{
+                "code" => "insufficient_quota",
+                "message" => "You exceeded your current quota.",
+                "type" => "insufficient_quota"
+              }
+            }
+          }
+        }
+      })
+
+      assert_receive {:session_event,
+                      %Events.ErrorEvent{
+                        error: %{
+                          "code" => "insufficient_quota",
+                          "source_event" => "response.done",
+                          "response_id" => "resp_failed_1"
+                        }
+                      }}
+
+      assert_receive {:session_event, %Events.AgentEndEvent{agent: %{name: "TestAgent"}}}
+
+      Session.close(session)
+    end
+
+    test "emits an error event when raw response.done server event reports failed status", %{
+      agent: agent
+    } do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+
+      send(
+        session,
+        {:model_event,
+         ModelEvents.raw_server_event(%{
+           "type" => "response.done",
+           "response" => %{
+             "id" => "resp_failed_2",
+             "status" => "failed",
+             "status_details" => %{
+               "error" => %{
+                 "code" => "model_not_found",
+                 "message" => "Model not available",
+                 "type" => "invalid_request_error"
+               }
+             }
+           }
+         })}
+      )
+
+      assert_receive {:session_event,
+                      %Events.ErrorEvent{
+                        error: %{
+                          "code" => "model_not_found",
+                          "source_event" => "response.done",
+                          "response_id" => "resp_failed_2"
+                        }
+                      }}
+
+      assert_receive {:session_event, %Events.RawModelEvent{}}
+
+      Session.close(session)
+    end
+  end
+
   describe "handoffs" do
     test "includes handoff tools in initial session.update payload", %{agent: _agent} do
       tech_support =
