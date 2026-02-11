@@ -41,7 +41,7 @@ defmodule Codex.AppServer.ProtocolTest do
                    Protocol.decode_lines("", chunk)
         end)
 
-      assert log =~ "Failed to decode JSON-RPC message"
+      assert log =~ "Failed to decode JSON line"
       assert log =~ "not-json"
     end
   end

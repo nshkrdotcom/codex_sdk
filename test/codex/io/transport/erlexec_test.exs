@@ -56,11 +56,10 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
   describe "error handling" do
     test "start wraps init failures as transport errors" do
-      assert {:error, _} =
-               ErlexecTransport.start_link(
-                 command: "/nonexistent/binary/xyz",
-                 args: []
-               )
+      echo = System.find_executable("echo") || "/bin/echo"
+
+      assert {:error, {:transport, :invalid_subscriber}} =
+               ErlexecTransport.start(command: echo, args: ["ok"], subscriber: :invalid)
     end
   end
 
@@ -100,7 +99,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
   describe "stderr" do
     test "captures stderr and makes it available via stderr/1" do
       ref = make_ref()
-      script = create_test_script("echo err >&2; echo out")
+      script = create_test_script("echo err >&2; sleep 0.2; echo out")
 
       {:ok, transport} =
         ErlexecTransport.start_link(
@@ -109,9 +108,10 @@ defmodule Codex.IO.Transport.ErlexecTest do
           subscriber: {self(), ref}
         )
 
+      Process.sleep(50)
+      assert ErlexecTransport.stderr(transport) =~ "err"
+      assert_receive {:codex_io_transport, ^ref, {:message, "out"}}, 2_000
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
-      stderr = ErlexecTransport.stderr(transport)
-      assert stderr =~ "err"
     end
 
     test "caps stderr buffer to configured tail size" do

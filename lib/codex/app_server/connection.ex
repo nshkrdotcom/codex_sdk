@@ -5,10 +5,9 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
-  alias Codex.IO.Buffer
-  alias Codex.IO.Transport
-  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.AppServer.Protocol
+  alias Codex.IO.Buffer
+  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
@@ -21,6 +20,7 @@ defmodule Codex.AppServer.Connection do
 
     defstruct [
       :codex_opts,
+      :transport_mod,
       :transport,
       :transport_ref,
       :phase,
@@ -114,6 +114,7 @@ defmodule Codex.AppServer.Connection do
           {:ok,
            %State{
              codex_opts: codex_opts,
+             transport_mod: transport_mod,
              transport: transport,
              transport_ref: transport_ref,
              phase: :initializing,
@@ -133,7 +134,7 @@ defmodule Codex.AppServer.Connection do
            }}
 
         {:error, _} = error ->
-          _ = Transport.force_close(transport)
+          _ = transport_mod.force_close(transport)
           error
       end
     else
@@ -450,43 +451,50 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp resolve_transport(opts) do
-    case Keyword.fetch(opts, :transport) do
-      {:ok, {module, transport_opts}} when is_atom(module) and is_list(transport_opts) ->
-        {module, transport_opts}
+    opts
+    |> Keyword.get(:transport)
+    |> normalize_transport_option(opts)
+  end
 
-      {:ok, module} when is_atom(module) ->
-        {module, []}
+  defp normalize_transport_option(nil, opts) do
+    opts
+    |> Keyword.get(:subprocess)
+    |> normalize_transport_value("subprocess")
+  end
 
-      {:ok, other} ->
-        raise ArgumentError, "invalid transport option: #{inspect(other)}"
+  defp normalize_transport_option(value, _opts) do
+    normalize_transport_value(value, "transport")
+  end
 
-      :error ->
-        case Keyword.get(opts, :subprocess) do
-          nil ->
-            {IOTransportErlexec, []}
+  defp normalize_transport_value(nil, _source), do: {IOTransportErlexec, []}
 
-          {module, transport_opts} when is_atom(module) and is_list(transport_opts) ->
-            {module, transport_opts}
+  defp normalize_transport_value({module, transport_opts}, _source)
+       when is_atom(module) and is_list(transport_opts) do
+    {module, transport_opts}
+  end
 
-          module when is_atom(module) ->
-            {module, []}
+  defp normalize_transport_value(module, _source) when is_atom(module), do: {module, []}
 
-          other ->
-            raise ArgumentError, "invalid subprocess option: #{inspect(other)}"
-        end
-    end
+  defp normalize_transport_value(other, source) do
+    raise ArgumentError, "invalid #{source} option: #{inspect(other)}"
   end
 
   defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
   defp maybe_ensure_erlexec(_other), do: :ok
 
-  defp send_iolist(%State{} = state, data) do
-    Transport.send(state.transport, data)
+  defp send_iolist(%State{transport_mod: transport_mod, transport: transport}, data)
+       when is_atom(transport_mod) and is_pid(transport) do
+    transport_mod.send(transport, data)
   end
 
-  defp stop_subprocess(%State{} = state) do
-    Transport.force_close(state.transport)
+  defp send_iolist(%State{}, _data), do: {:error, {:transport, :not_connected}}
+
+  defp stop_subprocess(%State{transport_mod: transport_mod, transport: transport})
+       when is_atom(transport_mod) and is_pid(transport) do
+    transport_mod.force_close(transport)
   end
+
+  defp stop_subprocess(%State{}), do: :ok
 
   defp build_env(%Options{} = opts) do
     opts.api_key

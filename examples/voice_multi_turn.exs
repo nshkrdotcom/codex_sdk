@@ -31,6 +31,7 @@ defmodule VoiceMultiTurnExample do
   alias Codex.Voice.SimpleWorkflow
 
   @output_audio_path "/tmp/codex_voice_multi_turn.pcm"
+  @output_wait_timeout_ms 60_000
 
   def run do
     IO.puts("=== Multi-Turn Voice Example ===\n")
@@ -128,8 +129,20 @@ defmodule VoiceMultiTurnExample do
     # Stream real audio in chunks (simulating multiple turns)
     stream_audio_turns(streamed_input, audio_data)
 
-    # Wait for output to complete
-    Task.await(output_task, :infinity)
+    # Wait for output to complete, but avoid hanging forever on API stalls/quota failures.
+    case Task.yield(output_task, @output_wait_timeout_ms) ||
+           Task.shutdown(output_task, :brutal_kill) do
+      {:ok, _result} ->
+        :ok
+
+      {:exit, reason} ->
+        IO.puts("[Warning] Output stream task exited: #{inspect(reason)}")
+
+      nil ->
+        IO.puts(
+          "[Timeout] Output stream did not complete within #{@output_wait_timeout_ms}ms; continuing."
+        )
+    end
 
     # Show output file info and playback instructions
     output_size = File.stat!(@output_audio_path).size

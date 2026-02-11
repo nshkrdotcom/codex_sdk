@@ -8,7 +8,6 @@ defmodule Codex.MCP.Transport.Stdio do
   require Logger
 
   alias Codex.IO.Buffer
-  alias Codex.IO.Transport
   alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.MCP.Protocol
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
@@ -17,6 +16,7 @@ defmodule Codex.MCP.Transport.Stdio do
     @moduledoc false
 
     defstruct [
+      :transport_mod,
       :transport,
       :transport_ref,
       :messages,
@@ -62,6 +62,7 @@ defmodule Codex.MCP.Transport.Stdio do
            ) do
       {:ok,
        %State{
+         transport_mod: transport_mod,
          transport: transport,
          transport_ref: transport_ref,
          messages: :queue.new(),
@@ -77,7 +78,7 @@ defmodule Codex.MCP.Transport.Stdio do
   def handle_call({:send, message}, _from, %State{} = state) do
     encoded = Protocol.encode_message(message)
 
-    case Transport.send(state.transport, encoded) do
+    case state.transport_mod.send(state.transport, encoded) do
       :ok -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -158,7 +159,7 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def terminate(_reason, %State{} = state) do
     _ = drain_waiters(state, {:error, :closed})
-    _ = Transport.force_close(state.transport)
+    _ = state.transport_mod.force_close(state.transport)
     :ok
   end
 

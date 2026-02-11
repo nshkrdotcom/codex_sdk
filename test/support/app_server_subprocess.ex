@@ -1,6 +1,8 @@
 defmodule Codex.TestSupport.AppServerSubprocess do
   @moduledoc false
 
+  import Kernel, except: [send: 2]
+
   @behaviour Codex.IO.Transport
 
   use GenServer
@@ -67,7 +69,7 @@ defmodule Codex.TestSupport.AppServerSubprocess do
         pid when is_pid(pid) -> {pid, :legacy}
       end
 
-    send(owner, {:app_server_subprocess_started, subscriber_pid, tag})
+    Kernel.send(owner, {:app_server_subprocess_started, subscriber_pid, tag})
 
     {:ok,
      %__MODULE__{
@@ -81,7 +83,12 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   @impl true
   def handle_call({:send, data}, _from, state) do
     {subscriber_pid, _tag} = state.subscriber
-    send(state.owner, {:app_server_subprocess_send, subscriber_pid, IO.iodata_to_binary(data)})
+
+    Kernel.send(
+      state.owner,
+      {:app_server_subprocess_send, subscriber_pid, IO.iodata_to_binary(data)}
+    )
+
     {:reply, state.send_result, state}
   end
 
@@ -93,7 +100,7 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   def terminate(_reason, state) do
     if state.notify_stop do
       {subscriber_pid, _tag} = state.subscriber
-      send(state.owner, {:app_server_subprocess_stopped, subscriber_pid, self()})
+      Kernel.send(state.owner, {:app_server_subprocess_stopped, subscriber_pid, self()})
     end
 
     :ok

@@ -21,6 +21,9 @@ defmodule Codex.Exec do
   alias Codex.TransportError
 
   @default_timeout_ms 3_600_000
+  @transport_close_grace_ms 2_000
+  @transport_shutdown_grace_ms 250
+  @transport_kill_grace_ms 250
   @default_preserved_env_keys ~w(
     HOME
     USER
@@ -136,9 +139,9 @@ defmodule Codex.Exec do
   end
 
   defp send_prompt(%{transport: transport}, input) do
-    with :ok <- IOTransport.send(transport, input),
-         :ok <- IOTransport.end_input(transport) do
-      :ok
+    case IOTransport.send(transport, input) do
+      :ok -> IOTransport.end_input(transport)
+      {:error, _} = error -> error
     end
   end
 
@@ -264,8 +267,18 @@ defmodule Codex.Exec do
   defp safe_stop({:error, _reason}), do: :ok
   defp safe_stop(%{transport: nil}), do: :ok
 
-  defp safe_stop(%{transport: transport}) do
-    IOTransport.force_close(transport)
+  defp safe_stop(%{transport: transport, transport_ref: transport_ref}) when is_pid(transport) do
+    monitor_ref = Process.monitor(transport)
+    _ = safe_force_close(transport)
+    await_transport_down_or_shutdown(monitor_ref, transport, @transport_close_grace_ms)
+    flush_transport_messages(transport_ref)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp safe_stop(%{transport: transport}) when is_pid(transport) do
+    _ = safe_force_close(transport)
     :ok
   rescue
     _ -> :ok
@@ -657,13 +670,11 @@ defmodule Codex.Exec do
   end
 
   defp decode_event_map(decoded) do
-    try do
-      {:ok, Events.parse!(decoded)}
-    rescue
-      error in ArgumentError ->
-        Logger.warning("Unsupported codex event: #{Exception.message(error)}")
-        {:error, :unsupported_event}
-    end
+    {:ok, Events.parse!(decoded)}
+  rescue
+    error in ArgumentError ->
+      Logger.warning("Unsupported codex event: #{Exception.message(error)}")
+      {:error, :unsupported_event}
   end
 
   defp exit_status_from_reason(:normal), do: {:ok, 0}
@@ -688,6 +699,83 @@ defmodule Codex.Exec do
   end
 
   defp normalize_exit_status(raw_status), do: raw_status
+
+  defp flush_transport_messages(ref) when is_reference(ref) do
+    receive do
+      {:codex_io_transport, ^ref, _event} ->
+        flush_transport_messages(ref)
+    after
+      0 ->
+        :ok
+    end
+  end
+
+  defp flush_transport_messages(_other), do: :ok
+
+  defp await_transport_down_or_shutdown(ref, transport, timeout_ms) do
+    case await_transport_down(ref, transport, timeout_ms) do
+      :down ->
+        :ok
+
+      :timeout ->
+        safe_shutdown(transport)
+        await_transport_down_or_kill(ref, transport, @transport_shutdown_grace_ms)
+    end
+  end
+
+  defp await_transport_down_or_kill(ref, transport, timeout_ms) do
+    case await_transport_down(ref, transport, timeout_ms) do
+      :down ->
+        :ok
+
+      :timeout ->
+        safe_kill(transport)
+        await_transport_down_or_demonitor(ref, transport, @transport_kill_grace_ms)
+    end
+  end
+
+  defp await_transport_down_or_demonitor(ref, transport, timeout_ms) do
+    case await_transport_down(ref, transport, timeout_ms) do
+      :down ->
+        :ok
+
+      :timeout ->
+        Process.demonitor(ref, [:flush])
+        :ok
+    end
+  end
+
+  defp await_transport_down(ref, transport, timeout_ms)
+       when is_reference(ref) and is_pid(transport) and is_integer(timeout_ms) and timeout_ms >= 0 do
+    receive do
+      {:DOWN, ^ref, :process, ^transport, _reason} ->
+        :down
+    after
+      timeout_ms ->
+        :timeout
+    end
+  end
+
+  defp safe_force_close(transport) when is_pid(transport) do
+    IOTransport.force_close(transport)
+  catch
+    :exit, _ ->
+      {:error, {:transport, :not_connected}}
+  end
+
+  defp safe_shutdown(transport) when is_pid(transport) do
+    Process.exit(transport, :shutdown)
+    :ok
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp safe_kill(transport) when is_pid(transport) do
+    Process.exit(transport, :kill)
+    :ok
+  catch
+    :exit, _ -> :ok
+  end
 
   defp review_args(:uncommitted_changes), do: {:ok, ["review", "--uncommitted"]}
   defp review_args({:uncommitted_changes}), do: {:ok, ["review", "--uncommitted"]}

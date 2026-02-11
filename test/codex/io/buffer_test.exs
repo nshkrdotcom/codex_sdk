@@ -1,6 +1,8 @@
 defmodule Codex.IO.BufferTest do
   use ExUnit.Case, async: true
 
+  @moduletag :capture_log
+
   alias Codex.IO.Buffer
 
   describe "split_lines/1" do
@@ -84,7 +86,7 @@ defmodule Codex.IO.BufferTest do
 
   describe "decode_line/1" do
     test "decodes valid JSON object" do
-      assert {:ok, %{"key" => "val"}} = Buffer.decode_line("{\"key\":\"val\"}")
+      assert {:ok, %{"key" => "val"}} = Buffer.decode_line(~s({"key":"val"}))
     end
 
     test "returns non_json for arrays" do

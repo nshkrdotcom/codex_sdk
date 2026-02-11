@@ -7,6 +7,8 @@ defmodule Codex.MCP.Transport.StdioTest do
     @behaviour Codex.IO.Transport
     use GenServer
 
+    import Kernel, except: [send: 2]
+
     @impl true
     def start(opts), do: GenServer.start(__MODULE__, opts)
 
@@ -56,7 +58,7 @@ defmodule Codex.MCP.Transport.StdioTest do
     def init(opts) do
       owner = Keyword.fetch!(opts, :owner)
       subscriber = Keyword.fetch!(opts, :subscriber)
-      send(owner, {:stdio_fake_started, self(), subscriber})
+      Kernel.send(owner, {:stdio_fake_started, self(), subscriber})
       {:ok, %{subscriber: subscriber}}
     end
 
@@ -68,12 +70,12 @@ defmodule Codex.MCP.Transport.StdioTest do
     @impl true
     def handle_cast({:emit_exit, reason}, %{subscriber: {pid, tag}} = state)
         when is_reference(tag) do
-      send(pid, {:codex_io_transport, tag, {:exit, reason}})
+      Kernel.send(pid, {:codex_io_transport, tag, {:exit, reason}})
       {:noreply, state}
     end
 
     def handle_cast({:emit_exit, reason}, %{subscriber: pid} = state) do
-      send(pid, {:transport_exit, reason})
+      Kernel.send(pid, {:transport_exit, reason})
       {:noreply, state}
     end
   end
@@ -85,14 +87,17 @@ defmodule Codex.MCP.Transport.StdioTest do
         transport: {FakeTransport, owner: self()}
       )
 
-    assert_receive {:stdio_fake_started, ^transport, {_pid, ref}} when is_reference(ref)
+    assert_receive {:stdio_fake_started, fake_transport, {^transport, ref}}
+                   when is_pid(fake_transport) and is_reference(ref)
 
     waiter = Task.async(fn -> Stdio.recv(transport, 5_000) end)
     wait_for_waiter(transport)
+    monitor_ref = Process.monitor(transport)
 
-    FakeTransport.emit_exit(transport, {:exit_status, 9})
+    FakeTransport.emit_exit(fake_transport, {:exit_status, 9})
 
     assert Task.await(waiter, 500) == {:error, :closed}
+    assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 500
     refute Process.alive?(transport)
   end
 

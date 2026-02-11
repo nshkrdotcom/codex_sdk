@@ -5,6 +5,8 @@ defmodule Codex.IO.Transport.Erlexec do
 
   import Kernel, except: [send: 2]
 
+  alias Codex.TaskSupport
+
   @behaviour Codex.IO.Transport
 
   @default_max_buffer_size 1_048_576
@@ -143,18 +145,16 @@ defmodule Codex.IO.Transport.Erlexec do
     max_stderr_buffer_size =
       Keyword.get(opts, :max_stderr_buffer_size, @default_max_stderr_buffer_size)
 
-    with {:ok, state} <-
-           start_subprocess(command, args,
-             cwd: cwd,
-             env: env,
-             task_supervisor: task_supervisor,
-             subscriber: subscriber,
-             headless_timeout_ms: headless_timeout_ms,
-             max_buffer_size: max_buffer_size,
-             max_stderr_buffer_size: max_stderr_buffer_size
-           ) do
-      {:ok, state}
-    else
+    case start_subprocess(command, args,
+           cwd: cwd,
+           env: env,
+           task_supervisor: task_supervisor,
+           subscriber: subscriber,
+           headless_timeout_ms: headless_timeout_ms,
+           max_buffer_size: max_buffer_size,
+           max_stderr_buffer_size: max_stderr_buffer_size
+         ) do
+      {:ok, state} -> {:ok, state}
       {:error, reason} -> {:stop, reason}
     end
   end
@@ -321,36 +321,32 @@ defmodule Codex.IO.Transport.Erlexec do
 
   defp safe_call(transport, message, timeout)
        when is_pid(transport) and is_integer(timeout) and timeout >= 0 do
-    with {:ok, task} <-
-           async_nolink(Codex.TaskSupervisor, fn ->
-             try do
-               {:ok, GenServer.call(transport, message, :infinity)}
-             catch
-               :exit, reason -> {:error, normalize_call_exit(reason)}
-             end
-           end) do
-      case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
-        {:ok, result} ->
-          result
+    case TaskSupport.async_nolink(Codex.TaskSupervisor, fn ->
+           try do
+             {:ok, GenServer.call(transport, message, :infinity)}
+           catch
+             :exit, reason -> {:error, normalize_call_exit(reason)}
+           end
+         end) do
+      {:ok, task} ->
+        await_task_result(task, timeout)
 
-        {:exit, reason} ->
-          {:error, normalize_call_exit(reason)}
-
-        nil ->
-          {:error, :timeout}
-      end
-    else
       {:error, reason} ->
         {:error, normalize_call_task_start_error(reason)}
     end
   end
 
-  defp async_nolink(supervisor, fun) when is_function(fun, 0) do
-    {:ok, Task.Supervisor.async_nolink(supervisor, fun)}
-  catch
-    :exit, {:noproc, _} -> {:error, :noproc}
-    :exit, :noproc -> {:error, :noproc}
-    :exit, reason -> {:error, {:task_start_failed, reason}}
+  defp await_task_result(task, timeout) do
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        result
+
+      {:exit, reason} ->
+        {:error, normalize_call_exit(reason)}
+
+      nil ->
+        {:error, :timeout}
+    end
   end
 
   defp normalize_call_task_start_error(:noproc), do: :transport_stopped
@@ -527,7 +523,7 @@ defmodule Codex.IO.Transport.Erlexec do
   end
 
   defp start_io_task(state, fun) when is_function(fun, 0) do
-    async_nolink(state.task_supervisor, fun)
+    TaskSupport.async_nolink(state.task_supervisor, fun)
   end
 
   defp send_payload(pid, message) do
@@ -722,9 +718,14 @@ defmodule Codex.IO.Transport.Erlexec do
   end
 
   defp normalize_payload(message) when is_binary(message), do: message
+  defp normalize_payload(message) when is_map(message), do: Jason.encode!(message)
 
-  defp normalize_payload(message) when is_map(message) or is_list(message),
-    do: Jason.encode!(message)
+  defp normalize_payload(message) when is_list(message) do
+    IO.iodata_to_binary(message)
+  rescue
+    ArgumentError ->
+      Jason.encode!(message)
+  end
 
   defp normalize_payload(message), do: to_string(message)
 
