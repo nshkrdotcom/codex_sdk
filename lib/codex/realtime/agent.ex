@@ -46,10 +46,12 @@ defmodule Codex.Realtime.Agent do
           (map() -> String.t())
           | (map(), t() -> String.t())
 
+  @default_model "gpt-4o-realtime-preview"
+
   defstruct name: "Agent",
             handoff_description: nil,
             handoffs: [],
-            model: "gpt-4o-realtime-preview",
+            model: @default_model,
             instructions: "You are a helpful assistant.",
             tools: [],
             output_guardrails: [],
@@ -65,6 +67,12 @@ defmodule Codex.Realtime.Agent do
           output_guardrails: [term()],
           hooks: term()
         }
+
+  @doc """
+  Returns the default realtime model name.
+  """
+  @spec default_model() :: String.t()
+  def default_model, do: @default_model
 
   @doc """
   Create a new realtime agent from keyword options.

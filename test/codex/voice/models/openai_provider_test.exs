@@ -4,6 +4,7 @@ defmodule Codex.Voice.Models.OpenAIProviderTest do
   alias Codex.Voice.Models.OpenAIProvider
   alias Codex.Voice.Models.OpenAISTT
   alias Codex.Voice.Models.OpenAITTS
+  import Codex.Test.ModelFixtures
 
   describe "new/1" do
     test "creates with default options" do
@@ -46,7 +47,7 @@ defmodule Codex.Voice.Models.OpenAIProviderTest do
       model = OpenAIProvider.get_stt_model(provider, nil)
 
       assert %OpenAISTT{} = model
-      assert model.model == "gpt-4o-transcribe"
+      assert model.model == stt_model()
     end
 
     test "returns custom STT model when name is provided" do
@@ -78,7 +79,7 @@ defmodule Codex.Voice.Models.OpenAIProviderTest do
       model = OpenAIProvider.get_tts_model(provider, nil)
 
       assert %OpenAITTS{} = model
-      assert model.model == "gpt-4o-mini-tts"
+      assert model.model == tts_model()
     end
 
     test "returns custom TTS model when name is provided" do
@@ -108,13 +109,13 @@ defmodule Codex.Voice.Models.OpenAIProviderTest do
     test "get_stt_model/1 works with just model name" do
       model = OpenAIProvider.get_stt_model(nil)
       assert %OpenAISTT{} = model
-      assert model.model == "gpt-4o-transcribe"
+      assert model.model == stt_model()
     end
 
     test "get_tts_model/1 works with just model name" do
       model = OpenAIProvider.get_tts_model(nil)
       assert %OpenAITTS{} = model
-      assert model.model == "gpt-4o-mini-tts"
+      assert model.model == tts_model()
     end
   end
 

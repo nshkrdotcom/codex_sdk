@@ -2,6 +2,7 @@ defmodule Codex.OptionsTest do
   use ExUnit.Case, async: false
 
   alias Codex.Options
+  import Codex.Test.ModelFixtures
 
   setup do
     env_keys = ~w(CODEX_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME OPENAI_BASE_URL)
@@ -44,7 +45,7 @@ defmodule Codex.OptionsTest do
       assert opts.api_key == "test"
       assert opts.base_url == "https://example.com"
       assert opts.telemetry_prefix == [:codex, :test]
-      assert opts.model == "gpt-5.3-codex"
+      assert opts.model == default_model()
       assert opts.reasoning_effort == :high
     end
 
@@ -65,25 +66,25 @@ defmodule Codex.OptionsTest do
     test "allows API key to be omitted" do
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == nil
-      assert opts.model == "gpt-5.3-codex"
+      assert opts.model == default_model()
       assert opts.reasoning_effort == :medium
     end
 
     test "falls back to model-specific reasoning defaults" do
-      {:ok, opts} = Options.new(%{model: "gpt-5.1-codex-mini"})
+      {:ok, opts} = Options.new(%{model: alt_model()})
 
-      assert opts.model == "gpt-5.1-codex-mini"
+      assert opts.model == alt_model()
       assert opts.reasoning_effort == :medium
     end
 
     test "coerces unsupported reasoning effort values" do
       {:ok, opts} =
         Options.new(%{
-          model: "gpt-5.1-codex-mini",
+          model: alt_model(),
           reasoning_effort: :xhigh
         })
 
-      assert opts.model == "gpt-5.1-codex-mini"
+      assert opts.model == alt_model()
       assert opts.reasoning_effort == :high
     end
 

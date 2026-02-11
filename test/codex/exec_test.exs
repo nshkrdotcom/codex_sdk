@@ -6,6 +6,7 @@ defmodule Codex.ExecTest do
   alias Codex.{Events, Exec, Items, Options, Thread}
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
+  import Codex.Test.ModelFixtures
 
   @moduletag :capture_log
 
@@ -122,7 +123,7 @@ defmodule Codex.ExecTest do
       Options.new(%{
         api_key: "test",
         codex_path_override: script_path,
-        model: "gpt-5.3-codex",
+        model: default_model(),
         reasoning_effort: :medium
       })
 
@@ -139,7 +140,7 @@ defmodule Codex.ExecTest do
 
     assert started != nil
     assert started.metadata["labels"] == %{"topic" => "demo"}
-    assert started.metadata["model"] == "gpt-5.3-codex"
+    assert started.metadata["model"] == default_model()
     assert started.metadata["reasoning_effort"] == "medium"
     assert get_in(started.metadata, ["config", "model_reasoning_effort"]) == "medium"
   end

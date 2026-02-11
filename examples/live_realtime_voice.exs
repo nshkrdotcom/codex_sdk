@@ -106,7 +106,7 @@ defmodule LiveRealtimeVoiceDemo do
         You are a helpful voice assistant. Be concise and natural in your responses.
         Speak clearly and at a moderate pace.
         """,
-        model: "gpt-4o-realtime-preview"
+        model: Codex.Realtime.Agent.default_model()
       )
 
     config = %RunConfig{

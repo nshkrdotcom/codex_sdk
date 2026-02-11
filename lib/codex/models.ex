@@ -84,222 +84,175 @@ defmodule Codex.Models do
   @default_chatgpt_model "gpt-5.3-codex"
   @remote_models_cache_ttl_seconds 300
 
-  @gpt_53_codex_upgrade %{
-    id: "gpt-5.3-codex",
-    reasoning_effort_mapping: nil,
-    migration_config_key: "gpt-5.3-codex",
-    model_link: nil,
-    upgrade_copy:
-      "Codex is now powered by gpt-5.3-codex, our latest frontier agentic coding model. It is smarter and faster than its predecessors and capable of long-running project-scale work."
-  }
+  # -- Shared reasoning-effort preset templates --------------------------------
+  # Each list is reused across multiple model presets to avoid duplication.
 
-  @local_presets [
-    %{
-      id: "gpt-5.3-codex",
-      model: "gpt-5.3-codex",
-      display_name: "gpt-5.3-codex",
-      description: "Latest frontier agentic coding model.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :low, description: "Fast responses with lighter reasoning"},
-        %{effort: :medium, description: "Balances speed and reasoning depth for everyday tasks"},
-        %{effort: :high, description: "Greater reasoning depth for complex problems"},
-        %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
-      ],
-      is_default: true,
-      upgrade: nil,
-      show_in_picker: true,
-      supported_in_api: false
-    },
-    %{
-      id: "gpt-5.1-codex-max",
-      model: "gpt-5.1-codex-max",
-      display_name: "gpt-5.1-codex-max",
-      description: "Codex-optimized flagship for deep and fast reasoning.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :low, description: "Fast responses with lighter reasoning"},
-        %{effort: :medium, description: "Balances speed and reasoning depth for everyday tasks"},
-        %{effort: :high, description: "Greater reasoning depth for complex problems"},
-        %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: true,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5.1-codex-mini",
-      model: "gpt-5.1-codex-mini",
-      display_name: "gpt-5.1-codex-mini",
-      description: "Optimized for codex. Cheaper, faster, but less capable.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: true,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5.2",
-      model: "gpt-5.2",
-      display_name: "gpt-5.2",
-      description:
-        "Latest frontier model with improvements across knowledge, reasoning and coding",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{
-          effort: :low,
-          description:
-            "Balances speed with some reasoning; useful for straightforward queries and short explanations"
-        },
-        %{
-          effort: :medium,
-          description:
-            "Provides a solid balance of reasoning depth and latency for general-purpose tasks"
-        },
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        },
-        %{effort: :xhigh, description: "Extra high reasoning for complex problems"}
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: true,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5-codex",
-      model: "gpt-5-codex",
-      display_name: "gpt-5-codex",
-      description: "Optimized for codex.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :low, description: "Fastest responses with limited reasoning"},
-        %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: false,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5-codex-mini",
-      model: "gpt-5-codex-mini",
-      display_name: "gpt-5-codex-mini",
-      description: "Optimized for codex. Cheaper, faster, but less capable.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: false,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5.1-codex",
-      model: "gpt-5.1-codex",
-      display_name: "gpt-5.1-codex",
-      description: "Optimized for codex.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :low, description: "Fastest responses with limited reasoning"},
-        %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: false,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5",
-      model: "gpt-5",
-      display_name: "gpt-5",
-      description: "Broad world knowledge with strong general reasoning.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{effort: :minimal, description: "Fastest responses with little reasoning"},
-        %{
-          effort: :low,
-          description:
-            "Balances speed with some reasoning; useful for straightforward queries and short explanations"
-        },
-        %{
-          effort: :medium,
-          description:
-            "Provides a solid balance of reasoning depth and latency for general-purpose tasks"
-        },
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: false,
-      supported_in_api: true
-    },
-    %{
-      id: "gpt-5.1",
-      model: "gpt-5.1",
-      display_name: "gpt-5.1",
-      description: "Broad world knowledge with strong general reasoning.",
-      default_reasoning_effort: :medium,
-      supported_reasoning_efforts: [
-        %{
-          effort: :low,
-          description:
-            "Balances speed with some reasoning; useful for straightforward queries and short explanations"
-        },
-        %{
-          effort: :medium,
-          description:
-            "Provides a solid balance of reasoning depth and latency for general-purpose tasks"
-        },
-        %{
-          effort: :high,
-          description: "Maximizes reasoning depth for complex or ambiguous problems"
-        }
-      ],
-      is_default: false,
-      upgrade: @gpt_53_codex_upgrade,
-      show_in_picker: false,
-      supported_in_api: true
-    }
+  @efforts_full [
+    %{effort: :low, description: "Fast responses with lighter reasoning"},
+    %{effort: :medium, description: "Balances speed and reasoning depth for everyday tasks"},
+    %{effort: :high, description: "Greater reasoning depth for complex problems"},
+    %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
   ]
 
-  @local_shell_types %{
-    "gpt-5.3-codex" => :shell_command,
-    "gpt-5.2-codex" => :shell_command,
-    "gpt-5.1-codex-max" => :shell_command,
-    "gpt-5.1-codex-mini" => :shell_command,
-    "gpt-5.2" => :shell_command,
-    "gpt-5-codex" => :shell_command,
-    "gpt-5-codex-mini" => :shell_command,
-    "gpt-5.1-codex" => :shell_command,
-    "gpt-5" => :default,
-    "gpt-5.1" => :shell_command
+  @efforts_mini [
+    %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
+    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
+  ]
+
+  @efforts_standard [
+    %{effort: :low, description: "Fastest responses with limited reasoning"},
+    %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
+    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
+  ]
+
+  @efforts_frontier [
+    %{
+      effort: :low,
+      description:
+        "Balances speed with some reasoning; useful for straightforward queries and short explanations"
+    },
+    %{
+      effort: :medium,
+      description:
+        "Provides a solid balance of reasoning depth and latency for general-purpose tasks"
+    },
+    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
+  ]
+
+  @efforts_frontier_xhigh @efforts_frontier ++
+                            [
+                              %{
+                                effort: :xhigh,
+                                description: "Extra high reasoning for complex problems"
+                              }
+                            ]
+
+  @efforts_gpt5 [
+                  %{effort: :minimal, description: "Fastest responses with little reasoning"}
+                ] ++ @efforts_frontier
+
+  # -- Upgrade target ----------------------------------------------------------
+
+  @gpt_53_codex_upgrade %{
+    id: @default_api_model,
+    reasoning_effort_mapping: nil,
+    migration_config_key: @default_api_model,
+    model_link: nil,
+    upgrade_copy:
+      "Codex is now powered by #{@default_api_model}, our latest frontier agentic coding model. " <>
+        "It is smarter and faster than its predecessors and capable of long-running project-scale work."
   }
+
+  # -- Local model presets -----------------------------------------------------
+  # Each preset uses `id` as the single source of truth for `model` and
+  # `display_name`, with a helper that expands them at compile time.
+
+  @local_presets [
+                   %{
+                     id: @default_api_model,
+                     description: "Latest frontier agentic coding model.",
+                     supported_reasoning_efforts: @efforts_full,
+                     is_default: true,
+                     upgrade: nil,
+                     show_in_picker: true,
+                     supported_in_api: false,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.1-codex-max",
+                     description: "Codex-optimized flagship for deep and fast reasoning.",
+                     supported_reasoning_efforts: @efforts_full,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.1-codex-mini",
+                     description: "Optimized for codex. Cheaper, faster, but less capable.",
+                     supported_reasoning_efforts: @efforts_mini,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.2",
+                     description:
+                       "Latest frontier model with improvements across knowledge, reasoning and coding",
+                     supported_reasoning_efforts: @efforts_frontier_xhigh,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5-codex",
+                     description: "Optimized for codex.",
+                     supported_reasoning_efforts: @efforts_standard,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: false,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5-codex-mini",
+                     description: "Optimized for codex. Cheaper, faster, but less capable.",
+                     supported_reasoning_efforts: @efforts_mini,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: false,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.1-codex",
+                     description: "Optimized for codex.",
+                     supported_reasoning_efforts: @efforts_standard,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: false,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5",
+                     description: "Broad world knowledge with strong general reasoning.",
+                     supported_reasoning_efforts: @efforts_gpt5,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: false,
+                     supported_in_api: true,
+                     shell_type: :default
+                   },
+                   %{
+                     id: "gpt-5.1",
+                     description: "Broad world knowledge with strong general reasoning.",
+                     supported_reasoning_efforts: @efforts_frontier,
+                     is_default: false,
+                     upgrade: @gpt_53_codex_upgrade,
+                     show_in_picker: false,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   }
+                 ]
+                 |> Enum.map(fn preset ->
+                   preset
+                   |> Map.put_new(:model, preset.id)
+                   |> Map.put_new(:display_name, preset.id)
+                   |> Map.put_new(:default_reasoning_effort, :medium)
+                 end)
+
+  # Shell types are derived from the presets; the only non-preset entry is
+  # gpt-5.2-codex which isn't in the preset list but needs a shell type.
+  @local_shell_types @local_presets
+                     |> Enum.map(fn preset -> {preset.id, preset.shell_type} end)
+                     |> Map.new()
+                     |> Map.put("gpt-5.2-codex", :shell_command)
 
   @doc """
   Returns the list of supported models visible for the inferred auth mode.

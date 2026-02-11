@@ -43,8 +43,9 @@ defmodule Codex.Voice.Models.OpenAIProvider do
           project: String.t() | nil
         }
 
-  @default_stt_model "gpt-4o-transcribe"
-  @default_tts_model "gpt-4o-mini-tts"
+  # Delegate to the individual model modules — single source of truth.
+  @default_stt_model OpenAISTT.model_name()
+  @default_tts_model OpenAITTS.model_name()
 
   @doc """
   Create a new OpenAI voice model provider.

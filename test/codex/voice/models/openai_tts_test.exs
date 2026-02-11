@@ -3,11 +3,12 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
 
   alias Codex.Voice.Config.TTSSettings
   alias Codex.Voice.Models.OpenAITTS
+  import Codex.Test.ModelFixtures
 
   describe "new/2" do
     test "creates with default model" do
       model = OpenAITTS.new()
-      assert model.model == "gpt-4o-mini-tts"
+      assert model.model == tts_model()
     end
 
     test "creates with custom model" do
@@ -30,7 +31,7 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
 
   describe "model_name/0" do
     test "returns default model name" do
-      assert OpenAITTS.model_name() == "gpt-4o-mini-tts"
+      assert OpenAITTS.model_name() == tts_model()
     end
   end
 
@@ -49,7 +50,7 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
       model = OpenAITTS.new()
       settings = TTSSettings.new()
 
-      assert model.model == "gpt-4o-mini-tts"
+      assert model.model == tts_model()
       assert settings.voice == nil
       assert settings.speed == nil
     end
@@ -58,7 +59,7 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
       model = OpenAITTS.new()
       settings = TTSSettings.new(voice: :nova, speed: 1.2)
 
-      assert model.model == "gpt-4o-mini-tts"
+      assert model.model == tts_model()
       assert settings.voice == :nova
       assert settings.speed == 1.2
     end

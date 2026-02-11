@@ -429,7 +429,7 @@ defmodule Codex.Realtime.Session do
   end
 
   defp get_model_name(%{model: model}) when is_binary(model), do: model
-  defp get_model_name(_), do: "gpt-4o-realtime-preview"
+  defp get_model_name(_), do: RealtimeAgent.default_model()
 
   defp send_to_websocket(state, input) do
     if state.websocket_pid do

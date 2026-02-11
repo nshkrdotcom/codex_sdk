@@ -5,11 +5,12 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
   alias Codex.Voice.Input.StreamedAudioInput
   alias Codex.Voice.Models.OpenAISTT
   alias Codex.Voice.Models.OpenAISTTSession
+  import Codex.Test.ModelFixtures
 
   describe "new/2" do
     test "creates with default model" do
       model = OpenAISTT.new()
-      assert model.model == "gpt-4o-transcribe"
+      assert model.model == stt_model()
     end
 
     test "creates with custom model" do
@@ -32,7 +33,7 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
 
   describe "model_name/0" do
     test "returns default model name" do
-      assert OpenAISTT.model_name() == "gpt-4o-transcribe"
+      assert OpenAISTT.model_name() == stt_model()
     end
   end
 

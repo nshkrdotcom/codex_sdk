@@ -18,6 +18,8 @@ defmodule Codex.ThreadTest do
     Tools
   }
 
+  import Codex.Test.ModelFixtures
+
   describe "thread options validation" do
     test "rejects conflicting auto flags" do
       assert {:error, :conflicting_auto_flags} ==
@@ -187,9 +189,11 @@ defmodule Codex.ThreadTest do
         |> String.trim()
         |> String.split(~r/\s+/)
 
+      expected_model = default_model()
+
       assert Enum.chunk_every(args, 2)
              |> Enum.any?(fn
-               ["--model", "gpt-5.3-codex"] -> true
+               ["--model", ^expected_model] -> true
                _ -> false
              end)
 
@@ -858,7 +862,7 @@ defmodule Codex.ThreadTest do
       {:ok, codex_opts} =
         Options.new(%{
           api_key: "test",
-          model: "gpt-5.3-codex",
+          model: default_model(),
           reasoning_effort: :xhigh
         })
 
@@ -866,13 +870,13 @@ defmodule Codex.ThreadTest do
       thread = Thread.build(codex_opts, thread_opts)
 
       event = %Events.SessionConfigured{
-        model: "gpt-5.1-codex-mini",
+        model: alt_model(),
         reasoning_effort: "xhigh"
       }
 
       {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})
 
-      assert updated.codex_opts.model == "gpt-5.1-codex-mini"
+      assert updated.codex_opts.model == alt_model()
       assert updated.codex_opts.reasoning_effort == :high
     end
   end

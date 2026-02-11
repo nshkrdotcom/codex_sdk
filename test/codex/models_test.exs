@@ -2,6 +2,7 @@ defmodule Codex.ModelsTest do
   use ExUnit.Case, async: false
 
   alias Codex.Models
+  import Codex.Test.ModelFixtures
 
   setup do
     env_keys = ~w(CODEX_MODEL OPENAI_DEFAULT_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME)
@@ -69,20 +70,20 @@ defmodule Codex.ModelsTest do
                "gpt-5.2"
              ]
 
-      assert Enum.any?(models, &(&1.id == "gpt-5.3-codex" && &1.is_default))
+      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
   end
 
-  test "default model remains gpt-5.3-codex across credential sources" do
+  test "default model remains consistent across credential sources" do
     with_temp_codex_home(fn home ->
-      assert Models.default_model() == "gpt-5.3-codex"
+      assert Models.default_model() == default_model()
 
       System.put_env("CODEX_API_KEY", "sk-test")
-      assert Models.default_model() == "gpt-5.3-codex"
+      assert Models.default_model() == default_model()
       System.delete_env("CODEX_API_KEY")
 
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
-      assert Models.default_model() == "gpt-5.3-codex"
+      assert Models.default_model() == default_model()
     end)
   end
 
@@ -118,7 +119,7 @@ defmodule Codex.ModelsTest do
         )
       ])
 
-      assert Models.default_model() == "gpt-5.3-codex"
+      assert Models.default_model() == default_model()
     end)
   end
 
@@ -126,11 +127,10 @@ defmodule Codex.ModelsTest do
     with_temp_codex_home(fn home ->
       write_config!(home, true)
 
-      # gpt-5.1-codex-max has an upgrade to gpt-5.3-codex
-      upgrade = Models.get_upgrade("gpt-5.1-codex-max")
+      upgrade = Models.get_upgrade(max_model())
 
-      assert upgrade.id == "gpt-5.3-codex"
-      assert upgrade.migration_config_key == "gpt-5.1-codex-max"
+      assert upgrade.id == default_model()
+      assert upgrade.migration_config_key == max_model()
       # The upgrade may have reasoning effort mapping or nil depending on JSON
       # Just verify the upgrade exists and has the expected id
       assert is_map(upgrade)
@@ -144,7 +144,7 @@ defmodule Codex.ModelsTest do
     assert Models.reasoning_effort_to_string(:none) == "none"
     assert Models.normalize_reasoning_effort("xhigh") == {:ok, :xhigh}
     assert Models.reasoning_effort_to_string(:xhigh) == "xhigh"
-    assert Models.supported_in_api?("gpt-5.3-codex") == false
+    assert Models.supported_in_api?(default_model()) == false
     assert Models.tool_enabled?("gpt-5.1")
   end
 

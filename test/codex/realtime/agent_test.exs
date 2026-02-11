@@ -3,12 +3,13 @@ defmodule Codex.Realtime.AgentTest do
 
   alias Codex.Handoff
   alias Codex.Realtime.Agent
+  import Codex.Test.ModelFixtures
 
   describe "struct creation" do
     test "creates with defaults" do
       agent = %Agent{}
       assert agent.name == "Agent"
-      assert agent.model == "gpt-4o-realtime-preview"
+      assert agent.model == realtime_model()
       assert agent.instructions == "You are a helpful assistant."
     end
 

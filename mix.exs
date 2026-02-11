@@ -89,14 +89,16 @@ defmodule CodexSdk.MixProject do
         "guides/03-api-guide.md",
         "guides/04-examples.md",
         "guides/05-app-server-transport.md",
-        "guides/06-realtime-and-voice.md"
+        "guides/06-realtime-and-voice.md",
+        "guides/07-models-and-reasoning.md"
       ],
       groups_for_extras: [
         Introduction: ["README.md", "guides/01-getting-started.md"],
         Guides: [
           "guides/02-architecture.md",
           "guides/05-app-server-transport.md",
-          "guides/06-realtime-and-voice.md"
+          "guides/06-realtime-and-voice.md",
+          "guides/07-models-and-reasoning.md"
         ],
         Reference: [
           "guides/03-api-guide.md",
@@ -111,6 +113,7 @@ defmodule CodexSdk.MixProject do
           Codex.Thread,
           Codex.Thread.Options,
           Codex.Options,
+          Codex.Models,
           Codex.Turn.Result
         ],
         Execution: [

@@ -11,6 +11,7 @@ defmodule Codex.RealtimeIntegrationTest do
   alias Codex.Realtime.Agent
   alias Codex.Realtime.Config.RunConfig
   alias Codex.Realtime.Config.SessionModelSettings
+  import Codex.Test.ModelFixtures
 
   @moduletag :realtime_integration
 
@@ -20,7 +21,7 @@ defmodule Codex.RealtimeIntegrationTest do
 
       assert %Agent{} = agent
       assert agent.name == "TestAgent"
-      assert agent.model == "gpt-4o-realtime-preview"
+      assert agent.model == realtime_model()
     end
 
     test "creates an agent with custom instructions" do
