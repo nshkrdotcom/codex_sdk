@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.7.2"
+  @version "0.8.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do

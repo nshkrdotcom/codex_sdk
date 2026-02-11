@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+## [0.8.0] - 2026-02-10
+
+### Added
+
+- **Codex.IO.Transport behaviour** with 10 callbacks (`start/1`, `start_link/1`, `send/2`, `end_input/1`, `subscribe/2,3`, `close/1`, `force_close/1`, `status/1`, `stderr/1`) providing a unified I/O transport layer modeled on the amp_sdk gold standard
+
+- **Codex.IO.Transport.Erlexec GenServer** implementation:
+  - Task-isolated `safe_call/3` via `TaskSupervisor.async_nolink` with timeout and noproc/death handling
+  - Async `send`/`end_input` via IO tasks tracked in `pending_calls` map
+  - Tagged subscriber dispatch (`{:codex_io_transport, ref, event}`) and legacy dispatch
+  - Queue-based stdout drain with `@max_lines_per_batch 200` and `:drain_stdout` backpressure control
+  - Buffer overflow protection with overflow recovery at next newline
+  - Deferred finalize exit with 25ms delay for late stdout arrival
+  - Headless timeout auto-shutdown when no subscribers attach
+  - Bounded stderr buffer with tail-truncation at `max_stderr_buffer_size`
+  - `force_close/1` with `:exec.stop` + `:exec.kill(pid, 9)` escalation
+
+- **Codex.IO.Buffer** — shared line-splitting and JSON-line decoding extracted from triplicated code:
+  - `split_lines/1`, `decode_json_lines/2`, `decode_complete_lines/1`, `decode_line/1`, `iodata_to_binary/1`
+  - Replaces identical `split_lines/1` copies in Exec, AppServer.Protocol, and MCP.Protocol
+
+- **Codex.TaskSupport** — async task helper with automatic `Codex.TaskSupervisor` noproc retry and `Application.ensure_all_started` fallback
+  - `async_nolink/1,2` and `await_task_result/2` extracted from IO.Transport.Erlexec
+
+- `Codex.TaskSupervisor` added to application supervision tree
+
+### Changed
+
+- **Codex.Exec migrated to IO.Transport.Erlexec**:
+  - Replaced `start_process/2` direct `:exec.run` with `IO.Transport.Erlexec.start_link` using tagged subscription ref
+  - Replaced `do_collect/3` and `next_stream_chunk/1` raw `{:stdout, os_pid, chunk}` receive with tagged `{:codex_io_transport, ref, {:message, line}}` events
+  - Replaced `safe_stop/1` with `IO.Transport.force_close/1`
+  - Removed `pid`, `os_pid`, `buffer`, `stderr` from internal state; added `transport` and `transport_ref`
+  - Deleted `ensure_erlexec_started/0`, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
+
+- **AppServer.Connection migrated to IO.Transport.Erlexec**:
+  - Removed `subprocess_mod`, `subprocess_opts`, `subprocess_pid`, `os_pid` from State; added `transport` and `transport_ref`
+  - Replaced raw erlexec message handlers with tagged transport events
+  - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, `ensure_erlexec_started/1`, `start_opts/1`
+
+- **MCP.Transport.Stdio migrated to IO.Transport.Erlexec** (same pattern as Connection)
+
+- **Transport lifecycle hardening** (Codex.Exec):
+  - Replaced bare `force_close` with monitor-based graceful shutdown escalation: `force_close` → `Process.exit(:shutdown)` → `Process.exit(:kill)` with configurable grace periods (2s / 250ms / 250ms)
+  - Added `flush_transport_messages/1` to drain tagged events after shutdown
+  - Simplified `send_prompt/2` from with-chain to case-chain
+  - Moved `decode_event_map/1` rescue outside try block
+
+- **Transport module dispatch** (Connection, MCP.Transport.Stdio):
+  - Added `transport_mod` field to State structs for dynamic transport dispatch
+  - Added guard clauses to `send_iolist/2` and `stop_subprocess/1` for disconnected transport safety
+  - Refactored `resolve_transport/1` into `normalize_transport_option/2` and `normalize_transport_value/2` clause chain
+
+- IO.Transport.Erlexec `init/1` simplified from with-chain to case expression
+- `normalize_payload/1` split: lists try `IO.iodata_to_binary` first, falling back to `Jason.encode!` on `ArgumentError`; added map-specific clause
+
+- Voice example: replaced `Task.await(output_task, :infinity)` with `Task.yield/2` + `Task.shutdown/2` using 60s timeout
+
+- Rewired Exec, AppServer.Protocol, and MCP.Protocol to delegate line-splitting/decoding to `Codex.IO.Buffer`
+
+### Removed
+
+- Deleted `lib/codex/app_server/subprocess.ex` and `lib/codex/app_server/subprocess/erlexec.ex` (superseded by IO.Transport)
+- Deleted triplicated `split_lines/1`, `decode_lines`, `decode_line` private functions from Exec, AppServer.Protocol, and MCP.Protocol
+
+### Fixed
+
+- Stderr test race condition resolved with sleep+ordering adjustment
+- Stdio transport test fixed to track correct PIDs (fake vs wrapper)
+- Added `Kernel.send/2` import guards in test fakes to avoid Transport behaviour `send/2` conflicts
+- Updated log assertion to match Buffer module wording
+- Buffer decode_line test updated to use sigil syntax
+- Added `@moduletag :capture_log` to BufferTest
+- Init failure test fixed to assert specific error tuple
+
 ## [0.7.2] - 2026-02-06
 
 ### Fixed
@@ -499,3 +577,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-10-11
 
 Initial design release.
+
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.2...v0.8.0
+[0.7.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.5...v0.5.0
+[0.4.5]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.4...v0.4.5
+[0.4.4]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.3...v0.4.4
+[0.4.3]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.5...v0.3.0
+[0.2.5]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/nshkrdotcom/codex_sdk/releases/tag/v0.1.0
