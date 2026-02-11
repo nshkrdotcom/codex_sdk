@@ -9,13 +9,15 @@ defmodule Codex.Realtime.Audio do
   @type string_format :: String.t()
   @type format :: atom_format() | string_format()
 
+  alias Codex.Config.Defaults
+
   # Format Constants
 
-  @pcm16_sample_rate 24_000
-  @pcm16_bytes_per_sample 2
+  @pcm16_sample_rate Defaults.pcm16_sample_rate()
+  @pcm16_bytes_per_sample Defaults.pcm16_bytes_per_sample()
 
-  @g711_sample_rate 8_000
-  @g711_bytes_per_sample 1
+  @g711_sample_rate Defaults.g711_sample_rate()
+  @g711_bytes_per_sample Defaults.g711_bytes_per_sample()
 
   @doc """
   Get the sample rate for an audio format.

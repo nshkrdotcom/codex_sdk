@@ -67,10 +67,11 @@ defmodule Codex.Tools.WebSearchTool do
 
   @behaviour Codex.Tool
 
+  alias Codex.Config.Defaults
   alias Codex.HTTPClient
   alias Codex.Tools.Hosted
 
-  @default_max_results 10
+  @default_max_results Defaults.web_search_max_results()
 
   @impl true
   def metadata do

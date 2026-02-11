@@ -3,7 +3,9 @@ defmodule Codex.Config.BaseURL do
   Base URL resolution with option → env → default precedence.
   """
 
-  @default_base_url "https://api.openai.com/v1"
+  alias Codex.Config.Defaults
+
+  @default_base_url Defaults.openai_api_base_url()
 
   @spec default() :: String.t()
   def default, do: @default_base_url

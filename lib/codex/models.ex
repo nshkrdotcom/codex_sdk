@@ -5,6 +5,7 @@ defmodule Codex.Models do
 
   alias Codex.Auth
   alias Codex.Config.BaseURL
+  alias Codex.Config.Defaults
   alias Codex.Config.LayerStack
 
   @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
@@ -80,9 +81,9 @@ defmodule Codex.Models do
     "xhigh" => :xhigh
   }
 
-  @default_api_model "gpt-5.3-codex"
-  @default_chatgpt_model "gpt-5.3-codex"
-  @remote_models_cache_ttl_seconds 300
+  @default_api_model Defaults.default_api_model()
+  @default_chatgpt_model Defaults.default_chatgpt_model()
+  @remote_models_cache_ttl_seconds Defaults.remote_models_cache_ttl_seconds()
 
   # -- Shared reasoning-effort preset templates --------------------------------
   # Each list is reused across multiple model presets to avoid duplication.
@@ -672,7 +673,7 @@ defmodule Codex.Models do
   defp fetch_remote_models(token) do
     url = models_url()
     headers = [{~c"authorization", ~c"Bearer " ++ String.to_charlist(token)}]
-    http_opts = [timeout: 10_000]
+    http_opts = [timeout: Defaults.remote_models_http_timeout_ms()]
     request_opts = [body_format: :binary]
 
     :inets.start()

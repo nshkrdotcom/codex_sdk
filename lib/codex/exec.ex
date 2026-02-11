@@ -9,6 +9,7 @@ defmodule Codex.Exec do
   require Logger
 
   alias Codex.Auth
+  alias Codex.Config.Defaults
   alias Codex.Config.LayerStack
   alias Codex.Config.Overrides
   alias Codex.Events
@@ -19,23 +20,6 @@ defmodule Codex.Exec do
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
   alias Codex.TransportError
-
-  @default_timeout_ms 3_600_000
-  @transport_close_grace_ms 2_000
-  @transport_shutdown_grace_ms 250
-  @transport_kill_grace_ms 250
-  @default_preserved_env_keys ~w(
-    HOME
-    USER
-    LOGNAME
-    PATH
-    LANG
-    LC_ALL
-    TMPDIR
-    CODEX_HOME
-    XDG_CONFIG_HOME
-    XDG_CACHE_HOME
-  )
 
   @type exec_opts :: %{
           optional(:codex_opts) => Options.t(),
@@ -271,7 +255,7 @@ defmodule Codex.Exec do
   defp safe_stop(%{transport: transport, transport_ref: transport_ref}) when is_pid(transport) do
     monitor_ref = Process.monitor(transport)
     _ = safe_force_close(transport)
-    await_transport_down_or_shutdown(monitor_ref, transport, @transport_close_grace_ms)
+    await_transport_down_or_shutdown(monitor_ref, transport, Defaults.transport_close_grace_ms())
     flush_transport_messages(transport_ref)
     :ok
   rescue
@@ -285,7 +269,7 @@ defmodule Codex.Exec do
     _ -> :ok
   end
 
-  defp resolve_timeout_ms(%ExecOptions{timeout_ms: nil}), do: @default_timeout_ms
+  defp resolve_timeout_ms(%ExecOptions{timeout_ms: nil}), do: Defaults.exec_timeout_ms()
   defp resolve_timeout_ms(%ExecOptions{timeout_ms: timeout_ms}), do: timeout_ms
 
   defp resolve_idle_timeout_ms(%ExecOptions{stream_idle_timeout_ms: nil}), do: nil
@@ -646,7 +630,7 @@ defmodule Codex.Exec do
   defp clear_env?(%ExecOptions{}), do: false
 
   defp preserved_env do
-    @default_preserved_env_keys
+    Defaults.preserved_env_keys()
     |> Enum.reduce([], fn key, acc ->
       case System.get_env(key) do
         nil -> acc
@@ -794,7 +778,7 @@ defmodule Codex.Exec do
 
       :timeout ->
         safe_shutdown(transport)
-        await_transport_down_or_kill(ref, transport, @transport_shutdown_grace_ms)
+        await_transport_down_or_kill(ref, transport, Defaults.transport_shutdown_grace_ms())
     end
   end
 
@@ -805,7 +789,7 @@ defmodule Codex.Exec do
 
       :timeout ->
         safe_kill(transport)
-        await_transport_down_or_demonitor(ref, transport, @transport_kill_grace_ms)
+        await_transport_down_or_demonitor(ref, transport, Defaults.transport_kill_grace_ms())
     end
   end
 

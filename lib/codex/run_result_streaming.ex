@@ -4,6 +4,7 @@ defmodule Codex.RunResultStreaming do
   cancellation controls.
   """
 
+  alias Codex.Config.Defaults
   alias Codex.RunResultStreaming.Control
   alias Codex.StreamEvent.RunItem
   alias Codex.StreamQueue
@@ -49,7 +50,7 @@ defmodule Codex.RunResultStreaming do
   Returns `{:error, reason}` if the stream terminates with an error.
   """
   @spec pop(t(), timeout()) :: {:ok, term()} | {:error, term()} | :done
-  def pop(%__MODULE__{} = result, timeout \\ 5_000) do
+  def pop(%__MODULE__{} = result, timeout \\ Defaults.stream_queue_pop_timeout_ms()) do
     ensure_started(result)
     StreamQueue.pop(result.queue, timeout)
   end

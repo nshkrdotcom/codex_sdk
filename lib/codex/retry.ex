@@ -36,12 +36,14 @@ defmodule Codex.Retry do
           on_retry: (attempt :: pos_integer(), error :: term() -> :ok)
         ]
 
+  alias Codex.Config.Defaults
+
   # Default options - note that retry_if and on_retry are added dynamically
   # because anonymous functions cannot be escaped into module attributes
   @default_opts_base [
-    max_attempts: 4,
-    base_delay_ms: 200,
-    max_delay_ms: 10_000,
+    max_attempts: Defaults.retry_max_attempts(),
+    base_delay_ms: Defaults.retry_base_delay_ms(),
+    max_delay_ms: Defaults.retry_max_delay_ms(),
     jitter: true,
     strategy: :exponential
   ]

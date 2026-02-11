@@ -491,8 +491,6 @@ defmodule Codex.Realtime.Session do
   defp handle_model_event(%ModelEvents.ConnectionStatusEvent{status: :connected}, state) do
     # Send initial session configuration
     send_initial_config(state)
-    event = Events.agent_start(state.agent, state.context)
-    notify_subscribers(state, event)
     state
   end
 

@@ -269,11 +269,12 @@ defmodule Codex.Tools.ShellCommandTool do
 
   @behaviour Codex.Tool
 
+  alias Codex.Config.Defaults
   alias Codex.Tools.Hosted
   alias Codex.Tools.ShellTool
 
-  @default_timeout_ms 60_000
-  @default_max_output_bytes 10_000
+  @default_timeout_ms Defaults.shell_timeout_ms()
+  @default_max_output_bytes Defaults.shell_max_output_bytes()
 
   @impl true
   def metadata do

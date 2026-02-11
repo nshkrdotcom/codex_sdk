@@ -5,6 +5,7 @@ defmodule Codex.Thread.Options do
 
   # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
 
+  alias Codex.Config.Defaults
   alias Codex.Config.OptionNormalizers
   alias Codex.Config.Overrides
   alias Codex.FileSearch
@@ -17,7 +18,7 @@ defmodule Codex.Thread.Options do
             transport: :exec,
             approval_policy: nil,
             approval_hook: nil,
-            approval_timeout_ms: 30_000,
+            approval_timeout_ms: Defaults.approval_timeout_ms(),
             sandbox: :default,
             sandbox_policy: nil,
             working_directory: nil,
@@ -192,7 +193,11 @@ defmodule Codex.Thread.Options do
     approval_hook = Map.get(attrs, :approval_hook, Map.get(attrs, "approval_hook"))
 
     approval_timeout_ms =
-      Map.get(attrs, :approval_timeout_ms, Map.get(attrs, "approval_timeout_ms", 30_000))
+      Map.get(
+        attrs,
+        :approval_timeout_ms,
+        Map.get(attrs, "approval_timeout_ms", Defaults.approval_timeout_ms())
+      )
 
     sandbox = Map.get(attrs, :sandbox, Map.get(attrs, "sandbox", :default))
     sandbox_policy = Map.get(attrs, :sandbox_policy, Map.get(attrs, "sandbox_policy"))
@@ -600,7 +605,7 @@ defmodule Codex.Thread.Options do
   defp normalize_string_list(value, field), do: {:error, {:invalid_list, field, value}}
 
   defp normalize_transport(nil) do
-    {:ok, Application.get_env(:codex_sdk, :default_transport, :exec)}
+    {:ok, Defaults.default_transport()}
   end
 
   defp normalize_transport(:exec), do: {:ok, :exec}

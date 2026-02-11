@@ -8,8 +8,10 @@ defmodule Codex.Config.LayerStack do
           config: map()
         }
 
-  @default_system_config_path "/etc/codex/config.toml"
-  @default_project_root_markers [".git"]
+  alias Codex.Config.Defaults
+
+  @default_system_config_path Defaults.system_config_path()
+  @default_project_root_markers Defaults.project_root_markers()
 
   @spec load(String.t(), String.t() | nil) :: {:ok, [layer()]} | {:error, term()}
   def load(codex_home, cwd \\ nil) when is_binary(codex_home) do

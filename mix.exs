@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.9.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -90,7 +90,8 @@ defmodule CodexSdk.MixProject do
         "guides/04-examples.md",
         "guides/05-app-server-transport.md",
         "guides/06-realtime-and-voice.md",
-        "guides/07-models-and-reasoning.md"
+        "guides/07-models-and-reasoning.md",
+        "guides/08-configuration-defaults.md"
       ],
       groups_for_extras: [
         Introduction: ["README.md", "guides/01-getting-started.md"],
@@ -98,7 +99,8 @@ defmodule CodexSdk.MixProject do
           "guides/02-architecture.md",
           "guides/05-app-server-transport.md",
           "guides/06-realtime-and-voice.md",
-          "guides/07-models-and-reasoning.md"
+          "guides/07-models-and-reasoning.md",
+          "guides/08-configuration-defaults.md"
         ],
         Reference: [
           "guides/03-api-guide.md",
@@ -115,6 +117,12 @@ defmodule CodexSdk.MixProject do
           Codex.Options,
           Codex.Models,
           Codex.Turn.Result
+        ],
+        Configuration: [
+          Codex.Config.Defaults,
+          Codex.Config.BaseURL,
+          Codex.Config.Overrides,
+          Codex.Config.OptionNormalizers
         ],
         Execution: [
           Codex.Exec,

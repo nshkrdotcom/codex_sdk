@@ -6,6 +6,7 @@ defmodule Codex.AppServer do
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Params
   alias Codex.AppServer.Supervisor, as: ConnectionSupervisor
+  alias Codex.Config.Defaults
   alias Codex.Options
 
   @type connection :: pid()
@@ -17,7 +18,7 @@ defmodule Codex.AppServer do
           client_version: String.t()
         ]
 
-  @default_init_timeout_ms 10_000
+  @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
 
   @spec connect(Options.t(), connect_opts()) :: {:ok, connection()} | {:error, term()}
   def connect(%Options{} = codex_opts, opts \\ []) do

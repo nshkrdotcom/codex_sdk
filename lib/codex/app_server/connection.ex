@@ -6,14 +6,15 @@ defmodule Codex.AppServer.Connection do
   require Logger
 
   alias Codex.AppServer.Protocol
+  alias Codex.Config.Defaults
   alias Codex.IO.Buffer
   alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
-  @default_init_timeout_ms 10_000
-  @default_request_timeout_ms 30_000
+  @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
+  @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
 
   defmodule State do
     @moduledoc false
@@ -502,12 +503,7 @@ defmodule Codex.AppServer.Connection do
     |> RuntimeEnv.to_charlist_env()
   end
 
-  defp default_client_version do
-    case Application.spec(:codex_sdk, :vsn) do
-      nil -> "0.0.0"
-      vsn -> to_string(vsn)
-    end
-  end
+  defp default_client_version, do: Defaults.client_version()
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)

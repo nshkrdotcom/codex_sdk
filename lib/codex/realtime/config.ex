@@ -277,6 +277,7 @@ defmodule Codex.Realtime.Config do
     @moduledoc "Options for connecting to a realtime model."
 
     alias Codex.Auth
+    alias Codex.Config.Defaults
     alias Codex.Realtime.Config.SessionModelSettings
 
     defstruct [
@@ -299,7 +300,7 @@ defmodule Codex.Realtime.Config do
             call_id: String.t() | nil
           }
 
-    @default_url "wss://api.openai.com/v1/realtime"
+    @default_url Defaults.openai_realtime_ws_url()
 
     @doc "Resolve the API key, calling function if needed."
     @spec resolve_api_key(t()) :: String.t() | nil

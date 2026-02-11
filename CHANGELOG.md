@@ -23,6 +23,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
 
+## [0.9.0] - 2026-02-11
+
+### Added
+
+- **`Codex.Config.Defaults` module** — single source of truth for every tunable SDK constant (timeouts, buffer sizes, URLs, protocol versions, model names, audio parameters, telemetry IDs, and more). All values are exposed as zero-arity functions; a subset supports runtime override via `Application.get_env/3`.
+
+- **New documentation guides**:
+  - `guides/07-models-and-reasoning.md` — model selection, reasoning-effort levels, automatic coercion, and configuration layers
+  - `guides/08-configuration-defaults.md` — full reference table of `Codex.Config.Defaults` tunables with runtime override instructions
+
+- **`Codex.Realtime.Agent.default_model/0`** — public accessor for the default realtime model name, replacing hardcoded `"gpt-4o-realtime-preview"` strings.
+
+- **`Codex.Test.ModelFixtures`** — test support module providing canonical model constants (`default_model/0`, `alt_model/0`, `max_model/0`, `realtime_model/0`, `stt_model/0`, `tts_model/0`) so tests stay in sync when defaults change upstream.
+
+- **`Codex.Exec` ThreadStarted metadata enrichment** — `ThreadStarted` events from the exec transport are now enriched with the effective `model`, `reasoning_effort`, and `config.model_reasoning_effort` from the active `Codex.Options`, filling in values the CLI may omit.
+
+- **`Codex.Config.Defaults` test suite** (`test/codex/config/defaults_test.exs`) — 420-line test covering every default value and all runtime-overridable keys.
+
+### Changed
+
+- **Centralized all magic numbers and string literals into `Codex.Config.Defaults`** — 30+ modules now reference `Defaults.*()` instead of inline constants:
+  - Transport timeouts and buffer sizes (`Codex.Exec`, `Codex.IO.Transport.Erlexec`)
+  - MCP protocol constants and timeouts (`Codex.MCP.Client`, `Codex.MCP.Transport.StreamableHTTP`)
+  - App-server timeouts (`Codex.AppServer`, Codex.AppServer.Connection, Codex.AppServer.Approvals, `Codex.AppServer.Mcp`)
+  - OAuth/HTTP timeouts (`Codex.MCP.OAuth`)
+  - Retry/backoff parameters (`Codex.Retry`, Codex.Thread.Backoff, `Codex.RateLimit`)
+  - Tool defaults (`Codex.Tools.ShellTool`, `Codex.Tools.ShellCommandTool`, `Codex.Tools.FileSearchTool`, `Codex.Tools.WebSearchTool`)
+  - Audio format constants (`Codex.Realtime.Audio`)
+  - Voice/TTS/STT defaults (`Codex.Voice.Config.TTSSettings`, `Codex.Voice.Input`, `Codex.Voice.Models.OpenAISTT`, `Codex.Voice.Models.OpenAITTS`, `Codex.Voice.Models.OpenAIProvider`)
+  - URL defaults (`Codex.Config.BaseURL`, `Codex.Realtime.Config.ModelConfig`)
+  - Session/file defaults (`Codex.Sessions`, `Codex.Files`, `Codex.Files.Registry`)
+  - Stream/run config (Codex.StreamQueue, `Codex.RunResultStreaming`, `Codex.RunConfig`)
+  - Telemetry constants (`Codex.Telemetry`)
+  - Config layer stack (Codex.Config.LayerStack)
+  - Thread options (`Codex.Thread.Options`)
+
+- **Refactored `Codex.Models` presets** — model definitions now use shared reasoning-effort templates (`@efforts_full`, `@efforts_mini`, `@efforts_standard`, `@efforts_frontier`, `@efforts_gpt5`) and derive `model`/`display_name` from `id` via compile-time `Enum.map`, eliminating ~50 lines of duplication. Shell type map is now derived from presets rather than maintained separately.
+
+- **`Codex.Voice.Models.OpenAIProvider`** now delegates default model names to `OpenAISTT.model_name/0` and `OpenAITTS.model_name/0` instead of duplicating strings.
+
+- **Codex.Realtime.Session.get_model_name/1** now calls `RealtimeAgent.default_model/0` instead of hardcoding `"gpt-4o-realtime-preview"`.
+
+- **Examples updated** to use `Codex.Models.default_model()` and `Codex.Realtime.Agent.default_model()` instead of hardcoded model strings (`conversation_and_resume.exs`, `live_mcp_and_sessions.exs`, `live_realtime_voice.exs`, `live_session_walkthrough.exs`).
+
+- **Tests updated** to use `Codex.Test.ModelFixtures` imports instead of hardcoded model strings across `exec_test.exs`, `models_test.exs`, `options_test.exs`, `thread_test.exs`, `agent_test.exs`, `realtime_integration_test.exs`, and all voice model tests.
+
+- ExDocs now includes a **Configuration** group listing `Codex.Config.Defaults`, `Codex.Config.BaseURL`, `Codex.Config.Overrides`, and `Codex.Config.OptionNormalizers`; `Codex.Models` is added to the Core group.
+
+### Fixed
+
+- Realtime sessions no longer emit duplicate `%Codex.Realtime.Events.AgentStartEvent{}` on initial connect. `AgentStartEvent` is now emitted on `TurnStartedEvent` only (while `session.update` is still sent on connection), and session tests now include regression coverage for the connect-plus-turn sequence.
+
 ## [0.8.0] - 2026-02-10
 
 ### Added
@@ -614,7 +666,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.0...v0.7.1

@@ -3,11 +3,12 @@ defmodule Codex.RunConfig do
   Per-run configuration applied to agent execution.
   """
 
+  alias Codex.Config.Defaults
   alias Codex.FileSearch
   alias Codex.ModelSettings
   alias Codex.Session
 
-  @default_max_turns 10
+  @default_max_turns Defaults.max_agent_turns()
 
   @enforce_keys []
   defstruct model: nil,

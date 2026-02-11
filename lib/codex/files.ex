@@ -3,10 +3,9 @@ defmodule Codex.Files do
   Attachment staging helpers mirroring the Python SDK file APIs.
   """
 
+  alias Codex.Config.Defaults
   alias Codex.Files.Registry
   alias Codex.Thread.Options, as: ThreadOptions
-
-  @default_ttl_ms 86_400_000
 
   defmodule Attachment do
     @moduledoc """
@@ -181,9 +180,7 @@ defmodule Codex.Files do
     end
   end
 
-  defp default_ttl do
-    Application.get_env(:codex_sdk, :attachment_ttl_ms, @default_ttl_ms)
-  end
+  defp default_ttl, do: Defaults.attachment_ttl_ms()
 
   defp default_staging_dir do
     Path.join(System.tmp_dir!(), "codex_files")

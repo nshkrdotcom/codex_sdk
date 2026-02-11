@@ -37,6 +37,7 @@ defmodule Codex.MCP.Client do
       * Metadata: `%{tool: String.t(), arguments: map(), server_name: String.t() | nil, reason: term(), attempt: integer()}`
   """
 
+  alias Codex.Config.Defaults
   alias Codex.Telemetry
   alias Codex.Thread.Backoff
 
@@ -61,15 +62,15 @@ defmodule Codex.MCP.Client do
           instructions: String.t() | nil
         }
 
-  @mcp_tool_name_delimiter "__"
-  @max_tool_name_length 64
-  @mcp_protocol_version "2025-06-18"
-  @jsonrpc_version "2.0"
+  @mcp_tool_name_delimiter Defaults.mcp_tool_name_delimiter()
+  @max_tool_name_length Defaults.mcp_max_tool_name_length()
+  @mcp_protocol_version Defaults.mcp_protocol_version()
+  @jsonrpc_version Defaults.jsonrpc_version()
 
-  @default_init_timeout_ms 10_000
-  @default_list_timeout_ms 30_000
-  @default_timeout_ms 60_000
-  @default_retries 3
+  @default_init_timeout_ms Defaults.mcp_init_timeout_ms()
+  @default_list_timeout_ms Defaults.mcp_list_timeout_ms()
+  @default_timeout_ms Defaults.mcp_call_timeout_ms()
+  @default_retries Defaults.mcp_default_retries()
 
   @doc """
   Performs MCP initialization against the given transport.
@@ -467,8 +468,8 @@ defmodule Codex.MCP.Client do
 
   defp client_info(opts) do
     %{
-      "name" => Keyword.get(opts, :client, "codex-elixir"),
-      "version" => Keyword.get(opts, :version, "0.0.0")
+      "name" => Keyword.get(opts, :client, Defaults.client_name()),
+      "version" => Keyword.get(opts, :version, Defaults.client_version())
     }
     |> maybe_put("title", Keyword.get(opts, :client_title))
   end

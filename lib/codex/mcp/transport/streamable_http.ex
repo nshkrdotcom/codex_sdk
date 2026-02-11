@@ -5,6 +5,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   use GenServer
 
+  alias Codex.Config.Defaults
   alias Codex.MCP.OAuth
 
   defmodule State do
@@ -27,7 +28,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   @type t :: pid()
 
-  @default_notification_timeout_ms 10_000
+  @default_notification_timeout_ms Defaults.mcp_notification_timeout_ms()
 
   @doc "Starts a streamable HTTP transport process."
   @spec start_link(keyword()) :: GenServer.on_start()

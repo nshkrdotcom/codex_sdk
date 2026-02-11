@@ -4,6 +4,7 @@ defmodule Codex.MCP.OAuth do
   """
 
   alias Codex.Auth
+  alias Codex.Config.Defaults
   alias Codex.Config.LayerStack
   alias Codex.Runtime.KeyringWarning
 
@@ -21,7 +22,7 @@ defmodule Codex.MCP.OAuth do
           scopes: [String.t()]
         }
 
-  @refresh_skew_ms 30_000
+  @refresh_skew_ms Defaults.oauth_refresh_skew_ms()
   @oauth_discovery_header "MCP-Protocol-Version"
   @oauth_discovery_version "2024-11-05"
 
@@ -91,7 +92,7 @@ defmodule Codex.MCP.OAuth do
   end
 
   defp do_refresh(%{} = tokens, url, opts) do
-    timeout_ms = Keyword.get(opts, :timeout_ms, 10_000)
+    timeout_ms = Keyword.get(opts, :timeout_ms, Defaults.oauth_http_timeout_ms())
     headers = build_discovery_headers(opts)
 
     with {:ok, token_endpoint} <- discover_token_endpoint(url, headers, timeout_ms),

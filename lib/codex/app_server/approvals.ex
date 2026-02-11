@@ -6,6 +6,7 @@ defmodule Codex.AppServer.Approvals do
   alias Codex.Approvals.Hook
   alias Codex.AppServer.ApprovalDecision
   alias Codex.AppServer.Connection
+  alias Codex.Config.Defaults
   alias Codex.Thread
 
   @spec maybe_auto_respond(
@@ -98,7 +99,7 @@ defmodule Codex.AppServer.Approvals do
   defp ensure_matches_thread(_thread, _event), do: :ok
 
   defp review(handler, callback, event, %Thread{} = thread) do
-    timeout = thread.thread_opts.approval_timeout_ms || 30_000
+    timeout = thread.thread_opts.approval_timeout_ms || Defaults.approval_timeout_ms()
 
     base_context = %{
       thread: thread,

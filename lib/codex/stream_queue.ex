@@ -3,6 +3,8 @@ defmodule Codex.StreamQueue do
 
   use GenServer
 
+  alias Codex.Config.Defaults
+
   @type t :: pid()
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
@@ -21,7 +23,7 @@ defmodule Codex.StreamQueue do
   end
 
   @spec pop(t(), timeout()) :: {:ok, term()} | {:error, term()} | :done
-  def pop(queue, timeout \\ 5_000) when is_pid(queue) do
+  def pop(queue, timeout \\ Defaults.stream_queue_pop_timeout_ms()) when is_pid(queue) do
     GenServer.call(queue, :pop, timeout)
   end
 

@@ -39,6 +39,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
   @behaviour Codex.Voice.Model.TTSModel
 
   alias Codex.Auth
+  alias Codex.Config.Defaults
   alias Codex.Voice.Config.TTSSettings
 
   defstruct [:model, :client, :api_key, :base_url]
@@ -50,9 +51,9 @@ defmodule Codex.Voice.Models.OpenAITTS do
           base_url: String.t()
         }
 
-  @default_model "gpt-4o-mini-tts"
-  @default_voice :ash
-  @default_base_url "https://api.openai.com/v1"
+  @default_model Defaults.tts_model()
+  @default_voice Defaults.tts_default_voice()
+  @default_base_url Defaults.openai_api_base_url()
 
   @doc """
   Create a new OpenAI TTS model.
@@ -182,8 +183,9 @@ defmodule Codex.Voice.Models.OpenAITTS do
       {:DOWN, _ref, :process, _pid, reason} ->
         raise RuntimeError, message: "TTS stream terminated: #{format_reason(reason)}"
     after
-      30_000 ->
-        raise RuntimeError, message: "TTS stream timed out after 30000ms"
+      Defaults.tts_stream_timeout_ms() ->
+        raise RuntimeError,
+          message: "TTS stream timed out after #{Defaults.tts_stream_timeout_ms()}ms"
     end
   end
 

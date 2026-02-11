@@ -10,17 +10,20 @@ defmodule Codex.Voice.Config.TTSSettings do
   - `:speed` - Playback speed between 0.25 and 4.0 (optional)
   """
 
+  alias Codex.Config.Defaults
+
   @typedoc """
   Available TTS voice options.
   """
   @type voice :: :alloy | :ash | :coral | :echo | :fable | :onyx | :nova | :sage | :shimmer
 
-  @default_instructions "You will receive partial sentences. Do not complete the sentence just read out the text."
+  @default_instructions Defaults.tts_default_instructions()
+  @default_buffer_size Defaults.tts_buffer_size()
 
   defstruct [
     :voice,
     :speed,
-    buffer_size: 120,
+    buffer_size: @default_buffer_size,
     instructions: @default_instructions
   ]
 
@@ -51,7 +54,7 @@ defmodule Codex.Voice.Config.TTSSettings do
   def new(opts \\ []) do
     %__MODULE__{
       voice: Keyword.get(opts, :voice),
-      buffer_size: Keyword.get(opts, :buffer_size, 120),
+      buffer_size: Keyword.get(opts, :buffer_size, @default_buffer_size),
       instructions: Keyword.get(opts, :instructions, @default_instructions),
       speed: Keyword.get(opts, :speed)
     }

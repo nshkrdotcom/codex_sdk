@@ -5,17 +5,18 @@ defmodule Codex.IO.Transport.Erlexec do
 
   import Kernel, except: [send: 2]
 
+  alias Codex.Config.Defaults
   alias Codex.TaskSupport
 
   @behaviour Codex.IO.Transport
 
-  @default_max_buffer_size 1_048_576
-  @default_max_stderr_buffer_size 262_144
-  @default_call_timeout 5_000
-  @force_close_timeout 500
-  @default_headless_timeout_ms 5_000
-  @finalize_delay_ms 25
-  @max_lines_per_batch 200
+  @default_max_buffer_size Defaults.transport_max_buffer_size()
+  @default_max_stderr_buffer_size Defaults.transport_max_stderr_buffer_size()
+  @default_call_timeout Defaults.transport_call_timeout_ms()
+  @force_close_timeout Defaults.transport_force_close_timeout_ms()
+  @default_headless_timeout_ms Defaults.transport_headless_timeout_ms()
+  @finalize_delay_ms Defaults.transport_finalize_delay_ms()
+  @max_lines_per_batch Defaults.transport_max_lines_per_batch()
 
   defstruct [
     :subprocess,

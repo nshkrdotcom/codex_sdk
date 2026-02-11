@@ -34,11 +34,8 @@ defmodule Codex.RateLimit do
 
   require Logger
 
+  alias Codex.Config.Defaults
   alias Codex.Error
-
-  @default_delay_ms 60_000
-  @max_delay_ms 300_000
-  @multiplier 2.0
 
   @type rate_limit_info :: %{
           optional(:retry_after_ms) => non_neg_integer() | nil,
@@ -122,9 +119,9 @@ defmodule Codex.RateLimit do
     if explicit && explicit > 0 do
       explicit
     else
-      base = Application.get_env(:codex_sdk, :rate_limit_default_delay_ms, @default_delay_ms)
-      max = Application.get_env(:codex_sdk, :rate_limit_max_delay_ms, @max_delay_ms)
-      multiplier = Application.get_env(:codex_sdk, :rate_limit_multiplier, @multiplier)
+      base = Defaults.rate_limit_default_delay_ms()
+      max = Defaults.rate_limit_max_delay_ms()
+      multiplier = Defaults.rate_limit_multiplier()
 
       delay = round(base * :math.pow(multiplier, attempt - 1))
       min(delay, max)

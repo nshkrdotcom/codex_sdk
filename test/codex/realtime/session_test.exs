@@ -52,7 +52,7 @@ defmodule Codex.Realtime.SessionTest do
   end
 
   describe "subscribe/2" do
-    test "adds subscriber to receive events", %{agent: agent} do
+    test "adds subscriber to receive turn start events", %{agent: agent} do
       {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
 
       {:ok, session} =
@@ -64,10 +64,32 @@ defmodule Codex.Realtime.SessionTest do
 
       :ok = Session.subscribe(session, self())
 
-      # Simulate connection event
-      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      # Simulate turn started event
+      send(session, {:model_event, ModelEvents.turn_started()})
 
       assert_receive {:session_event, %Events.AgentStartEvent{}}
+      Session.close(session)
+    end
+
+    test "emits agent start only after turn starts", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+
+      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      refute_receive {:session_event, %Events.AgentStartEvent{}}, 50
+
+      send(session, {:model_event, ModelEvents.turn_started()})
+      assert_receive {:session_event, %Events.AgentStartEvent{}}
+      refute_receive {:session_event, %Events.AgentStartEvent{}}, 50
+
       Session.close(session)
     end
 
@@ -600,7 +622,7 @@ defmodule Codex.Realtime.SessionTest do
       :ok = Session.subscribe(session, self())
       :ok = Session.subscribe(session, self())
 
-      send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      send(session, {:model_event, ModelEvents.turn_started()})
 
       assert_receive {:session_event, %Events.AgentStartEvent{}}
       refute_receive {:session_event, %Events.AgentStartEvent{}}, 50
@@ -680,6 +702,9 @@ defmodule Codex.Realtime.SessionTest do
 
       # Trigger connection which sends initial config
       send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      refute_receive {:session_event, %Events.AgentStartEvent{}}, 50
+
+      send(session, {:model_event, ModelEvents.turn_started()})
 
       assert_receive {:session_event, %Events.AgentStartEvent{}}
 
@@ -819,6 +844,7 @@ defmodule Codex.Realtime.SessionTest do
 
       :ok = Session.subscribe(session, self())
       send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      send(session, {:model_event, ModelEvents.turn_started()})
 
       assert_receive {:session_event, %Events.AgentStartEvent{}}
 
@@ -861,6 +887,7 @@ defmodule Codex.Realtime.SessionTest do
 
       :ok = Session.subscribe(session, self())
       send(session, {:model_event, ModelEvents.connection_status(:connected)})
+      send(session, {:model_event, ModelEvents.turn_started()})
       assert_receive {:session_event, %Events.AgentStartEvent{}}
       :ok = MockWebSocket.clear_sent_messages(mock_ws)
 

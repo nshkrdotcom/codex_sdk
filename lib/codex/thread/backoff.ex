@@ -3,9 +3,11 @@ defmodule Codex.Thread.Backoff do
 
   import Bitwise
 
-  @base_delay_ms 100
-  @max_backoff_ms 5_000
-  @max_exponent 20
+  alias Codex.Config.Defaults
+
+  @base_delay_ms Defaults.backoff_base_delay_ms()
+  @max_backoff_ms Defaults.backoff_max_ms()
+  @max_exponent Defaults.backoff_max_exponent()
 
   @spec delay_ms(integer()) :: non_neg_integer()
   def delay_ms(attempt) when is_integer(attempt) and attempt >= 1 do

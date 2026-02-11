@@ -30,10 +30,12 @@ defmodule Codex.Telemetry do
     [:codex, :voice, :synthesis, :stop]
   ]
 
+  alias Codex.Config.Defaults
+
   @trace_events @thread_events ++ @realtime_events ++ @voice_events
-  @otel_handler_id "codex-otel-tracing"
-  @default_originator :sdk
-  @default_processor_name :codex_sdk_processor
+  @otel_handler_id Defaults.telemetry_otel_handler_id()
+  @default_originator Defaults.telemetry_default_originator()
+  @default_processor_name Defaults.telemetry_processor_name()
   @otlp_configured_key :otlp_configured?
 
   @type telemetry_event :: [atom()]

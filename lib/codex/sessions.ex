@@ -3,11 +3,12 @@ defmodule Codex.Sessions do
   Helpers for inspecting Codex CLI session files and replaying recorded changes.
   """
 
+  alias Codex.Config.Defaults
   alias Codex.Items
   alias Codex.Runtime.Erlexec
 
-  @default_sessions_dir Path.expand("~/.codex/sessions")
-  @default_apply_timeout_ms 60_000
+  @default_sessions_dir Defaults.sessions_dir()
+  @default_apply_timeout_ms Defaults.sessions_apply_timeout_ms()
 
   @type session_entry :: %{
           id: String.t(),

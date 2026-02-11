@@ -6,6 +6,7 @@ defmodule Codex.Files.Registry do
 
   use GenServer
 
+  alias Codex.Config.Defaults
   alias Codex.Files.Attachment
 
   @registry __MODULE__
@@ -637,9 +638,7 @@ defmodule Codex.Files.Registry do
 
   defp bump_persist_counter(acc, false, _size), do: Map.update!(acc, :expirable_count, &(&1 + 1))
 
-  defp cleanup_interval do
-    Application.get_env(:codex_sdk, :attachment_cleanup_interval_ms, 60_000)
-  end
+  defp cleanup_interval, do: Defaults.attachment_cleanup_interval_ms()
 
   defp schedule_cleanup(interval_ms) do
     Process.send_after(self(), :cleanup_tick, interval_ms)

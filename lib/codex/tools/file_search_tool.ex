@@ -69,9 +69,10 @@ defmodule Codex.Tools.FileSearchTool do
 
   @behaviour Codex.Tool
 
+  alias Codex.Config.Defaults
   alias Codex.Tools.Hosted
 
-  @default_max_results 100
+  @default_max_results Defaults.file_search_max_results()
 
   @impl true
   def metadata do

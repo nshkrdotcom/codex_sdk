@@ -23,6 +23,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
   @behaviour Codex.Voice.Model.STTModel
 
   alias Codex.Auth
+  alias Codex.Config.Defaults
   alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Input.AudioInput
   alias Codex.Voice.Input.StreamedAudioInput
@@ -37,8 +38,8 @@ defmodule Codex.Voice.Models.OpenAISTT do
           base_url: String.t()
         }
 
-  @default_model "gpt-4o-transcribe"
-  @default_base_url "https://api.openai.com/v1"
+  @default_model Defaults.stt_model()
+  @default_base_url Defaults.openai_api_base_url()
 
   @doc """
   Create a new OpenAI STT model.
@@ -177,6 +178,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
   use GenServer
 
   alias Codex.Auth
+  alias Codex.Config.Defaults
   alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Input.StreamedAudioInput
 
@@ -210,7 +212,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
           waiters: [{GenServer.from(), reference()}]
         }
 
-  @default_turn_detection %{"type" => "semantic_vad"}
+  @default_turn_detection Defaults.stt_default_turn_detection()
 
   @doc """
   Start a new streaming transcription session.

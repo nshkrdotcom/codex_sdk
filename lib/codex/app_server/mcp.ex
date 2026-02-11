@@ -9,6 +9,7 @@ defmodule Codex.AppServer.Mcp do
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Params
+  alias Codex.Config.Defaults
   alias Codex.MCP.Config, as: MCPConfig
   alias Codex.MCP.OAuth
 
@@ -33,16 +34,24 @@ defmodule Codex.AppServer.Mcp do
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
 
-    case Connection.request(conn, "mcpServerStatus/list", params, timeout_ms: 30_000) do
+    case Connection.request(conn, "mcpServerStatus/list", params,
+           timeout_ms: Defaults.mcp_server_request_timeout_ms()
+         ) do
       {:error, %{"code" => -32_601}} ->
-        Connection.request(conn, "mcpServers/list", params, timeout_ms: 30_000)
+        Connection.request(conn, "mcpServers/list", params,
+          timeout_ms: Defaults.mcp_server_request_timeout_ms()
+        )
 
       {:error, %{code: -32_601}} ->
-        Connection.request(conn, "mcpServers/list", params, timeout_ms: 30_000)
+        Connection.request(conn, "mcpServers/list", params,
+          timeout_ms: Defaults.mcp_server_request_timeout_ms()
+        )
 
       {:error, error} ->
         if unknown_variant_mcp_server_status_list?(error) do
-          Connection.request(conn, "mcpServers/list", params, timeout_ms: 30_000)
+          Connection.request(conn, "mcpServers/list", params,
+            timeout_ms: Defaults.mcp_server_request_timeout_ms()
+          )
         else
           {:error, error}
         end
@@ -73,7 +82,9 @@ defmodule Codex.AppServer.Mcp do
       |> Params.put_optional("scopes", Keyword.get(opts, :scopes))
       |> Params.put_optional("timeoutSecs", Keyword.get(opts, :timeout_secs))
 
-    Connection.request(conn, "mcpServer/oauth/login", params, timeout_ms: 30_000)
+    Connection.request(conn, "mcpServer/oauth/login", params,
+      timeout_ms: Defaults.mcp_server_request_timeout_ms()
+    )
   end
 
   @doc """
@@ -128,7 +139,9 @@ defmodule Codex.AppServer.Mcp do
   """
   @spec reload(connection()) :: {:ok, map()} | {:error, term()}
   def reload(conn) when is_pid(conn) do
-    Connection.request(conn, "config/mcpServer/reload", %{}, timeout_ms: 30_000)
+    Connection.request(conn, "config/mcpServer/reload", %{},
+      timeout_ms: Defaults.mcp_server_request_timeout_ms()
+    )
   end
 
   defp unknown_variant_mcp_server_status_list?(%{"code" => -32_600, "message" => message})

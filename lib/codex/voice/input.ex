@@ -28,9 +28,10 @@ defmodule Codex.Voice.Input do
       end
   """
 
-  @default_sample_rate 24_000
-
+  alias Codex.Config.Defaults
   alias Codex.StreamQueue
+
+  @default_sample_rate Defaults.voice_default_sample_rate()
 
   defmodule AudioInput do
     @moduledoc """
