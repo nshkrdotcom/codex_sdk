@@ -91,11 +91,24 @@ defmodule Codex.RunResultStreaming.Control do
     initial = %{
       started?: false,
       producer_pid: nil,
+      queue: nil,
       cancel: nil,
+      cancel_handler: nil,
       usage: %{}
     }
 
     Agent.start_link(fn -> initial end, opts)
+  end
+
+  @spec attach_queue(pid(), pid()) :: :ok
+  def attach_queue(control, queue) when is_pid(control) and is_pid(queue) do
+    Agent.update(control, &Map.put(&1, :queue, queue))
+  end
+
+  @spec set_cancel_handler(pid(), (:immediate | :after_turn -> any())) :: :ok
+  def set_cancel_handler(control, handler)
+      when is_pid(control) and is_function(handler, 1) do
+    Agent.update(control, &Map.put(&1, :cancel_handler, handler))
   end
 
   @spec start_if_needed(pid(), (-> any()), pid()) :: :ok
@@ -105,19 +118,37 @@ defmodule Codex.RunResultStreaming.Control do
     :ok
   end
 
-  defp do_start_if_needed(%{started?: true} = state, _starter, _queue) do
+  defp do_start_if_needed(%{started?: true} = state, _starter, queue) do
+    state = maybe_set_queue(state, queue)
     {:ok, state}
+  end
+
+  defp do_start_if_needed(%{started?: false, cancel: :immediate} = state, _starter, queue) do
+    StreamQueue.close(queue)
+    {:ok, %{state | started?: true, queue: queue}}
   end
 
   defp do_start_if_needed(%{started?: false} = state, starter, queue) do
     wrapped = wrap_starter(starter, queue)
     {:ok, pid} = start_producer(wrapped)
-    {:ok, %{state | started?: true, producer_pid: pid}}
+    {:ok, %{state | started?: true, producer_pid: pid, queue: queue}}
   end
 
   @spec cancel(pid(), :immediate | :after_turn) :: :ok
   def cancel(control, mode) when mode in [:immediate, :after_turn] do
-    Agent.update(control, &Map.put(&1, :cancel, mode))
+    {queue, producer_pid, cancel_handler} =
+      Agent.get_and_update(control, fn state ->
+        {{state.queue, state.producer_pid, state.cancel_handler}, Map.put(state, :cancel, mode)}
+      end)
+
+    maybe_invoke_cancel_handler(cancel_handler, mode)
+
+    if mode == :immediate do
+      if is_pid(queue), do: StreamQueue.close(queue)
+      if is_pid(producer_pid), do: Process.exit(producer_pid, :kill)
+    end
+
+    :ok
   end
 
   @spec cancel_mode(pid()) :: :immediate | :after_turn | nil
@@ -133,6 +164,18 @@ defmodule Codex.RunResultStreaming.Control do
   @spec usage(pid()) :: map()
   def usage(control) do
     Agent.get(control, &(Map.get(&1, :usage) || %{}))
+  end
+
+  defp maybe_set_queue(%{queue: nil} = state, queue), do: %{state | queue: queue}
+  defp maybe_set_queue(state, _queue), do: state
+
+  defp maybe_invoke_cancel_handler(nil, _mode), do: :ok
+
+  defp maybe_invoke_cancel_handler(handler, mode) when is_function(handler, 1) do
+    _ = handler.(mode)
+    :ok
+  rescue
+    _ -> :ok
   end
 
   defp wrap_starter(starter, queue) do

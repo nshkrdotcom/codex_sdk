@@ -94,6 +94,35 @@ defmodule Codex.IO.Transport.ErlexecTest do
       assert_receive {:codex_io_transport, ^ref, {:error, _overflow}}, 5_000
       assert_receive {:codex_io_transport, ^ref, {:message, "after"}}, 5_000
     end
+
+    test "handles UTF-8 codepoint split across stdout chunks" do
+      ref = make_ref()
+      script = create_test_script("sleep 5")
+
+      {:ok, transport} =
+        ErlexecTransport.start_link(
+          command: script,
+          args: [],
+          subscriber: {self(), ref}
+        )
+
+      try do
+        state = :sys.get_state(transport)
+        {_exec_pid, os_pid} = state.subprocess
+
+        line = "hello — world\n"
+        {idx, _len} = :binary.match(line, <<226, 128, 148>>)
+        chunk1 = :binary.part(line, 0, idx + 1)
+        chunk2 = :binary.part(line, idx + 1, byte_size(line) - idx - 1)
+
+        send(transport, {:stdout, os_pid, chunk1})
+        send(transport, {:stdout, os_pid, chunk2})
+
+        assert_receive {:codex_io_transport, ^ref, {:message, "hello — world"}}, 2_000
+      after
+        _ = ErlexecTransport.force_close(transport)
+      end
+    end
   end
 
   describe "stderr" do

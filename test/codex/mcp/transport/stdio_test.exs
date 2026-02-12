@@ -42,6 +42,9 @@ defmodule Codex.MCP.Transport.StdioTest do
     end
 
     @impl true
+    def interrupt(_pid), do: :ok
+
+    @impl true
     def status(pid) when is_pid(pid) do
       if Process.alive?(pid), do: :connected, else: :disconnected
     end

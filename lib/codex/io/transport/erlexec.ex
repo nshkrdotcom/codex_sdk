@@ -108,6 +108,20 @@ defmodule Codex.IO.Transport.Erlexec do
   end
 
   @impl Codex.IO.Transport
+  def interrupt(transport) when is_pid(transport) do
+    case safe_call(transport, :interrupt) do
+      {:ok, :ok} ->
+        :ok
+
+      {:error, :not_connected} ->
+        :ok
+
+      {:error, reason} ->
+        transport_error(reason)
+    end
+  end
+
+  @impl Codex.IO.Transport
   def status(transport) when is_pid(transport) do
     case safe_call(transport, :status) do
       {:ok, status} when status in [:connected, :disconnected, :error] -> status
@@ -203,6 +217,21 @@ defmodule Codex.IO.Transport.Erlexec do
   end
 
   def handle_call(:stderr, _from, state), do: {:reply, state.stderr_buffer, state}
+
+  def handle_call(:interrupt, from, %{subprocess: {pid, _os_pid}} = state) do
+    case start_io_task(state, fn -> interrupt_subprocess(pid) end) do
+      {:ok, task} ->
+        pending_calls = Map.put(state.pending_calls, task.ref, from)
+        {:noreply, %{state | pending_calls: pending_calls}}
+
+      {:error, reason} ->
+        {:reply, transport_error(reason), state}
+    end
+  end
+
+  def handle_call(:interrupt, _from, %{subprocess: nil} = state) do
+    {:reply, transport_error(:not_connected), state}
+  end
 
   def handle_call(:force_close, _from, state) do
     state = force_stop_subprocess(state)
@@ -566,11 +595,11 @@ defmodule Codex.IO.Transport.Erlexec do
     do: Kernel.send(pid, {:codex_io_transport, ref, event})
 
   defp append_stdout_data(%{overflowed?: true} = state, data) do
-    case String.split(data, "\n", parts: 2) do
-      [_single] ->
+    case drop_until_next_newline(data) do
+      :none ->
         state
 
-      [_dropped, rest] ->
+      {:rest, rest} ->
         state
         |> Map.put(:overflowed?, false)
         |> Map.put(:stdout_buffer, "")
@@ -631,17 +660,18 @@ defmodule Codex.IO.Transport.Erlexec do
   defp split_complete_lines(""), do: {[], ""}
 
   defp split_complete_lines(data) do
-    lines = String.split(data, "\n")
+    case :binary.split(data, "\n", [:global]) do
+      [single] ->
+        {[], single}
 
-    case List.pop_at(lines, -1) do
-      {nil, _} -> {[], ""}
-      {"", rest} -> {rest, ""}
-      {last, rest} -> {rest, last}
+      parts ->
+        {complete, [rest]} = Enum.split(parts, length(parts) - 1)
+        {Enum.map(complete, &strip_trailing_cr/1), rest}
     end
   end
 
   defp flush_stdout_fragment(state) do
-    line = String.trim(state.stdout_buffer)
+    line = trim_ascii(state.stdout_buffer)
 
     cond do
       line == "" ->
@@ -716,6 +746,63 @@ defmodule Codex.IO.Transport.Erlexec do
     :ok
   catch
     _, _ -> :ok
+  end
+
+  defp interrupt_subprocess(pid) when is_pid(pid) do
+    _ = :exec.kill(pid, 2)
+    :ok
+  catch
+    _, _ ->
+      transport_error(:not_connected)
+  end
+
+  defp drop_until_next_newline(data) when is_binary(data) do
+    case :binary.match(data, "\n") do
+      :nomatch ->
+        :none
+
+      {idx, 1} ->
+        rest_offset = idx + 1
+        rest_size = byte_size(data) - rest_offset
+        {:rest, :binary.part(data, rest_offset, rest_size)}
+    end
+  end
+
+  defp strip_trailing_cr(line) when is_binary(line) do
+    size = byte_size(line)
+
+    if size > 0 and :binary.at(line, size - 1) == ?\r do
+      :binary.part(line, 0, size - 1)
+    else
+      line
+    end
+  end
+
+  defp trim_ascii(data) when is_binary(data) do
+    data
+    |> trim_ascii_leading()
+    |> trim_ascii_trailing()
+  end
+
+  defp trim_ascii_leading(<<char, rest::binary>>) when char in [9, 10, 11, 12, 13, 32],
+    do: trim_ascii_leading(rest)
+
+  defp trim_ascii_leading(data), do: data
+
+  defp trim_ascii_trailing(data) when is_binary(data) do
+    do_trim_ascii_trailing(data, byte_size(data) - 1)
+  end
+
+  defp do_trim_ascii_trailing(_data, -1), do: ""
+
+  defp do_trim_ascii_trailing(data, idx) do
+    case :binary.at(data, idx) do
+      char when char in [9, 10, 11, 12, 13, 32] ->
+        do_trim_ascii_trailing(data, idx - 1)
+
+      _ ->
+        :binary.part(data, 0, idx + 1)
+    end
   end
 
   defp normalize_payload(message) when is_binary(message), do: message

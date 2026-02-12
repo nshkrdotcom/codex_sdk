@@ -22,6 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
 - Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
+## [0.9.1] - 2026-02-11
+
+### Added
+
+- `Codex.Exec.CancellationRegistry`, a supervised cancellation-token registry that owns the backing ETS table and manages token-to-transport mappings safely across processes.
+
+### Changed
+
+- `Codex.Exec` cancellation token lifecycle now routes through `Codex.Exec.CancellationRegistry` instead of direct multi-process writes to a lazily-created ETS table.
+
+### Fixed
+
+- Eliminated intermittent ETS access-rights crashes in thread stream/property flows during cancellation and cleanup paths.
+- Added regression coverage for cancellation registry registration, selective unregister behavior, and dead-process pruning.
+
 
 ## [0.9.0] - 2026-02-11
 
@@ -666,7 +681,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.1...v0.7.2

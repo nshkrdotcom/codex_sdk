@@ -46,6 +46,11 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   end
 
   @impl true
+  def interrupt(pid) when is_pid(pid) do
+    force_close(pid)
+  end
+
+  @impl true
   def status(pid) when is_pid(pid) do
     if Process.alive?(pid), do: :connected, else: :disconnected
   end

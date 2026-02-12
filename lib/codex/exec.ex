@@ -13,6 +13,7 @@ defmodule Codex.Exec do
   alias Codex.Config.LayerStack
   alias Codex.Config.Overrides
   alias Codex.Events
+  alias Codex.Exec.CancellationRegistry
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
   alias Codex.IO.Transport.Erlexec, as: IOTransport
@@ -89,6 +90,23 @@ defmodule Codex.Exec do
     end
   end
 
+  @doc """
+  Cancels any in-flight exec processes associated with the provided cancellation token.
+  """
+  @spec cancel(String.t()) :: :ok
+  def cancel(token) when is_binary(token) and token != "" do
+    token
+    |> transports_for_token()
+    |> Enum.each(fn transport ->
+      _ = IOTransport.interrupt(transport)
+      _ = IOTransport.force_close(transport)
+    end)
+
+    :ok
+  end
+
+  def cancel(_token), do: :ok
+
   defp start_process([binary_path | args], exec_opts) do
     env = build_env(exec_opts)
     timeout_ms = resolve_timeout_ms(exec_opts)
@@ -106,17 +124,20 @@ defmodule Codex.Exec do
 
     case IOTransport.start_link(transport_opts) do
       {:ok, transport} ->
-        {:ok,
-         %{
-           transport: transport,
-           transport_ref: transport_ref,
-           exec_opts: exec_opts,
-           non_json_stdout: [],
-           stderr: "",
-           done?: false,
-           timeout_ms: timeout_ms,
-           idle_timeout_ms: idle_timeout_ms
-         }}
+        state = %{
+          transport: transport,
+          transport_ref: transport_ref,
+          exec_opts: exec_opts,
+          non_json_stdout: [],
+          stderr: "",
+          done?: false,
+          timeout_ms: timeout_ms,
+          idle_timeout_ms: idle_timeout_ms,
+          cancellation_token: exec_opts.cancellation_token
+        }
+
+        :ok = maybe_register_cancellation(state.cancellation_token, transport)
+        {:ok, state}
 
       {:error, reason} ->
         {:error, reason}
@@ -152,6 +173,8 @@ defmodule Codex.Exec do
         do_collect(state, events)
 
       {:codex_io_transport, ^ref, {:exit, reason}} ->
+        maybe_unregister_cancellation(state)
+
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
             {:ok, %{events: events}}
@@ -219,6 +242,8 @@ defmodule Codex.Exec do
         {[], state}
 
       {:codex_io_transport, ^ref, {:exit, reason}} ->
+        maybe_unregister_cancellation(state)
+
         case exit_status_from_reason(reason) do
           {:ok, 0} ->
             {[], %{state | done?: true}}
@@ -250,9 +275,15 @@ defmodule Codex.Exec do
   end
 
   defp safe_stop({:error, _reason}), do: :ok
-  defp safe_stop(%{transport: nil}), do: :ok
 
-  defp safe_stop(%{transport: transport, transport_ref: transport_ref}) when is_pid(transport) do
+  defp safe_stop(%{transport: nil} = state) do
+    maybe_unregister_cancellation(state)
+    :ok
+  end
+
+  defp safe_stop(%{transport: transport, transport_ref: transport_ref} = state)
+       when is_pid(transport) do
+    maybe_unregister_cancellation(state)
     monitor_ref = Process.monitor(transport)
     _ = safe_force_close(transport)
     await_transport_down_or_shutdown(monitor_ref, transport, Defaults.transport_close_grace_ms())
@@ -262,7 +293,8 @@ defmodule Codex.Exec do
     _ -> :ok
   end
 
-  defp safe_stop(%{transport: transport}) when is_pid(transport) do
+  defp safe_stop(%{transport: transport} = state) when is_pid(transport) do
+    maybe_unregister_cancellation(state)
     _ = safe_force_close(transport)
     :ok
   rescue
@@ -834,6 +866,34 @@ defmodule Codex.Exec do
     :ok
   catch
     :exit, _ -> :ok
+  end
+
+  defp maybe_register_cancellation(token, transport)
+       when is_binary(token) and token != "" and is_pid(transport) do
+    CancellationRegistry.register(token, transport)
+  end
+
+  defp maybe_register_cancellation(_token, _transport), do: :ok
+
+  defp maybe_unregister_cancellation(%{cancellation_token: token, transport: transport}) do
+    maybe_unregister_cancellation(token, transport)
+  end
+
+  defp maybe_unregister_cancellation(%{cancellation_token: token}) do
+    maybe_unregister_cancellation(token, nil)
+  end
+
+  defp maybe_unregister_cancellation(_state), do: :ok
+
+  defp maybe_unregister_cancellation(token, transport)
+       when is_binary(token) and token != "" do
+    CancellationRegistry.unregister(token, transport)
+  end
+
+  defp maybe_unregister_cancellation(_token, _transport), do: :ok
+
+  defp transports_for_token(token) do
+    CancellationRegistry.transports_for_token(token)
   end
 
   defp review_args(:uncommitted_changes), do: {:ok, ["review", "--uncommitted"]}

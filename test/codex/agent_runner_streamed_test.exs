@@ -135,4 +135,43 @@ defmodule Codex.AgentRunnerStreamedTest do
     # guardrail trip halts turn streaming
     assert result |> RunResultStreaming.raw_events() |> Enum.to_list() == []
   end
+
+  test "immediate cancel before first event closes stream quickly", %{thread_opts: thread_opts} do
+    script_path =
+      temp_shell_script("""
+      #!/usr/bin/env bash
+      sleep 5
+      """)
+
+    on_exit(fn -> File.rm_rf(script_path) end)
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    {:ok, result} = AgentRunner.run_streamed(thread, "cancel early")
+
+    task =
+      Task.Supervisor.async_nolink(Codex.TaskSupervisor, fn ->
+        result |> RunResultStreaming.raw_events() |> Enum.to_list()
+      end)
+
+    Process.sleep(50)
+    :ok = RunResultStreaming.cancel(result, :immediate)
+
+    assert {:ok, []} = Task.yield(task, 700)
+  end
+
+  defp temp_shell_script(body) do
+    path =
+      Path.join(System.tmp_dir!(), "codex_stream_cancel_#{System.unique_integer([:positive])}.sh")
+
+    File.write!(path, body)
+    File.chmod!(path, 0o755)
+    path
+  end
 end

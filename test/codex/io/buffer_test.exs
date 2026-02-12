@@ -66,6 +66,24 @@ defmodule Codex.IO.BufferTest do
       assert rest == "buf"
       assert non_json == []
     end
+
+    test "handles UTF-8 split across chunk boundary" do
+      line = ~s({"text":"hello — world"}) <> "\n"
+      {idx, _len} = :binary.match(line, <<226, 128, 148>>)
+
+      chunk1 = :binary.part(line, 0, idx + 1)
+      chunk2 = :binary.part(line, idx + 1, byte_size(line) - idx - 1)
+
+      {decoded1, rest1, non_json1} = Buffer.decode_json_lines("", chunk1)
+      assert decoded1 == []
+      assert rest1 == chunk1
+      assert non_json1 == []
+
+      {decoded2, rest2, non_json2} = Buffer.decode_json_lines(rest1, chunk2)
+      assert decoded2 == [%{"text" => "hello — world"}]
+      assert rest2 == ""
+      assert non_json2 == []
+    end
   end
 
   describe "decode_complete_lines/1" do

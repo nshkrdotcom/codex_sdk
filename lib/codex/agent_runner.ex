@@ -4,6 +4,7 @@ defmodule Codex.AgentRunner do
   """
 
   alias Codex.Agent
+  alias Codex.Exec
   alias Codex.FileSearch
   alias Codex.Guardrail
   alias Codex.GuardrailError
@@ -126,11 +127,20 @@ defmodule Codex.AgentRunner do
   def run_streamed(%Thread{} = thread, input, opts)
       when is_binary(input) or is_list(input) do
     {agent_opts, run_config_opts, turn_opts, backoff} = normalize_opts(opts)
+    {turn_opts, cancellation_token} = ensure_cancellation_token(turn_opts)
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
          {:ok, %RunConfig{} = run_config} <- RunConfig.new(run_config_opts),
          {:ok, queue} <- StreamQueue.start_link(),
          {:ok, control} <- StreamingControl.start_link() do
+      :ok = StreamingControl.attach_queue(control, queue)
+
+      :ok =
+        StreamingControl.set_cancel_handler(control, fn
+          :immediate -> Exec.cancel(cancellation_token)
+          :after_turn -> :ok
+        end)
+
       tuned_thread =
         thread
         |> apply_model_override(run_config)
@@ -666,6 +676,17 @@ defmodule Codex.AgentRunner do
   end
 
   defp normalize_opts(_opts), do: {%{}, %{}, %{}, nil}
+
+  defp ensure_cancellation_token(turn_opts) when is_map(turn_opts) do
+    case Map.get(turn_opts, :cancellation_token, Map.get(turn_opts, "cancellation_token")) do
+      token when is_binary(token) and token != "" ->
+        {turn_opts, token}
+
+      _ ->
+        token = "codex_sdk_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+        {Map.put(turn_opts, :cancellation_token, token), token}
+    end
+  end
 
   defp normalize_turn_opts(nil, fallback),
     do: Map.drop(fallback, [:agent, :run_config, :max_turns, :backoff])
