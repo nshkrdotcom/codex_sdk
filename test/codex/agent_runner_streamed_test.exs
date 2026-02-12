@@ -136,6 +136,43 @@ defmodule Codex.AgentRunnerStreamedTest do
     assert result |> RunResultStreaming.raw_events() |> Enum.to_list() == []
   end
 
+  test "does not auto inject cancellation token for streamed runs", %{thread_opts: thread_opts} do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_agent_runner_streamed_args_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    {:ok, result} = AgentRunner.run_streamed(thread, "cancel token compatibility")
+    _events = result |> RunResultStreaming.raw_events() |> Enum.to_list()
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    refute "--cancellation-token" in args
+  end
+
   test "immediate cancel before first event closes stream quickly", %{thread_opts: thread_opts} do
     script_path =
       temp_shell_script("""

@@ -127,7 +127,7 @@ defmodule Codex.AgentRunner do
   def run_streamed(%Thread{} = thread, input, opts)
       when is_binary(input) or is_list(input) do
     {agent_opts, run_config_opts, turn_opts, backoff} = normalize_opts(opts)
-    {turn_opts, cancellation_token} = ensure_cancellation_token(turn_opts)
+    cancellation_token = fetch_cancellation_token(turn_opts)
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
          {:ok, %RunConfig{} = run_config} <- RunConfig.new(run_config_opts),
@@ -677,14 +677,13 @@ defmodule Codex.AgentRunner do
 
   defp normalize_opts(_opts), do: {%{}, %{}, %{}, nil}
 
-  defp ensure_cancellation_token(turn_opts) when is_map(turn_opts) do
+  defp fetch_cancellation_token(turn_opts) when is_map(turn_opts) do
     case Map.get(turn_opts, :cancellation_token, Map.get(turn_opts, "cancellation_token")) do
       token when is_binary(token) and token != "" ->
-        {turn_opts, token}
+        token
 
       _ ->
-        token = "codex_sdk_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
-        {Map.put(turn_opts, :cancellation_token, token), token}
+        nil
     end
   end
 

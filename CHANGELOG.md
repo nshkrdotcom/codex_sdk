@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
 - Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
+## [0.10.1] - 2026-02-11
+
+### Changed
+
+- `AgentRunner.run_streamed/3` no longer auto-injects a cancellation token when none is provided; the cancellation token is now purely opt-in.
+
+### Fixed
+
+- Renamed internal `ensure_cancellation_token/1` to `fetch_cancellation_token/1` to accurately reflect its read-only semantics.
+
 ## [0.10.0] - 2026-02-11
 
 ### Added
