@@ -7,12 +7,13 @@ defmodule Codex.TransportError do
   whether to attempt automatic retries.
   """
 
-  defexception [:message, :exit_status, :stderr, :retryable?]
+  defexception [:message, :exit_status, :stderr, :stderr_truncated?, :retryable?]
 
   @type t :: %__MODULE__{
           message: String.t(),
           exit_status: integer(),
           stderr: String.t() | nil,
+          stderr_truncated?: boolean(),
           retryable?: boolean()
         }
 
@@ -22,18 +23,21 @@ defmodule Codex.TransportError do
   ## Options
 
     * `:stderr` - Standard error output from the process
+    * `:stderr_truncated?` - Whether stderr output was truncated
     * `:message` - Custom error message
     * `:retryable?` - Whether the error is retryable (default: inferred from exit status)
   """
   @spec new(integer(), keyword()) :: t()
   def new(status, opts \\ []) do
     stderr = Keyword.get(opts, :stderr)
+    stderr_truncated? = Keyword.get(opts, :stderr_truncated?, false)
     message = Keyword.get(opts, :message, "codex executable exited with status #{status}")
     retryable? = Keyword.get_lazy(opts, :retryable?, fn -> retryable_status?(status) end)
 
     %__MODULE__{
       exit_status: status,
       stderr: stderr,
+      stderr_truncated?: stderr_truncated?,
       message: message,
       retryable?: retryable?
     }

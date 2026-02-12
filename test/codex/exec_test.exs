@@ -798,6 +798,60 @@ defmodule Codex.ExecTest do
     assert error.message =~ "idle timeout"
   end
 
+  test "caps stderr in blocking runs and marks truncation" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      for i in $(seq 1 200); do
+        printf 'stderr-line-%03d\\n' "$i" 1>&2
+      done
+      exit 2
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:error, %Codex.TransportError{} = error} =
+             Exec.run("stderr", %{codex_opts: codex_opts, max_stderr_buffer_bytes: 128})
+
+    assert error.exit_status == 2
+    assert error.stderr_truncated? == true
+    assert byte_size(error.stderr || "") <= 128
+    assert error.stderr =~ "stderr-line-200"
+    refute error.stderr =~ "stderr-line-001"
+  end
+
+  test "caps stderr in stream runs and marks truncation" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      for i in $(seq 1 200); do
+        printf 'stderr-line-%03d\\n' "$i" 1>&2
+      done
+      exit 2
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    {:ok, stream} =
+      Exec.run_stream("stderr", %{codex_opts: codex_opts, max_stderr_buffer_bytes: 128})
+
+    error =
+      try do
+        Enum.to_list(stream)
+        flunk("expected non-zero exit")
+      rescue
+        error in Codex.TransportError -> error
+      end
+
+    assert error.exit_status == 2
+    assert error.stderr_truncated? == true
+    assert byte_size(error.stderr || "") <= 128
+    assert error.stderr =~ "stderr-line-200"
+    refute error.stderr =~ "stderr-line-001"
+  end
+
   test "emits clarified timeout error when exec stalls" do
     script_path =
       temp_script("""

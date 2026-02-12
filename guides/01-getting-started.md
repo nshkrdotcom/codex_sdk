@@ -13,7 +13,7 @@ Add the dependency in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.9.1"}
+    {:codex_sdk, "~> 0.10.0"}
   ]
 end
 ```

@@ -34,7 +34,8 @@ defmodule Codex.Exec do
           optional(:env) => map(),
           optional(:clear_env?) => boolean(),
           optional(:cancellation_token) => String.t(),
-          optional(:timeout_ms) => pos_integer()
+          optional(:timeout_ms) => pos_integer(),
+          optional(:max_stderr_buffer_bytes) => pos_integer()
         }
 
   @doc """
@@ -111,6 +112,8 @@ defmodule Codex.Exec do
     env = build_env(exec_opts)
     timeout_ms = resolve_timeout_ms(exec_opts)
     idle_timeout_ms = resolve_idle_timeout_ms(exec_opts)
+    max_stderr_buffer_bytes = resolve_max_stderr_buffer_bytes(exec_opts)
+    transport_stderr_cap = max_stderr_buffer_bytes + 1
     transport_ref = make_ref()
 
     transport_opts =
@@ -119,7 +122,8 @@ defmodule Codex.Exec do
         args: args,
         env: env,
         subscriber: {self(), transport_ref},
-        headless_timeout_ms: :infinity
+        headless_timeout_ms: :infinity,
+        max_stderr_buffer_size: transport_stderr_cap
       ]
 
     case IOTransport.start_link(transport_opts) do
@@ -130,6 +134,8 @@ defmodule Codex.Exec do
           exec_opts: exec_opts,
           non_json_stdout: [],
           stderr: "",
+          stderr_truncated?: false,
+          max_stderr_buffer_bytes: max_stderr_buffer_bytes,
           done?: false,
           timeout_ms: timeout_ms,
           idle_timeout_ms: idle_timeout_ms,
@@ -166,7 +172,15 @@ defmodule Codex.Exec do
         )
 
       {:codex_io_transport, ^ref, {:stderr, data}} ->
-        do_collect(%{state | stderr: state.stderr <> data}, events)
+        {stderr, truncated?} =
+          append_stderr(
+            state.stderr,
+            data,
+            state.max_stderr_buffer_bytes,
+            state.stderr_truncated?
+          )
+
+        do_collect(%{state | stderr: stderr, stderr_truncated?: truncated?}, events)
 
       {:codex_io_transport, ^ref, {:error, reason}} ->
         Logger.warning("Transport error during collect: #{inspect(reason)}")
@@ -180,13 +194,18 @@ defmodule Codex.Exec do
             {:ok, %{events: events}}
 
           {:ok, status} ->
-            {:error, TransportError.new(status, stderr: state.stderr)}
+            {:error,
+             TransportError.new(status,
+               stderr: state.stderr,
+               stderr_truncated?: state.stderr_truncated?
+             )}
 
           {:error, down_reason} ->
             {:error,
              TransportError.new(-1,
                message: "codex executable exited: #{inspect(down_reason)}",
                stderr: state.stderr,
+               stderr_truncated?: state.stderr_truncated?,
                retryable?: false
              )}
         end
@@ -235,7 +254,15 @@ defmodule Codex.Exec do
         {decoded, %{state | non_json_stdout: state.non_json_stdout ++ non_json}}
 
       {:codex_io_transport, ^ref, {:stderr, data}} ->
-        {[], %{state | stderr: state.stderr <> data}}
+        {stderr, truncated?} =
+          append_stderr(
+            state.stderr,
+            data,
+            state.max_stderr_buffer_bytes,
+            state.stderr_truncated?
+          )
+
+        {[], %{state | stderr: stderr, stderr_truncated?: truncated?}}
 
       {:codex_io_transport, ^ref, {:error, reason}} ->
         Logger.warning("Transport error during stream: #{inspect(reason)}")
@@ -249,12 +276,16 @@ defmodule Codex.Exec do
             {[], %{state | done?: true}}
 
           {:ok, status} ->
-            raise TransportError.new(status, stderr: state.stderr)
+            raise TransportError.new(status,
+                    stderr: state.stderr,
+                    stderr_truncated?: state.stderr_truncated?
+                  )
 
           {:error, down_reason} ->
             raise TransportError.new(-1,
                     message: "codex executable exited: #{inspect(down_reason)}",
                     stderr: state.stderr,
+                    stderr_truncated?: state.stderr_truncated?,
                     retryable?: false
                   )
         end
@@ -312,6 +343,17 @@ defmodule Codex.Exec do
   end
 
   defp resolve_idle_timeout_ms(_), do: nil
+
+  defp resolve_max_stderr_buffer_bytes(%ExecOptions{max_stderr_buffer_bytes: nil}) do
+    Defaults.transport_max_stderr_buffer_size()
+  end
+
+  defp resolve_max_stderr_buffer_bytes(%ExecOptions{max_stderr_buffer_bytes: max_bytes})
+       when is_integer(max_bytes) and max_bytes > 0 do
+    max_bytes
+  end
+
+  defp resolve_max_stderr_buffer_bytes(_), do: Defaults.transport_max_stderr_buffer_size()
 
   defp build_command(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts, command_args \\ nil) do
     with {:ok, binary_path} <- Options.codex_path(opts),
@@ -790,6 +832,21 @@ defmodule Codex.Exec do
   end
 
   defp normalize_exit_status(raw_status), do: raw_status
+
+  defp append_stderr(_existing, _data, max_size, _already_truncated?)
+       when not is_integer(max_size) or max_size <= 0,
+       do: {"", true}
+
+  defp append_stderr(existing, data, max_size, already_truncated?) do
+    combined = existing <> data
+    combined_size = byte_size(combined)
+
+    if combined_size <= max_size do
+      {combined, already_truncated?}
+    else
+      {:binary.part(combined, combined_size - max_size, max_size), true}
+    end
+  end
 
   defp flush_transport_messages(ref) when is_reference(ref) do
     receive do

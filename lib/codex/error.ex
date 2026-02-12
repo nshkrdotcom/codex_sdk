@@ -59,6 +59,7 @@ defmodule Codex.Error do
       %{
         exit_status: error.exit_status,
         stderr: error.stderr,
+        stderr_truncated?: error.stderr_truncated?,
         retryable?: error.retryable?
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)

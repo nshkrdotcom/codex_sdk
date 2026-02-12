@@ -17,7 +17,8 @@ defmodule Codex.Exec.Options do
             clear_env?: nil,
             cancellation_token: nil,
             timeout_ms: nil,
-            stream_idle_timeout_ms: nil
+            stream_idle_timeout_ms: nil,
+            max_stderr_buffer_bytes: nil
 
   @type t :: %__MODULE__{
           codex_opts: Options.t(),
@@ -32,7 +33,8 @@ defmodule Codex.Exec.Options do
           clear_env?: boolean() | nil,
           cancellation_token: String.t() | nil,
           timeout_ms: pos_integer() | nil,
-          stream_idle_timeout_ms: pos_integer() | nil
+          stream_idle_timeout_ms: pos_integer() | nil,
+          max_stderr_buffer_bytes: pos_integer() | nil
         }
 
   @spec new(map() | keyword() | t()) :: {:ok, t()} | {:error, term()}
@@ -56,6 +58,9 @@ defmodule Codex.Exec.Options do
     stream_idle_timeout_ms =
       Map.get(attrs, :stream_idle_timeout_ms, Map.get(attrs, "stream_idle_timeout_ms"))
 
+    max_stderr_buffer_bytes =
+      Map.get(attrs, :max_stderr_buffer_bytes, Map.get(attrs, "max_stderr_buffer_bytes"))
+
     with {:ok, codex_opts} <- ensure_codex_opts(codex_opts),
          {:ok, turn_opts} <- ensure_map(turn_opts, :turn_opts),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
@@ -65,7 +70,9 @@ defmodule Codex.Exec.Options do
          {:ok, clear_env?} <- validate_optional_boolean(clear_env?, :clear_env?),
          :ok <- validate_cancellation_token(cancellation_token),
          :ok <- validate_timeout(timeout_ms),
-         :ok <- validate_optional_timeout(stream_idle_timeout_ms, :stream_idle_timeout_ms) do
+         :ok <- validate_optional_timeout(stream_idle_timeout_ms, :stream_idle_timeout_ms),
+         :ok <-
+           validate_optional_positive_integer(max_stderr_buffer_bytes, :max_stderr_buffer_bytes) do
       {:ok,
        %__MODULE__{
          codex_opts: codex_opts,
@@ -80,7 +87,8 @@ defmodule Codex.Exec.Options do
          clear_env?: clear_env?,
          cancellation_token: cancellation_token,
          timeout_ms: timeout_ms,
-         stream_idle_timeout_ms: stream_idle_timeout_ms
+         stream_idle_timeout_ms: stream_idle_timeout_ms,
+         max_stderr_buffer_bytes: max_stderr_buffer_bytes
        }}
     else
       {:error, _} = error -> error
@@ -152,4 +160,13 @@ defmodule Codex.Exec.Options do
 
   defp validate_optional_timeout(timeout, field),
     do: {:error, {:"invalid_#{field}", timeout}}
+
+  defp validate_optional_positive_integer(nil, _field), do: :ok
+
+  defp validate_optional_positive_integer(value, _field)
+       when is_integer(value) and value > 0,
+       do: :ok
+
+  defp validate_optional_positive_integer(value, field),
+    do: {:error, {:"invalid_#{field}", value}}
 end
