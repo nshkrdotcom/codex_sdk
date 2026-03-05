@@ -3,10 +3,13 @@ defmodule Codex.Voice.PipelineTest do
 
   alias Codex.StreamQueue
   alias Codex.Voice.Config
+  alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Config.TTSSettings
   alias Codex.Voice.Events.VoiceStreamEventAudio
   alias Codex.Voice.Events.VoiceStreamEventLifecycle
   alias Codex.Voice.Input.StreamedAudioInput
+  alias Codex.Voice.Models.OpenAISTT
+  alias Codex.Voice.Models.OpenAISTTSession
   alias Codex.Voice.Pipeline
   alias Codex.Voice.Result
 
@@ -33,6 +36,14 @@ defmodule Codex.Voice.PipelineTest do
 
     def run(_workflow, text) do
       ["Echo: #{text}"]
+    end
+  end
+
+  defmodule SilentWorkflow do
+    defstruct []
+
+    def run(_workflow, _text) do
+      []
     end
   end
 
@@ -100,7 +111,7 @@ defmodule Codex.Voice.PipelineTest do
       assert result.config == config
       assert is_pid(result.queue)
       assert result.task == nil
-      assert result.total_output_text == ""
+      refute Map.has_key?(Map.from_struct(result), :total_output_text)
     end
 
     test "creates result with nil settings using defaults" do
@@ -137,10 +148,7 @@ defmodule Codex.Voice.PipelineTest do
       tts_model = MockTTS.new()
       result = Result.new(tts_model, %TTSSettings{}, %Config{})
 
-      updated_result = Result.add_text(result, "Hello")
-
-      # Check that total_output_text is updated
-      assert updated_result.total_output_text == "Hello"
+      assert :ok = Result.add_text(result, "Hello")
 
       # Don't signal done, just check queue has audio events
       # Read directly from queue
@@ -157,9 +165,7 @@ defmodule Codex.Voice.PipelineTest do
       tts_model = MockTTS.new()
       result = Result.new(tts_model, %TTSSettings{}, %Config{})
 
-      updated_result = Result.add_text(result, "")
-
-      assert updated_result.total_output_text == ""
+      assert :ok = Result.add_text(result, "")
     end
   end
 
@@ -269,6 +275,64 @@ defmodule Codex.Voice.PipelineTest do
       Process.exit(task_pid, :boom)
       refute_receive {:EXIT, ^task_pid, :boom}, 100
     end
+
+    test "run/2 completes for an already-closed streamed input" do
+      pipeline = Pipeline.new(workflow: %SilentWorkflow{})
+      audio = StreamedAudioInput.new()
+      StreamedAudioInput.close(audio)
+
+      {:ok, result} = Pipeline.run(pipeline, audio)
+
+      assert :ok = Task.await(result.task, 500)
+
+      assert [%VoiceStreamEventLifecycle{event: :session_ended}] =
+               result
+               |> Result.stream()
+               |> Enum.to_list()
+    end
+
+    test "run/2 uses the configured STT model for multi-turn sessions" do
+      stt_model =
+        OpenAISTT.new("custom-streaming-model",
+          api_key: "sk-pipeline",
+          base_url: "https://stt.example.test/v1"
+        )
+
+      config =
+        Config.new(
+          stt_settings:
+            STTSettings.new(
+              language: "fr",
+              prompt: "Bonjour",
+              temperature: 0.3
+            )
+        )
+
+      pipeline =
+        Pipeline.new(
+          workflow: %SilentWorkflow{},
+          stt_model: stt_model,
+          config: config
+        )
+
+      audio = StreamedAudioInput.new()
+
+      {:ok, result} = Pipeline.run(pipeline, audio)
+
+      assert %Task{pid: task_pid} = result.task
+      session_pid = wait_for_stt_session(task_pid)
+      session_state = :sys.get_state(session_pid)
+
+      assert session_state.model == "custom-streaming-model"
+      assert session_state.api_key == "sk-pipeline"
+      assert session_state.stt_model.base_url == "https://stt.example.test/v1"
+      assert session_state.settings.language == "fr"
+      assert session_state.settings.prompt == "Bonjour"
+      assert session_state.settings.temperature == 0.3
+
+      StreamedAudioInput.close(audio)
+      assert :ok = Task.await(result.task, 500)
+    end
   end
 
   # Helper function to drain all items from an Agent-backed queue
@@ -291,6 +355,60 @@ defmodule Codex.Voice.PipelineTest do
       :done -> :empty
       {:error, _reason} -> :empty
       :empty -> :empty
+    end
+  end
+
+  defp wait_for_stt_session(task_pid) do
+    wait_for_value(fn -> linked_stt_session(task_pid) end)
+  end
+
+  defp linked_stt_session(task_pid) do
+    case Process.info(task_pid, :links) do
+      {:links, links} ->
+        find_stt_session(links)
+
+      _ ->
+        :retry
+    end
+  end
+
+  defp find_stt_session(links) do
+    case Enum.find(links, &stt_session?/1) do
+      pid when is_pid(pid) -> {:ok, pid}
+      nil -> :retry
+    end
+  end
+
+  defp stt_session?(pid) when is_pid(pid) do
+    case safe_get_state(pid) do
+      %OpenAISTTSession{} -> true
+      _ -> false
+    end
+  end
+
+  defp safe_get_state(pid) do
+    :sys.get_state(pid)
+  catch
+    :exit, _ -> nil
+  end
+
+  defp wait_for_value(fun) do
+    started = System.monotonic_time(:millisecond)
+    do_wait_for_value(fun, started)
+  end
+
+  defp do_wait_for_value(fun, started) do
+    case fun.() do
+      {:ok, value} ->
+        value
+
+      :retry ->
+        if System.monotonic_time(:millisecond) - started > 1_000 do
+          flunk("timed out waiting for value")
+        else
+          Process.sleep(10)
+          do_wait_for_value(fun, started)
+        end
     end
   end
 end

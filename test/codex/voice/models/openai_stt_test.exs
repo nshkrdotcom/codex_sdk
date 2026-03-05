@@ -233,6 +233,72 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
       assert waiter_count(pid) == 0
       OpenAISTTSession.close(pid)
     end
+
+    test "transcribe_turns completes when streamed input is already closed" do
+      input = StreamedAudioInput.new()
+      StreamedAudioInput.close(input)
+      settings = STTSettings.new()
+
+      {:ok, pid} =
+        OpenAISTTSession.start_link(
+          input: input,
+          settings: settings
+        )
+
+      task =
+        Task.async(fn ->
+          OpenAISTTSession.transcribe_turns(pid)
+          |> Enum.to_list()
+        end)
+
+      assert Task.yield(task, 200) == {:ok, []}
+      OpenAISTTSession.close(pid)
+    end
+
+    test "transcribe_turns uses the configured model and STT settings" do
+      parent = self()
+      input = StreamedAudioInput.new()
+      StreamedAudioInput.add(input, <<0, 0, 1, 1>>)
+      StreamedAudioInput.close(input)
+
+      settings =
+        STTSettings.new(
+          language: "fr",
+          prompt: "Bonjour",
+          temperature: 0.25
+        )
+
+      model =
+        OpenAISTT.new("whisper-1",
+          api_key: "sk-stream",
+          base_url: "https://stt.example.test/v1",
+          client: fn url, opts ->
+            send(parent, {:stt_request, url, opts})
+            {:ok, %{status: 200, body: %{"text" => "salut"}}}
+          end
+        )
+
+      {:ok, pid} =
+        OpenAISTTSession.start_link(
+          input: input,
+          settings: settings,
+          stt_model: model
+        )
+
+      assert ["salut"] =
+               OpenAISTTSession.transcribe_turns(pid)
+               |> Enum.to_list()
+
+      assert_receive {:stt_request, "https://stt.example.test/v1/audio/transcriptions", opts}
+
+      assert {"Authorization", "Bearer sk-stream"} in opts[:headers]
+      assert {:model, "whisper-1"} in opts[:form_multipart]
+      assert {:language, "fr"} in opts[:form_multipart]
+      assert {:prompt, "Bonjour"} in opts[:form_multipart]
+      assert {:temperature, "0.25"} in opts[:form_multipart]
+
+      OpenAISTTSession.close(pid)
+    end
   end
 
   describe "transcribe/5 (integration)" do

@@ -40,15 +40,14 @@ defmodule Codex.Voice.Result do
   alias Codex.Voice.Config.TTSSettings
   alias Codex.Voice.Events
 
-  defstruct [:tts_model, :tts_settings, :config, :queue, :task, total_output_text: ""]
+  defstruct [:tts_model, :tts_settings, :config, :queue, :task]
 
   @type t :: %__MODULE__{
           tts_model: struct(),
           tts_settings: TTSSettings.t(),
           config: Config.t(),
           queue: pid(),
-          task: term() | nil,
-          total_output_text: String.t()
+          task: term() | nil
         }
 
   @doc """
@@ -76,8 +75,7 @@ defmodule Codex.Voice.Result do
       tts_model: tts_model,
       tts_settings: tts_settings || %TTSSettings{},
       config: config || %Config{},
-      queue: queue,
-      total_output_text: ""
+      queue: queue
     }
   end
 
@@ -110,7 +108,7 @@ defmodule Codex.Voice.Result do
   end
 
   @doc false
-  @spec add_text(t(), String.t()) :: t()
+  @spec add_text(t(), String.t()) :: :ok
   def add_text(%__MODULE__{} = result, text) when is_binary(text) and byte_size(text) > 0 do
     # Convert text to audio and queue events
     audio_stream =
@@ -120,12 +118,9 @@ defmodule Codex.Voice.Result do
       event = Events.audio(chunk)
       StreamQueue.push(result.queue, event)
     end)
-
-    # Track total output text
-    %{result | total_output_text: result.total_output_text <> text}
   end
 
-  def add_text(%__MODULE__{} = result, _text), do: result
+  def add_text(%__MODULE__{}, _text), do: :ok
 
   @doc false
   @spec turn_started(t()) :: :ok

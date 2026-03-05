@@ -5,24 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- Realtime `tool_choice` serialization for `{:function, name}` now emits `%{"type" => "function", "name" => name}` for `session.update` compatibility.
-- Realtime and voice live examples now self-report API skip reasons (`insufficient_quota`, `realtime_model_unavailable`) and exit cleanly instead of misreporting success.
-- App-server approvals demo now uses a prompt that exercises approvals more reliably and waits briefly for trailing audit messages before summarizing.
-- Tool-bridging and rate-limit examples now print explicit runtime notes when transport/rate-limit data is absent so empty output is not mistaken for SDK failure.
-
-### Fixed
-
-- Realtime now surfaces `response.done` failed status payloads as `%Codex.Realtime.Events.ErrorEvent{}` (including failures received via raw server events), enabling deterministic skip/error handling in examples.
-- Realtime handoff demo now uses deterministic function tool choice and correctly skips when realtime model access is unavailable.
-- Voice TTS streaming now fails fast on non-success HTTP statuses and stream transport errors instead of silently yielding empty/invalid audio chunks.
-- Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
-- Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
-
-## [0.12.0] - 2026-03-06
+## [0.11.0] - 2026-03-05
 
 ### Added
 
@@ -31,21 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `Codex.Thread.Options` now mirrors current Codex CLI web-search defaults when callers leave the setting untouched: cached search for normal local runs, and live search for full-access sandbox modes.
-- Updated README, guides, examples, and generated-doc module groupings to document the new CLI passthrough/session layer and the revised web-search default behavior.
-- Bumped package metadata to `0.12.0` in `mix.exs`, `VERSION`, README install snippets, and the getting-started guide.
-
-## [0.11.0] - 2026-03-05
-
-### Changed
-
 - Default SDK model is now `gpt-5.4` for both API-key and ChatGPT auth flows, and picker/default-marking behavior now keeps `gpt-5.4` preferred when local presets or current model catalogs are merged.
 - Bundled model metadata, README/guides, and live example defaults now reflect the current Codex model lineup, including `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and the refreshed `gpt-5.2-codex` description.
-- Bumped package metadata to `0.11.0` in `mix.exs`, `VERSION`, README install snippets, and the getting-started guide.
+- `Codex.Thread.Options` now mirrors current Codex CLI web-search defaults when callers leave the setting untouched: cached search for normal local runs, and live search for full-access sandbox modes.
+- Updated README, guides, examples, and generated-doc module groupings to document the new CLI passthrough/session layer and the revised web-search default behavior.
+- Realtime `tool_choice` serialization for `{:function, name}` now emits `%{"type" => "function", "name" => name}` for `session.update` compatibility.
+- Realtime and voice live examples now self-report API skip reasons (`insufficient_quota`, `realtime_model_unavailable`) and exit cleanly instead of misreporting success.
+- App-server approvals demo now uses a prompt that exercises approvals more reliably and waits briefly for trailing audit messages before summarizing.
+- Tool-bridging and rate-limit examples now print explicit runtime notes when transport/rate-limit data is absent so empty output is not mistaken for SDK failure.
 
 ### Fixed
 
 - `Codex.Models` now accepts current object-shaped remote `upgrade` payloads while preserving upgrade reasoning-effort mappings.
+- Stream queue close semantics now treat `close/2` as terminal, preserving already-buffered items while dropping late pushes after closure.
+- App-server initialize failures now surface through `await_ready/2`, avoid sending `initialized` after init errors, and shut down the transport cleanly.
+- App-server stderr retention is now capped to the shared transport tail size instead of growing without bound.
+- Voice streamed-input STT sessions now complete deterministically on closed input, transcribe through the configured STT model/session config, and no longer leave the multi-turn pipeline hanging forever on already-closed streams.
+- `Codex.Voice.Result` no longer exposes dead `total_output_text` bookkeeping; `add_text/2` is now side-effect-only.
+- `Codex.Realtime.Session` send APIs now return `{:error, :not_connected}` once the websocket is absent instead of silently dropping outbound events.
+- Realtime now surfaces `response.done` failed status payloads as `%Codex.Realtime.Events.ErrorEvent{}` (including failures received via raw server events), enabling deterministic skip/error handling in examples.
+- Realtime handoff demo now uses deterministic function tool choice and correctly skips when realtime model access is unavailable.
+- Voice TTS streaming now fails fast on non-success HTTP statuses and stream transport errors instead of silently yielding empty/invalid audio chunks.
+- Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
+- Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
 ## [0.10.1] - 2026-02-11
 
@@ -716,8 +707,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.12.0...HEAD
-[0.12.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...v0.10.0

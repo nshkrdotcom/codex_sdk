@@ -15,6 +15,7 @@ defmodule Codex.AppServer.Connection do
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
   @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
+  @max_stderr_buffer_size Defaults.transport_max_stderr_buffer_size()
 
   defmodule State do
     @moduledoc false
@@ -56,6 +57,15 @@ defmodule Codex.AppServer.Connection do
   def await_ready(conn, timeout_ms)
       when is_pid(conn) and is_integer(timeout_ms) and timeout_ms > 0 do
     GenServer.call(conn, :await_ready, timeout_ms)
+  catch
+    :exit, {{:init_failed, _} = reason, {GenServer, :call, _}} ->
+      {:error, reason}
+
+    :exit, {{:init_timeout, _} = reason, {GenServer, :call, _}} ->
+      {:error, reason}
+
+    :exit, {:noproc, {GenServer, :call, _}} ->
+      {:error, :not_connected}
   end
 
   @spec subscribe(connection(), keyword()) :: :ok | {:error, term()}
@@ -225,7 +235,7 @@ defmodule Codex.AppServer.Connection do
       ) do
     case Buffer.decode_line(line) do
       {:ok, msg} ->
-        {:noreply, handle_incoming_message(state, msg)}
+        handle_incoming_result(handle_incoming_message(state, msg))
 
       {:non_json, raw} ->
         Logger.debug("Ignoring non-JSON app-server output: #{inspect(raw)}")
@@ -237,7 +247,8 @@ defmodule Codex.AppServer.Connection do
         {:codex_io_transport, ref, {:stderr, data}},
         %State{transport_ref: ref} = state
       ) do
-    {:noreply, %State{state | stderr: state.stderr <> IO.iodata_to_binary(data)}}
+    stderr = append_stderr(state.stderr, data)
+    {:noreply, %State{state | stderr: stderr}}
   end
 
   def handle_info(
@@ -262,15 +273,28 @@ defmodule Codex.AppServer.Connection do
     end)
 
     state =
-      Enum.reduce(messages, state, fn msg, acc ->
-        handle_incoming_message(acc, msg)
+      Enum.reduce_while(messages, {:ok, state}, fn msg, {:ok, acc} ->
+        case handle_incoming_message(acc, msg) do
+          {:ok, next_state} ->
+            {:cont, {:ok, next_state}}
+
+          {:stop, reason, next_state} ->
+            {:halt, {:stop, reason, next_state}}
+        end
       end)
 
-    {:noreply, state}
+    case state do
+      {:ok, next_state} ->
+        {:noreply, next_state}
+
+      {:stop, reason, next_state} ->
+        {:stop, reason, next_state}
+    end
   end
 
   def handle_info({:stderr, ref, data}, %State{transport_ref: ref} = state) do
-    {:noreply, %State{state | stderr: state.stderr <> IO.iodata_to_binary(data)}}
+    stderr = append_stderr(state.stderr, data)
+    {:noreply, %State{state | stderr: stderr}}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %State{transport_ref: ref} = state) do
@@ -302,7 +326,7 @@ defmodule Codex.AppServer.Connection do
         end)
 
         stop_subprocess(state)
-        {:stop, {:init_timeout, timeout_ms}, %State{state | pending: pending}}
+        {:stop, :normal, %State{state | pending: pending, ready_waiters: []}}
 
       {%{from: from, method: method, timeout_ms: timeout_ms}, pending} ->
         GenServer.reply(from, {:error, {:timeout, method, timeout_ms}})
@@ -325,13 +349,13 @@ defmodule Codex.AppServer.Connection do
       :notification ->
         method = Map.get(msg, "method")
         params = Map.get(msg, "params") || %{}
-        broadcast_notification(state, method, params)
+        {:ok, broadcast_notification(state, method, params)}
 
       :request ->
         id = Map.get(msg, "id")
         method = Map.get(msg, "method")
         params = Map.get(msg, "params") || %{}
-        broadcast_request(state, id, method, params)
+        {:ok, broadcast_request(state, id, method, params)}
 
       :response ->
         handle_response(state, Map.get(msg, "id"), {:ok, Map.get(msg, "result")})
@@ -341,7 +365,7 @@ defmodule Codex.AppServer.Connection do
 
       :unknown ->
         Logger.debug("Ignoring unknown JSON-RPC message: #{inspect(msg)}")
-        state
+        {:ok, state}
     end
   end
 
@@ -349,18 +373,60 @@ defmodule Codex.AppServer.Connection do
     case Map.pop(state.pending, id) do
       {nil, _pending} ->
         Logger.debug("Ignoring response for unknown request id: #{inspect(id)}")
-        state
+        {:ok, state}
 
       {%{from: :init, timer_ref: timer_ref}, pending} ->
         _ = Process.cancel_timer(timer_ref)
-        _ = send_iolist(state, Protocol.encode_notification("initialized"))
-        Enum.each(state.ready_waiters, fn from -> GenServer.reply(from, :ok) end)
-        %State{state | phase: :ready, pending: pending, ready_waiters: []}
+        handle_init_reply(%State{state | pending: pending}, reply)
 
       {%{from: from, timer_ref: timer_ref}, pending} ->
         _ = Process.cancel_timer(timer_ref)
         GenServer.reply(from, reply)
-        %State{state | pending: pending}
+        {:ok, %State{state | pending: pending}}
+    end
+  end
+
+  defp handle_init_reply(%State{} = state, {:ok, _result}) do
+    case send_iolist(state, Protocol.encode_notification("initialized")) do
+      :ok ->
+        reply_ready_waiters(state.ready_waiters, :ok)
+        {:ok, %State{state | phase: :ready, ready_waiters: []}}
+
+      {:error, reason} ->
+        fail_init(state, reason)
+    end
+  end
+
+  defp handle_init_reply(%State{} = state, {:error, reason}) do
+    fail_init(state, reason)
+  end
+
+  defp fail_init(%State{} = state, reason) do
+    failure = {:init_failed, reason}
+    reply_ready_waiters(state.ready_waiters, {:error, failure})
+    stop_subprocess(state)
+    {:stop, :normal, %State{state | ready_waiters: []}}
+  end
+
+  defp reply_ready_waiters(waiters, reply) do
+    Enum.each(waiters, fn from -> GenServer.reply(from, reply) end)
+  end
+
+  defp handle_incoming_result({:ok, %State{} = state}), do: {:noreply, state}
+  defp handle_incoming_result({:stop, reason, %State{} = state}), do: {:stop, reason, state}
+
+  defp append_stderr(existing, data) do
+    combined = existing <> IO.iodata_to_binary(data)
+    combined_size = byte_size(combined)
+
+    if combined_size <= @max_stderr_buffer_size do
+      combined
+    else
+      :binary.part(
+        combined,
+        combined_size - @max_stderr_buffer_size,
+        @max_stderr_buffer_size
+      )
     end
   end
 

@@ -140,6 +140,8 @@ defmodule Codex.Realtime.Session do
   @doc """
   Send audio data to the model.
 
+  Returns `{:error, :not_connected}` if the websocket is unavailable.
+
   ## Options
 
     * `:commit` - Whether to commit the audio buffer (default: false)
@@ -149,7 +151,7 @@ defmodule Codex.Realtime.Session do
       Session.send_audio(session, audio_bytes)
       Session.send_audio(session, audio_bytes, commit: true)
   """
-  @spec send_audio(GenServer.server(), binary(), keyword()) :: :ok
+  @spec send_audio(GenServer.server(), binary(), keyword()) :: :ok | {:error, term()}
   def send_audio(session, audio, opts \\ []) do
     commit = Keyword.get(opts, :commit, false)
     GenServer.call(session, {:send_audio, audio, commit})
@@ -157,6 +159,8 @@ defmodule Codex.Realtime.Session do
 
   @doc """
   Send a text message to the model.
+
+  Returns `{:error, :not_connected}` if the websocket is unavailable.
 
   Can be a simple string or a structured message map.
 
@@ -173,7 +177,7 @@ defmodule Codex.Realtime.Session do
         ]
       })
   """
-  @spec send_message(GenServer.server(), String.t() | map()) :: :ok
+  @spec send_message(GenServer.server(), String.t() | map()) :: :ok | {:error, term()}
   def send_message(session, message) do
     GenServer.call(session, {:send_message, message})
   end
@@ -182,8 +186,10 @@ defmodule Codex.Realtime.Session do
   Interrupt the current response.
 
   Sends a cancel signal to stop the model from generating more output.
+
+  Returns `{:error, :not_connected}` if the websocket is unavailable.
   """
-  @spec interrupt(GenServer.server()) :: :ok
+  @spec interrupt(GenServer.server()) :: :ok | {:error, term()}
   def interrupt(session) do
     GenServer.call(session, :interrupt)
   end
@@ -192,8 +198,10 @@ defmodule Codex.Realtime.Session do
   Send a raw event to the model.
 
   Use this for advanced scenarios where you need to send custom events.
+
+  Returns `{:error, :not_connected}` if the websocket is unavailable.
   """
-  @spec send_raw_event(GenServer.server(), map()) :: :ok
+  @spec send_raw_event(GenServer.server(), map()) :: :ok | {:error, term()}
   def send_raw_event(session, event) do
     GenServer.call(session, {:send_raw_event, event})
   end
@@ -202,8 +210,10 @@ defmodule Codex.Realtime.Session do
   Update session settings.
 
   Use this to change model settings mid-session, such as voice or modalities.
+
+  Returns `{:error, :not_connected}` if the websocket is unavailable.
   """
-  @spec update_session(GenServer.server(), SessionModelSettings.t()) :: :ok
+  @spec update_session(GenServer.server(), SessionModelSettings.t()) :: :ok | {:error, term()}
   def update_session(session, settings) do
     GenServer.call(session, {:update_session, settings})
   end
@@ -301,31 +311,50 @@ defmodule Codex.Realtime.Session do
   end
 
   def handle_call({:send_audio, audio, commit}, _from, state) do
-    send_to_websocket(state, ModelInputs.send_audio(audio, commit))
-    {:reply, :ok, state}
+    case send_to_websocket(state, ModelInputs.send_audio(audio, commit)) do
+      :ok -> {:reply, :ok, state}
+      {:error, _} = error -> {:reply, error, state}
+    end
   end
 
   def handle_call({:send_message, message}, _from, state) do
-    send_to_websocket(state, ModelInputs.send_user_input(message))
-    # Also trigger response
-    send_to_websocket(state, ModelInputs.send_raw_message(%{"type" => "response.create"}))
-    {:reply, :ok, state}
+    with :ok <- send_to_websocket(state, ModelInputs.send_user_input(message)),
+         :ok <-
+           send_to_websocket(state, ModelInputs.send_raw_message(%{"type" => "response.create"})) do
+      {:reply, :ok, state}
+    else
+      {:error, _} = error ->
+        {:reply, error, state}
+    end
   end
 
   def handle_call(:interrupt, _from, state) do
-    send_to_websocket(state, ModelInputs.send_interrupt())
-    state = %{state | playback_tracker: PlaybackTracker.on_interrupted(state.playback_tracker)}
-    {:reply, :ok, state}
+    case send_to_websocket(state, ModelInputs.send_interrupt()) do
+      :ok ->
+        state = %{
+          state
+          | playback_tracker: PlaybackTracker.on_interrupted(state.playback_tracker)
+        }
+
+        {:reply, :ok, state}
+
+      {:error, _} = error ->
+        {:reply, error, state}
+    end
   end
 
   def handle_call({:send_raw_event, event}, _from, state) do
-    send_to_websocket(state, ModelInputs.send_raw_message(event))
-    {:reply, :ok, state}
+    case send_to_websocket(state, ModelInputs.send_raw_message(event)) do
+      :ok -> {:reply, :ok, state}
+      {:error, _} = error -> {:reply, error, state}
+    end
   end
 
   def handle_call({:update_session, settings}, _from, state) do
-    send_to_websocket(state, ModelInputs.send_session_update(settings))
-    {:reply, :ok, state}
+    case send_to_websocket(state, ModelInputs.send_session_update(settings)) do
+      :ok -> {:reply, :ok, state}
+      {:error, _} = error -> {:reply, error, state}
+    end
   end
 
   def handle_call(:history, _from, state) do
@@ -436,15 +465,33 @@ defmodule Codex.Realtime.Session do
       json = ModelInputs.to_json(input)
       ws_module = state.websocket_module || WebSockex
       do_send_to_websocket(ws_module, state.websocket_pid, json)
+    else
+      {:error, :not_connected}
     end
   end
 
   defp do_send_to_websocket(ws_module, pid, msgs) when is_list(msgs) do
-    Enum.each(msgs, &do_send_to_websocket(ws_module, pid, &1))
+    Enum.reduce_while(msgs, :ok, fn msg, :ok ->
+      case do_send_to_websocket(ws_module, pid, msg) do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   defp do_send_to_websocket(ws_module, pid, msg) when is_map(msg) do
-    ws_module.send_frame(pid, {:text, Jason.encode!(msg)})
+    case ws_module.send_frame(pid, {:text, Jason.encode!(msg)}) do
+      :ok ->
+        :ok
+
+      {:error, _} = error ->
+        error
+
+      other ->
+        {:error, {:send_failed, other}}
+    end
+  catch
+    :exit, _ -> {:error, :not_connected}
   end
 
   defp maybe_emit_response_done_error(

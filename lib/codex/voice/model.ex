@@ -71,7 +71,7 @@ defmodule Codex.Voice.Model do
 
     Note: The behaviour callbacks use module-level functions. Implementations
     should use struct-based models where the struct is passed as the first
-    parameter to instance methods like `transcribe/5`.
+    parameter to instance methods like `transcribe/5` and `create_session/5`.
     """
 
     @doc """
@@ -98,6 +98,7 @@ defmodule Codex.Voice.Model do
     - `{:error, reason}` - If session creation fails
     """
     @callback create_session(
+                model :: struct(),
                 input :: StreamedAudioInput.t(),
                 settings :: STTSettings.t(),
                 trace_include_sensitive_data :: boolean(),

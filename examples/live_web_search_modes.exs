@@ -35,7 +35,7 @@ defmodule LiveWebSearchModes do
 
     case run_mode_once(mode, prompt, codex_path) do
       {:ok, final_state} ->
-        report_final_state(final_state)
+        report_final_state(mode, final_state)
         []
 
       {:retry_required, reason} ->
@@ -45,7 +45,7 @@ defmodule LiveWebSearchModes do
 
         case run_mode_once(mode, retry_prompt, codex_path) do
           {:ok, final_state} ->
-            report_final_state(final_state)
+            report_final_state(mode, final_state)
             []
 
           {:retry_required, retry_reason} ->
@@ -90,41 +90,49 @@ defmodule LiveWebSearchModes do
     end
   end
 
-  defp validate_mode_expectation(mode, final_state) do
-    expected_web_search? = mode in [:cached, :live]
-
-    cond do
-      expected_web_search? and final_state.web_search? ->
-        {:ok, final_state}
-
-      expected_web_search? and not final_state.web_search? ->
-        {:retry_required, {:expected_web_search_events, :none_observed}}
-
-      not expected_web_search? and final_state.web_search? ->
-        {:error, {:unexpected_web_search_events, :observed_in_disabled_mode}}
-
-      true ->
-        {:ok, final_state}
-    end
+  defp validate_mode_expectation(:disabled, %{web_search?: true}) do
+    {:error, {:unexpected_web_search_events, :observed_in_disabled_mode}}
   end
 
-  defp report_final_state(final_state) do
+  defp validate_mode_expectation(:disabled, final_state), do: {:ok, final_state}
+
+  defp validate_mode_expectation(:live, %{web_search?: true} = final_state),
+    do: {:ok, final_state}
+
+  defp validate_mode_expectation(:live, _final_state) do
+    {:retry_required, {:expected_web_search_events, :none_observed}}
+  end
+
+  # Cached mode only permits cached search results. A turn may legitimately emit
+  # no web-search events when no cached result is available or the model answers
+  # without using the tool.
+  defp validate_mode_expectation(:cached, final_state), do: {:ok, final_state}
+
+  defp report_final_state(mode, final_state) do
     if final_state.web_search? do
       IO.puts("Observed web search events.")
     else
-      IO.puts("No web search events observed.")
+      report_no_web_search_events(mode)
     end
 
     IO.puts("Final response (illustrative only): #{final_state.final_response || "<none>"}")
   end
 
+  defp report_no_web_search_events(:cached) do
+    IO.puts(
+      "No web search events observed. Cached mode may legitimately complete without a cache hit."
+    )
+  end
+
+  defp report_no_web_search_events(_mode), do: IO.puts("No web search events observed.")
+
   defp handle_event(%Events.ItemStarted{item: %Items.WebSearch{query: query}}, state) do
-    IO.puts("Web search started: #{query}")
+    IO.puts("Web search started: #{format_query(query)}")
     %{state | web_search?: true}
   end
 
   defp handle_event(%Events.ItemCompleted{item: %Items.WebSearch{query: query}}, state) do
-    IO.puts("Web search completed: #{query}")
+    IO.puts("Web search completed: #{format_query(query)}")
     %{state | web_search?: true}
   end
 
@@ -143,6 +151,15 @@ defmodule LiveWebSearchModes do
   defp extract_text(%{type: "text", text: text}) when is_binary(text), do: text
   defp extract_text(other) when is_binary(other), do: other
   defp extract_text(_), do: nil
+
+  defp format_query(query) when is_binary(query) do
+    case String.trim(query) do
+      "" -> "<pending>"
+      trimmed -> trimmed
+    end
+  end
+
+  defp format_query(_query), do: "<pending>"
 
   defp parse_args([mode | rest]) when mode in ["disabled", "cached", "live"] do
     {[String.to_atom(mode)], parse_prompt(rest)}

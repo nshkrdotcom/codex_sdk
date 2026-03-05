@@ -677,6 +677,31 @@ defmodule Codex.Realtime.SessionTest do
 
       Session.close(session)
     end
+
+    test "send APIs return not_connected after websocket exit", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      send(session, {:EXIT, mock_ws, :ws_closed})
+
+      assert {:error, :not_connected} = Session.send_audio(session, <<1, 2, 3, 4>>)
+      assert {:error, :not_connected} = Session.send_message(session, "Hello after exit")
+      assert {:error, :not_connected} = Session.interrupt(session)
+
+      assert {:error, :not_connected} =
+               Session.send_raw_event(session, %{"type" => "custom.event"})
+
+      assert {:error, :not_connected} =
+               Session.update_session(session, %SessionModelSettings{voice: "nova"})
+
+      Session.close(session)
+    end
   end
 
   describe "dynamic instructions" do

@@ -19,6 +19,20 @@ defmodule Codex.StreamQueueTest do
     assert waiter_count(queue) == 0
   end
 
+  test "close: preserves buffered items and drops pushes after close" do
+    {:ok, queue} = StreamQueue.start_link()
+
+    :ok = StreamQueue.push(queue, :buffered)
+    :ok = StreamQueue.close(queue)
+    :ok = StreamQueue.push(queue, :late)
+
+    state = :sys.get_state(queue)
+    assert state.closed?
+
+    assert {:ok, :buffered} = StreamQueue.try_pop(queue)
+    assert :done = StreamQueue.try_pop(queue)
+  end
+
   defp wait_for_waiter_count(queue, expected) do
     started = System.monotonic_time(:millisecond)
     do_wait_for_waiter_count(queue, expected, started)

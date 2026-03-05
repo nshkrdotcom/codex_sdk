@@ -35,7 +35,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.12.0"}
+    {:codex_sdk, "~> 0.11.0"}
   ]
 end
 ```
@@ -998,7 +998,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_config_overrides.exs`** - Nested config override auto-flattening (thread and turn level)
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, and validation
 - **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
-- **`live_web_search_modes.exs`** - Web search mode toggles with event reporting
+- **`live_web_search_modes.exs`** - Web search mode toggles with disabled/live validation and cached-mode event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
 - **`live_realtime_voice.exs`** - Full realtime voice interaction demo with event handling

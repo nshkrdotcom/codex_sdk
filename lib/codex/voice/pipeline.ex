@@ -211,8 +211,9 @@ defmodule Codex.Voice.Pipeline do
         try do
           # Transcribe audio to text
           stt_settings = pipeline.config.stt_settings || %STTSettings{}
+          stt_module = stt_module(pipeline.stt_model)
 
-          case OpenAISTT.transcribe(
+          case stt_module.transcribe(
                  pipeline.stt_model,
                  audio,
                  stt_settings,
@@ -262,33 +263,36 @@ defmodule Codex.Voice.Pipeline do
 
           # Create streaming transcription session
           stt_settings = pipeline.config.stt_settings || %STTSettings{}
+          stt_module = stt_module(pipeline.stt_model)
 
-          {:ok, session} =
-            OpenAISTT.create_session(
-              audio,
-              stt_settings,
-              pipeline.config.trace_include_sensitive_data,
-              pipeline.config.trace_include_sensitive_audio_data
-            )
+          case stt_module.create_session(
+                 pipeline.stt_model,
+                 audio,
+                 stt_settings,
+                 pipeline.config.trace_include_sensitive_data,
+                 pipeline.config.trace_include_sensitive_audio_data
+               ) do
+            {:ok, session} ->
+              session
+              |> OpenAISTTSession.transcribe_turns()
+              |> Enum.each(fn text ->
+                Result.turn_started(result)
 
-          # Process turns
-          session
-          |> OpenAISTTSession.transcribe_turns()
-          |> Enum.each(fn text ->
-            Result.turn_started(result)
+                pipeline.workflow
+                |> apply_workflow(:run, [text])
+                |> Enum.each(fn response_text ->
+                  Result.add_text(result, response_text)
+                end)
 
-            pipeline.workflow
-            |> apply_workflow(:run, [text])
-            |> Enum.each(fn response_text ->
-              Result.add_text(result, response_text)
-            end)
+                Result.turn_done(result)
+              end)
 
-            Result.turn_done(result)
-          end)
+              OpenAISTTSession.close(session)
+              Result.done(result)
 
-          # Clean up session and signal completion
-          OpenAISTTSession.close(session)
-          Result.done(result)
+            {:error, reason} ->
+              Result.add_error(result, reason)
+          end
         rescue
           e ->
             Logger.error("Pipeline error: #{inspect(e)}")
@@ -328,6 +332,8 @@ defmodule Codex.Voice.Pipeline do
     module = workflow.__struct__
     apply(module, fun, [workflow | args])
   end
+
+  defp stt_module(%{__struct__: module}) when is_atom(module), do: module
 
   defp start_pipeline_task(fun) when is_function(fun, 0) do
     case Process.whereis(Codex.TaskSupervisor) do

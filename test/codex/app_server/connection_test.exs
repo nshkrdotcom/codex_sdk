@@ -3,6 +3,7 @@ defmodule Codex.AppServer.ConnectionTest do
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol
+  alias Codex.Config.Defaults
   alias Codex.Options
   alias Codex.TestSupport.AppServerSubprocess
 
@@ -51,6 +52,46 @@ defmodule Codex.AppServer.ConnectionTest do
     assert_receive {:app_server_subprocess_started, _conn, _os_pid}
     assert_receive {:app_server_subprocess_send, _conn, _init_line}
     assert_receive {:app_server_subprocess_stopped, _conn, _exec_pid}
+  end
+
+  test "initialize error surfaces via await_ready and shuts down the connection", %{
+    codex_opts: codex_opts
+  } do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self(), notify_stop: true},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
+
+    ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
+    wait_for_ready_waiter(conn, 1)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Jason.encode_to_iodata!(%{
+           "id" => 0,
+           "error" => %{"code" => -32_001, "message" => "initialize failed"}
+         }),
+         "\n"
+       ]}
+    )
+
+    assert {:error, {:init_failed, %{"code" => -32_001, "message" => "initialize failed"}}} =
+             Task.await(ready_task, 200)
+
+    refute_receive {:app_server_subprocess_send, ^conn, _initialized_line}, 50
+
+    assert_receive {:app_server_subprocess_stopped, ^conn, _exec_pid}, 200
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn, :normal}, 200
+    refute Process.alive?(conn)
   end
 
   test "correlates request responses by id while interleaving notifications", %{
@@ -111,6 +152,30 @@ defmodule Codex.AppServer.ConnectionTest do
              Connection.request(conn, "thread/list", %{}, timeout_ms: 10)
   end
 
+  test "stderr retention is capped to the configured tail size", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    cap = Defaults.transport_max_stderr_buffer_size()
+    data = String.duplicate("x", cap) <> "tail"
+
+    send(conn, {:stderr, os_pid, data})
+
+    state = :sys.get_state(conn)
+    assert byte_size(state.stderr) <= cap
+    assert String.ends_with?(state.stderr, "tail")
+  end
+
   test "ignores invalid subscriber filters without crashing", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
@@ -134,5 +199,30 @@ defmodule Codex.AppServer.ConnectionTest do
 
     refute_receive {:codex_notification, _, _}, 50
     assert Process.alive?(conn)
+  end
+
+  defp wait_for_ready_waiter(conn, expected) do
+    started = System.monotonic_time(:millisecond)
+    do_wait_for_ready_waiter(conn, expected, started)
+  end
+
+  defp do_wait_for_ready_waiter(conn, expected, started) do
+    if ready_waiter_count(conn) == expected do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) - started > 500 do
+        flunk("timed out waiting for ready waiter count #{expected}")
+      else
+        Process.sleep(10)
+        do_wait_for_ready_waiter(conn, expected, started)
+      end
+    end
+  end
+
+  defp ready_waiter_count(conn) do
+    conn
+    |> :sys.get_state()
+    |> Map.fetch!(:ready_waiters)
+    |> length()
   end
 end

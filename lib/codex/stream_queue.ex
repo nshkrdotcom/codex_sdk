@@ -54,6 +54,10 @@ defmodule Codex.StreamQueue do
   end
 
   @impl true
+  def handle_cast({:push, _value}, %{closed?: true} = state) do
+    {:noreply, state}
+  end
+
   def handle_cast({:push, value}, %{queue: queue, closed?: closed?, waiters: waiters} = state) do
     case :queue.out(waiters) do
       {{:value, {from, monitor_ref}}, remaining} ->

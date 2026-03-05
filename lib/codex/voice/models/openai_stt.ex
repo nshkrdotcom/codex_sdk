@@ -4,7 +4,8 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
   This module implements the `Codex.Voice.Model.STTModel` behaviour using
   OpenAI's audio transcription API. It supports both single-shot transcription
-  and streaming transcription sessions via WebSocket.
+  and streamed-input sessions that transcribe buffered audio once the input
+  closes.
 
   ## Default Model
 
@@ -122,7 +123,9 @@ defmodule Codex.Voice.Models.OpenAISTT do
       |> maybe_add_param(:language, settings.language)
       |> maybe_add_param(:temperature, format_temperature(settings.temperature))
 
-    case Req.post("#{model.base_url}/audio/transcriptions",
+    request_client = resolve_request_client(model.client)
+
+    case request_client.("#{model.base_url}/audio/transcriptions",
            headers: [{"Authorization", "Bearer #{api_key}"}],
            form_multipart: multipart
          ) do
@@ -139,6 +142,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
   @impl true
   def create_session(
+        %__MODULE__{} = model,
         %StreamedAudioInput{} = input,
         %STTSettings{} = settings,
         trace_include_sensitive_data,
@@ -147,14 +151,34 @@ defmodule Codex.Voice.Models.OpenAISTT do
     OpenAISTTSession.start_link(
       input: input,
       settings: settings,
-      model: @default_model,
+      stt_model: model,
       trace_include_sensitive_data: trace_include_sensitive_data,
       trace_include_sensitive_audio_data: trace_include_sensitive_audio_data
     )
   end
 
+  @doc false
+  def create_session(
+        %StreamedAudioInput{} = input,
+        %STTSettings{} = settings,
+        trace_include_sensitive_data,
+        trace_include_sensitive_audio_data
+      ) do
+    create_session(
+      new(),
+      input,
+      settings,
+      trace_include_sensitive_data,
+      trace_include_sensitive_audio_data
+    )
+  end
+
   defp maybe_add_param(list, _key, nil), do: list
   defp maybe_add_param(list, key, value) when is_atom(key), do: list ++ [{key, to_string(value)}]
+
+  defp resolve_request_client(nil), do: &Req.post/2
+  defp resolve_request_client(client) when is_function(client, 2), do: client
+  defp resolve_request_client(client) when is_atom(client), do: &client.post/2
 
   @spec format_temperature(float() | nil) :: String.t() | nil
   defp format_temperature(nil), do: nil
@@ -163,24 +187,22 @@ end
 
 defmodule Codex.Voice.Models.OpenAISTTSession do
   @moduledoc """
-  Streaming transcription session using WebSocket.
+  Buffered streamed transcription session.
 
-  This GenServer manages a WebSocket connection to OpenAI's realtime
-  transcription API. It receives audio input from a `StreamedAudioInput`
-  and produces text transcriptions for each detected turn.
-
-  ## Turn Detection
-
-  The session uses semantic VAD (Voice Activity Detection) by default
-  to detect turn boundaries in the audio stream.
+  This GenServer consumes a `StreamedAudioInput` until it closes, then submits
+  the aggregated audio to the configured STT model and yields completed
+  transcript turns to callers.
   """
 
   use GenServer
 
   alias Codex.Auth
   alias Codex.Config.Defaults
+  alias Codex.TaskSupport
   alias Codex.Voice.Config.STTSettings
+  alias Codex.Voice.Input.AudioInput
   alias Codex.Voice.Input.StreamedAudioInput
+  alias Codex.Voice.Models.OpenAISTT
 
   @behaviour Codex.Voice.Model.StreamedTranscriptionSession
 
@@ -191,9 +213,11 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
     :api_key,
     :trace_include_sensitive_data,
     :trace_include_sensitive_audio_data,
+    :stt_model,
     :websocket,
     :listener_task,
     :stream_task,
+    :completion,
     transcripts: [],
     waiters: []
   ]
@@ -205,9 +229,11 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
           api_key: String.t() | nil,
           trace_include_sensitive_data: boolean(),
           trace_include_sensitive_audio_data: boolean(),
+          stt_model: OpenAISTT.t(),
           websocket: pid() | nil,
           listener_task: Task.t() | nil,
           stream_task: Task.t() | nil,
+          completion: :done | {:error, term()} | nil,
           transcripts: [String.t()],
           waiters: [{GenServer.from(), reference()}]
         }
@@ -221,8 +247,11 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   - `:input` - StreamedAudioInput to read audio from (required)
   - `:settings` - STTSettings for transcription options (required)
-  - `:model` - Model name to use
+  - `:stt_model` - Optional `OpenAISTT` model struct to use as-is
+  - `:model` - Model name to use when `:stt_model` is not provided
   - `:api_key` - API key (defaults to OPENAI_API_KEY env var)
+  - `:base_url` - API base URL when `:stt_model` is not provided
+  - `:client` - Optional HTTP client when `:stt_model` is not provided
   - `:trace_include_sensitive_data` - Whether to include text in traces
   - `:trace_include_sensitive_audio_data` - Whether to include audio in traces
   """
@@ -256,19 +285,28 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
   def init(opts) do
     input = Keyword.fetch!(opts, :input)
     settings = Keyword.fetch!(opts, :settings)
+    stt_model = resolve_stt_model(opts)
+    api_key = stt_model.api_key || Auth.direct_api_key()
 
     state = %__MODULE__{
       input: input,
       settings: settings,
-      model: Keyword.get(opts, :model, "gpt-4o-transcribe"),
-      api_key: Keyword.get(opts, :api_key, Auth.direct_api_key()),
+      model: stt_model.model,
+      api_key: api_key,
       trace_include_sensitive_data: Keyword.get(opts, :trace_include_sensitive_data, true),
       trace_include_sensitive_audio_data:
-        Keyword.get(opts, :trace_include_sensitive_audio_data, false)
+        Keyword.get(opts, :trace_include_sensitive_audio_data, false),
+      stt_model: %{stt_model | api_key: api_key},
+      completion: nil
     }
 
-    # Connection will be established when transcribe_turns is first called
-    {:ok, state}
+    case start_transcription_task(state) do
+      {:ok, task} ->
+        {:ok, %{state | stream_task: task}}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
   end
 
   @impl GenServer
@@ -278,9 +316,17 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
         {:reply, {:ok, text}, %{state | transcripts: rest}}
 
       [] ->
-        # No transcripts available, add to waiters
-        monitor_ref = monitor_waiter(from)
-        {:noreply, %{state | waiters: state.waiters ++ [{from, monitor_ref}]}}
+        case state.completion do
+          :done ->
+            {:reply, :done, state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+
+          nil ->
+            monitor_ref = monitor_waiter(from)
+            {:noreply, %{state | waiters: state.waiters ++ [{from, monitor_ref}]}}
+        end
     end
   end
 
@@ -297,7 +343,35 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
     end
   end
 
+  def handle_info({ref, _result}, %{stream_task: %Task{ref: ref}} = state) do
+    {:noreply, state}
+  end
+
   @impl GenServer
+  def handle_info(
+        {:DOWN, ref, :process, pid, reason},
+        %{stream_task: %Task{ref: ref, pid: pid}} = state
+      ) do
+    state = %{state | stream_task: nil}
+
+    case {reason, state.completion} do
+      {:normal, _} ->
+        {:noreply, state}
+
+      {:shutdown, _} ->
+        {:noreply, state}
+
+      {{:shutdown, _}, _} ->
+        {:noreply, state}
+
+      {_reason, nil} ->
+        finish_with_error(state, {:task_exit, reason})
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     waiters =
       Enum.reject(state.waiters, fn {_waiter, monitor_ref} ->
@@ -309,24 +383,12 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   @impl GenServer
   def handle_info(:session_complete, state) do
-    # Notify all waiters that we're done
-    for {waiter, monitor_ref} <- state.waiters do
-      Process.demonitor(monitor_ref, [:flush])
-      GenServer.reply(waiter, :done)
-    end
-
-    {:noreply, %{state | waiters: []}}
+    finish_with_completion(state)
   end
 
   @impl GenServer
-  def handle_info({:error, reason}, state) do
-    # Notify all waiters of the error
-    for {waiter, monitor_ref} <- state.waiters do
-      Process.demonitor(monitor_ref, [:flush])
-      GenServer.reply(waiter, {:error, reason})
-    end
-
-    {:noreply, %{state | waiters: []}}
+  def handle_info({:session_error, reason}, state) do
+    finish_with_error(state, reason)
   end
 
   @impl GenServer
@@ -345,6 +407,96 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   @doc false
   def default_turn_detection, do: @default_turn_detection
+
+  defp resolve_stt_model(opts) do
+    case Keyword.get(opts, :stt_model) do
+      %OpenAISTT{} = model ->
+        model
+
+      nil ->
+        OpenAISTT.new(
+          Keyword.get(opts, :model, OpenAISTT.model_name()),
+          api_key: Keyword.get(opts, :api_key),
+          base_url: Keyword.get(opts, :base_url, Defaults.openai_api_base_url()),
+          client: Keyword.get(opts, :client)
+        )
+    end
+  end
+
+  defp start_transcription_task(state) do
+    session = self()
+
+    runner = fn ->
+      run_transcription(session, state)
+    end
+
+    TaskSupport.async_nolink(runner)
+  end
+
+  defp run_transcription(session, state) do
+    case collect_audio(state.input) do
+      <<>> ->
+        send(session, :session_complete)
+
+      audio_data ->
+        audio_input = AudioInput.new(audio_data)
+
+        case OpenAISTT.transcribe(
+               state.stt_model,
+               audio_input,
+               state.settings,
+               state.trace_include_sensitive_data,
+               state.trace_include_sensitive_audio_data
+             ) do
+          {:ok, text} ->
+            maybe_send_transcript(session, text)
+            send(session, :session_complete)
+
+          {:error, reason} ->
+            send(session, {:session_error, reason})
+        end
+    end
+  rescue
+    error ->
+      send(session, {:session_error, error})
+  catch
+    kind, reason ->
+      send(session, {:session_error, {kind, reason}})
+  end
+
+  defp collect_audio(%StreamedAudioInput{} = input) do
+    input
+    |> StreamedAudioInput.stream()
+    |> Enum.reduce([], fn chunk, acc -> [chunk | acc] end)
+    |> Enum.reverse()
+    |> IO.iodata_to_binary()
+  end
+
+  defp maybe_send_transcript(session, text) do
+    if String.trim(text) != "" do
+      send(session, {:transcript, text})
+    end
+
+    :ok
+  end
+
+  defp finish_with_completion(state) do
+    Enum.each(state.waiters, fn {waiter, monitor_ref} ->
+      Process.demonitor(monitor_ref, [:flush])
+      GenServer.reply(waiter, :done)
+    end)
+
+    {:noreply, %{state | waiters: [], completion: :done}}
+  end
+
+  defp finish_with_error(state, reason) do
+    Enum.each(state.waiters, fn {waiter, monitor_ref} ->
+      Process.demonitor(monitor_ref, [:flush])
+      GenServer.reply(waiter, {:error, reason})
+    end)
+
+    {:noreply, %{state | waiters: [], completion: {:error, reason}}}
+  end
 
   defp close_websocket(pid) when is_pid(pid) do
     if Process.alive?(pid) do
