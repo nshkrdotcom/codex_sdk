@@ -13,7 +13,7 @@ Add the dependency in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.11.0"}
+    {:codex_sdk, "~> 0.12.0"}
   ]
 end
 ```
@@ -85,6 +85,36 @@ You can set per-thread defaults for personality and web search mode:
 {:ok, thread} = Codex.start_thread(%Codex.Options{}, thread_opts)
 {:ok, result} = Codex.Thread.run(thread, "Summarize the latest release notes")
 IO.puts(result.final_response)
+```
+
+If you leave web search untouched, the SDK now mirrors current Codex CLI defaults:
+
+- cached web search for normal local runs
+- live web search when you opt into full-access sandboxing
+
+Use `web_search_mode: :disabled` or `web_search_enabled: false` only when you
+need to override that default explicitly.
+
+## CLI Passthrough
+
+`Codex.CLI` exposes the literal terminal-client surface when you need a command
+that does not fit the structured thread APIs.
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{})
+
+{:ok, result} = Codex.CLI.completion("zsh", codex_opts: codex_opts)
+IO.puts(result.stdout)
+
+{:ok, session} =
+  Codex.CLI.interactive(
+    "Summarize this repository in three bullets.",
+    codex_opts: codex_opts
+  )
+
+:ok = Codex.CLI.Session.close_input(session)
+{:ok, session_result} = Codex.CLI.Session.collect(session)
+IO.puts(session_result.stdout)
 ```
 
 ## Sessions

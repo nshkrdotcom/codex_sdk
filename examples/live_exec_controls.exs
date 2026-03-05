@@ -35,7 +35,8 @@ defmodule CodexExamples.LiveExecControls do
 
     {:ok, codex_opts} =
       Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
+        codex_path_override: fetch_codex_path!(),
+        reasoning_effort: :low
       })
 
     {:ok, thread_opts} =

@@ -6,7 +6,7 @@ defmodule Examples.BasicUsage do
   @moduledoc false
 
   def ask_question do
-    with {:ok, thread} <- Codex.start_thread(),
+    with {:ok, thread} <- Codex.start_thread(%{reasoning_effort: :low}),
          {:ok, result} <- Codex.Thread.run(thread, "What is a GenServer in Elixir?") do
       IO.puts("Final response:\n#{render_response(result.final_response)}\n")
       IO.puts("Token usage: #{format_usage(result.usage)}")
@@ -16,7 +16,7 @@ defmodule Examples.BasicUsage do
   def list_completed_items do
     prompt = "Explain how Elixir processes work, and give me a simple example"
 
-    with {:ok, thread} <- Codex.start_thread(),
+    with {:ok, thread} <- Codex.start_thread(%{reasoning_effort: :low}),
          {:ok, result} <- Codex.Thread.run(thread, prompt) do
       Enum.each(result.events, &print_event/1)
     end

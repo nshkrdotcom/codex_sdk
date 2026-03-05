@@ -18,6 +18,10 @@ Use app-server when you need upstream v2 APIs that are not exposed via exec JSON
 
 The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PATH` → `System.find_executable("codex")`.
 
+If you need the literal command surface instead of the managed JSON-RPC connection,
+`Codex.CLI.app_server/1` launches a raw `codex app-server` subprocess session and
+`Codex.CLI.run/2` can be used for one-shot passthrough commands.
+
 ## Connect / Disconnect
 
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.

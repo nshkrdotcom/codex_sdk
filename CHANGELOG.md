@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
 - Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
+## [0.12.0] - 2026-03-06
+
+### Added
+
+- Added a new `Codex.CLI` passthrough layer plus `Codex.CLI.Session` PTY/raw subprocess sessions for command-surface parity with the upstream Codex terminal client, including wrappers for root `codex`, `app`, `app-server`, `apply`, `cloud`, `completion`, `execpolicy`, `features`, `login`, `logout`, `mcp`, `mcp-server`, `resume`, `fork`, and `sandbox`.
+- Added `examples/live_cli_passthrough.exs` and `examples/live_cli_session.exs` to demonstrate direct CLI passthrough and PTY-backed prompt-mode sessions.
+
+### Changed
+
+- `Codex.Thread.Options` now mirrors current Codex CLI web-search defaults when callers leave the setting untouched: cached search for normal local runs, and live search for full-access sandbox modes.
+- Updated README, guides, examples, and generated-doc module groupings to document the new CLI passthrough/session layer and the revised web-search default behavior.
+- Bumped package metadata to `0.12.0` in `mix.exs`, `VERSION`, README install snippets, and the getting-started guide.
+
 ## [0.11.0] - 2026-03-05
 
 ### Changed
@@ -703,7 +716,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...v0.10.0

@@ -1,7 +1,7 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.11.0"
+  @version "0.12.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
 
   def project do
@@ -112,6 +112,8 @@ defmodule CodexSdk.MixProject do
       groups_for_modules: [
         "Public API": [
           Codex,
+          Codex.CLI,
+          Codex.CLI.Session,
           Codex.Thread,
           Codex.Thread.Options,
           Codex.Options,

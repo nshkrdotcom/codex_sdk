@@ -466,7 +466,9 @@ defmodule Codex.Thread.Options do
           web_search_enabled,
           web_search_mode_provided?,
           web_search_enabled_provided?,
-          config
+          config,
+          sandbox,
+          dangerously_bypass_approvals_and_sandbox
         )
 
       web_search_mode_explicit =
@@ -687,7 +689,15 @@ defmodule Codex.Thread.Options do
 
   defp normalize_web_search_mode(other), do: {:error, {:invalid_web_search_mode, other}}
 
-  defp resolve_web_search_mode(mode, enabled, mode_provided?, enabled_provided?, config) do
+  defp resolve_web_search_mode(
+         mode,
+         enabled,
+         mode_provided?,
+         enabled_provided?,
+         config,
+         sandbox,
+         dangerously_bypass?
+       ) do
     cond do
       mode_provided? and not is_nil(mode) ->
         mode
@@ -697,11 +707,24 @@ defmodule Codex.Thread.Options do
 
       true ->
         case web_search_mode_from_config(config) do
-          nil -> :disabled
+          nil -> default_web_search_mode(sandbox, dangerously_bypass?)
           config_mode -> config_mode
         end
     end
   end
+
+  defp default_web_search_mode(sandbox, dangerously_bypass?) do
+    if dangerously_bypass? or full_access_sandbox?(sandbox) do
+      :live
+    else
+      :cached
+    end
+  end
+
+  defp full_access_sandbox?(:danger_full_access), do: true
+  defp full_access_sandbox?(:permissive), do: true
+  defp full_access_sandbox?("danger-full-access"), do: true
+  defp full_access_sandbox?(_), do: false
 
   defp explicit_web_search_mode?(mode, mode_provided?, enabled_provided?) do
     (mode_provided? and not is_nil(mode)) or enabled_provided?

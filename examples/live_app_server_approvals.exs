@@ -27,7 +27,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
     {:ok, codex_opts} =
       Codex.Options.new(%{
-        codex_path_override: codex_path
+        codex_path_override: codex_path,
+        reasoning_effort: :low
       })
 
     {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)

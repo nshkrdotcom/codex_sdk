@@ -13,7 +13,7 @@ defmodule LivePersonality do
     codex_path = fetch_codex_path!()
     ensure_app_server_supported!(codex_path)
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
+    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path, reasoning_effort: :low})
     {:ok, conn} = AppServer.connect(codex_opts, init_timeout_ms: 30_000)
 
     try do

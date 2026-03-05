@@ -17,7 +17,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
 - **Multi-Transport Support**: Default exec JSONL (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
-- **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color, config overrides, review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
+- **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly.
+- **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
 - **File & Attachment Pipeline**: Secure temp file registry and change events.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
@@ -34,7 +35,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.11.0"}
+    {:codex_sdk, "~> 0.12.0"}
   ]
 end
 ```
@@ -156,6 +157,43 @@ App-server-only APIs include:
 Note: app-server v2 does not support sending `UserInput::Skill` directly; use `skills/list` and inject skill content as text if you need emulation.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 
+### Raw CLI Passthrough and Interactive Sessions
+
+Use `Codex.CLI.run/2` when you want literal command-surface parity with the upstream terminal client, and `Codex.CLI.interactive/2` or `Codex.CLI.start/2` when you need a long-running or PTY-backed session.
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{})
+
+# Safe one-shot command wrappers
+{:ok, completion} = Codex.CLI.completion("zsh", codex_opts: codex_opts)
+IO.puts(completion.stdout)
+
+{:ok, features} = Codex.CLI.features_list(codex_opts: codex_opts)
+IO.puts(features.stdout)
+
+# Arbitrary raw command surface
+{:ok, result} =
+  Codex.CLI.run(
+    ["cloud", "list", "--json"],
+    codex_opts: codex_opts
+  )
+
+IO.puts(result.stdout)
+
+# Prompt-mode root codex session over a PTY
+{:ok, session} =
+  Codex.CLI.interactive(
+    "Summarize this repository in three bullets.",
+    codex_opts: codex_opts
+  )
+
+:ok = Codex.CLI.Session.close_input(session)
+{:ok, session_result} = Codex.CLI.Session.collect(session)
+IO.puts(session_result.stdout)
+```
+
+This layer is also the simplest way to reach CLI-only workflows such as `codex completion`, `codex cloud`, `codex execpolicy`, `codex features`, `codex mcp-server`, and the root interactive client without dropping down to `System.cmd/3` yourself.
+
 ### Streaming Responses
 
 For real-time processing of events as they occur:
@@ -232,6 +270,8 @@ The repository ships with standalone scripts under `examples/` that you can exec
 ./examples/run_all.sh
 ```
 
+Examples that start Codex turns prefer `reasoning_effort: :low`; the SDK will coerce that to a higher supported level when the selected model requires it.
+
 Or run individual scripts:
 
 ```bash
@@ -270,6 +310,12 @@ mix run examples/live_telemetry_stream.exs
 
 # Live CLI demo (requires authenticated codex CLI or CODEX_API_KEY)
 mix run examples/live_cli_demo.exs "What is the capital of France?"
+
+# Live Codex CLI passthrough helpers
+mix run examples/live_cli_passthrough.exs completion zsh
+
+# Live PTY-backed prompt-mode root session
+mix run examples/live_cli_session.exs "Summarize this repository in three bullets."
 ```
 
 
@@ -477,8 +523,11 @@ strings, booleans, integers/floats, arrays, and nested maps. Unsupported values
 
 When you explicitly disable web search (`web_search_enabled: false` or
 `web_search_mode: :disabled`), the SDK emits `web_search="disabled"` so that
-thread-level intent overrides existing CLI config. If you leave defaults
-untouched, no disable override is injected.
+thread-level intent overrides existing CLI config. When you leave defaults
+untouched, the SDK now mirrors current Codex CLI behavior: cached web search
+for normal local runs, and live web search when you opt into full-access
+sandboxing (`:danger_full_access`, `:permissive`, or
+`dangerously_bypass_approvals_and_sandbox: true`).
 
 ### Approval Hooks
 
@@ -942,6 +991,8 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`sandbox_warnings_and_approval_bypass.exs`** - Normalized sandbox warnings and policy-approved bypass demo
 - **`tool_bridging_auto_run.exs`** - Auto-run tool bridging with retries and failure reporting
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
+- **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
+- **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening (thread and turn level)

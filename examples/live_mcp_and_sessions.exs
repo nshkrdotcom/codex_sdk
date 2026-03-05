@@ -170,7 +170,8 @@ defmodule CodexExamples.LiveMcpAndSessions do
     {:ok, codex_opts} =
       Codex.Options.new(%{
         codex_path_override: fetch_codex_path!(),
-        model: Codex.Models.default_model()
+        model: Codex.Models.default_model(),
+        reasoning_effort: :low
       })
 
     {:ok, thread} = Codex.start_thread(codex_opts)

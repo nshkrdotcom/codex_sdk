@@ -28,7 +28,8 @@ defmodule LiveCollaborationModes do
     codex_path = fetch_codex_path!()
     ensure_app_server_supported!(codex_path)
 
-    with {:ok, codex_opts} <- Options.new(%{codex_path_override: codex_path}),
+    with {:ok, codex_opts} <-
+           Options.new(%{codex_path_override: codex_path, reasoning_effort: :low}),
          {:ok, conn} <- AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
       try do
         IO.puts("collaboration_mode/list:")
@@ -64,7 +65,7 @@ defmodule LiveCollaborationModes do
 
   defp run_turn(codex_opts, conn, prompt, selected_mode) do
     model = Models.default_model()
-    effort = Models.default_reasoning_effort(model)
+    effort = Models.coerce_reasoning_effort(model, :low)
 
     mode = %CollaborationMode{
       mode: selected_mode,

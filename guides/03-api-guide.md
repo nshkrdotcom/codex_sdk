@@ -14,6 +14,8 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
 | `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
+| `Codex.CLI` | Raw Codex CLI passthrough for command-surface parity |
+| `Codex.CLI.Session` | PTY/raw subprocess session helpers for interactive commands |
 | `Codex.Exec` | Exec JSONL subprocess wrapper (`codex exec --json`) |
 | `Codex.Sessions` | Session file utilities plus apply/undo helpers |
 | `Codex.Events` | Event type definitions |
@@ -28,6 +30,67 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Realtime` | Bidirectional voice via OpenAI Realtime API (WebSocket) |
 | `Codex.Voice` | Non-realtime STT → Workflow → TTS pipeline |
 | `Codex.OutputSchemaFile` | JSON schema file management |
+
+---
+
+## Codex.CLI and Codex.CLI.Session
+
+Use `Codex.CLI` when you need the upstream command surface directly rather than
+the SDK's typed thread abstractions.
+
+### `Codex.CLI`
+
+Key entry points:
+
+- `run/2` — synchronously runs arbitrary `codex` argv and collects stdout/stderr
+- `start/2` — starts an arbitrary raw `codex` subprocess session
+- `interactive/2` — launches the root `codex` client (prompt mode or full interactive mode)
+- wrappers for `app`, `app_server`, `apply`, `cloud`, `cloud_list`, `cloud_exec`, `completion`, `debug_app_server_send_message_v2`, `execpolicy_check`, `features_*`, `login`, `logout`, `mcp_*`, `mcp_server`, `resume`, `fork`, and `sandbox`
+
+Example:
+
+```elixir
+{:ok, codex_opts} = Codex.Options.new(%{})
+
+{:ok, result} = Codex.CLI.completion("zsh", codex_opts: codex_opts)
+IO.puts(result.stdout)
+
+{:ok, raw} =
+  Codex.CLI.run(
+    ["cloud", "list", "--json"],
+    codex_opts: codex_opts
+  )
+
+IO.puts(raw.stdout)
+```
+
+### `Codex.CLI.Session`
+
+Long-running and PTY-backed commands return `%Codex.CLI.Session{}` structs.
+The caller process receives raw subprocess messages:
+
+- `{:stdout, os_pid, binary}`
+- `{:stderr, os_pid, binary}`
+- `{:DOWN, os_pid, :process, pid, reason}`
+
+Use `send_input/2`, `close_input/1`, `interrupt/1`, `stop/1`, and `collect/2`
+to drive the session.
+
+```elixir
+{:ok, session} =
+  Codex.CLI.interactive(
+    "Summarize this repository in three bullets.",
+    codex_opts: codex_opts
+  )
+
+:ok = Codex.CLI.Session.close_input(session)
+{:ok, result} = Codex.CLI.Session.collect(session)
+IO.puts(result.stdout)
+```
+
+This passthrough layer is the recommended escape hatch for CLI-only workflows
+such as `codex completion`, `codex cloud`, `codex execpolicy`, and
+`codex mcp-server`.
 
 ---
 
@@ -1448,7 +1511,7 @@ Thread-specific configuration.
 - `skip_git_repo_check`: Allow running outside a Git repo
 - `network_access_enabled`: Workspace-write network access override for exec (`--config sandbox_workspace_write.network_access=...`)
 - `web_search_enabled`: Legacy web search toggle (deprecated; use `web_search_mode`); explicit `false` emits `web_search="disabled"`
-- `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`); explicit `:disabled` emits `web_search="disabled"` while untouched defaults emit nothing
+- `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`); untouched defaults now mirror the Codex CLI (`:cached` for normal local runs, `:live` for full-access sandbox modes)
 - `personality`: Thread-level personality override (`:friendly`, `:pragmatic`, `:none`), serialized consistently across exec and app-server transports
 - `collaboration_mode`: Collaboration mode preset for app-server turns (`:plan`, `:pair_programming`, `:execute`, or `:custom`)
 - `compact_prompt`: Override prompt used for context compaction

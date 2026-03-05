@@ -6,7 +6,7 @@ All examples run with `mix run` from the repository root.
 
 This SDK contains two distinct subsystems with different authentication:
 
-1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.exec/2`, `Codex.run/2`)
+1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via erlexec subprocess
    - Uses `codex login` authentication (no separate API key needed)
    - SDK default model: `Codex.Models.default_model()` (currently `gpt-5.4`)
@@ -17,7 +17,7 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the SDK default (override by exporting `CODEX_MODEL` before running). Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the SDK default (override by exporting `CODEX_MODEL` before running). Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model requires a higher minimum.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 ## Running everything
@@ -48,6 +48,8 @@ Prereqs:
 The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you are authenticated via `codex login`).
 
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
+- `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
+- `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
 - `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests

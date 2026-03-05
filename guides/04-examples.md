@@ -629,6 +629,48 @@ defmodule CommandExample do
 end
 ```
 
+### Raw CLI Passthrough and PTY Sessions
+
+When you need a Codex CLI command that is outside the structured thread API,
+use `Codex.CLI`.
+
+```elixir
+defmodule CLIExample do
+  def completion do
+    {:ok, codex_opts} = Codex.Options.new(%{})
+    {:ok, result} = Codex.CLI.completion("zsh", codex_opts: codex_opts)
+    IO.puts(result.stdout)
+  end
+
+  def prompt_mode do
+    {:ok, codex_opts} = Codex.Options.new(%{})
+
+    {:ok, session} =
+      Codex.CLI.interactive(
+        "Summarize this repository in three bullets.",
+        codex_opts: codex_opts
+      )
+
+    :ok = Codex.CLI.Session.close_input(session)
+    {:ok, result} = Codex.CLI.Session.collect(session)
+    IO.puts(result.stdout)
+  end
+end
+```
+
+For literal future-proof access, `Codex.CLI.run/2` and `Codex.CLI.start/2`
+accept arbitrary argv:
+
+```elixir
+{:ok, result} =
+  Codex.CLI.run(
+    ["cloud", "list", "--json"],
+    codex_opts: codex_opts
+  )
+
+IO.puts(result.stdout)
+```
+
 ---
 
 ## Error Handling
@@ -1356,6 +1398,8 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 ## Additional Live Examples
 
+- `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
+- `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_collaboration_modes.exs` — lists collaboration presets and runs a turn
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
@@ -1374,6 +1418,8 @@ See `guides/05-app-server-transport.md` for the complete guide, and run the live
 mix run examples/live_app_server_basic.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
 mix run examples/live_app_server_approvals.exs
+mix run examples/live_cli_passthrough.exs completion zsh
+mix run examples/live_cli_session.exs "Summarize this repository in three bullets."
 mix run examples/live_collaboration_modes.exs
 mix run examples/live_personality.exs
 mix run examples/live_thread_management.exs

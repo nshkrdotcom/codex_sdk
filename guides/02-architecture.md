@@ -8,6 +8,11 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 2. **Clean Separation**: Clear boundaries between client API, process management, and IPC
 3. **Robust Error Handling**: Failures are isolated and cleanly propagated
 
+Separate from thread/turn execution, the SDK also exposes a thin command-surface
+passthrough layer (`Codex.CLI` and `Codex.CLI.Session`) for CLI-only workflows
+such as `codex completion`, `codex cloud`, `codex features`, `codex mcp-server`,
+and the root interactive client.
+
 ## Transports
 
 `codex_sdk` supports two upstream external transports:
@@ -41,7 +46,7 @@ Transport selection is per-thread via `Codex.Thread.Options.transport`:
 │  (Factory for Thread instances)                               │
 └────────────────┬──────────────────────────────────────────────┘
                  │
-                 │ Returns Thread struct
+                 │ Returns Thread struct or CLI session helpers
                  ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                   Codex.Thread Module                          │
@@ -50,12 +55,13 @@ Transport selection is per-thread via `Codex.Thread.Options.transport`:
 │  (Manages turn execution lifecycle)                           │
 └────────────────┬──────────────────────────────────────────────┘
                  │
-                 │ Transport dispatch
+                 │ Transport dispatch / raw CLI passthrough
                  ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                Codex.Transport (behaviour)                     │
 │  - Exec JSONL: Codex.Exec                                     │
 │  - App-server: Codex.AppServer.Connection                      │
+│  - Raw CLI / PTY: Codex.CLI, Codex.CLI.Session                │
 └────────────────┬──────────────────────────────────────────────┘
                  │
                  │ Port (stdin/stdout)

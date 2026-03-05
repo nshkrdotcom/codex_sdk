@@ -10,7 +10,8 @@ defmodule CodexExamples.LiveCLIDemo do
 
     opts = %{
       api_key: fetch_api_key(),
-      codex_path_override: fetch_codex_path()
+      codex_path_override: fetch_codex_path(),
+      reasoning_effort: :low
     }
 
     with {:ok, thread} <- Codex.start_thread(opts),

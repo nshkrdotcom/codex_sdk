@@ -245,7 +245,7 @@ defmodule Codex.ExecTest do
     assert "sandbox_workspace_write.network_access=true" in configs
   end
 
-  test "uses --json and omits sandbox and approval policy defaults" do
+  test "uses --json, omits sandbox and approval policy defaults, and defaults web search to cached" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_json_args_#{System.unique_integer([:positive])}")
 
@@ -279,9 +279,7 @@ defmodule Codex.ExecTest do
              String.starts_with?(value, "approval_policy=")
            end)
 
-    refute Enum.any?(flag_values(args, "--config"), fn value ->
-             String.starts_with?(value, "web_search=")
-           end)
+    assert ~s(web_search="cached") in flag_values(args, "--config")
   end
 
   test "forwards model provider and instruction overrides via config" do

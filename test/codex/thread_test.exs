@@ -75,6 +75,22 @@ defmodule Codex.ThreadTest do
       assert opts.personality == :none
     end
 
+    test "defaults web search to cached mode" do
+      {:ok, opts} = ThreadOptions.new(%{})
+
+      assert opts.web_search_enabled == true
+      assert opts.web_search_mode == :cached
+      assert opts.web_search_mode_explicit == false
+    end
+
+    test "defaults web search to live mode for full-access sandbox policies" do
+      {:ok, opts} = ThreadOptions.new(%{sandbox: :danger_full_access})
+      assert opts.web_search_mode == :live
+
+      {:ok, opts} = ThreadOptions.new(%{dangerously_bypass_approvals_and_sandbox: true})
+      assert opts.web_search_mode == :live
+    end
+
     test "rejects invalid shell environment policy" do
       assert {:error, {:invalid_shell_environment_set, _}} =
                ThreadOptions.new(%{
