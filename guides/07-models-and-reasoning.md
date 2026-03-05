@@ -7,7 +7,7 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the SDK default model (currently gpt-5.3-codex)
+# Use the SDK default model (currently gpt-5.4)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
@@ -52,7 +52,7 @@ current auth mode:
 
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-["gpt-5.1-codex-max", "gpt-5.1-codex-mini", "gpt-5.2"]
+["gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.2", "gpt-5.1-codex-mini"]
 ```
 
 Each model preset includes:
@@ -228,7 +228,7 @@ Some models have upgrade paths to newer versions. Query them with:
 ```elixir
 iex> Codex.Models.get_upgrade("gpt-5.1-codex-max")
 %{
-  id: "gpt-5.3-codex",
+  id: "gpt-5.4",
   migration_config_key: "gpt-5.1-codex-max",
   reasoning_effort_mapping: nil,
   ...

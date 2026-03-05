@@ -237,11 +237,11 @@ defmodule Codex.Config.Defaults do
 
   @doc "Default model for API auth contexts."
   @spec default_api_model() :: String.t()
-  def default_api_model, do: "gpt-5.3-codex"
+  def default_api_model, do: "gpt-5.4"
 
   @doc "Default model for ChatGPT auth contexts."
   @spec default_chatgpt_model() :: String.t()
-  def default_chatgpt_model, do: "gpt-5.3-codex"
+  def default_chatgpt_model, do: "gpt-5.4"
 
   @doc "Cache TTL for remote model list in seconds (default: 300 — 5 min)."
   @spec remote_models_cache_ttl_seconds() :: pos_integer()

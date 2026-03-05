@@ -34,7 +34,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.10.1"}
+    {:codex_sdk, "~> 0.11.0"}
   ]
 end
 ```
@@ -83,9 +83,9 @@ to the codex subprocess to align with provider expectations.
 Base URL precedence is: explicit `:base_url` in `Codex.Options.new/1`, then `OPENAI_BASE_URL`,
 then the OpenAI default (`https://api.openai.com/v1`).
 
-Default model: `gpt-5.3-codex` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`).
+Default model: `gpt-5.4` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`).
 
-Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets and keeps `gpt-5.3-codex` available.
+Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets while keeping `gpt-5.4` as the SDK default.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
@@ -390,7 +390,7 @@ apply or undo diffs locally:
     model: "o1",
     reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
     model_personality: :friendly,
-    review_model: "gpt-5.3-codex",
+    review_model: "gpt-5.4",
     tool_output_token_limit: 512,
     history: %{persistence: "local", max_bytes: 1_000_000},
     config: %{"model_reasoning_summary" => "concise"}  # global --config baseline

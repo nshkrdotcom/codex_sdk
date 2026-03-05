@@ -55,7 +55,7 @@ defmodule Codex.Models do
           minimal_client_version: client_version(),
           supported_in_api: boolean(),
           priority: integer(),
-          upgrade: String.t() | nil,
+          upgrade: String.t() | map() | nil,
           base_instructions: String.t() | nil,
           supports_reasoning_summaries: boolean(),
           support_verbosity: boolean(),
@@ -134,7 +134,7 @@ defmodule Codex.Models do
 
   # -- Upgrade target ----------------------------------------------------------
 
-  @gpt_53_codex_upgrade %{
+  @default_model_upgrade %{
     id: @default_api_model,
     reasoning_effort_mapping: nil,
     migration_config_key: @default_api_model,
@@ -156,7 +156,38 @@ defmodule Codex.Models do
                      is_default: true,
                      upgrade: nil,
                      show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.3-codex",
+                     description: "Latest frontier agentic coding model.",
+                     supported_reasoning_efforts: @efforts_full,
+                     is_default: false,
+                     upgrade: @default_model_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.3-codex-spark",
+                     description: "Ultra-fast coding model.",
+                     supported_reasoning_efforts: @efforts_full,
+                     default_reasoning_effort: :high,
+                     is_default: false,
+                     upgrade: nil,
+                     show_in_picker: true,
                      supported_in_api: false,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.2-codex",
+                     description: "Frontier agentic coding model.",
+                     supported_reasoning_efforts: @efforts_full,
+                     is_default: false,
+                     upgrade: @default_model_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
                      shell_type: :shell_command
                    },
                    %{
@@ -164,17 +195,7 @@ defmodule Codex.Models do
                      description: "Codex-optimized flagship for deep and fast reasoning.",
                      supported_reasoning_efforts: @efforts_full,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.1-codex-mini",
-                     description: "Optimized for codex. Cheaper, faster, but less capable.",
-                     supported_reasoning_efforts: @efforts_mini,
-                     is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -185,7 +206,17 @@ defmodule Codex.Models do
                        "Latest frontier model with improvements across knowledge, reasoning and coding",
                      supported_reasoning_efforts: @efforts_frontier_xhigh,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.1-codex-mini",
+                     description: "Optimized for codex. Cheaper, faster, but less capable.",
+                     supported_reasoning_efforts: @efforts_mini,
+                     is_default: false,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -195,7 +226,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex.",
                      supported_reasoning_efforts: @efforts_standard,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -205,7 +236,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex. Cheaper, faster, but less capable.",
                      supported_reasoning_efforts: @efforts_mini,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -215,7 +246,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex.",
                      supported_reasoning_efforts: @efforts_standard,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -225,7 +256,7 @@ defmodule Codex.Models do
                      description: "Broad world knowledge with strong general reasoning.",
                      supported_reasoning_efforts: @efforts_gpt5,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :default
@@ -235,7 +266,7 @@ defmodule Codex.Models do
                      description: "Broad world knowledge with strong general reasoning.",
                      supported_reasoning_efforts: @efforts_frontier,
                      is_default: false,
-                     upgrade: @gpt_53_codex_upgrade,
+                     upgrade: @default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -248,12 +279,11 @@ defmodule Codex.Models do
                    |> Map.put_new(:default_reasoning_effort, :medium)
                  end)
 
-  # Shell types are derived from the presets; the only non-preset entry is
-  # gpt-5.2-codex which isn't in the preset list but needs a shell type.
+  # Shell types are derived from the preset list so tool enablement stays in
+  # sync with the visible picker catalog.
   @local_shell_types @local_presets
                      |> Enum.map(fn preset -> {preset.id, preset.shell_type} end)
                      |> Map.new()
-                     |> Map.put("gpt-5.2-codex", :shell_command)
 
   @doc """
   Returns the list of supported models visible for the inferred auth mode.
@@ -278,7 +308,7 @@ defmodule Codex.Models do
     auth_mode
     |> available_presets(cwd)
     |> filter_visible_models(auth_mode)
-    |> ensure_default()
+    |> ensure_default(auth_mode)
   end
 
   @doc """
@@ -452,10 +482,12 @@ defmodule Codex.Models do
   defp default_model_for_auth(:api), do: @default_api_model
 
   defp available_presets(auth_mode, cwd) do
+    preferred_model = default_model(auth_mode)
+
     remote_models =
       auth_mode
       |> remote_models(cwd)
-      |> Enum.sort_by(& &1.priority)
+      |> Enum.sort_by(fn model -> {model.slug != preferred_model, model.priority} end)
       |> Enum.map(&model_info_to_preset/1)
 
     merge_presets(remote_models, @local_presets)
@@ -467,14 +499,28 @@ defmodule Codex.Models do
     end)
   end
 
-  defp ensure_default([]), do: []
+  defp ensure_default([], _auth_mode), do: []
 
-  defp ensure_default(models) do
-    if Enum.any?(models, & &1.is_default) do
-      models
-    else
-      [first | rest] = models
-      [%{first | is_default: true} | rest]
+  defp ensure_default(models, auth_mode) do
+    preferred_model = default_model(auth_mode)
+
+    case Enum.find_index(models, fn model ->
+           model.id == preferred_model || model.model == preferred_model
+         end) do
+      nil ->
+        if Enum.any?(models, & &1.is_default) do
+          models
+        else
+          [first | rest] = models
+          [%{first | is_default: true} | rest]
+        end
+
+      preferred_index ->
+        models
+        |> Enum.with_index()
+        |> Enum.map(fn {model, index} ->
+          %{model | is_default: index == preferred_index}
+        end)
     end
   end
 
@@ -945,7 +991,18 @@ defmodule Codex.Models do
 
   defp upgrade_from_info(_slug, nil, _presets), do: nil
 
-  defp upgrade_from_info(slug, upgrade_slug, presets) do
+  defp upgrade_from_info(slug, %{"model" => upgrade_slug} = upgrade, presets)
+       when is_binary(upgrade_slug) do
+    %{
+      id: upgrade_slug,
+      reasoning_effort_mapping: reasoning_effort_mapping_from_presets(presets),
+      migration_config_key: slug,
+      model_link: nil,
+      upgrade_copy: Map.get(upgrade, "migration_markdown")
+    }
+  end
+
+  defp upgrade_from_info(slug, upgrade_slug, presets) when is_binary(upgrade_slug) do
     %{
       id: upgrade_slug,
       reasoning_effort_mapping: reasoning_effort_mapping_from_presets(presets),
@@ -954,6 +1011,8 @@ defmodule Codex.Models do
       upgrade_copy: nil
     }
   end
+
+  defp upgrade_from_info(_slug, _upgrade, _presets), do: nil
 
   defp reasoning_effort_mapping_from_presets([]), do: nil
 

@@ -757,7 +757,7 @@ end
 
 Configure based on environment.
 
-The default model is `gpt-5.3-codex` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`) and remote model metadata is gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets.
+The default model is `gpt-5.4` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`) and remote model metadata is gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets while keeping `gpt-5.4` as the SDK default.
 
 ```elixir
 defmodule MyApp.Codex do
@@ -1303,7 +1303,7 @@ end
 
 `examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or a CLI login) and mirrors the latest defaults:
 
-- Uses the SDK default model (`gpt-5.3-codex`) and reasoning effort.
+- Uses the SDK default model (`gpt-5.4`) and reasoning effort.
 - Streams events, printing token-usage deltas and turn diffs as they arrive.
 - Captures explicit compaction notifications (including usage deltas) and merges them into the displayed token totals.
 - Prints the final agent response alongside merged usage.
@@ -1314,7 +1314,7 @@ Run it with:
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
 
-Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.3-codex` by default, and `examples/conversation_and_resume.exs`, `examples/live_session_walkthrough.exs`, and `examples/live_mcp_and_sessions.exs` also explicitly set `model: "gpt-5.3-codex"`. Update those scripts if you want a different model.
+Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.4` by default. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string, so overriding `CODEX_MODEL` is usually enough if you want a different model.
 
 ## Live Exec Controls
 

@@ -9,7 +9,7 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.exec/2`, `Codex.run/2`)
    - Wraps the `codex` CLI via erlexec subprocess
    - Uses `codex login` authentication (no separate API key needed)
-   - SDK default model: `Codex.Models.default_model()` (currently `gpt-5.3-codex`)
+   - SDK default model: `Codex.Models.default_model()` (currently `gpt-5.4`)
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)

@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Voice multi-turn example now performs a preflight TTS quota check and skips on quota failures rather than timing out.
 - Attachments demo now stages a known-good minimal PNG payload to avoid corruption/decoder drift in downstream tooling.
 
+## [0.11.0] - 2026-03-05
+
+### Changed
+
+- Default SDK model is now `gpt-5.4` for both API-key and ChatGPT auth flows, and picker/default-marking behavior now keeps `gpt-5.4` preferred when local presets or current model catalogs are merged.
+- Bundled model metadata, README/guides, and live example defaults now reflect the current Codex model lineup, including `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and the refreshed `gpt-5.2-codex` description.
+- Bumped package metadata to `0.11.0` in `mix.exs`, `VERSION`, README install snippets, and the getting-started guide.
+
+### Fixed
+
+- `Codex.Models` now accepts current object-shaped remote `upgrade` payloads while preserving upgrade reasoning-effort mappings.
+
 ## [0.10.1] - 2026-02-11
 
 ### Changed
@@ -691,7 +703,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.1...v0.11.0
+[0.10.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.7.2...v0.8.0

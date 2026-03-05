@@ -50,12 +50,15 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
+               "gpt-5.4",
+               "gpt-5.3-codex",
+               "gpt-5.2-codex",
                "gpt-5.1-codex-max",
-               "gpt-5.1-codex-mini",
-               "gpt-5.2"
+               "gpt-5.2",
+               "gpt-5.1-codex-mini"
              ]
 
-      assert Enum.any?(models, &(&1.id == "gpt-5.1-codex-max" && &1.is_default))
+      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
   end
 
@@ -64,10 +67,13 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
 
       assert Enum.map(models, & &1.id) == [
+               "gpt-5.4",
                "gpt-5.3-codex",
+               "gpt-5.3-codex-spark",
+               "gpt-5.2-codex",
                "gpt-5.1-codex-max",
-               "gpt-5.1-codex-mini",
-               "gpt-5.2"
+               "gpt-5.2",
+               "gpt-5.1-codex-mini"
              ]
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
@@ -96,15 +102,13 @@ defmodule Codex.ModelsTest do
     with_temp_codex_home(fn home ->
       # Without remote_models config, we should get local presets
       models = Models.list_visible(:api)
-      # Local presets include gpt-5.1-codex-max, gpt-5.1-codex-mini, gpt-5.2
-      assert Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
-      assert length(models) >= 3
+      assert Enum.any?(models, &(&1.id == "gpt-5.4"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
+      assert length(models) >= 6
 
       write_config!(home, true)
       models = Models.list_visible(:api)
-      # With remote_models enabled, we may get additional models from cache
-      # but should still have the core models
-      assert Enum.any?(models, &(&1.id == "gpt-5.1-codex-max" && &1.is_default))
+      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
   end
 
@@ -127,13 +131,29 @@ defmodule Codex.ModelsTest do
     with_temp_codex_home(fn home ->
       write_config!(home, true)
 
-      upgrade = Models.get_upgrade(max_model())
+      write_models_cache!(home, [
+        remote_model_info(default_model(), 0,
+          visibility: "list",
+          supported_in_api: true,
+          upgrade: nil
+        ),
+        remote_model_info("gpt-5.2-codex", 1,
+          visibility: "list",
+          supported_in_api: true,
+          upgrade: %{
+            "model" => default_model(),
+            "migration_markdown" =>
+              "Learn more: https://openai.com/index/introducing-gpt-5-3-codex/"
+          }
+        )
+      ])
+
+      upgrade = Models.get_upgrade("gpt-5.2-codex")
 
       assert upgrade.id == default_model()
-      assert upgrade.migration_config_key == max_model()
-      # The upgrade may have reasoning effort mapping or nil depending on JSON
-      # Just verify the upgrade exists and has the expected id
-      assert is_map(upgrade)
+      assert upgrade.migration_config_key == "gpt-5.2-codex"
+      assert is_map(upgrade.reasoning_effort_mapping)
+      assert is_binary(upgrade.upgrade_copy)
     end)
   end
 
@@ -144,7 +164,7 @@ defmodule Codex.ModelsTest do
     assert Models.reasoning_effort_to_string(:none) == "none"
     assert Models.normalize_reasoning_effort("xhigh") == {:ok, :xhigh}
     assert Models.reasoning_effort_to_string(:xhigh) == "xhigh"
-    assert Models.supported_in_api?(default_model()) == false
+    assert Models.supported_in_api?(default_model()) == true
     assert Models.tool_enabled?("gpt-5.1")
   end
 
@@ -219,6 +239,7 @@ defmodule Codex.ModelsTest do
   defp remote_model_info(slug, priority, opts) do
     visibility = Keyword.get(opts, :visibility, "list")
     supported_in_api = Keyword.get(opts, :supported_in_api, true)
+    upgrade = Keyword.get(opts, :upgrade, nil)
 
     %{
       "slug" => slug,
@@ -234,7 +255,7 @@ defmodule Codex.ModelsTest do
       "minimal_client_version" => [0, 1, 0],
       "supported_in_api" => supported_in_api,
       "priority" => priority,
-      "upgrade" => nil,
+      "upgrade" => upgrade,
       "base_instructions" => nil,
       "supports_reasoning_summaries" => false,
       "support_verbosity" => false,
