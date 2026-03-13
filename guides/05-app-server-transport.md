@@ -121,14 +121,12 @@ Common thread-history operations are exposed via:
 
 - `Codex.AppServer.thread_list/2` (supports `sort_key` and `archived`)
 - `Codex.AppServer.thread_archive/2`
+- `Codex.AppServer.thread_unarchive/2`
+- `Codex.AppServer.thread_compact/2` (uses upstream `thread/compact/start`)
 - `Codex.AppServer.thread_read/3` (with optional `include_turns`)
 - `Codex.AppServer.thread_fork/3` and `Codex.AppServer.thread_rollback/3`
 - `Codex.AppServer.thread_loaded_list/2`
 - `Codex.AppServer.thread_resume/3` accepts optional `history` and `path` overrides
-
-### Removed APIs
-
-- `thread_compact/2` - Removed upstream; compaction is now automatic server-side
 
 ## Legacy v1 APIs
 
@@ -194,6 +192,8 @@ response = %Codex.Protocol.RequestUserInput.Response{
 :ok = Codex.AppServer.respond(conn, id, Codex.Protocol.RequestUserInput.Response.to_map(response))
 ```
 
+Question payloads now include `is_other` and `is_secret` when upstream sets them.
+
 ### Manual approval handling (UI loop)
 
 When Codex needs approval for a command or file change during a `turn/start`, it sends a server request:
@@ -220,6 +220,20 @@ Supported `decision` values include:
 
 Note: request `id` can be an integer or a string.
 
+### Additional request families
+
+Current upstream builds can also send these server requests:
+
+- `mcpServer/elicitation/request`
+- `item/permissions/requestApproval`
+- `item/tool/call`
+- `account/chatgptAuthTokens/refresh`
+
+The SDK's app-server streaming transport surfaces these as typed
+`%Codex.Events.*{}` structs, so callers do not need to parse raw JSON-RPC
+methods manually. Use `Codex.AppServer.respond/3` with the corresponding
+protocol payload maps.
+
 ### Headless auto-approval via `Codex.Approvals.Hook`
 
 When running turns via `Codex.Thread.*`, you can auto-respond to app-server approvals using `approval_hook` on thread options.
@@ -245,11 +259,13 @@ Skills require the experimental feature flag to be enabled in your codex config:
 skills = true
 ```
 
-Skills can have one of three scopes: `"User"`, `"Repo"`, or `"Public"`.
+Current upstream skill scopes are `user`, `repo`, `system`, and `admin`.
 
 ### Skills caveat
 
-App-server v2 does not support sending `UserInput::Skill` directly today (the union does not include it). Use `skills/list` to discover skills and inject content as text if you need an emulation layer.
+App-server v2 input blocks support both `skill` and `mention`, so you can send
+them directly via `thread/start` or `turn/start` payloads after discovering the
+target with `skills/list`, `plugin/list`, or app metadata APIs.
 
 ## Sandbox Notes
 

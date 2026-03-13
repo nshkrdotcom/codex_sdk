@@ -31,6 +31,40 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("thread/status/changed", %{} = params) do
+    {:ok,
+     %Events.ThreadStatusChanged{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       status: normalize_thread_status(Map.get(params, "status"))
+     }}
+  end
+
+  def to_event("thread/archived", %{} = params) do
+    {:ok,
+     %Events.ThreadArchived{
+       thread_id: fetch(params, "threadId", "thread_id") || ""
+     }}
+  end
+
+  def to_event("thread/unarchived", %{} = params) do
+    {:ok,
+     %Events.ThreadUnarchived{
+       thread_id: fetch(params, "threadId", "thread_id") || ""
+     }}
+  end
+
+  def to_event("skills/changed", %{} = _params) do
+    {:ok, %Events.SkillsChanged{}}
+  end
+
+  def to_event("thread/name/updated", %{} = params) do
+    {:ok,
+     %Events.ThreadNameUpdated{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       thread_name: Map.get(params, "threadName")
+     }}
+  end
+
   def to_event("sessionConfigured", %{} = params) do
     initial_messages =
       params
@@ -95,6 +129,15 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("hook/started", %{} = params) do
+    {:ok,
+     %Events.HookStarted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       turn_id: fetch(params, "turnId", "turn_id"),
+       run: Map.get(params, "run") || %{}
+     }}
+  end
+
   def to_event("turn/completed", %{} = params) do
     turn = Map.get(params, "turn") || %{}
 
@@ -104,6 +147,15 @@ defmodule Codex.AppServer.NotificationAdapter do
        turn_id: Map.get(turn, "id"),
        status: normalize_turn_status(Map.get(turn, "status")),
        error: Map.get(turn, "error")
+     }}
+  end
+
+  def to_event("hook/completed", %{} = params) do
+    {:ok,
+     %Events.HookCompleted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       turn_id: fetch(params, "turnId", "turn_id"),
+       run: Map.get(params, "run") || %{}
      }}
   end
 
@@ -246,7 +298,8 @@ defmodule Codex.AppServer.NotificationAdapter do
   def to_event("account/updated", %{} = params) do
     {:ok,
      %Events.AccountUpdated{
-       auth_mode: Map.get(params, "authMode") || Map.get(params, "auth_mode")
+       auth_mode: Map.get(params, "authMode") || Map.get(params, "auth_mode"),
+       plan_type: normalize_plan_type(Map.get(params, "planType") || Map.get(params, "plan_type"))
      }}
   end
 
@@ -294,11 +347,85 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("app/list/updated", %{} = params) do
+    {:ok,
+     %Events.AppListUpdated{
+       data: Map.get(params, "data") || []
+     }}
+  end
+
+  def to_event("model/rerouted", %{} = params) do
+    {:ok,
+     %Events.ModelRerouted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       turn_id: fetch(params, "turnId", "turn_id") || "",
+       from_model: Map.get(params, "fromModel") || "",
+       to_model: Map.get(params, "toModel") || "",
+       reason: normalize_model_reroute_reason(Map.get(params, "reason"))
+     }}
+  end
+
   def to_event("configWarning", %{} = params) do
     {:ok,
      %Events.ConfigWarning{
        summary: Map.get(params, "summary") || "",
        details: Map.get(params, "details")
+     }}
+  end
+
+  def to_event("fuzzyFileSearch/sessionUpdated", %{} = params) do
+    {:ok,
+     %Events.FuzzyFileSearchSessionUpdated{
+       session_id: Map.get(params, "sessionId") || "",
+       query: Map.get(params, "query") || "",
+       files: Map.get(params, "files") || []
+     }}
+  end
+
+  def to_event("fuzzyFileSearch/sessionCompleted", %{} = params) do
+    {:ok,
+     %Events.FuzzyFileSearchSessionCompleted{
+       session_id: Map.get(params, "sessionId") || ""
+     }}
+  end
+
+  def to_event("thread/realtime/started", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeStarted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       session_id: Map.get(params, "sessionId")
+     }}
+  end
+
+  def to_event("thread/realtime/itemAdded", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeItemAdded{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       item: Map.get(params, "item")
+     }}
+  end
+
+  def to_event("thread/realtime/outputAudio/delta", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeOutputAudioDelta{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       audio: normalize_audio_chunk(Map.get(params, "audio"))
+     }}
+  end
+
+  def to_event("thread/realtime/error", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeError{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       message: Map.get(params, "message") || ""
+     }}
+  end
+
+  def to_event("thread/realtime/closed", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeClosed{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       reason: Map.get(params, "reason")
      }}
   end
 
@@ -412,4 +539,66 @@ defmodule Codex.AppServer.NotificationAdapter do
   end
 
   defp normalize_turn_status(status), do: status
+
+  defp normalize_thread_status(nil), do: nil
+
+  defp normalize_thread_status(%{} = status) do
+    case Map.get(status, "type") do
+      "active" ->
+        %{
+          type: :active,
+          active_flags:
+            status
+            |> Map.get("activeFlags", [])
+            |> Enum.map(&normalize_thread_active_flag/1)
+        }
+
+      "notLoaded" ->
+        :not_loaded
+
+      "systemError" ->
+        :system_error
+
+      other when is_binary(other) ->
+        normalize_thread_status(other)
+
+      _ ->
+        status
+    end
+  end
+
+  defp normalize_thread_status("notLoaded"), do: :not_loaded
+  defp normalize_thread_status("idle"), do: :idle
+  defp normalize_thread_status("systemError"), do: :system_error
+  defp normalize_thread_status(other), do: other
+
+  defp normalize_thread_active_flag("waitingOnApproval"), do: :waiting_on_approval
+  defp normalize_thread_active_flag("waitingOnUserInput"), do: :waiting_on_user_input
+  defp normalize_thread_active_flag(flag), do: flag
+
+  defp normalize_plan_type(nil), do: nil
+  defp normalize_plan_type("plus"), do: :plus
+  defp normalize_plan_type("pro"), do: :pro
+  defp normalize_plan_type("team"), do: :team
+  defp normalize_plan_type("enterprise"), do: :enterprise
+  defp normalize_plan_type("api"), do: :api
+  defp normalize_plan_type(value), do: value
+
+  defp normalize_model_reroute_reason("highRiskCyberActivity"), do: :high_risk_cyber_activity
+  defp normalize_model_reroute_reason(value), do: value
+
+  defp normalize_audio_chunk(nil), do: %{}
+
+  defp normalize_audio_chunk(%{} = chunk) do
+    %{}
+    |> put_present("data", Map.get(chunk, "data"))
+    |> put_present("sample_rate", Map.get(chunk, "sampleRate"))
+    |> put_present("num_channels", Map.get(chunk, "numChannels"))
+    |> put_present("samples_per_channel", Map.get(chunk, "samplesPerChannel"))
+  end
+
+  defp normalize_audio_chunk(other), do: other
+
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
 end

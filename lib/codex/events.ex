@@ -24,6 +24,70 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule ThreadStatusChanged do
+    @moduledoc """
+    Event emitted when thread load or activity status changes.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, status: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            status: map() | String.t() | atom() | nil
+          }
+  end
+
+  defmodule ThreadArchived do
+    @moduledoc """
+    Event emitted when a thread is archived.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t()
+          }
+  end
+
+  defmodule ThreadUnarchived do
+    @moduledoc """
+    Event emitted when a thread is restored from the archive.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t()
+          }
+  end
+
+  defmodule SkillsChanged do
+    @moduledoc """
+    Invalidation signal emitted when watched skill metadata changes.
+    """
+
+    defstruct []
+
+    @type t :: %__MODULE__{}
+  end
+
+  defmodule ThreadNameUpdated do
+    @moduledoc """
+    Event emitted when the thread display name changes.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, thread_name: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            thread_name: String.t() | nil
+          }
+  end
+
   defmodule TurnStarted do
     @moduledoc """
     Event emitted when a new turn starts.
@@ -263,15 +327,46 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule HookStarted do
+    @moduledoc """
+    Event emitted when an app-server hook run starts.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, turn_id: nil, run: %{}
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            turn_id: String.t() | nil,
+            run: map()
+          }
+  end
+
+  defmodule HookCompleted do
+    @moduledoc """
+    Event emitted when an app-server hook run completes.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, turn_id: nil, run: %{}
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            turn_id: String.t() | nil,
+            run: map()
+          }
+  end
+
   defmodule AccountUpdated do
     @moduledoc """
     Event emitted when account authentication state changes.
     """
 
-    defstruct auth_mode: nil
+    defstruct auth_mode: nil, plan_type: nil
 
     @type t :: %__MODULE__{
-            auth_mode: String.t() | nil
+            auth_mode: String.t() | nil,
+            plan_type: atom() | String.t() | nil
           }
   end
 
@@ -334,6 +429,134 @@ defmodule Codex.Events do
     @type t :: %__MODULE__{
             summary: String.t(),
             details: String.t() | nil
+          }
+  end
+
+  defmodule AppListUpdated do
+    @moduledoc """
+    Event emitted when the app catalog changes.
+    """
+
+    @enforce_keys [:data]
+    defstruct data: []
+
+    @type t :: %__MODULE__{
+            data: [map()]
+          }
+  end
+
+  defmodule ModelRerouted do
+    @moduledoc """
+    Event emitted when Codex reroutes a turn to a different model.
+    """
+
+    @enforce_keys [:thread_id, :turn_id, :from_model, :to_model, :reason]
+    defstruct thread_id: nil, turn_id: nil, from_model: nil, to_model: nil, reason: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            turn_id: String.t(),
+            from_model: String.t(),
+            to_model: String.t(),
+            reason: String.t() | atom()
+          }
+  end
+
+  defmodule FuzzyFileSearchSessionUpdated do
+    @moduledoc """
+    Event emitted when a fuzzy file search session publishes updated matches.
+    """
+
+    @enforce_keys [:session_id, :query, :files]
+    defstruct session_id: nil, query: nil, files: []
+
+    @type t :: %__MODULE__{
+            session_id: String.t(),
+            query: String.t(),
+            files: [map()]
+          }
+  end
+
+  defmodule FuzzyFileSearchSessionCompleted do
+    @moduledoc """
+    Event emitted when a fuzzy file search session finishes.
+    """
+
+    @enforce_keys [:session_id]
+    defstruct session_id: nil
+
+    @type t :: %__MODULE__{
+            session_id: String.t()
+          }
+  end
+
+  defmodule ThreadRealtimeStarted do
+    @moduledoc """
+    Event emitted when thread realtime startup is accepted.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, session_id: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            session_id: String.t() | nil
+          }
+  end
+
+  defmodule ThreadRealtimeItemAdded do
+    @moduledoc """
+    Event emitted when thread realtime adds a non-audio item.
+    """
+
+    @enforce_keys [:thread_id, :item]
+    defstruct thread_id: nil, item: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            item: map() | list() | String.t()
+          }
+  end
+
+  defmodule ThreadRealtimeOutputAudioDelta do
+    @moduledoc """
+    Event emitted when thread realtime streams output audio.
+    """
+
+    @enforce_keys [:thread_id, :audio]
+    defstruct thread_id: nil, audio: %{}
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            audio: map()
+          }
+  end
+
+  defmodule ThreadRealtimeError do
+    @moduledoc """
+    Event emitted when thread realtime encounters an error.
+    """
+
+    @enforce_keys [:thread_id, :message]
+    defstruct thread_id: nil, message: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            message: String.t()
+          }
+  end
+
+  defmodule ThreadRealtimeClosed do
+    @moduledoc """
+    Event emitted when thread realtime closes.
+    """
+
+    @enforce_keys [:thread_id]
+    defstruct thread_id: nil, reason: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            reason: String.t() | nil
           }
   end
 
@@ -971,6 +1194,11 @@ defmodule Codex.Events do
   alias __MODULE__.{
     ItemAgentMessageDelta,
     ItemInputTextDelta,
+    ThreadArchived,
+    ThreadUnarchived,
+    ThreadStatusChanged,
+    SkillsChanged,
+    ThreadNameUpdated,
     ThreadStarted,
     TurnCompleted,
     ThreadTokenUsageUpdated,
@@ -993,11 +1221,22 @@ defmodule Codex.Events do
     AppServerNotification,
     McpToolCallProgress,
     McpServerOauthLoginCompleted,
+    HookStarted,
+    HookCompleted,
     AccountUpdated,
     AccountRateLimitsUpdated,
     AccountLoginCompleted,
     WindowsWorldWritableWarning,
     DeprecationNotice,
+    AppListUpdated,
+    ModelRerouted,
+    FuzzyFileSearchSessionUpdated,
+    FuzzyFileSearchSessionCompleted,
+    ThreadRealtimeStarted,
+    ThreadRealtimeItemAdded,
+    ThreadRealtimeOutputAudioDelta,
+    ThreadRealtimeError,
+    ThreadRealtimeClosed,
     RawResponseItemCompleted,
     Error,
     TurnFailed,
@@ -1032,6 +1271,11 @@ defmodule Codex.Events do
 
   @type t ::
           ThreadStarted.t()
+          | ThreadStatusChanged.t()
+          | ThreadArchived.t()
+          | ThreadUnarchived.t()
+          | SkillsChanged.t()
+          | ThreadNameUpdated.t()
           | TurnStarted.t()
           | TurnContinuation.t()
           | TurnCompleted.t()
@@ -1053,11 +1297,22 @@ defmodule Codex.Events do
           | AppServerNotification.t()
           | McpToolCallProgress.t()
           | McpServerOauthLoginCompleted.t()
+          | HookStarted.t()
+          | HookCompleted.t()
           | AccountUpdated.t()
           | AccountRateLimitsUpdated.t()
           | AccountLoginCompleted.t()
           | WindowsWorldWritableWarning.t()
           | DeprecationNotice.t()
+          | AppListUpdated.t()
+          | ModelRerouted.t()
+          | FuzzyFileSearchSessionUpdated.t()
+          | FuzzyFileSearchSessionCompleted.t()
+          | ThreadRealtimeStarted.t()
+          | ThreadRealtimeItemAdded.t()
+          | ThreadRealtimeOutputAudioDelta.t()
+          | ThreadRealtimeError.t()
+          | ThreadRealtimeClosed.t()
           | RawResponseItemCompleted.t()
           | Error.t()
           | TurnFailed.t()
@@ -1108,6 +1363,32 @@ defmodule Codex.Events do
     }
   end
 
+  def parse!(%{"type" => "thread/status/changed"} = map) do
+    %ThreadStatusChanged{
+      thread_id: Map.fetch!(map, "thread_id"),
+      status: parse_thread_status(Map.get(map, "status"))
+    }
+  end
+
+  def parse!(%{"type" => "thread/archived"} = map) do
+    %ThreadArchived{thread_id: Map.fetch!(map, "thread_id")}
+  end
+
+  def parse!(%{"type" => "thread/unarchived"} = map) do
+    %ThreadUnarchived{thread_id: Map.fetch!(map, "thread_id")}
+  end
+
+  def parse!(%{"type" => "skills/changed"}) do
+    %SkillsChanged{}
+  end
+
+  def parse!(%{"type" => "thread/name/updated"} = map) do
+    %ThreadNameUpdated{
+      thread_id: Map.fetch!(map, "thread_id"),
+      thread_name: Map.get(map, "thread_name") || Map.get(map, "threadName")
+    }
+  end
+
   def parse!(%{"type" => type} = map) when type in ["session_configured", "sessionConfigured"] do
     parse_session_configured(map)
   end
@@ -1138,6 +1419,14 @@ defmodule Codex.Events do
     }
   end
 
+  def parse!(%{"type" => "hook/started"} = map) do
+    %HookStarted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.get(map, "turn_id"),
+      run: Map.get(map, "run") || %{}
+    }
+  end
+
   def parse!(%{"type" => "turn.continuation"} = map) do
     %TurnContinuation{
       thread_id: Map.fetch!(map, "thread_id"),
@@ -1157,6 +1446,14 @@ defmodule Codex.Events do
       usage: Map.get(map, "usage"),
       status: Map.get(map, "status"),
       error: Map.get(map, "error")
+    }
+  end
+
+  def parse!(%{"type" => "hook/completed"} = map) do
+    %HookCompleted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.get(map, "turn_id"),
+      run: Map.get(map, "run") || %{}
     }
   end
 
@@ -1467,9 +1764,82 @@ defmodule Codex.Events do
     }
   end
 
+  def parse!(%{"type" => "app/list/updated"} = map) do
+    %AppListUpdated{
+      data: Map.get(map, "data") || []
+    }
+  end
+
+  def parse!(%{"type" => "model/rerouted"} = map) do
+    %ModelRerouted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      from_model: Map.fetch!(map, "from_model"),
+      to_model: Map.fetch!(map, "to_model"),
+      reason: normalize_model_reroute_reason(Map.get(map, "reason"))
+    }
+  end
+
+  def parse!(%{"type" => "fuzzyFileSearch/sessionUpdated"} = map) do
+    %FuzzyFileSearchSessionUpdated{
+      session_id: Map.fetch!(map, "session_id"),
+      query: Map.fetch!(map, "query"),
+      files: Map.get(map, "files") || []
+    }
+  end
+
+  def parse!(%{"type" => "fuzzyFileSearch/sessionCompleted"} = map) do
+    %FuzzyFileSearchSessionCompleted{
+      session_id: Map.fetch!(map, "session_id")
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/started"} = map) do
+    %ThreadRealtimeStarted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      session_id: Map.get(map, "session_id")
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/itemAdded"} = map) do
+    %ThreadRealtimeItemAdded{
+      thread_id: Map.fetch!(map, "thread_id"),
+      item: Map.get(map, "item")
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/outputAudio/delta"} = map) do
+    %ThreadRealtimeOutputAudioDelta{
+      thread_id: Map.fetch!(map, "thread_id"),
+      audio: Map.get(map, "audio") || %{}
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/error"} = map) do
+    %ThreadRealtimeError{
+      thread_id: Map.fetch!(map, "thread_id"),
+      message: Map.get(map, "message") || ""
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/closed"} = map) do
+    %ThreadRealtimeClosed{
+      thread_id: Map.fetch!(map, "thread_id"),
+      reason: Map.get(map, "reason")
+    }
+  end
+
   def parse!(%{"type" => "account/updated"} = map) do
     %AccountUpdated{
-      auth_mode: Map.get(map, "auth_mode") || Map.get(map, "authMode")
+      auth_mode: Map.get(map, "auth_mode") || Map.get(map, "authMode"),
+      plan_type:
+        map
+        |> Map.get("plan_type")
+        |> case do
+          nil -> Map.get(map, "planType")
+          value -> value
+        end
+        |> normalize_plan_type()
     }
   end
 
@@ -1579,12 +1949,55 @@ defmodule Codex.Events do
     |> put_optional("metadata", event.metadata)
   end
 
+  def to_map(%ThreadStatusChanged{} = event) do
+    %{
+      "type" => "thread/status/changed",
+      "thread_id" => event.thread_id
+    }
+    |> put_optional("status", encode_thread_status(event.status))
+  end
+
+  def to_map(%ThreadArchived{} = event) do
+    %{
+      "type" => "thread/archived",
+      "thread_id" => event.thread_id
+    }
+  end
+
+  def to_map(%ThreadUnarchived{} = event) do
+    %{
+      "type" => "thread/unarchived",
+      "thread_id" => event.thread_id
+    }
+  end
+
+  def to_map(%SkillsChanged{}) do
+    %{"type" => "skills/changed"}
+  end
+
+  def to_map(%ThreadNameUpdated{} = event) do
+    %{
+      "type" => "thread/name/updated",
+      "thread_id" => event.thread_id
+    }
+    |> put_optional("thread_name", event.thread_name)
+  end
+
   def to_map(%TurnStarted{} = event) do
     %{
       "type" => "turn.started",
       "turn_id" => event.turn_id,
       "thread_id" => event.thread_id
     }
+  end
+
+  def to_map(%HookStarted{} = event) do
+    %{
+      "type" => "hook/started",
+      "thread_id" => event.thread_id,
+      "run" => event.run || %{}
+    }
+    |> put_optional("turn_id", event.turn_id)
   end
 
   def to_map(%TurnContinuation{} = event) do
@@ -1609,6 +2022,15 @@ defmodule Codex.Events do
     |> put_optional("usage", event.usage)
     |> put_optional("status", event.status)
     |> put_optional("error", event.error)
+  end
+
+  def to_map(%HookCompleted{} = event) do
+    %{
+      "type" => "hook/completed",
+      "thread_id" => event.thread_id,
+      "run" => event.run || %{}
+    }
+    |> put_optional("turn_id", event.turn_id)
   end
 
   def to_map(%ThreadTokenUsageUpdated{} = event) do
@@ -1782,6 +2204,7 @@ defmodule Codex.Events do
       "type" => "account/updated"
     }
     |> put_optional("auth_mode", event.auth_mode)
+    |> put_optional("plan_type", encode_plan_type(event.plan_type))
   end
 
   def to_map(%AccountRateLimitsUpdated{} = event) do
@@ -1817,6 +2240,80 @@ defmodule Codex.Events do
       "summary" => event.summary
     }
     |> put_optional("details", event.details)
+  end
+
+  def to_map(%AppListUpdated{} = event) do
+    %{
+      "type" => "app/list/updated",
+      "data" => event.data
+    }
+  end
+
+  def to_map(%ModelRerouted{} = event) do
+    %{
+      "type" => "model/rerouted",
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "from_model" => event.from_model,
+      "to_model" => event.to_model,
+      "reason" => encode_model_reroute_reason(event.reason)
+    }
+  end
+
+  def to_map(%FuzzyFileSearchSessionUpdated{} = event) do
+    %{
+      "type" => "fuzzyFileSearch/sessionUpdated",
+      "session_id" => event.session_id,
+      "query" => event.query,
+      "files" => event.files
+    }
+  end
+
+  def to_map(%FuzzyFileSearchSessionCompleted{} = event) do
+    %{
+      "type" => "fuzzyFileSearch/sessionCompleted",
+      "session_id" => event.session_id
+    }
+  end
+
+  def to_map(%ThreadRealtimeStarted{} = event) do
+    %{
+      "type" => "thread/realtime/started",
+      "thread_id" => event.thread_id
+    }
+    |> put_optional("session_id", event.session_id)
+  end
+
+  def to_map(%ThreadRealtimeItemAdded{} = event) do
+    %{
+      "type" => "thread/realtime/itemAdded",
+      "thread_id" => event.thread_id,
+      "item" => event.item
+    }
+  end
+
+  def to_map(%ThreadRealtimeOutputAudioDelta{} = event) do
+    %{
+      "type" => "thread/realtime/outputAudio/delta",
+      "thread_id" => event.thread_id,
+      "audio" => event.audio
+    }
+  end
+
+  def to_map(%ThreadRealtimeError{} = event) do
+    %{
+      "type" => "thread/realtime/error",
+      "thread_id" => event.thread_id,
+      "message" => event.message
+    }
+  end
+
+  def to_map(%ThreadRealtimeClosed{} = event) do
+    %{
+      "type" => "thread/realtime/closed",
+      "thread_id" => event.thread_id
+    }
+    |> put_optional("reason", event.reason)
   end
 
   def to_map(%RawResponseItemCompleted{} = event) do
@@ -2362,6 +2859,105 @@ defmodule Codex.Events do
   defp encode_rate_limit_plan(plan) when is_atom(plan), do: Atom.to_string(plan)
   defp encode_rate_limit_plan(plan) when is_binary(plan), do: plan
   defp encode_rate_limit_plan(plan), do: to_string(plan)
+
+  defp parse_thread_status(nil), do: nil
+
+  defp parse_thread_status(%{} = status) do
+    type = fetch_any(status, ["type"])
+
+    case type do
+      "active" ->
+        %{
+          type: :active,
+          active_flags:
+            status
+            |> fetch_any(["active_flags", "activeFlags"])
+            |> List.wrap()
+            |> Enum.map(&normalize_thread_active_flag/1)
+        }
+
+      "notLoaded" ->
+        :not_loaded
+
+      "systemError" ->
+        :system_error
+
+      other when is_binary(other) ->
+        normalize_thread_status(other)
+
+      _ ->
+        status
+    end
+  end
+
+  defp parse_thread_status(status), do: normalize_thread_status(status)
+
+  defp normalize_thread_status("notLoaded"), do: :not_loaded
+  defp normalize_thread_status("not_loaded"), do: :not_loaded
+  defp normalize_thread_status("idle"), do: :idle
+  defp normalize_thread_status("systemError"), do: :system_error
+  defp normalize_thread_status("system_error"), do: :system_error
+  defp normalize_thread_status("active"), do: %{type: :active, active_flags: []}
+  defp normalize_thread_status(status) when is_atom(status), do: status
+  defp normalize_thread_status(status), do: status
+
+  defp normalize_thread_active_flag("waitingOnApproval"), do: :waiting_on_approval
+  defp normalize_thread_active_flag("waiting_on_approval"), do: :waiting_on_approval
+  defp normalize_thread_active_flag("waitingOnUserInput"), do: :waiting_on_user_input
+  defp normalize_thread_active_flag("waiting_on_user_input"), do: :waiting_on_user_input
+  defp normalize_thread_active_flag(flag) when is_atom(flag), do: flag
+  defp normalize_thread_active_flag(flag), do: flag
+
+  defp encode_thread_status(nil), do: nil
+
+  defp encode_thread_status(%{type: :active} = status) do
+    %{
+      "type" => "active",
+      "active_flags" =>
+        status
+        |> Map.get(:active_flags, [])
+        |> Enum.map(&encode_thread_active_flag/1)
+    }
+  end
+
+  defp encode_thread_status(%{"type" => _} = status), do: status
+
+  defp encode_thread_status(status) when is_atom(status),
+    do: encode_thread_status(Atom.to_string(status))
+
+  defp encode_thread_status("not_loaded"), do: "notLoaded"
+  defp encode_thread_status("system_error"), do: "systemError"
+  defp encode_thread_status(status) when is_binary(status), do: status
+  defp encode_thread_status(status), do: status
+
+  defp encode_thread_active_flag(:waiting_on_approval), do: "waitingOnApproval"
+  defp encode_thread_active_flag(:waiting_on_user_input), do: "waitingOnUserInput"
+  defp encode_thread_active_flag(flag) when is_atom(flag), do: Atom.to_string(flag)
+  defp encode_thread_active_flag(flag), do: flag
+
+  defp normalize_plan_type(nil), do: nil
+  defp normalize_plan_type("plus"), do: :plus
+  defp normalize_plan_type("pro"), do: :pro
+  defp normalize_plan_type("team"), do: :team
+  defp normalize_plan_type("enterprise"), do: :enterprise
+  defp normalize_plan_type("api"), do: :api
+  defp normalize_plan_type(type) when is_atom(type), do: type
+  defp normalize_plan_type(type), do: type
+
+  defp encode_plan_type(nil), do: nil
+  defp encode_plan_type(type) when is_atom(type), do: Atom.to_string(type)
+  defp encode_plan_type(type), do: type
+
+  defp normalize_model_reroute_reason(nil), do: nil
+  defp normalize_model_reroute_reason("highRiskCyberActivity"), do: :high_risk_cyber_activity
+  defp normalize_model_reroute_reason("high_risk_cyber_activity"), do: :high_risk_cyber_activity
+  defp normalize_model_reroute_reason(reason) when is_atom(reason), do: reason
+  defp normalize_model_reroute_reason(reason), do: reason
+
+  defp encode_model_reroute_reason(nil), do: nil
+  defp encode_model_reroute_reason(:high_risk_cyber_activity), do: "highRiskCyberActivity"
+  defp encode_model_reroute_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp encode_model_reroute_reason(reason), do: reason
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)

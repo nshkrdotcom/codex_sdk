@@ -10,7 +10,7 @@ defmodule Codex.Config.LayerStackTest do
     File.mkdir_p!(tmp_root)
 
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
-    system_path = Path.join(tmp_root, "system_config.toml")
+    system_path = Path.join(tmp_root, "system/config.toml")
     Application.put_env(:codex_sdk, :system_config_path, system_path)
 
     on_exit(fn ->
@@ -25,7 +25,7 @@ defmodule Codex.Config.LayerStackTest do
     {:ok, tmp_root: tmp_root, system_path: system_path}
   end
 
-  test "uses system config for remote models when present", %{
+  test "loads system config and sibling requirements", %{
     tmp_root: tmp_root,
     system_path: system_path
   } do
@@ -39,73 +39,142 @@ defmodule Codex.Config.LayerStackTest do
     remote_models = true
     """)
 
-    assert LayerStack.remote_models_enabled?(codex_home, cwd) == true
-  end
+    write_config!(Path.join(Path.dirname(system_path), "requirements.toml"), """
+    allowed_approval_policies = ["granular"]
 
-  test "project layer overrides user config", %{tmp_root: tmp_root} do
-    codex_home = Path.join(tmp_root, "home")
-    workspace = Path.join(tmp_root, "workspace")
-    project = Path.join(workspace, "project")
-    File.mkdir_p!(codex_home)
-    File.mkdir_p!(project)
-    File.mkdir_p!(Path.join(project, ".git"))
-
-    write_config!(Path.join(codex_home, "config.toml"), """
-    [features]
-    remote_models = false
+    [network]
+    disabled = true
     """)
 
-    project_codex = Path.join(project, ".codex")
-    File.mkdir_p!(project_codex)
+    assert {:ok, layers} = LayerStack.load(codex_home, cwd)
+    config = LayerStack.effective_config(layers)
 
-    write_config!(Path.join(project_codex, "config.toml"), """
+    assert get_in(config, ["features", "remote_models"]) == true
+    assert get_in(config, ["requirements", "allowed_approval_policies"]) == ["granular"]
+    assert get_in(config, ["requirements", "network", "disabled"]) == true
+  end
+
+  test "trusted project layers override user config and repo .codex beats cwd config", %{
+    tmp_root: tmp_root
+  } do
+    codex_home = Path.join(tmp_root, "home")
+    project = Path.join(tmp_root, "workspace/project")
+    cwd = Path.join(project, "apps/mobile")
+    File.mkdir_p!(codex_home)
+    File.mkdir_p!(cwd)
+    File.mkdir_p!(Path.join(project, ".git"))
+    File.mkdir_p!(Path.join(project, ".codex"))
+
+    trusted_project = Path.expand(project)
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    model = "user-model"
+
+    [projects."#{trusted_project}"]
+    trust_level = "trusted"
+    """)
+
+    write_config!(Path.join(cwd, "config.toml"), """
+    model = "cwd-model"
+    allow_login_shell = false
+    """)
+
+    write_config!(Path.join(project, ".codex/config.toml"), """
+    model = "repo-model"
+
+    [apps]
+    disable = true
+    """)
+
+    assert {:ok, layers} = LayerStack.load(codex_home, cwd)
+    config = LayerStack.effective_config(layers)
+
+    assert config["model"] == "repo-model"
+    assert config["allow_login_shell"] == false
+    assert get_in(config, ["apps", "disable"]) == true
+    assert Enum.any?(layers, &(&1.path == Path.join(cwd, "config.toml") and &1.enabled))
+
+    assert Enum.any?(
+             layers,
+             &(&1.path == Path.join(project, ".codex/config.toml") and &1.enabled)
+           )
+  end
+
+  test "missing trust disables cwd and project layers", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    project = Path.join(tmp_root, "workspace/project")
+    cwd = Path.join(project, "apps/mobile")
+    File.mkdir_p!(codex_home)
+    File.mkdir_p!(cwd)
+    File.mkdir_p!(Path.join(project, ".git"))
+    File.mkdir_p!(Path.join(project, ".codex"))
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    model = "user-model"
+    """)
+
+    write_config!(Path.join(cwd, "config.toml"), """
+    model = "cwd-model"
+    """)
+
+    write_config!(Path.join(project, ".codex/config.toml"), """
     [features]
     remote_models = true
     """)
 
-    assert LayerStack.remote_models_enabled?(codex_home, project) == true
+    assert {:ok, layers} = LayerStack.load(codex_home, cwd)
+    config = LayerStack.effective_config(layers)
+
+    assert config["model"] == "user-model"
+    assert get_in(config, ["features", "remote_models"]) != true
+
+    assert Enum.any?(
+             layers,
+             &(String.ends_with?(&1.path, "/config.toml") and &1.enabled == false)
+           )
   end
 
-  test "project_root_markers empty disables parent discovery", %{tmp_root: tmp_root} do
+  test "project_root_markers empty limits discovery to cwd", %{tmp_root: tmp_root} do
     codex_home = Path.join(tmp_root, "home")
-    workspace = Path.join(tmp_root, "workspace")
-    parent = Path.join(workspace, "parent")
+    parent = Path.join(tmp_root, "workspace/parent")
     child = Path.join(parent, "child")
     File.mkdir_p!(codex_home)
     File.mkdir_p!(child)
     File.mkdir_p!(Path.join(parent, ".git"))
+    File.mkdir_p!(Path.join(parent, ".codex"))
 
     write_config!(Path.join(codex_home, "config.toml"), """
     project_root_markers = []
+
+    [projects."#{Path.expand(child)}"]
+    trust_level = "trusted"
     """)
 
-    parent_codex = Path.join(parent, ".codex")
-    File.mkdir_p!(parent_codex)
-
-    write_config!(Path.join(parent_codex, "config.toml"), """
+    write_config!(Path.join(parent, ".codex/config.toml"), """
     [features]
     remote_models = true
     """)
 
-    child_codex = Path.join(child, ".codex")
-    File.mkdir_p!(child_codex)
+    assert {:ok, layers} = LayerStack.load(codex_home, child)
+    config = LayerStack.effective_config(layers)
 
-    write_config!(Path.join(child_codex, "config.toml"), """
-    [features]
-    remote_models = false
-    """)
-
-    assert LayerStack.remote_models_enabled?(codex_home, child) == false
+    refute get_in(config, ["features", "remote_models"])
   end
 
-  test "parses history and shell environment policy config", %{tmp_root: tmp_root} do
+  test "parses allow_login_shell, apps, memories, and shell environment policy", %{
+    tmp_root: tmp_root
+  } do
     codex_home = Path.join(tmp_root, "home")
     File.mkdir_p!(codex_home)
 
     write_config!(Path.join(codex_home, "config.toml"), """
-    [history]
-    persistence = "none"
-    max_bytes = 12345
+    allow_login_shell = false
+
+    [apps]
+    disable = true
+
+    [memories]
+    disable = true
 
     [shell_environment_policy]
     inherit = "core"
@@ -116,53 +185,16 @@ defmodule Codex.Config.LayerStackTest do
     """)
 
     assert {:ok, layers} = LayerStack.load(codex_home, nil)
-
     config = LayerStack.effective_config(layers)
 
-    assert get_in(config, ["history", "persistence"]) == "none"
-    assert get_in(config, ["history", "max_bytes"]) == 12_345
+    assert config["allow_login_shell"] == false
+    assert get_in(config, ["apps", "disable"]) == true
+    assert get_in(config, ["memories", "disable"]) == true
     assert get_in(config, ["shell_environment_policy", "inherit"]) == "core"
     assert get_in(config, ["shell_environment_policy", "ignore_default_excludes"]) == false
     assert get_in(config, ["shell_environment_policy", "exclude"]) == ["AWS_*"]
     assert get_in(config, ["shell_environment_policy", "include_only"]) == ["PATH"]
     assert get_in(config, ["shell_environment_policy", "set"]) == %{"FOO" => "bar"}
-  end
-
-  test "parses dotted core keys and model provider", %{tmp_root: tmp_root} do
-    codex_home = Path.join(tmp_root, "home")
-    File.mkdir_p!(codex_home)
-
-    write_config!(Path.join(codex_home, "config.toml"), """
-    model_provider = "mistral"
-    features.remote_models = true
-    history.persistence = "local"
-    history.max_bytes = 2048
-    shell_environment_policy.inherit = "none"
-    shell_environment_policy.exclude = ["AWS_*"]
-    """)
-
-    assert {:ok, layers} = LayerStack.load(codex_home, nil)
-
-    config = LayerStack.effective_config(layers)
-
-    assert config["model_provider"] == "mistral"
-    assert get_in(config, ["features", "remote_models"]) == true
-    assert get_in(config, ["history", "persistence"]) == "local"
-    assert get_in(config, ["history", "max_bytes"]) == 2048
-    assert get_in(config, ["shell_environment_policy", "inherit"]) == "none"
-    assert get_in(config, ["shell_environment_policy", "exclude"]) == ["AWS_*"]
-  end
-
-  test "rejects invalid cli_auth_credentials_store values", %{tmp_root: tmp_root} do
-    codex_home = Path.join(tmp_root, "home")
-    File.mkdir_p!(codex_home)
-
-    write_config!(Path.join(codex_home, "config.toml"), """
-    cli_auth_credentials_store = "unsupported"
-    """)
-
-    assert {:error, {:invalid_toml, _path, {:invalid_cli_auth_credentials_store, "unsupported"}}} =
-             LayerStack.load(codex_home, nil)
   end
 
   defp write_config!(path, contents) do

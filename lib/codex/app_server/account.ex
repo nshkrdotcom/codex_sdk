@@ -95,6 +95,8 @@ defmodule Codex.AppServer.Account do
   defp infer_login_type(%{} = params) do
     case Map.get(params, "type") || Map.get(params, :type) do
       "chatgpt" -> {:ok, :chatgpt}
+      "chatgptAuthTokens" -> {:ok, :chatgpt}
+      "chatgpt_auth_tokens" -> {:ok, :chatgpt}
       "apiKey" -> {:ok, :api_key}
       "api_key" -> {:ok, :api_key}
       "api" -> {:ok, :api_key}
@@ -128,8 +130,12 @@ defmodule Codex.AppServer.Account do
 
   defp fetch_workspace_id(params) do
     Map.get(params, "workspaceId") ||
+      Map.get(params, "chatgptAccountId") ||
       Map.get(params, "workspace_id") ||
+      Map.get(params, "chatgpt_account_id") ||
       Map.get(params, :workspaceId) ||
-      Map.get(params, :workspace_id)
+      Map.get(params, :chatgptAccountId) ||
+      Map.get(params, :workspace_id) ||
+      Map.get(params, :chatgpt_account_id)
   end
 end

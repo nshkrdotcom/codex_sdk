@@ -217,6 +217,106 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
+  test "thread lifecycle wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+    list_task =
+      Task.async(fn ->
+        AppServer.thread_list(conn,
+          sort_key: :updated_at,
+          archived: false,
+          source_kinds: [:app_server, :sub_agent_review],
+          cwd: "/tmp/project",
+          search_term: "checkout"
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, list_line}
+
+    assert {:ok, %{"id" => list_id, "method" => "thread/list", "params" => list_params}} =
+             Jason.decode(list_line)
+
+    assert list_params["sortKey"] == "updated_at"
+    assert list_params["archived"] == false
+    assert list_params["sourceKinds"] == ["appServer", "subAgentReview"]
+    assert list_params["cwd"] == "/tmp/project"
+    assert list_params["searchTerm"] == "checkout"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(list_id, %{"data" => []})})
+    assert {:ok, %{"data" => []}} = Task.await(list_task, 200)
+
+    unsubscribe_task = Task.async(fn -> AppServer.thread_unsubscribe(conn, "thr_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, unsubscribe_line}
+
+    assert {:ok,
+            %{
+              "id" => unsubscribe_id,
+              "method" => "thread/unsubscribe",
+              "params" => %{"threadId" => "thr_1"}
+            }} = Jason.decode(unsubscribe_line)
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(unsubscribe_id, %{"status" => "unsubscribed"})}
+    )
+
+    assert {:ok, %{"status" => "unsubscribed"}} = Task.await(unsubscribe_task, 200)
+
+    rename_task = Task.async(fn -> AppServer.thread_name_set(conn, "thr_1", "Renamed") end)
+    assert_receive {:app_server_subprocess_send, ^conn, rename_line}
+
+    assert {:ok,
+            %{
+              "id" => rename_id,
+              "method" => "thread/name/set",
+              "params" => %{"threadId" => "thr_1", "name" => "Renamed"}
+            }} = Jason.decode(rename_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(rename_id, %{"status" => "ok"})})
+    assert {:ok, %{"status" => "ok"}} = Task.await(rename_task, 200)
+
+    metadata_task =
+      Task.async(fn ->
+        AppServer.thread_metadata_update(conn, "thr_1",
+          git_info: %{sha: nil, branch: "main", origin_url: nil}
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, metadata_line}
+
+    assert {:ok,
+            %{
+              "id" => metadata_id,
+              "method" => "thread/metadata/update",
+              "params" => metadata_params
+            }} = Jason.decode(metadata_line)
+
+    assert metadata_params["threadId"] == "thr_1"
+    assert metadata_params["gitInfo"] == %{"sha" => nil, "branch" => "main", "originUrl" => nil}
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(metadata_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(metadata_task, 200)
+
+    unarchive_task = Task.async(fn -> AppServer.thread_unarchive(conn, "thr_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, unarchive_line}
+
+    assert {:ok,
+            %{
+              "id" => unarchive_id,
+              "method" => "thread/unarchive",
+              "params" => %{"threadId" => "thr_1"}
+            }} = Jason.decode(unarchive_line)
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(unarchive_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(unarchive_task, 200)
+  end
+
   test "skills_config_write/3 encodes path and enabled", %{conn: conn, os_pid: os_pid} do
     task = Task.async(fn -> AppServer.skills_config_write(conn, "/tmp/skill", true) end)
 
@@ -272,6 +372,24 @@ defmodule Codex.AppServer.ApiTest do
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
 
+    assert {:ok, %{"data" => []}} = Task.await(task, 200)
+  end
+
+  test "apps_list/2 encodes thread gating and force refetch", %{conn: conn, os_pid: os_pid} do
+    task =
+      Task.async(fn ->
+        AppServer.apps_list(conn, thread_id: "thr_1", force_refetch: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "app/list", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["threadId"] == "thr_1"
+    assert params["forceRefetch"] == true
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
@@ -361,6 +479,49 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "turn APIs encode mention input and steering preconditions", %{conn: conn, os_pid: os_pid} do
+    start_task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", [%{type: :mention, name: "@docs", path: "app://docs"}])
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "turn/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["input"] == [
+             %{"type" => "mention", "name" => "@docs", "path" => "app://docs"}
+           ]
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(start_task, 200)
+
+    steer_task =
+      Task.async(fn ->
+        AppServer.turn_steer(conn, "thr_1", "continue", expected_turn_id: "turn_1")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, steer_line}
+
+    assert {:ok, %{"id" => steer_id, "method" => "turn/steer", "params" => steer_params}} =
+             Jason.decode(steer_line)
+
+    assert steer_params["threadId"] == "thr_1"
+    assert steer_params["expectedTurnId"] == "turn_1"
+    assert steer_params["input"] == [%{"type" => "text", "text" => "continue"}]
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(steer_id, %{"turnId" => "turn_1"})})
+    assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
+  end
+
   test "turn_start/4 encodes none personality", %{conn: conn, os_pid: os_pid} do
     task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", personality: :none) end)
 
@@ -398,6 +559,138 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
+  test "skills and plugin wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+    skills_task =
+      Task.async(fn ->
+        AppServer.skills_list(conn,
+          cwds: ["/tmp/project"],
+          per_cwd_extra_user_roots: [
+            %{cwd: "/tmp/project", extra_user_roots: ["/tmp/skills"]}
+          ]
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, skills_line}
+
+    assert {:ok, %{"id" => skills_id, "method" => "skills/list", "params" => skills_params}} =
+             Jason.decode(skills_line)
+
+    assert skills_params["perCwdExtraUserRoots"] == [
+             %{"cwd" => "/tmp/project", "extraUserRoots" => ["/tmp/skills"]}
+           ]
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(skills_id, %{"data" => []})})
+    assert {:ok, %{"data" => []}} = Task.await(skills_task, 200)
+
+    remote_list_task =
+      Task.async(fn ->
+        AppServer.skills_remote_list(conn,
+          hazelnut_scope: :workspace_shared,
+          product_surface: :codex,
+          enabled: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, remote_list_line}
+
+    assert {:ok,
+            %{
+              "id" => remote_list_id,
+              "method" => "skills/remote/list",
+              "params" => remote_list_params
+            }} = Jason.decode(remote_list_line)
+
+    assert remote_list_params == %{
+             "hazelnutScope" => "workspace-shared",
+             "productSurface" => "codex",
+             "enabled" => true
+           }
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(remote_list_id, %{"data" => []})})
+    assert {:ok, %{"data" => []}} = Task.await(remote_list_task, 200)
+
+    remote_export_task = Task.async(fn -> AppServer.skills_remote_export(conn, "hz_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, remote_export_line}
+
+    assert {:ok,
+            %{
+              "id" => remote_export_id,
+              "method" => "skills/remote/export",
+              "params" => %{"hazelnutId" => "hz_1"}
+            }} = Jason.decode(remote_export_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(remote_export_id, %{"id" => "hz_1"})})
+    assert {:ok, %{"id" => "hz_1"}} = Task.await(remote_export_task, 200)
+
+    plugin_list_task =
+      Task.async(fn ->
+        AppServer.plugin_list(conn, cwds: ["/tmp/project"], force_remote_sync: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, plugin_list_line}
+
+    assert {:ok,
+            %{"id" => plugin_list_id, "method" => "plugin/list", "params" => plugin_list_params}} =
+             Jason.decode(plugin_list_line)
+
+    assert plugin_list_params["cwds"] == ["/tmp/project"]
+    assert plugin_list_params["forceRemoteSync"] == true
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})}
+    )
+
+    assert {:ok, %{"marketplaces" => []}} = Task.await(plugin_list_task, 200)
+
+    install_task =
+      Task.async(fn -> AppServer.plugin_install(conn, "/tmp/market", "demo-plugin") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, install_line}
+
+    assert {:ok,
+            %{
+              "id" => install_id,
+              "method" => "plugin/install",
+              "params" => %{"marketplacePath" => "/tmp/market", "pluginName" => "demo-plugin"}
+            }} = Jason.decode(install_line)
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(install_id, %{"appsNeedingAuth" => []})}
+    )
+
+    assert {:ok, %{"appsNeedingAuth" => []}} = Task.await(install_task, 200)
+
+    uninstall_task = Task.async(fn -> AppServer.plugin_uninstall(conn, "plugin_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, uninstall_line}
+
+    assert {:ok,
+            %{
+              "id" => uninstall_id,
+              "method" => "plugin/uninstall",
+              "params" => %{"pluginId" => "plugin_1"}
+            }} = Jason.decode(uninstall_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
+    assert {:ok, %{}} = Task.await(uninstall_task, 200)
+
+    experimental_task =
+      Task.async(fn -> AppServer.experimental_feature_list(conn, cursor: "cur", limit: 5) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, experimental_line}
+
+    assert {:ok,
+            %{
+              "id" => experimental_id,
+              "method" => "experimentalFeature/list",
+              "params" => %{"cursor" => "cur", "limit" => 5}
+            }} = Jason.decode(experimental_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(experimental_id, %{"data" => []})})
+    assert {:ok, %{"data" => []}} = Task.await(experimental_task, 200)
+  end
+
   test "fuzzy_file_search/3 encodes query roots and cancellation token", %{
     conn: conn,
     os_pid: os_pid
@@ -422,6 +715,54 @@ defmodule Codex.AppServer.ApiTest do
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"files" => []})})
 
     assert {:ok, %{"files" => []}} = Task.await(task, 200)
+  end
+
+  test "fuzzy file search session wrappers encode current upstream params", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    start_task =
+      Task.async(fn -> AppServer.fuzzy_file_search_session_start(conn, "sess_1", ["/tmp"]) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok,
+            %{
+              "id" => start_id,
+              "method" => "fuzzyFileSearch/sessionStart",
+              "params" => %{"sessionId" => "sess_1", "roots" => ["/tmp"]}
+            }} = Jason.decode(start_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{})})
+    assert {:ok, %{}} = Task.await(start_task, 200)
+
+    update_task =
+      Task.async(fn -> AppServer.fuzzy_file_search_session_update(conn, "sess_1", "readme") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, update_line}
+
+    assert {:ok,
+            %{
+              "id" => update_id,
+              "method" => "fuzzyFileSearch/sessionUpdate",
+              "params" => %{"sessionId" => "sess_1", "query" => "readme"}
+            }} = Jason.decode(update_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(update_id, %{})})
+    assert {:ok, %{}} = Task.await(update_task, 200)
+
+    stop_task = Task.async(fn -> AppServer.fuzzy_file_search_session_stop(conn, "sess_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, stop_line}
+
+    assert {:ok,
+            %{
+              "id" => stop_id,
+              "method" => "fuzzyFileSearch/sessionStop",
+              "params" => %{"sessionId" => "sess_1"}
+            }} = Jason.decode(stop_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(stop_id, %{})})
+    assert {:ok, %{}} = Task.await(stop_task, 200)
   end
 
   test "config_write/4 encodes merge strategy and key_path", %{conn: conn, os_pid: os_pid} do
@@ -453,6 +794,70 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
 
+  test "config and external-agent wrappers encode reload and import params", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    batch_task =
+      Task.async(fn ->
+        AppServer.config_batch_write(
+          conn,
+          [%{key_path: "apps.demo.enabled", value: true}],
+          reload_user_config: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, batch_line}
+
+    assert {:ok, %{"id" => batch_id, "method" => "config/batchWrite", "params" => batch_params}} =
+             Jason.decode(batch_line)
+
+    assert batch_params["reloadUserConfig"] == true
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(batch_id, %{"status" => "ok"})})
+    assert {:ok, %{"status" => "ok"}} = Task.await(batch_task, 200)
+
+    detect_task =
+      Task.async(fn ->
+        AppServer.external_agent_config_detect(conn, include_home: true, cwds: ["/tmp/project"])
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, detect_line}
+
+    assert {:ok,
+            %{
+              "id" => detect_id,
+              "method" => "externalAgentConfig/detect",
+              "params" => %{"includeHome" => true, "cwds" => ["/tmp/project"]}
+            }} = Jason.decode(detect_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(detect_id, %{"items" => []})})
+    assert {:ok, %{"items" => []}} = Task.await(detect_task, 200)
+
+    import_task =
+      Task.async(fn ->
+        AppServer.external_agent_config_import(conn, [
+          %{"itemType" => "CONFIG", "description" => "Import", "cwd" => "/tmp/project"}
+        ])
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, import_line}
+
+    assert {:ok,
+            %{
+              "id" => import_id,
+              "method" => "externalAgentConfig/import",
+              "params" => %{
+                "migrationItems" => [
+                  %{"itemType" => "CONFIG", "description" => "Import", "cwd" => "/tmp/project"}
+                ]
+              }
+            }} = Jason.decode(import_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(import_id, %{})})
+    assert {:ok, %{}} = Task.await(import_task, 200)
+  end
+
   test "command_write_stdin/4 encodes process and stdin payloads", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->
@@ -467,23 +872,123 @@ defmodule Codex.AppServer.ApiTest do
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
 
-    assert {:ok, %{"id" => req_id, "method" => "command/writeStdin", "params" => params}} =
+    assert {:ok, %{"id" => req_id, "method" => "command/exec/write", "params" => params}} =
              Jason.decode(request_line)
 
     assert params["processId"] == "proc_1"
-    assert params["stdin"] == "y\n"
-    assert params["threadId"] == "thr_1"
-    assert params["turnId"] == "turn_1"
-    assert params["itemId"] == "item_1"
-    assert params["yieldTimeMs"] == 120
-    assert params["maxOutputTokens"] == 64
+    assert params["deltaBase64"] == Base.encode64("y\n")
+    refute Map.has_key?(params, "threadId")
+    refute Map.has_key?(params, "yieldTimeMs")
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "ok"})})
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
 
-  test "account login_start encodes apiKey and chatgpt variants", %{conn: conn, os_pid: os_pid} do
+  test "command exec wrappers encode streaming fields and follow-up requests", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    exec_task =
+      Task.async(fn ->
+        AppServer.command_exec(conn, ["bash", "-lc", "echo hi"],
+          process_id: "proc_1",
+          tty: true,
+          stream_stdin: true,
+          stream_stdout_stderr: true,
+          output_bytes_cap: 4_096,
+          disable_output_cap: false,
+          disable_timeout: true,
+          cwd: "/tmp",
+          env: %{"FOO" => "bar", "DROP" => nil},
+          size: %{rows: 24, cols: 80},
+          sandbox_policy: %{type: :workspace_write, writable_roots: ["/tmp"]}
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, exec_line}
+
+    assert {:ok, %{"id" => exec_id, "method" => "command/exec", "params" => exec_params}} =
+             Jason.decode(exec_line)
+
+    assert exec_params["processId"] == "proc_1"
+    assert exec_params["tty"] == true
+    assert exec_params["streamStdin"] == true
+    assert exec_params["streamStdoutStderr"] == true
+    assert exec_params["outputBytesCap"] == 4096
+    assert exec_params["disableTimeout"] == true
+    assert exec_params["cwd"] == "/tmp"
+    assert exec_params["env"] == %{"FOO" => "bar", "DROP" => nil}
+    assert exec_params["size"] == %{"rows" => 24, "cols" => 80}
+
+    assert exec_params["sandboxPolicy"] == %{
+             "type" => "workspaceWrite",
+             "writableRoots" => ["/tmp"]
+           }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(exec_id, %{"exitCode" => 0, "stdout" => "", "stderr" => ""})}
+    )
+
+    assert {:ok, %{"exitCode" => 0}} = Task.await(exec_task, 200)
+
+    write_task =
+      Task.async(fn ->
+        AppServer.command_exec_write(conn, "proc_1", delta: "abc", close_stdin: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, write_line}
+
+    assert {:ok,
+            %{
+              "id" => write_id,
+              "method" => "command/exec/write",
+              "params" => %{
+                "processId" => "proc_1",
+                "deltaBase64" => write_delta,
+                "closeStdin" => true
+              }
+            }} = Jason.decode(write_line)
+
+    assert write_delta == Base.encode64("abc")
+    send(conn, {:stdout, os_pid, Protocol.encode_response(write_id, %{})})
+    assert {:ok, %{}} = Task.await(write_task, 200)
+
+    terminate_task = Task.async(fn -> AppServer.command_exec_terminate(conn, "proc_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, terminate_line}
+
+    assert {:ok,
+            %{
+              "id" => terminate_id,
+              "method" => "command/exec/terminate",
+              "params" => %{"processId" => "proc_1"}
+            }} = Jason.decode(terminate_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(terminate_id, %{})})
+    assert {:ok, %{}} = Task.await(terminate_task, 200)
+
+    resize_task =
+      Task.async(fn -> AppServer.command_exec_resize(conn, "proc_1", rows: 40, cols: 120) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resize_line}
+
+    assert {:ok,
+            %{
+              "id" => resize_id,
+              "method" => "command/exec/resize",
+              "params" => %{"processId" => "proc_1", "size" => %{"rows" => 40, "cols" => 120}}
+            }} = Jason.decode(resize_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(resize_id, %{})})
+    assert {:ok, %{}} = Task.await(resize_task, 200)
+  end
+
+  test "account login_start encodes apiKey, chatgpt, and chatgptAuthTokens variants", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
     task1 = Task.async(fn -> AppServer.Account.login_start(conn, {:api_key, "sk-test"}) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line1}
@@ -516,6 +1021,143 @@ defmodule Codex.AppServer.ApiTest do
     )
 
     assert {:ok, %{"type" => "chatgpt"}} = Task.await(task2, 200)
+
+    task3 =
+      Task.async(fn ->
+        AppServer.Account.login_start(conn, %{
+          "type" => "chatgptAuthTokens",
+          "accessToken" => "token",
+          "chatgptAccountId" => "acct_1",
+          "chatgptPlanType" => "pro"
+        })
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line3}
+
+    assert {:ok, %{"id" => req_id3, "method" => "account/login/start", "params" => params3}} =
+             Jason.decode(request_line3)
+
+    assert params3 == %{
+             "type" => "chatgptAuthTokens",
+             "accessToken" => "token",
+             "chatgptAccountId" => "acct_1",
+             "chatgptPlanType" => "pro"
+           }
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(req_id3, %{"type" => "chatgptAuthTokens"})}
+    )
+
+    assert {:ok, %{"type" => "chatgptAuthTokens"}} = Task.await(task3, 200)
+  end
+
+  test "model, realtime, and windows sandbox wrappers encode current params", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    model_task = Task.async(fn -> AppServer.model_list(conn, include_hidden: true, limit: 3) end)
+    assert_receive {:app_server_subprocess_send, ^conn, model_line}
+
+    assert {:ok,
+            %{
+              "id" => model_id,
+              "method" => "model/list",
+              "params" => %{"includeHidden" => true, "limit" => 3}
+            }} = Jason.decode(model_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(model_id, %{"data" => []})})
+    assert {:ok, %{"data" => []}} = Task.await(model_task, 200)
+
+    realtime_start_task =
+      Task.async(fn ->
+        AppServer.thread_realtime_start(conn, "thr_1", "Listen", session_id: "rt_1")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, realtime_start_line}
+
+    assert {:ok,
+            %{
+              "id" => realtime_start_id,
+              "method" => "thread/realtime/start",
+              "params" => %{"threadId" => "thr_1", "prompt" => "Listen", "sessionId" => "rt_1"}
+            }} = Jason.decode(realtime_start_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_start_id, %{})})
+    assert {:ok, %{}} = Task.await(realtime_start_task, 200)
+
+    realtime_audio_task =
+      Task.async(fn ->
+        AppServer.thread_realtime_append_audio(conn, "thr_1",
+          data: "YmFzZTY0",
+          sample_rate: 24_000,
+          num_channels: 1,
+          samples_per_channel: 512
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, realtime_audio_line}
+
+    assert {:ok,
+            %{
+              "id" => realtime_audio_id,
+              "method" => "thread/realtime/appendAudio",
+              "params" => %{
+                "threadId" => "thr_1",
+                "audio" => %{
+                  "data" => "YmFzZTY0",
+                  "sampleRate" => 24_000,
+                  "numChannels" => 1,
+                  "samplesPerChannel" => 512
+                }
+              }
+            }} = Jason.decode(realtime_audio_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_audio_id, %{})})
+    assert {:ok, %{}} = Task.await(realtime_audio_task, 200)
+
+    realtime_text_task =
+      Task.async(fn -> AppServer.thread_realtime_append_text(conn, "thr_1", "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, realtime_text_line}
+
+    assert {:ok,
+            %{
+              "id" => realtime_text_id,
+              "method" => "thread/realtime/appendText",
+              "params" => %{"threadId" => "thr_1", "text" => "hello"}
+            }} = Jason.decode(realtime_text_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_text_id, %{})})
+    assert {:ok, %{}} = Task.await(realtime_text_task, 200)
+
+    realtime_stop_task = Task.async(fn -> AppServer.thread_realtime_stop(conn, "thr_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, realtime_stop_line}
+
+    assert {:ok,
+            %{
+              "id" => realtime_stop_id,
+              "method" => "thread/realtime/stop",
+              "params" => %{"threadId" => "thr_1"}
+            }} = Jason.decode(realtime_stop_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_stop_id, %{})})
+    assert {:ok, %{}} = Task.await(realtime_stop_task, 200)
+
+    windows_task =
+      Task.async(fn -> AppServer.windows_sandbox_setup_start(conn, :unelevated, cwd: "/tmp") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, windows_line}
+
+    assert {:ok,
+            %{
+              "id" => windows_id,
+              "method" => "windowsSandbox/setupStart",
+              "params" => %{"mode" => "unelevated", "cwd" => "/tmp"}
+            }} = Jason.decode(windows_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(windows_id, %{"started" => true})})
+    assert {:ok, %{"started" => true}} = Task.await(windows_task, 200)
   end
 
   describe "thread_compact/2" do

@@ -4,11 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-export CODEX_MODEL="${CODEX_MODEL:-gpt-5.4}"
+DEFAULT_MODEL="gpt-5.3-codex"
+
+export CODEX_MODEL="${CODEX_MODEL:-${DEFAULT_MODEL}}"
 export CODEX_MODEL_DEFAULT="${CODEX_MODEL_DEFAULT:-${CODEX_MODEL}}"
 
 echo "Using model override: ${CODEX_MODEL}"
-echo "SDK default model: gpt-5.4"
+echo "Bundled SDK default model: ${DEFAULT_MODEL}"
 echo
 
 if [[ -z "${CODEX_API_KEY:-}" ]]; then

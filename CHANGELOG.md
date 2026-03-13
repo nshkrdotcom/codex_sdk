@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- App-server parity now covers current upstream request families, including permissions approvals, dynamic tool calls, MCP elicitation requests, and ChatGPT auth-token refresh requests, while `Codex.AppServer.thread_compact/2` once again targets upstream `thread/compact/start`.
+- User-input handling across app-server and exec JSONL now includes `skill` and `mention`, and request-user-input question payloads now round-trip `is_other` and `is_secret`.
+- Model default selection is now catalog-derived instead of effectively hardcoded. With the synced bundled catalog in this repo, the current default resolves to `gpt-5.3-codex` unless env overrides or fresher ChatGPT catalog data win.
+- Bundled `priv/models.json` is now re-synced with upstream, and the SDK no longer documents `features.remote_models` as required for normal catalog/default behavior.
+- Config layer loading now uses real TOML parsing, trust-aware project-layer enablement, cwd `config.toml` project support, and sibling `requirements.toml` merging for system config.
+
+### Fixed
+
+- App-server notifications and items now cover current upstream thread lifecycle, hook lifecycle, realtime, fuzzy-file-search, model-reroute, and newer item variants without silently dropping them.
+- README, guides, and example runner defaults now describe the current bundled catalog behavior instead of the old `gpt-5.4` and `features.remote_models` assumptions.
+
 ## [0.11.0] - 2026-03-05
 
 ### Added

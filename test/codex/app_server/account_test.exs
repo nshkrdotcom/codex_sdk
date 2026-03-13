@@ -56,4 +56,18 @@ defmodule Codex.AppServer.AccountTest do
                "workspaceId" => "workspace-2"
              })
   end
+
+  test "treats chatgptAuthTokens as chatgpt for forced login checks", %{codex_home: codex_home} do
+    File.write!(Path.join(codex_home, "config.toml"), """
+    forced_login_method = "chatgpt"
+    forced_chatgpt_workspace_id = "workspace-1"
+    """)
+
+    assert {:error, {:forced_chatgpt_workspace_id, "workspace-1", "workspace-2"}} =
+             Account.login_start(self(), %{
+               "type" => "chatgptAuthTokens",
+               "accessToken" => "token",
+               "chatgptAccountId" => "workspace-2"
+             })
+  end
 end

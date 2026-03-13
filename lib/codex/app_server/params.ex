@@ -10,7 +10,8 @@ defmodule Codex.AppServer.Params do
   def normalize_map(%{} = map), do: map
   def normalize_map(list) when is_list(list), do: Map.new(list)
 
-  @spec ask_for_approval(atom() | String.t() | nil) :: String.t() | nil
+  @spec ask_for_approval(map() | keyword() | atom() | String.t() | nil) ::
+          map() | String.t() | nil
   def ask_for_approval(nil), do: nil
   def ask_for_approval(:untrusted), do: "untrusted"
   def ask_for_approval(:on_failure), do: "on-failure"
@@ -20,6 +21,59 @@ defmodule Codex.AppServer.Params do
   def ask_for_approval("on-failure"), do: "on-failure"
   def ask_for_approval("on-request"), do: "on-request"
   def ask_for_approval("never"), do: "never"
+  def ask_for_approval(policy) when is_list(policy), do: policy |> Map.new() |> ask_for_approval()
+
+  def ask_for_approval(%{} = policy) do
+    policy = normalize_map(policy)
+
+    case fetch_any(policy, [:type, "type"]) do
+      value when value in [:granular, "granular"] ->
+        %{
+          "type" => "granular",
+          "sandboxApproval" =>
+            truthy?(
+              fetch_any(policy, [
+                :sandbox_approval,
+                "sandbox_approval",
+                :sandboxApproval,
+                "sandboxApproval"
+              ])
+            ),
+          "rules" => truthy?(fetch_any(policy, [:rules, "rules"])),
+          "skillApproval" =>
+            truthy?(
+              fetch_any(policy, [
+                :skill_approval,
+                "skill_approval",
+                :skillApproval,
+                "skillApproval"
+              ])
+            ),
+          "requestPermissions" =>
+            truthy?(
+              fetch_any(policy, [
+                :request_permissions,
+                "request_permissions",
+                :requestPermissions,
+                "requestPermissions"
+              ])
+            ),
+          "mcpElicitations" =>
+            truthy?(
+              fetch_any(policy, [
+                :mcp_elicitations,
+                "mcp_elicitations",
+                :mcpElicitations,
+                "mcpElicitations"
+              ])
+            )
+        }
+
+      _ ->
+        nil
+    end
+  end
+
   def ask_for_approval(value) when is_binary(value), do: value
   def ask_for_approval(_), do: nil
 
@@ -128,6 +182,153 @@ defmodule Codex.AppServer.Params do
   def thread_sort_key(value) when is_binary(value), do: value
   def thread_sort_key(_), do: nil
 
+  @spec thread_source_kind(atom() | String.t() | nil) :: String.t() | nil
+  def thread_source_kind(nil), do: nil
+  def thread_source_kind(:cli), do: "cli"
+  def thread_source_kind(:vscode), do: "vscode"
+  def thread_source_kind(:vs_code), do: "vscode"
+  def thread_source_kind(:exec), do: "exec"
+  def thread_source_kind(:app_server), do: "appServer"
+  def thread_source_kind(:sub_agent), do: "subAgent"
+  def thread_source_kind(:sub_agent_review), do: "subAgentReview"
+  def thread_source_kind(:sub_agent_compact), do: "subAgentCompact"
+  def thread_source_kind(:sub_agent_thread_spawn), do: "subAgentThreadSpawn"
+  def thread_source_kind(:sub_agent_other), do: "subAgentOther"
+  def thread_source_kind(:unknown), do: "unknown"
+  def thread_source_kind("app_server"), do: "appServer"
+  def thread_source_kind("appServer"), do: "appServer"
+  def thread_source_kind("sub_agent"), do: "subAgent"
+  def thread_source_kind("subAgent"), do: "subAgent"
+  def thread_source_kind("sub_agent_review"), do: "subAgentReview"
+  def thread_source_kind("subAgentReview"), do: "subAgentReview"
+  def thread_source_kind("sub_agent_compact"), do: "subAgentCompact"
+  def thread_source_kind("subAgentCompact"), do: "subAgentCompact"
+  def thread_source_kind("sub_agent_thread_spawn"), do: "subAgentThreadSpawn"
+  def thread_source_kind("subAgentThreadSpawn"), do: "subAgentThreadSpawn"
+  def thread_source_kind("sub_agent_other"), do: "subAgentOther"
+  def thread_source_kind("subAgentOther"), do: "subAgentOther"
+  def thread_source_kind(value) when is_binary(value), do: value
+  def thread_source_kind(_), do: nil
+
+  @spec terminal_size(map() | keyword() | nil) :: map() | nil
+  def terminal_size(nil), do: nil
+  def terminal_size(size) when is_list(size), do: size |> Map.new() |> terminal_size()
+
+  def terminal_size(%{} = size) do
+    size = normalize_map(size)
+
+    %{}
+    |> put_optional("rows", fetch_any(size, [:rows, "rows"]))
+    |> put_optional("cols", fetch_any(size, [:cols, "cols"]))
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  def terminal_size(_), do: nil
+
+  @spec per_cwd_extra_user_roots([map() | keyword()] | nil) :: [map()] | nil
+  def per_cwd_extra_user_roots(nil), do: nil
+
+  def per_cwd_extra_user_roots(entries) when is_list(entries) do
+    entries
+    |> Enum.map(&per_cwd_extra_user_root/1)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      list -> list
+    end
+  end
+
+  def per_cwd_extra_user_roots(_), do: nil
+
+  @spec windows_sandbox_setup_mode(atom() | String.t() | nil) :: String.t() | nil
+  def windows_sandbox_setup_mode(nil), do: nil
+  def windows_sandbox_setup_mode(:elevate), do: "elevate"
+  def windows_sandbox_setup_mode(:unelevated), do: "unelevated"
+  def windows_sandbox_setup_mode("elevate"), do: "elevate"
+  def windows_sandbox_setup_mode("unelevated"), do: "unelevated"
+  def windows_sandbox_setup_mode(value) when is_binary(value), do: value
+  def windows_sandbox_setup_mode(_), do: nil
+
+  @spec hazelnut_scope(atom() | String.t() | nil) :: String.t() | nil
+  def hazelnut_scope(nil), do: nil
+  def hazelnut_scope(:example), do: "example"
+  def hazelnut_scope(:workspace_shared), do: "workspace-shared"
+  def hazelnut_scope(:all_shared), do: "all-shared"
+  def hazelnut_scope(:personal), do: "personal"
+  def hazelnut_scope("workspace_shared"), do: "workspace-shared"
+  def hazelnut_scope("all_shared"), do: "all-shared"
+  def hazelnut_scope(value) when is_binary(value), do: value
+  def hazelnut_scope(_), do: nil
+
+  @spec product_surface(atom() | String.t() | nil) :: String.t() | nil
+  def product_surface(nil), do: nil
+  def product_surface(:chatgpt), do: "chatgpt"
+  def product_surface(:codex), do: "codex"
+  def product_surface(:api), do: "api"
+  def product_surface(:atlas), do: "atlas"
+  def product_surface(value) when is_binary(value), do: value
+  def product_surface(_), do: nil
+
+  @spec thread_realtime_audio_chunk(map() | keyword() | nil) :: map() | nil
+  def thread_realtime_audio_chunk(nil), do: nil
+
+  def thread_realtime_audio_chunk(audio) when is_list(audio),
+    do: audio |> Map.new() |> thread_realtime_audio_chunk()
+
+  def thread_realtime_audio_chunk(%{} = audio) do
+    audio = normalize_map(audio)
+
+    %{}
+    |> put_optional("data", fetch_any(audio, [:data, "data"]))
+    |> put_optional(
+      "sampleRate",
+      fetch_any(audio, [:sample_rate, "sample_rate", :sampleRate, "sampleRate"])
+    )
+    |> put_optional(
+      "numChannels",
+      fetch_any(audio, [:num_channels, "num_channels", :numChannels, "numChannels"])
+    )
+    |> put_optional(
+      "samplesPerChannel",
+      fetch_any(audio, [
+        :samples_per_channel,
+        "samples_per_channel",
+        :samplesPerChannel,
+        "samplesPerChannel"
+      ])
+    )
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  def thread_realtime_audio_chunk(_), do: nil
+
+  @spec git_info_update(map() | keyword() | nil) :: map() | nil
+  def git_info_update(nil), do: nil
+
+  def git_info_update(git_info) when is_list(git_info),
+    do: git_info |> Map.new() |> git_info_update()
+
+  def git_info_update(%{} = git_info) do
+    git_info = normalize_map(git_info)
+
+    %{}
+    |> put_present("sha", git_info, [:sha, "sha"])
+    |> put_present("branch", git_info, [:branch, "branch"])
+    |> put_present("originUrl", git_info, [:origin_url, "origin_url", :originUrl, "originUrl"])
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  def git_info_update(_), do: nil
+
   @spec merge_strategy(atom() | String.t() | nil) :: String.t() | nil
   def merge_strategy(nil), do: nil
   def merge_strategy(:replace), do: "replace"
@@ -207,6 +408,22 @@ defmodule Codex.AppServer.Params do
   defp user_input_block(%{type: :skill} = block) do
     %{
       "type" => "skill",
+      "name" => fetch_any(block, [:name, "name"]) || "",
+      "path" => fetch_any(block, [:path, "path"]) || ""
+    }
+  end
+
+  defp user_input_block(%{"type" => "mention"} = block) do
+    %{
+      "type" => "mention",
+      "name" => fetch_any(block, [:name, "name"]) || "",
+      "path" => fetch_any(block, [:path, "path"]) || ""
+    }
+  end
+
+  defp user_input_block(%{type: :mention} = block) do
+    %{
+      "type" => "mention",
       "name" => fetch_any(block, [:name, "name"]) || "",
       "path" => fetch_any(block, [:path, "path"]) || ""
     }
@@ -315,8 +532,25 @@ defmodule Codex.AppServer.Params do
     %{}
     |> put_optional("type", type)
     |> put_optional(
+      "access",
+      fetch_any(policy, [:access, "access"])
+      |> normalize_read_only_access()
+      |> only_for_types(type, ["readOnly"])
+    )
+    |> put_optional(
       "writableRoots",
       fetch_any(policy, [:writable_roots, "writable_roots", :writableRoots, "writableRoots"])
+    )
+    |> put_optional(
+      "readOnlyAccess",
+      fetch_any(policy, [
+        :read_only_access,
+        "read_only_access",
+        :readOnlyAccess,
+        "readOnlyAccess"
+      ])
+      |> normalize_read_only_access()
+      |> only_for_types(type, ["workspaceWrite"])
     )
     |> put_optional(
       "networkAccess",
@@ -396,6 +630,100 @@ defmodule Codex.AppServer.Params do
       other -> other
     end
   end
+
+  defp normalize_read_only_access(nil), do: nil
+
+  defp normalize_read_only_access(access) when is_atom(access),
+    do: normalize_read_only_access(Atom.to_string(access))
+
+  defp normalize_read_only_access("full_access"), do: %{"type" => "fullAccess"}
+  defp normalize_read_only_access("full-access"), do: %{"type" => "fullAccess"}
+  defp normalize_read_only_access("fullAccess"), do: %{"type" => "fullAccess"}
+
+  defp normalize_read_only_access("restricted") do
+    %{"type" => "restricted", "includePlatformDefaults" => true}
+  end
+
+  defp normalize_read_only_access(%{} = access) do
+    access = normalize_map(access)
+    type = fetch_any(access, [:type, "type"]) |> normalize_read_only_access_type()
+
+    %{}
+    |> put_optional("type", type)
+    |> put_optional(
+      "includePlatformDefaults",
+      fetch_any(access, [
+        :include_platform_defaults,
+        "include_platform_defaults",
+        :includePlatformDefaults,
+        "includePlatformDefaults"
+      ])
+    )
+    |> put_optional(
+      "readableRoots",
+      fetch_any(access, [:readable_roots, "readable_roots", :readableRoots, "readableRoots"])
+    )
+    |> case do
+      %{"type" => "fullAccess"} = result -> result
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  defp normalize_read_only_access(_), do: nil
+
+  defp normalize_read_only_access_type(nil), do: nil
+  defp normalize_read_only_access_type(:restricted), do: "restricted"
+  defp normalize_read_only_access_type("restricted"), do: "restricted"
+  defp normalize_read_only_access_type(:full_access), do: "fullAccess"
+  defp normalize_read_only_access_type("full_access"), do: "fullAccess"
+  defp normalize_read_only_access_type("full-access"), do: "fullAccess"
+  defp normalize_read_only_access_type("fullAccess"), do: "fullAccess"
+  defp normalize_read_only_access_type(value) when is_binary(value), do: value
+  defp normalize_read_only_access_type(_), do: nil
+
+  defp per_cwd_extra_user_root(entry) when is_list(entry),
+    do: entry |> Map.new() |> per_cwd_extra_user_root()
+
+  defp per_cwd_extra_user_root(%{} = entry) do
+    entry = normalize_map(entry)
+    cwd = fetch_any(entry, [:cwd, "cwd"])
+
+    roots =
+      fetch_any(entry, [:extra_user_roots, "extra_user_roots", :extraUserRoots, "extraUserRoots"])
+
+    if is_binary(cwd) and is_list(roots) do
+      %{"cwd" => cwd, "extraUserRoots" => roots}
+    end
+  end
+
+  defp per_cwd_extra_user_root(_), do: nil
+
+  defp put_present(map, key, source, lookup_keys) do
+    case fetch_present(source, lookup_keys) do
+      {:ok, value} -> Map.put(map, key, value)
+      :error -> map
+    end
+  end
+
+  defp fetch_present(map, keys) when is_map(map) and is_list(keys) do
+    Enum.find_value(keys, :error, fn key ->
+      case Map.has_key?(map, key) do
+        true -> {:ok, Map.get(map, key)}
+        false -> nil
+      end
+    end)
+  end
+
+  defp fetch_present(_map, _keys), do: :error
+
+  defp only_for_types(value, nil, _types), do: value
+
+  defp only_for_types(value, type, types) do
+    if type in types, do: value, else: nil
+  end
+
+  defp truthy?(value), do: value in [true, "true", 1, "1"]
 
   defp fetch_any(map, keys) when is_list(keys) and is_map(map) do
     Enum.reduce_while(keys, nil, fn key, _acc ->

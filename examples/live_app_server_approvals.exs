@@ -96,8 +96,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
         case method do
           @command_approval_method ->
-            decision = command_decision(params)
-            :ok = Codex.AppServer.respond(conn, id, %{decision: decision})
+            maybe_log_execpolicy_hint(params)
+            :ok = Codex.AppServer.respond(conn, id, %{decision: "acceptForSession"})
             IO.puts("[approval] responded to commandExecution request")
             send(parent, {:audit, {:response_sent, method}})
 
@@ -117,12 +117,14 @@ defmodule CodexExamples.LiveAppServerApprovals do
     end
   end
 
-  defp command_decision(%{"proposedExecpolicyAmendment" => argv})
+  defp maybe_log_execpolicy_hint(%{"proposedExecpolicyAmendment" => argv})
        when is_list(argv) and argv != [] do
-    %{"acceptWithExecpolicyAmendment" => %{"execpolicyAmendment" => argv}}
+    IO.puts(
+      "[approval] server proposed execpolicy amendment #{inspect(argv)}; accepting for session for demo stability"
+    )
   end
 
-  defp command_decision(_params), do: "acceptForSession"
+  defp maybe_log_execpolicy_hint(_params), do: :ok
 
   defp await_approvals_ready!(task_pid) when is_pid(task_pid) do
     receive do

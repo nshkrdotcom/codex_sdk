@@ -1,6 +1,7 @@
 Mix.Task.run("app.start")
 
 alias Codex.{AppServer, Items, Options, Thread}
+alias Codex.Models
 
 defmodule LiveThreadManagement do
   @moduledoc false
@@ -35,7 +36,13 @@ defmodule LiveThreadManagement do
       IO.inspect(AppServer.thread_read(conn, thread_id, include_turns: true))
 
       IO.puts("\nthread/fork:")
-      print_result_or_warning(AppServer.thread_fork(conn, thread_id), "thread/fork")
+
+      fork_params =
+        %{}
+        |> maybe_put(:model, codex_opts.model)
+        |> maybe_put(:config, fork_config(codex_opts.reasoning_effort))
+
+      print_result_or_warning(AppServer.thread_fork(conn, thread_id, fork_params), "thread/fork")
 
       IO.puts("\nthread/rollback (1 turn):")
       print_result_or_warning(AppServer.thread_rollback(conn, thread_id, 1), "thread/rollback")
@@ -53,6 +60,12 @@ defmodule LiveThreadManagement do
   end
 
   defp print_result_or_warning(other, _name), do: IO.inspect(other)
+
+  defp fork_config(nil), do: nil
+
+  defp fork_config(effort) do
+    %{"model_reasoning_effort" => Models.reasoning_effort_to_string(effort)}
+  end
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_argv), do: @default_prompt
@@ -82,6 +95,9 @@ defmodule LiveThreadManagement do
   defp extract_text(%{type: "text", text: text}) when is_binary(text), do: text
   defp extract_text(other) when is_binary(other), do: other
   defp extract_text(other), do: inspect(other)
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end
 
 LiveThreadManagement.main(System.argv())

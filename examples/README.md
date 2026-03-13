@@ -9,7 +9,7 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via erlexec subprocess
    - Uses `codex login` authentication (no separate API key needed)
-   - SDK default model: `Codex.Models.default_model()` (currently `gpt-5.4`)
+   - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.3-codex` from the bundled catalog unless env overrides win)
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
@@ -17,7 +17,7 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the SDK default (override by exporting `CODEX_MODEL` before running). Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model requires a higher minimum.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the current bundled default (`gpt-5.3-codex`) for reproducibility; override it by exporting `CODEX_MODEL` before running. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model requires a higher minimum.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 ## Running everything

@@ -134,7 +134,7 @@ defstruct [
   {:ok, Enumerable.t()} | {:error, term()}
 ```
 
-App-server transport accepts `UserInput` block lists (text/image/localImage); exec JSONL expects text input.
+App-server transport accepts `UserInput` block lists (`text`/`image`/`localImage`/`skill`/`mention`); exec JSONL accepts prompt strings plus the SDK's normalized JSONL user-input variants (`text`/`image`/`local_image`/`skill`/`mention`).
 
 **Execution Flow** (Blocking Mode):
 1. Create output schema file if needed

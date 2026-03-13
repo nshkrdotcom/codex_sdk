@@ -8,13 +8,18 @@ defmodule Codex.Items do
 
   alias __MODULE__.{
     AgentMessage,
+    CollabAgentToolCall,
     Compaction,
     CommandExecution,
+    ContextCompaction,
+    DynamicToolCall,
     Error,
     FileChange,
     GhostSnapshot,
+    ImageGeneration,
     ImageView,
     McpToolCall,
+    Plan,
     RawResponseItem,
     Reasoning,
     ReviewMode,
@@ -25,6 +30,7 @@ defmodule Codex.Items do
 
   @type t ::
           AgentMessage.t()
+          | Plan.t()
           | Reasoning.t()
           | CommandExecution.t()
           | FileChange.t()
@@ -32,9 +38,13 @@ defmodule Codex.Items do
           | ImageView.t()
           | ReviewMode.t()
           | McpToolCall.t()
+          | DynamicToolCall.t()
+          | CollabAgentToolCall.t()
           | WebSearch.t()
+          | ImageGeneration.t()
           | TodoList.t()
           | Error.t()
+          | ContextCompaction.t()
           | GhostSnapshot.t()
           | Compaction.t()
           | RawResponseItem.t()
@@ -46,13 +56,29 @@ defmodule Codex.Items do
     """
 
     @enforce_keys [:text]
-    defstruct id: nil, type: :agent_message, text: nil, parsed: nil
+    defstruct id: nil, type: :agent_message, text: nil, parsed: nil, phase: nil
 
     @type t :: %__MODULE__{
             id: String.t() | nil,
             type: :agent_message,
             text: String.t(),
-            parsed: map() | list() | nil
+            parsed: map() | list() | nil,
+            phase: String.t() | nil
+          }
+  end
+
+  defmodule Plan do
+    @moduledoc """
+    Planning item emitted when the agent publishes a plan as a first-class thread item.
+    """
+
+    @enforce_keys [:text]
+    defstruct id: nil, type: :plan, text: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :plan,
+            text: String.t()
           }
   end
 
@@ -168,6 +194,68 @@ defmodule Codex.Items do
           }
   end
 
+  defmodule DynamicToolCall do
+    @moduledoc """
+    Metadata describing a dynamic tool invocation handled outside the static tool registry.
+    """
+
+    @enforce_keys [:tool]
+    defstruct id: nil,
+              type: :dynamic_tool_call,
+              tool: nil,
+              arguments: nil,
+              status: :in_progress,
+              content_items: nil,
+              success: nil,
+              duration_ms: nil
+
+    @type status :: :in_progress | :completed | :failed
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :dynamic_tool_call,
+            tool: String.t(),
+            arguments: map() | list() | String.t() | nil,
+            status: status(),
+            content_items: [map()] | nil,
+            success: boolean() | nil,
+            duration_ms: integer() | nil
+          }
+  end
+
+  defmodule CollabAgentToolCall do
+    @moduledoc """
+    Represents a collaboration tool call between agents.
+    """
+
+    @enforce_keys [:tool, :sender_thread_id]
+    defstruct id: nil,
+              type: :collab_agent_tool_call,
+              tool: nil,
+              status: :in_progress,
+              sender_thread_id: nil,
+              receiver_thread_ids: [],
+              prompt: nil,
+              model: nil,
+              reasoning_effort: nil,
+              agents_states: %{}
+
+    @type status :: :in_progress | :completed | :failed
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :collab_agent_tool_call,
+            tool: String.t(),
+            status: status(),
+            sender_thread_id: String.t(),
+            receiver_thread_ids: [String.t()],
+            prompt: String.t() | nil,
+            model: String.t() | nil,
+            reasoning_effort: String.t() | atom() | nil,
+            agents_states: map()
+          }
+  end
+
   defmodule UserMessage do
     @moduledoc """
     User-authored message item carrying a list of input blocks.
@@ -198,6 +286,29 @@ defmodule Codex.Items do
           }
   end
 
+  defmodule ImageGeneration do
+    @moduledoc """
+    Image generation result item emitted by the app-server.
+    """
+
+    @enforce_keys [:status, :result]
+    defstruct id: nil,
+              type: :image_generation,
+              status: nil,
+              revised_prompt: nil,
+              result: nil,
+              saved_path: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :image_generation,
+            status: String.t(),
+            revised_prompt: String.t() | nil,
+            result: String.t(),
+            saved_path: String.t() | nil
+          }
+  end
+
   defmodule ReviewMode do
     @moduledoc """
     Indicates that review mode has been entered or exited.
@@ -220,12 +331,13 @@ defmodule Codex.Items do
     """
 
     @enforce_keys [:query]
-    defstruct id: nil, type: :web_search, query: nil
+    defstruct id: nil, type: :web_search, query: nil, action: nil
 
     @type t :: %__MODULE__{
             id: String.t() | nil,
             type: :web_search,
-            query: String.t()
+            query: String.t(),
+            action: String.t() | map() | nil
           }
   end
 
@@ -258,6 +370,19 @@ defmodule Codex.Items do
             id: String.t() | nil,
             type: :error,
             message: String.t()
+          }
+  end
+
+  defmodule ContextCompaction do
+    @moduledoc """
+    Marker item emitted when context compaction occurred.
+    """
+
+    defstruct id: nil, type: :context_compaction
+
+    @type t :: %__MODULE__{
+            id: String.t() | nil,
+            type: :context_compaction
           }
   end
 
@@ -331,11 +456,24 @@ defmodule Codex.Items do
     "failed" => :failed
   }
 
+  @dynamic_tool_status_map %{
+    "in_progress" => :in_progress,
+    "completed" => :completed,
+    "failed" => :failed
+  }
+
+  @collab_tool_status_map %{
+    "in_progress" => :in_progress,
+    "completed" => :completed,
+    "failed" => :failed
+  }
+
   @doc """
   Parses a JSON-decoded map into a typed thread item struct.
   """
   @spec parse!(map()) :: t()
   def parse!(%{"type" => "agent_message"} = map), do: parse_agent_message(map)
+  def parse!(%{"type" => "plan"} = map), do: parse_plan(map)
   def parse!(%{"type" => "reasoning"} = map), do: parse_reasoning(map)
   def parse!(%{"type" => "command_execution"} = map), do: parse_command_execution(map)
   def parse!(%{"type" => "file_change"} = map), do: parse_file_change(map)
@@ -343,9 +481,13 @@ defmodule Codex.Items do
   def parse!(%{"type" => "image_view"} = map), do: parse_image_view(map)
   def parse!(%{"type" => "review_mode"} = map), do: parse_review_mode(map)
   def parse!(%{"type" => "mcp_tool_call"} = map), do: parse_mcp_tool_call(map)
+  def parse!(%{"type" => "dynamic_tool_call"} = map), do: parse_dynamic_tool_call(map)
+  def parse!(%{"type" => "collab_agent_tool_call"} = map), do: parse_collab_agent_tool_call(map)
   def parse!(%{"type" => "web_search"} = map), do: parse_web_search(map)
+  def parse!(%{"type" => "image_generation"} = map), do: parse_image_generation(map)
   def parse!(%{"type" => "todo_list"} = map), do: parse_todo_list(map)
   def parse!(%{"type" => "error"} = map), do: parse_error(map)
+  def parse!(%{"type" => "context_compaction"} = map), do: parse_context_compaction(map)
 
   def parse!(%{"type" => type} = map) when type in ["ghost_snapshot", "compaction"] do
     {:ok, item} = parse_raw_response_item(map)
@@ -373,6 +515,12 @@ defmodule Codex.Items do
   @spec to_map(t()) :: map()
   def to_map(%AgentMessage{} = item) do
     base_item_map(item, "agent_message")
+    |> maybe_put("text", item.text)
+    |> maybe_put("phase", item.phase)
+  end
+
+  def to_map(%Plan{} = item) do
+    base_item_map(item, "plan")
     |> maybe_put("text", item.text)
   end
 
@@ -438,9 +586,40 @@ defmodule Codex.Items do
     |> maybe_put("duration_ms", item.duration_ms)
   end
 
+  def to_map(%DynamicToolCall{} = item) do
+    base_item_map(item, "dynamic_tool_call")
+    |> maybe_put("tool", item.tool)
+    |> maybe_put("arguments", item.arguments)
+    |> maybe_put("status", status_to_string(item.status, @dynamic_tool_status_map))
+    |> maybe_put("content_items", item.content_items)
+    |> maybe_put("success", item.success)
+    |> maybe_put("duration_ms", item.duration_ms)
+  end
+
+  def to_map(%CollabAgentToolCall{} = item) do
+    base_item_map(item, "collab_agent_tool_call")
+    |> maybe_put("tool", item.tool)
+    |> maybe_put("status", status_to_string(item.status, @collab_tool_status_map))
+    |> maybe_put("sender_thread_id", item.sender_thread_id)
+    |> maybe_put("receiver_thread_ids", item.receiver_thread_ids)
+    |> maybe_put("prompt", item.prompt)
+    |> maybe_put("model", item.model)
+    |> maybe_put("reasoning_effort", item.reasoning_effort)
+    |> maybe_put("agents_states", item.agents_states)
+  end
+
   def to_map(%WebSearch{} = item) do
     base_item_map(item, "web_search")
     |> maybe_put("query", item.query)
+    |> maybe_put("action", item.action)
+  end
+
+  def to_map(%ImageGeneration{} = item) do
+    base_item_map(item, "image_generation")
+    |> maybe_put("status", item.status)
+    |> maybe_put("revised_prompt", item.revised_prompt)
+    |> maybe_put("result", item.result)
+    |> maybe_put("saved_path", item.saved_path)
   end
 
   def to_map(%TodoList{} = item) do
@@ -456,6 +635,10 @@ defmodule Codex.Items do
   def to_map(%Error{} = item) do
     base_item_map(item, "error")
     |> maybe_put("message", item.message)
+  end
+
+  def to_map(%ContextCompaction{} = item) do
+    base_item_map(item, "context_compaction")
   end
 
   def to_map(%GhostSnapshot{} = item) do
@@ -511,7 +694,15 @@ defmodule Codex.Items do
     %AgentMessage{
       id: get(map, :id),
       text: get(map, :text) || "",
-      parsed: get(map, :parsed)
+      parsed: get(map, :parsed),
+      phase: get(map, :phase)
+    }
+  end
+
+  defp parse_plan(map) do
+    %Plan{
+      id: get(map, :id),
+      text: get(map, :text) || ""
     }
   end
 
@@ -594,10 +785,47 @@ defmodule Codex.Items do
     }
   end
 
+  defp parse_dynamic_tool_call(map) do
+    %DynamicToolCall{
+      id: get(map, :id),
+      tool: get(map, :tool) || "",
+      arguments: get(map, :arguments),
+      status: parse_status(get(map, :status), @dynamic_tool_status_map, :in_progress),
+      content_items: get(map, :content_items),
+      success: get(map, :success),
+      duration_ms: get(map, :duration_ms)
+    }
+  end
+
+  defp parse_collab_agent_tool_call(map) do
+    %CollabAgentToolCall{
+      id: get(map, :id),
+      tool: normalize_collab_tool(get(map, :tool)),
+      status: parse_status(get(map, :status), @collab_tool_status_map, :in_progress),
+      sender_thread_id: get(map, :sender_thread_id) || "",
+      receiver_thread_ids: get(map, :receiver_thread_ids) || [],
+      prompt: get(map, :prompt),
+      model: get(map, :model),
+      reasoning_effort: get(map, :reasoning_effort),
+      agents_states: get(map, :agents_states) || %{}
+    }
+  end
+
   defp parse_web_search(map) do
     %WebSearch{
       id: get(map, :id),
-      query: get(map, :query) || ""
+      query: get(map, :query) || "",
+      action: get(map, :action)
+    }
+  end
+
+  defp parse_image_generation(map) do
+    %ImageGeneration{
+      id: get(map, :id),
+      status: get(map, :status) || "",
+      revised_prompt: get(map, :revised_prompt),
+      result: get(map, :result) || "",
+      saved_path: get(map, :saved_path)
     }
   end
 
@@ -620,6 +848,12 @@ defmodule Codex.Items do
     %Error{
       id: get(map, :id),
       message: get(map, :message) || ""
+    }
+  end
+
+  defp parse_context_compaction(map) do
+    %ContextCompaction{
+      id: get(map, :id)
     }
   end
 
@@ -659,7 +893,13 @@ defmodule Codex.Items do
   end
 
   defp parse_status(value, mapping, default) when is_binary(value) do
-    Map.get(mapping, value, default)
+    normalized =
+      case value do
+        "inProgress" -> "in_progress"
+        other -> other
+      end
+
+    Map.get(mapping, normalized, default)
   end
 
   defp parse_status(value, _mapping, default) do
@@ -714,4 +954,12 @@ defmodule Codex.Items do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_collab_tool(%{} = tool) do
+    get(tool, :type) || get(tool, :name) || inspect(tool)
+  end
+
+  defp normalize_collab_tool(tool) when is_atom(tool), do: Atom.to_string(tool)
+  defp normalize_collab_tool(tool) when is_binary(tool), do: tool
+  defp normalize_collab_tool(_tool), do: ""
 end

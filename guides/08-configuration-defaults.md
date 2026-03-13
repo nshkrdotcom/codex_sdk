@@ -125,8 +125,8 @@ config :codex_sdk,
 
 | Function | Default |
 |----------|---------|
-| `default_api_model/0` | `"gpt-5.4"` |
-| `default_chatgpt_model/0` | `"gpt-5.4"` |
+| `default_api_model/0` | `"gpt-5.3-codex"` |
+| `default_chatgpt_model/0` | `"gpt-5.3-codex"` |
 | `remote_models_cache_ttl_seconds/0` | 300 |
 
 ### Protocol Constants

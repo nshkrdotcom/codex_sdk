@@ -16,6 +16,15 @@ defmodule Codex.AppServer.ItemAdapter do
     {:ok,
      %Items.AgentMessage{
        id: Map.get(item, "id"),
+       text: Map.get(item, "text") || "",
+       phase: Map.get(item, "phase")
+     }}
+  end
+
+  def to_item(%{"type" => "plan"} = item) do
+    {:ok,
+     %Items.Plan{
+       id: Map.get(item, "id"),
        text: Map.get(item, "text") || ""
      }}
   end
@@ -71,11 +80,40 @@ defmodule Codex.AppServer.ItemAdapter do
      }}
   end
 
+  def to_item(%{"type" => "dynamicToolCall"} = item) do
+    {:ok,
+     %Items.DynamicToolCall{
+       id: Map.get(item, "id"),
+       tool: Map.get(item, "tool") || "",
+       arguments: Map.get(item, "arguments"),
+       status: normalize_status(Map.get(item, "status")),
+       content_items: Map.get(item, "contentItems"),
+       success: Map.get(item, "success"),
+       duration_ms: Map.get(item, "durationMs")
+     }}
+  end
+
+  def to_item(%{"type" => "collabAgentToolCall"} = item) do
+    {:ok,
+     %Items.CollabAgentToolCall{
+       id: Map.get(item, "id"),
+       tool: normalize_collab_tool(Map.get(item, "tool")),
+       status: normalize_status(Map.get(item, "status")),
+       sender_thread_id: Map.get(item, "senderThreadId") || "",
+       receiver_thread_ids: Map.get(item, "receiverThreadIds") || [],
+       prompt: Map.get(item, "prompt"),
+       model: Map.get(item, "model"),
+       reasoning_effort: Map.get(item, "reasoningEffort"),
+       agents_states: Map.get(item, "agentsStates") || %{}
+     }}
+  end
+
   def to_item(%{"type" => "webSearch"} = item) do
     {:ok,
      %Items.WebSearch{
        id: Map.get(item, "id"),
-       query: Map.get(item, "query") || ""
+       query: Map.get(item, "query") || "",
+       action: Map.get(item, "action")
      }}
   end
 
@@ -84,6 +122,17 @@ defmodule Codex.AppServer.ItemAdapter do
      %Items.ImageView{
        id: Map.get(item, "id"),
        path: Map.get(item, "path") || ""
+     }}
+  end
+
+  def to_item(%{"type" => "imageGeneration"} = item) do
+    {:ok,
+     %Items.ImageGeneration{
+       id: Map.get(item, "id"),
+       status: Map.get(item, "status") || "",
+       revised_prompt: Map.get(item, "revisedPrompt"),
+       result: Map.get(item, "result") || "",
+       saved_path: Map.get(item, "savedPath")
      }}
   end
 
@@ -102,6 +151,13 @@ defmodule Codex.AppServer.ItemAdapter do
        id: Map.get(item, "id"),
        entered: false,
        review: Map.get(item, "review") || ""
+     }}
+  end
+
+  def to_item(%{"type" => "contextCompaction"} = item) do
+    {:ok,
+     %Items.ContextCompaction{
+       id: Map.get(item, "id")
      }}
   end
 
@@ -183,4 +239,10 @@ defmodule Codex.AppServer.ItemAdapter do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_collab_tool(%{"type" => type}) when is_binary(type), do: type
+  defp normalize_collab_tool(%{"name" => name}) when is_binary(name), do: name
+  defp normalize_collab_tool(tool) when is_binary(tool), do: tool
+  defp normalize_collab_tool(tool) when is_atom(tool), do: Atom.to_string(tool)
+  defp normalize_collab_tool(_tool), do: ""
 end

@@ -251,18 +251,16 @@ defmodule Codex.Transport.AppServer do
         end
 
       {:codex_request, id, method, params} ->
-        cond do
-          approval_request_matches?(state, method, params) ->
-            _ =
-              AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
+        if approval_request_matches?(state, method, params) do
+          _ =
+            AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
 
-            next_event(state)
-
-          true ->
-            case request_event(state, id, method, params) do
-              {:ok, event} -> {[event], state}
-              :ignore -> next_event(state)
-            end
+          next_event(state)
+        else
+          case request_event(state, id, method, params) do
+            {:ok, event} -> {[event], state}
+            :ignore -> next_event(state)
+          end
         end
     after
       timeout_ms ->

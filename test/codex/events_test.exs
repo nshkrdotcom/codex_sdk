@@ -180,6 +180,111 @@ defmodule Codex.EventsTest do
              } = web_event
     end
 
+    test "parses richer item variants and preserves agent phase" do
+      plan_event =
+        Events.parse!(%{
+          "type" => "item.started",
+          "item" => %{"id" => "plan_1", "type" => "plan", "text" => "Inspect repo"}
+        })
+
+      assert %Events.ItemStarted{item: %Items.Plan{id: "plan_1", text: "Inspect repo"}} =
+               plan_event
+
+      agent_event =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "msg_1",
+            "type" => "agent_message",
+            "text" => "done",
+            "phase" => "final"
+          }
+        })
+
+      assert %Events.ItemCompleted{
+               item: %Items.AgentMessage{id: "msg_1", text: "done", phase: "final"}
+             } = agent_event
+
+      dynamic_event =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "dyn_1",
+            "type" => "dynamic_tool_call",
+            "tool" => "browser",
+            "arguments" => %{"url" => "https://example.com"},
+            "status" => "completed",
+            "content_items" => [%{"type" => "inputText", "text" => "done"}],
+            "success" => true
+          }
+        })
+
+      assert %Events.ItemCompleted{
+               item: %Items.DynamicToolCall{
+                 id: "dyn_1",
+                 tool: "browser",
+                 status: :completed,
+                 success: true
+               }
+             } = dynamic_event
+
+      collab_event =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "collab_1",
+            "type" => "collab_agent_tool_call",
+            "tool" => "spawn",
+            "status" => "in_progress",
+            "sender_thread_id" => "sender",
+            "receiver_thread_ids" => ["receiver"],
+            "agents_states" => %{"receiver" => %{"status" => "running"}}
+          }
+        })
+
+      assert %Events.ItemCompleted{
+               item: %Items.CollabAgentToolCall{
+                 id: "collab_1",
+                 tool: "spawn",
+                 status: :in_progress,
+                 sender_thread_id: "sender",
+                 receiver_thread_ids: ["receiver"]
+               }
+             } = collab_event
+
+      image_event =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "img_1",
+            "type" => "image_generation",
+            "status" => "completed",
+            "revised_prompt" => "contrast",
+            "result" => "https://example.com/image.png",
+            "saved_path" => "/tmp/image.png"
+          }
+        })
+
+      assert %Events.ItemCompleted{
+               item: %Items.ImageGeneration{
+                 id: "img_1",
+                 status: "completed",
+                 revised_prompt: "contrast",
+                 result: "https://example.com/image.png",
+                 saved_path: "/tmp/image.png"
+               }
+             } = image_event
+
+      compaction_event =
+        Events.parse!(%{
+          "type" => "item.completed",
+          "item" => %{"id" => "compact_1", "type" => "context_compaction"}
+        })
+
+      assert %Events.ItemCompleted{item: %Items.ContextCompaction{id: "compact_1"}} =
+               compaction_event
+    end
+
     test "parses token usage and diff updates" do
       usage_event =
         Events.parse!(%{
@@ -225,14 +330,16 @@ defmodule Codex.EventsTest do
       updated =
         Events.parse!(%{
           "type" => "account/updated",
-          "auth_mode" => "chatgpt"
+          "auth_mode" => "chatgpt",
+          "plan_type" => "pro"
         })
 
-      assert %Events.AccountUpdated{auth_mode: "chatgpt"} = updated
+      assert %Events.AccountUpdated{auth_mode: "chatgpt", plan_type: :pro} = updated
 
       assert %{
                "type" => "account/updated",
-               "auth_mode" => "chatgpt"
+               "auth_mode" => "chatgpt",
+               "plan_type" => "pro"
              } = Events.to_map(updated)
 
       login =
@@ -271,6 +378,127 @@ defmodule Codex.EventsTest do
                "rate_limits" => %{"primary" => %{"used_percent" => 10.0}},
                "thread_id" => "thread_1"
              } = Events.to_map(rate_event)
+    end
+
+    test "parses thread, hook, reroute, fuzzy, and realtime notifications" do
+      status_event =
+        Events.parse!(%{
+          "type" => "thread/status/changed",
+          "thread_id" => "thr_1",
+          "status" => %{"type" => "active", "active_flags" => ["waiting_on_approval"]}
+        })
+
+      assert %Events.ThreadStatusChanged{
+               thread_id: "thr_1",
+               status: %{type: :active, active_flags: [:waiting_on_approval]}
+             } = status_event
+
+      assert %{"type" => "thread/status/changed", "thread_id" => "thr_1"} =
+               Events.to_map(status_event)
+
+      assert %Events.ThreadArchived{thread_id: "thr_1"} =
+               Events.parse!(%{"type" => "thread/archived", "thread_id" => "thr_1"})
+
+      assert %Events.ThreadUnarchived{thread_id: "thr_1"} =
+               Events.parse!(%{"type" => "thread/unarchived", "thread_id" => "thr_1"})
+
+      assert %Events.SkillsChanged{} = Events.parse!(%{"type" => "skills/changed"})
+
+      assert %Events.ThreadNameUpdated{thread_id: "thr_1", thread_name: "Main"} =
+               Events.parse!(%{
+                 "type" => "thread/name/updated",
+                 "thread_id" => "thr_1",
+                 "thread_name" => "Main"
+               })
+
+      run = %{"id" => "hook_1", "status" => "running"}
+
+      assert %Events.HookStarted{thread_id: "thr_1", turn_id: "turn_1", run: ^run} =
+               Events.parse!(%{
+                 "type" => "hook/started",
+                 "thread_id" => "thr_1",
+                 "turn_id" => "turn_1",
+                 "run" => run
+               })
+
+      assert %Events.HookCompleted{thread_id: "thr_1", turn_id: "turn_1", run: ^run} =
+               Events.parse!(%{
+                 "type" => "hook/completed",
+                 "thread_id" => "thr_1",
+                 "turn_id" => "turn_1",
+                 "run" => run
+               })
+
+      reroute_event =
+        Events.parse!(%{
+          "type" => "model/rerouted",
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "from_model" => "gpt-5.3-codex",
+          "to_model" => "gpt-5.4",
+          "reason" => "highRiskCyberActivity"
+        })
+
+      assert %Events.ModelRerouted{
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               from_model: "gpt-5.3-codex",
+               to_model: "gpt-5.4",
+               reason: :high_risk_cyber_activity
+             } = reroute_event
+
+      assert %Events.FuzzyFileSearchSessionUpdated{
+               session_id: "ffs_1",
+               query: "readme",
+               files: [%{"path" => "README.md"}]
+             } =
+               Events.parse!(%{
+                 "type" => "fuzzyFileSearch/sessionUpdated",
+                 "session_id" => "ffs_1",
+                 "query" => "readme",
+                 "files" => [%{"path" => "README.md"}]
+               })
+
+      assert %Events.ThreadRealtimeStarted{thread_id: "thr_1", session_id: "rt_1"} =
+               Events.parse!(%{
+                 "type" => "thread/realtime/started",
+                 "thread_id" => "thr_1",
+                 "session_id" => "rt_1"
+               })
+
+      assert %Events.ThreadRealtimeItemAdded{
+               thread_id: "thr_1",
+               item: %{"type" => "message", "text" => "hello"}
+             } =
+               Events.parse!(%{
+                 "type" => "thread/realtime/itemAdded",
+                 "thread_id" => "thr_1",
+                 "item" => %{"type" => "message", "text" => "hello"}
+               })
+
+      assert %Events.ThreadRealtimeOutputAudioDelta{
+               thread_id: "thr_1",
+               audio: %{"data" => "YWJj"}
+             } =
+               Events.parse!(%{
+                 "type" => "thread/realtime/outputAudio/delta",
+                 "thread_id" => "thr_1",
+                 "audio" => %{"data" => "YWJj"}
+               })
+
+      assert %Events.ThreadRealtimeError{thread_id: "thr_1", message: "boom"} =
+               Events.parse!(%{
+                 "type" => "thread/realtime/error",
+                 "thread_id" => "thr_1",
+                 "message" => "boom"
+               })
+
+      assert %Events.ThreadRealtimeClosed{thread_id: "thr_1", reason: "done"} =
+               Events.parse!(%{
+                 "type" => "thread/realtime/closed",
+                 "thread_id" => "thr_1",
+                 "reason" => "done"
+               })
     end
 
     test "parses session configured events with initial messages" do

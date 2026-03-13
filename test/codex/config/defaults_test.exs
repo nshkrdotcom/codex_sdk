@@ -225,12 +225,12 @@ defmodule Codex.Config.DefaultsTest do
   # ── Model defaults ─────────────────────────────────────────────────────
 
   describe "model defaults" do
-    test "default_api_model/0 returns gpt-5.4" do
-      assert Defaults.default_api_model() == "gpt-5.4"
+    test "default_api_model/0 returns gpt-5.3-codex" do
+      assert Defaults.default_api_model() == "gpt-5.3-codex"
     end
 
-    test "default_chatgpt_model/0 returns gpt-5.4" do
-      assert Defaults.default_chatgpt_model() == "gpt-5.4"
+    test "default_chatgpt_model/0 returns gpt-5.3-codex" do
+      assert Defaults.default_chatgpt_model() == "gpt-5.3-codex"
     end
 
     test "remote_models_cache_ttl_seconds/0 returns 300" do

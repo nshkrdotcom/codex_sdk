@@ -307,6 +307,9 @@ defmodule Codex.Protocol.Ops do
       "skill" ->
         encode_skill_item(item)
 
+      "mention" ->
+        encode_mention_item(item)
+
       nil ->
         encode_user_input_text(Map.get(item, "text") || "", nil)
 
@@ -339,6 +342,14 @@ defmodule Codex.Protocol.Ops do
   defp encode_skill_item(%{} = item) do
     %{
       "type" => "skill",
+      "name" => Map.get(item, "name") || "",
+      "path" => Map.get(item, "path") || ""
+    }
+  end
+
+  defp encode_mention_item(%{} = item) do
+    %{
+      "type" => "mention",
       "name" => Map.get(item, "name") || "",
       "path" => Map.get(item, "path") || ""
     }

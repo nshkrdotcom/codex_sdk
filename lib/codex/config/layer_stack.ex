@@ -5,7 +5,8 @@ defmodule Codex.Config.LayerStack do
   @type layer :: %{
           source: layer_source(),
           path: String.t(),
-          config: map()
+          config: map(),
+          enabled: boolean()
         }
 
   alias Codex.Config.Defaults
@@ -28,7 +29,13 @@ defmodule Codex.Config.LayerStack do
 
   @spec effective_config([layer()]) :: map()
   def effective_config(layers) when is_list(layers) do
-    Enum.reduce(layers, %{}, fn layer, acc -> merge_configs(acc, layer.config) end)
+    Enum.reduce(layers, %{}, fn layer, acc ->
+      if Map.get(layer, :enabled, true) do
+        merge_configs(acc, layer.config)
+      else
+        acc
+      end
+    end)
   end
 
   @spec remote_models_enabled?(String.t(), String.t() | nil) :: boolean()
@@ -51,7 +58,8 @@ defmodule Codex.Config.LayerStack do
 
       case read_required_config(user_path) do
         {:ok, config} ->
-          {:ok, system_layers ++ [%{source: :user, path: user_path, config: config}]}
+          {:ok,
+           system_layers ++ [%{source: :user, path: user_path, config: config, enabled: true}]}
 
         {:error, _} = error ->
           error
@@ -60,10 +68,42 @@ defmodule Codex.Config.LayerStack do
   end
 
   defp load_system_layers do
+    requirements = read_optional_requirements(system_requirements_path())
+
     case read_optional_config(system_config_path()) do
-      {:ok, config} -> {:ok, [%{source: :system, path: system_config_path(), config: config}]}
-      :missing -> {:ok, []}
-      {:error, _} = error -> error
+      {:ok, config} ->
+        {:ok,
+         [
+           %{
+             source: :system,
+             path: system_config_path(),
+             config: merge_requirements(config, requirements),
+             enabled: true
+           }
+         ]}
+
+      :missing ->
+        case requirements do
+          {:ok, config} ->
+            {:ok,
+             [
+               %{
+                 source: :system,
+                 path: system_requirements_path(),
+                 config: %{"requirements" => config},
+                 enabled: true
+               }
+             ]}
+
+          :missing ->
+            {:ok, []}
+
+          {:error, _} = error ->
+            error
+        end
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -72,15 +112,20 @@ defmodule Codex.Config.LayerStack do
 
     with {:ok, markers} <- project_root_markers(base_config) do
       project_root = find_project_root(cwd, markers || @default_project_root_markers)
-      load_project_layers_between(project_root, cwd)
+      trusted = project_layers_trusted?(base_config, cwd, project_root)
+
+      with {:ok, cwd_layer} <- cwd_layer_for_dir(cwd, trusted),
+           {:ok, project_layers} <- load_project_layers_between(project_root, cwd, trusted) do
+        {:ok, Enum.reject([cwd_layer | project_layers], &is_nil/1)}
+      end
     end
   end
 
-  defp load_project_layers_between(project_root, cwd) do
+  defp load_project_layers_between(project_root, cwd, enabled) do
     dirs = dirs_between(project_root, cwd)
 
     Enum.reduce_while(dirs, {:ok, []}, fn dir, {:ok, layers} ->
-      case project_layer_for_dir(dir) do
+      case project_layer_for_dir(dir, enabled) do
         {:ok, nil} ->
           {:cont, {:ok, layers}}
 
@@ -93,15 +138,36 @@ defmodule Codex.Config.LayerStack do
     end)
   end
 
-  defp project_layer_for_dir(dir) do
+  defp cwd_layer_for_dir(dir, enabled) do
+    config_path = Path.join(dir, "config.toml")
+
+    case read_project_config(config_path) do
+      {:ok, config} when map_size(config) == 0 ->
+        {:ok, nil}
+
+      {:ok, config} ->
+        {:ok, %{source: :project, path: config_path, config: config, enabled: enabled}}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp project_layer_for_dir(dir, enabled) do
     dot_codex = Path.join(dir, ".codex")
 
     if File.dir?(dot_codex) do
       config_path = Path.join(dot_codex, "config.toml")
 
       case read_project_config(config_path) do
-        {:ok, config} -> {:ok, %{source: :project, path: config_path, config: config}}
-        {:error, _} = error -> error
+        {:ok, config} when map_size(config) == 0 ->
+          {:ok, nil}
+
+        {:ok, config} ->
+          {:ok, %{source: :project, path: config_path, config: config, enabled: enabled}}
+
+        {:error, _} = error ->
+          error
       end
     else
       {:ok, nil}
@@ -149,6 +215,14 @@ defmodule Codex.Config.LayerStack do
     end
   end
 
+  defp read_optional_requirements(path) do
+    case File.read(path) do
+      {:ok, contents} -> parse_config(contents, path)
+      {:error, :enoent} -> :missing
+      {:error, reason} -> {:error, {:config_read_failed, path, reason}}
+    end
+  end
+
   defp parse_config(contents, path) do
     case parse_config_contents(contents) do
       {:ok, config} -> {:ok, config}
@@ -157,298 +231,24 @@ defmodule Codex.Config.LayerStack do
   end
 
   defp parse_config_contents(contents) do
-    with {:ok, config} <- parse_toml_subset(contents),
+    with {:ok, config} <- decode_toml(contents),
          :ok <- validate_config(config) do
       {:ok, config}
     end
   end
 
-  defp parse_toml_subset(contents) when is_binary(contents) do
-    contents
-    |> String.split(~r/\r?\n/, trim: false)
-    |> parse_lines(%{}, nil)
-  end
-
-  defp parse_lines([], acc, _section), do: {:ok, acc}
-
-  defp parse_lines([line | rest], acc, section) do
-    line = line |> strip_comments() |> String.trim()
-
-    cond do
-      line == "" ->
-        parse_lines(rest, acc, section)
-
-      table = parse_table(line) ->
-        parse_lines(rest, acc, table)
-
-      true ->
-        case parse_key_value(line, acc, section) do
-          {:ok, updated} -> parse_lines(rest, updated, section)
-          {:error, _} = error -> error
-        end
+  defp decode_toml(contents) when is_binary(contents) do
+    # The toml library's runtime API and docs use `:strings`, but the published
+    # typespec incorrectly advertises `:string`. Keep the runtime-correct option
+    # here and isolate the bad spec at this boundary.
+    case Toml.decode(contents, keys: toml_keys_opt()) do
+      {:ok, config} -> {:ok, config}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp parse_table(line) do
-    case Regex.run(~r/^\[(.+)\]$/, line) do
-      [_, name] ->
-        name = String.trim(name)
-
-        case name do
-          "features" -> "features"
-          "history" -> "history"
-          "shell_environment_policy" -> "shell_environment_policy"
-          _ -> :skip
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp parse_key_value(line, acc, section) do
-    case String.split(line, "=", parts: 2) do
-      [raw_key, raw_value] ->
-        key = String.trim(raw_key)
-        raw_value = String.trim(raw_value)
-
-        with {:ok, value} <- parse_value(raw_value) do
-          {:ok, put_config_value(acc, section, key, value)}
-        end
-
-      _ ->
-        {:error, {:invalid_toml_line, line}}
-    end
-  end
-
-  defp put_config_value(acc, :skip, _key, _value), do: acc
-
-  defp put_config_value(acc, nil, "project_root_markers", value),
-    do: Map.put(acc, "project_root_markers", value)
-
-  defp put_config_value(acc, nil, "cli_auth_credentials_store", value),
-    do: Map.put(acc, "cli_auth_credentials_store", value)
-
-  defp put_config_value(acc, nil, "mcp_oauth_credentials_store", value),
-    do: Map.put(acc, "mcp_oauth_credentials_store", value)
-
-  defp put_config_value(acc, nil, "forced_login_method", value),
-    do: Map.put(acc, "forced_login_method", value)
-
-  defp put_config_value(acc, nil, "forced_chatgpt_workspace_id", value),
-    do: Map.put(acc, "forced_chatgpt_workspace_id", value)
-
-  defp put_config_value(acc, nil, "model", value),
-    do: Map.put(acc, "model", value)
-
-  defp put_config_value(acc, nil, "model_reasoning_effort", value),
-    do: Map.put(acc, "model_reasoning_effort", value)
-
-  defp put_config_value(acc, nil, "model_provider", value),
-    do: Map.put(acc, "model_provider", value)
-
-  defp put_config_value(acc, nil, "features", value) when is_map(value),
-    do: Map.put(acc, "features", value)
-
-  defp put_config_value(acc, nil, "features", _value), do: acc
-
-  defp put_config_value(acc, nil, "history", value) when is_map(value),
-    do: Map.put(acc, "history", value)
-
-  defp put_config_value(acc, nil, "history", _value), do: acc
-
-  defp put_config_value(acc, nil, "shell_environment_policy", value) when is_map(value),
-    do: Map.put(acc, "shell_environment_policy", value)
-
-  defp put_config_value(acc, nil, "shell_environment_policy", _value), do: acc
-
-  defp put_config_value(acc, nil, key, value), do: maybe_put_dotted_value(acc, key, value)
-
-  defp put_config_value(acc, "features", key, value) do
-    Map.update(acc, "features", %{key => value}, &Map.put(&1, key, value))
-  end
-
-  defp put_config_value(acc, "history", key, value) do
-    Map.update(acc, "history", %{key => value}, &Map.put(&1, key, value))
-  end
-
-  defp put_config_value(acc, "shell_environment_policy", key, value) do
-    Map.update(acc, "shell_environment_policy", %{key => value}, &Map.put(&1, key, value))
-  end
-
-  defp maybe_put_dotted_value(acc, key, value) do
-    case String.split(key, ".") do
-      ["features" | rest] when rest != [] ->
-        put_nested_path(acc, ["features" | rest], value)
-
-      ["history" | rest] when rest != [] ->
-        put_nested_path(acc, ["history" | rest], value)
-
-      ["shell_environment_policy" | rest] when rest != [] ->
-        put_nested_path(acc, ["shell_environment_policy" | rest], value)
-
-      _ ->
-        acc
-    end
-  end
-
-  defp put_nested_path(acc, [root | rest], value) do
-    Map.update(acc, root, build_nested(rest, value), fn existing ->
-      merge_nested(existing, rest, value)
-    end)
-  end
-
-  defp build_nested([], value), do: value
-  defp build_nested([key | rest], value), do: %{key => build_nested(rest, value)}
-
-  defp merge_nested(_existing, [], value), do: value
-
-  defp merge_nested(%{} = existing, [key | rest], value) do
-    Map.update(existing, key, build_nested(rest, value), fn nested ->
-      merge_nested(nested, rest, value)
-    end)
-  end
-
-  defp merge_nested(_existing, rest, value), do: build_nested(rest, value)
-
-  defp strip_comments(line) do
-    line
-    |> String.to_charlist()
-    |> strip_comments([], nil)
-    |> Enum.reverse()
-    |> to_string()
-  end
-
-  defp strip_comments([], acc, _quote), do: acc
-
-  defp strip_comments([?# | _rest], acc, nil), do: acc
-
-  defp strip_comments([char | rest], acc, quote) do
-    strip_comments(rest, [char | acc], next_quote(char, quote))
-  end
-
-  defp next_quote(char, nil) when char in [?", ?'], do: char
-  defp next_quote(char, quote) when char == quote, do: nil
-  defp next_quote(_char, quote), do: quote
-
-  defp parse_value(value) do
-    value = String.trim(value)
-
-    cond do
-      value == "" ->
-        {:error, {:invalid_toml_value, value}}
-
-      boolean_string?(value) ->
-        {:ok, value == "true"}
-
-      array_string?(value) ->
-        parse_array(value)
-
-      inline_table_string?(value) ->
-        parse_inline_table(value)
-
-      quoted_string?(value) ->
-        {:ok, strip_quotes(value)}
-
-      integer_string?(value) ->
-        {:ok, parse_integer(value)}
-
-      true ->
-        {:ok, value}
-    end
-  end
-
-  defp boolean_string?("true"), do: true
-  defp boolean_string?("false"), do: true
-  defp boolean_string?(_), do: false
-
-  defp array_string?(value) do
-    String.starts_with?(value, "[") and String.ends_with?(value, "]")
-  end
-
-  defp inline_table_string?(value) do
-    String.starts_with?(value, "{") and String.ends_with?(value, "}")
-  end
-
-  defp quoted_string?(value) do
-    (String.starts_with?(value, "\"") and String.ends_with?(value, "\"")) or
-      (String.starts_with?(value, "'") and String.ends_with?(value, "'"))
-  end
-
-  defp strip_quotes(value) do
-    value
-    |> String.trim_leading("\"")
-    |> String.trim_trailing("\"")
-    |> String.trim_leading("'")
-    |> String.trim_trailing("'")
-  end
-
-  defp integer_string?(value) do
-    String.match?(value, ~r/^-?\d+(_\d+)*$/)
-  end
-
-  defp parse_integer(value) do
-    value
-    |> String.replace("_", "")
-    |> String.to_integer()
-  end
-
-  defp parse_array(value) do
-    value
-    |> String.trim_leading("[")
-    |> String.trim_trailing("]")
-    |> String.trim()
-    |> parse_array_inner()
-  end
-
-  defp parse_array_inner(""), do: {:ok, []}
-
-  defp parse_array_inner(inner) do
-    inner
-    |> String.split(",", trim: true)
-    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
-      case parse_value(entry) do
-        {:ok, parsed} -> {:cont, {:ok, acc ++ [parsed]}}
-        {:error, _} = error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp parse_inline_table(value) do
-    value
-    |> String.trim_leading("{")
-    |> String.trim_trailing("}")
-    |> String.trim()
-    |> parse_inline_table_inner()
-  end
-
-  defp parse_inline_table_inner(""), do: {:ok, %{}}
-
-  defp parse_inline_table_inner(inner) do
-    inner
-    |> String.split(",", trim: true)
-    |> Enum.reduce_while({:ok, %{}}, fn entry, {:ok, acc} ->
-      case parse_inline_entry(entry) do
-        {:ok, {key, parsed}} -> {:cont, {:ok, Map.put(acc, key, parsed)}}
-        {:error, _} = error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp parse_inline_entry(entry) do
-    case String.split(entry, "=", parts: 2) do
-      [raw_key, raw_value] ->
-        key = String.trim(raw_key)
-        raw_value = String.trim(raw_value)
-
-        case parse_value(raw_value) do
-          {:ok, parsed} -> {:ok, {key, parsed}}
-          {:error, _} = error -> error
-        end
-
-      _ ->
-        {:error, {:invalid_toml_inline_table, entry}}
-    end
+  defp toml_keys_opt do
+    String.to_existing_atom("strings")
   end
 
   defp validate_config(%{} = config) do
@@ -462,8 +262,6 @@ defmodule Codex.Config.LayerStack do
       validate_forced_login_config(config)
     end
   end
-
-  defp validate_config(_), do: {:error, :invalid_config_root}
 
   defp validate_features(config) do
     case fetch_value(config, ["features", :features]) do
@@ -769,10 +567,63 @@ defmodule Codex.Config.LayerStack do
   defp normalize_cwd(cwd) when is_binary(cwd), do: cwd
   defp normalize_cwd(_), do: nil
 
+  defp merge_requirements(config, {:ok, requirements})
+       when is_map(config) and is_map(requirements) do
+    Map.put(config, "requirements", requirements)
+  end
+
+  defp merge_requirements(config, _requirements), do: config
+
+  defp project_layers_trusted?(config, cwd, project_root) do
+    projects = fetch_value(config, ["projects", :projects]) || %{}
+
+    trust =
+      project_trust_level(projects, cwd) ||
+        project_trust_level(projects, project_root) ||
+        (resolve_repo_root(cwd) && project_trust_level(projects, resolve_repo_root(cwd)))
+
+    trust in ["trusted", :trusted]
+  end
+
+  defp project_trust_level(projects, path) when is_map(projects) and is_binary(path) do
+    case Map.get(projects, Path.expand(path)) || Map.get(projects, path) do
+      %{} = project ->
+        Map.get(project, "trust_level") || Map.get(project, :trust_level)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp project_trust_level(_projects, _path), do: nil
+
+  defp resolve_repo_root(cwd) when is_binary(cwd) do
+    case System.cmd("git", ["-C", cwd, "rev-parse", "--show-toplevel"], stderr_to_stdout: true) do
+      {output, 0} ->
+        output
+        |> String.trim()
+        |> case do
+          "" -> nil
+          path -> path
+        end
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
+  end
+
   defp system_config_path do
     case Application.get_env(:codex_sdk, :system_config_path) do
       nil -> @default_system_config_path
       value -> value
     end
+  end
+
+  defp system_requirements_path do
+    system_config_path()
+    |> Path.dirname()
+    |> Path.join("requirements.toml")
   end
 end

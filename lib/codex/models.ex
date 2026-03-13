@@ -6,7 +6,6 @@ defmodule Codex.Models do
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.Defaults
-  alias Codex.Config.LayerStack
 
   @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
 
@@ -160,16 +159,6 @@ defmodule Codex.Models do
                      shell_type: :shell_command
                    },
                    %{
-                     id: "gpt-5.3-codex",
-                     description: "Latest frontier agentic coding model.",
-                     supported_reasoning_efforts: @efforts_full,
-                     is_default: false,
-                     upgrade: @default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
                      id: "gpt-5.3-codex-spark",
                      description: "Ultra-fast coding model.",
                      supported_reasoning_efforts: @efforts_full,
@@ -317,7 +306,8 @@ defmodule Codex.Models do
   @spec default_model() :: String.t()
   @spec default_model(:api | :chatgpt) :: String.t()
   def default_model(auth_mode \\ Auth.infer_auth_mode()) do
-    env_override() || default_model_for_auth(normalize_auth_mode(auth_mode))
+    auth_mode = normalize_auth_mode(auth_mode)
+    env_override() || default_model_for_auth(auth_mode, default_cwd())
   end
 
   @doc """
@@ -477,17 +467,23 @@ defmodule Codex.Models do
       System.get_env("CODEX_MODEL_DEFAULT")
   end
 
-  defp default_model_for_auth(:chatgpt), do: @default_chatgpt_model
-
-  defp default_model_for_auth(:api), do: @default_api_model
+  defp default_model_for_auth(auth_mode, cwd) do
+    auth_mode
+    |> available_presets(cwd)
+    |> select_default_model_id(auth_mode)
+    |> case do
+      nil -> fallback_default_model(auth_mode)
+      model_id -> model_id
+    end
+  end
 
   defp available_presets(auth_mode, cwd) do
-    preferred_model = default_model(auth_mode)
-
     remote_models =
       auth_mode
       |> remote_models(cwd)
-      |> Enum.sort_by(fn model -> {model.slug != preferred_model, model.priority} end)
+      |> Enum.with_index()
+      |> Enum.sort_by(fn {model, index} -> {model.priority, index} end)
+      |> Enum.map(fn {model, _index} -> model end)
       |> Enum.map(&model_info_to_preset/1)
 
     merge_presets(remote_models, @local_presets)
@@ -502,10 +498,11 @@ defmodule Codex.Models do
   defp ensure_default([], _auth_mode), do: []
 
   defp ensure_default(models, auth_mode) do
-    preferred_model = default_model(auth_mode)
+    preferred_model = select_default_model_id(models, auth_mode)
 
     case Enum.find_index(models, fn model ->
-           model.id == preferred_model || model.model == preferred_model
+           preferred_model != nil and
+             (model.id == preferred_model || model.model == preferred_model)
          end) do
       nil ->
         if Enum.any?(models, & &1.is_default) do
@@ -521,6 +518,21 @@ defmodule Codex.Models do
         |> Enum.map(fn {model, index} ->
           %{model | is_default: index == preferred_index}
         end)
+    end
+  end
+
+  defp select_default_model_id(models, auth_mode) do
+    models
+    |> filter_visible_models(auth_mode)
+    |> case do
+      [] -> models
+      visible -> visible
+    end
+    |> List.first()
+    |> case do
+      %{id: id} -> id
+      %{model: model} -> model
+      _ -> nil
     end
   end
 
@@ -606,22 +618,12 @@ defmodule Codex.Models do
     end
   end
 
-  defp remote_models(:api, cwd) do
-    if remote_models_enabled?(cwd) do
-      load_models_json()
-    else
-      []
-    end
-  end
+  defp remote_models(:api, _cwd), do: load_models_json()
 
-  defp remote_models(:chatgpt, cwd) do
-    if remote_models_enabled?(cwd) do
-      case load_models_cache() do
-        {:ok, models} -> models
-        :miss -> fetch_or_load_models()
-      end
-    else
-      []
+  defp remote_models(:chatgpt, _cwd) do
+    case load_models_cache() do
+      {:ok, models} -> models
+      :miss -> fetch_or_load_models()
     end
   end
 
@@ -641,10 +643,6 @@ defmodule Codex.Models do
       {:error, _reason} ->
         load_models_json()
     end
-  end
-
-  defp remote_models_enabled?(cwd) do
-    LayerStack.remote_models_enabled?(Auth.codex_home(), cwd)
   end
 
   defp load_models_json do
@@ -1013,6 +1011,9 @@ defmodule Codex.Models do
   end
 
   defp upgrade_from_info(_slug, _upgrade, _presets), do: nil
+
+  defp fallback_default_model(:chatgpt), do: @default_chatgpt_model
+  defp fallback_default_model(:api), do: @default_api_model
 
   defp reasoning_effort_mapping_from_presets([]), do: nil
 

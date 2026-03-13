@@ -58,6 +58,33 @@ defmodule Codex.AppServer.NotificationAdapterTest do
       assert delta["output_tokens"] == 9
     end
 
+    test "maps thread lifecycle notifications" do
+      assert {:ok,
+              %Events.ThreadStatusChanged{
+                thread_id: "thr_1",
+                status: %{type: :active, active_flags: [:waiting_on_approval]}
+              }} =
+               NotificationAdapter.to_event("thread/status/changed", %{
+                 "threadId" => "thr_1",
+                 "status" => %{"type" => "active", "activeFlags" => ["waitingOnApproval"]}
+               })
+
+      assert {:ok, %Events.ThreadArchived{thread_id: "thr_1"}} =
+               NotificationAdapter.to_event("thread/archived", %{"threadId" => "thr_1"})
+
+      assert {:ok, %Events.ThreadUnarchived{thread_id: "thr_1"}} =
+               NotificationAdapter.to_event("thread/unarchived", %{"threadId" => "thr_1"})
+
+      assert {:ok, %Events.SkillsChanged{}} =
+               NotificationAdapter.to_event("skills/changed", %{})
+
+      assert {:ok, %Events.ThreadNameUpdated{thread_id: "thr_1", thread_name: "Main thread"}} =
+               NotificationAdapter.to_event("thread/name/updated", %{
+                 "threadId" => "thr_1",
+                 "threadName" => "Main thread"
+               })
+    end
+
     test "maps diff updates with unified diff string" do
       params = %{"threadId" => "thr_1", "turnId" => "turn_1", "diff" => "@@ -1 +1 @@\n"}
 
@@ -92,6 +119,24 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                %{step: "Second", status: :in_progress},
                %{step: "Third", status: :completed}
              ]
+    end
+
+    test "maps hook lifecycle notifications" do
+      run = %{"id" => "hook_1", "eventName" => "sessionStart", "status" => "running"}
+
+      assert {:ok, %Events.HookStarted{thread_id: "thr_1", turn_id: "turn_1", run: ^run}} =
+               NotificationAdapter.to_event("hook/started", %{
+                 "threadId" => "thr_1",
+                 "turnId" => "turn_1",
+                 "run" => run
+               })
+
+      assert {:ok, %Events.HookCompleted{thread_id: "thr_1", turn_id: "turn_1", run: ^run}} =
+               NotificationAdapter.to_event("hook/completed", %{
+                 "threadId" => "thr_1",
+                 "turnId" => "turn_1",
+                 "run" => run
+               })
     end
 
     test "maps reasoning summary part added notifications" do
@@ -167,8 +212,11 @@ defmodule Codex.AppServer.NotificationAdapterTest do
     end
 
     test "maps account and auth notifications" do
-      assert {:ok, %Events.AccountUpdated{auth_mode: "apiKey"}} =
-               NotificationAdapter.to_event("account/updated", %{"authMode" => "apiKey"})
+      assert {:ok, %Events.AccountUpdated{auth_mode: "apiKey", plan_type: :pro}} =
+               NotificationAdapter.to_event("account/updated", %{
+                 "authMode" => "apiKey",
+                 "planType" => "pro"
+               })
 
       assert {:ok,
               %Events.AccountLoginCompleted{
@@ -180,6 +228,94 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                  "loginId" => "login_1",
                  "success" => true,
                  "error" => nil
+               })
+    end
+
+    test "maps app, reroute, fuzzy search, and realtime notifications" do
+      assert {:ok, %Events.AppListUpdated{data: [%{"id" => "app_1"}]}} =
+               NotificationAdapter.to_event("app/list/updated", %{
+                 "data" => [%{"id" => "app_1"}]
+               })
+
+      assert {:ok,
+              %Events.ModelRerouted{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                from_model: "gpt-5.3-codex",
+                to_model: "gpt-5.4",
+                reason: :high_risk_cyber_activity
+              }} =
+               NotificationAdapter.to_event("model/rerouted", %{
+                 "threadId" => "thr_1",
+                 "turnId" => "turn_1",
+                 "fromModel" => "gpt-5.3-codex",
+                 "toModel" => "gpt-5.4",
+                 "reason" => "highRiskCyberActivity"
+               })
+
+      assert {:ok,
+              %Events.FuzzyFileSearchSessionUpdated{
+                session_id: "ffs_1",
+                query: "readme",
+                files: [%{"path" => "README.md"}]
+              }} =
+               NotificationAdapter.to_event("fuzzyFileSearch/sessionUpdated", %{
+                 "sessionId" => "ffs_1",
+                 "query" => "readme",
+                 "files" => [%{"path" => "README.md"}]
+               })
+
+      assert {:ok, %Events.FuzzyFileSearchSessionCompleted{session_id: "ffs_1"}} =
+               NotificationAdapter.to_event("fuzzyFileSearch/sessionCompleted", %{
+                 "sessionId" => "ffs_1"
+               })
+
+      assert {:ok, %Events.ThreadRealtimeStarted{thread_id: "thr_1", session_id: "rt_1"}} =
+               NotificationAdapter.to_event("thread/realtime/started", %{
+                 "threadId" => "thr_1",
+                 "sessionId" => "rt_1"
+               })
+
+      assert {:ok,
+              %Events.ThreadRealtimeItemAdded{
+                thread_id: "thr_1",
+                item: %{"type" => "message", "text" => "hello"}
+              }} =
+               NotificationAdapter.to_event("thread/realtime/itemAdded", %{
+                 "threadId" => "thr_1",
+                 "item" => %{"type" => "message", "text" => "hello"}
+               })
+
+      assert {:ok,
+              %Events.ThreadRealtimeOutputAudioDelta{
+                thread_id: "thr_1",
+                audio: %{
+                  "data" => "YWJj",
+                  "sample_rate" => 24_000,
+                  "num_channels" => 1,
+                  "samples_per_channel" => 128
+                }
+              }} =
+               NotificationAdapter.to_event("thread/realtime/outputAudio/delta", %{
+                 "threadId" => "thr_1",
+                 "audio" => %{
+                   "data" => "YWJj",
+                   "sampleRate" => 24_000,
+                   "numChannels" => 1,
+                   "samplesPerChannel" => 128
+                 }
+               })
+
+      assert {:ok, %Events.ThreadRealtimeError{thread_id: "thr_1", message: "boom"}} =
+               NotificationAdapter.to_event("thread/realtime/error", %{
+                 "threadId" => "thr_1",
+                 "message" => "boom"
+               })
+
+      assert {:ok, %Events.ThreadRealtimeClosed{thread_id: "thr_1", reason: "done"}} =
+               NotificationAdapter.to_event("thread/realtime/closed", %{
+                 "threadId" => "thr_1",
+                 "reason" => "done"
                })
     end
 

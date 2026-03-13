@@ -7,7 +7,7 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the SDK default model (currently gpt-5.4)
+# Use the SDK default model (currently resolves to gpt-5.3-codex from the bundled catalog)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
@@ -22,20 +22,24 @@ agent = %Codex.Realtime.Agent{model: Codex.Realtime.Agent.default_model()}
 
 ## Model Defaults
 
-The SDK defines default models in `Codex.Models`:
+The SDK derives default text models in `Codex.Models`:
 
 | Context | Default | Source |
 |---------|---------|--------|
-| API auth mode | `Codex.Models.default_model(:api)` | `@default_api_model` in `Codex.Models` |
-| ChatGPT auth mode | `Codex.Models.default_model(:chatgpt)` | `@default_chatgpt_model` in `Codex.Models` |
+| API auth mode | `Codex.Models.default_model(:api)` | First picker-visible API-supported model from the active catalog, with `Codex.Config.Defaults.default_api_model/0` as fallback |
+| ChatGPT auth mode | `Codex.Models.default_model(:chatgpt)` | First picker-visible ChatGPT model from the active catalog, with `Codex.Config.Defaults.default_chatgpt_model/0` as fallback |
 | Realtime sessions | `Codex.Realtime.Agent.default_model()` | `@default_model` in `Codex.Realtime.Agent` |
 | Speech-to-text | `Codex.Voice.Models.OpenAISTT.model_name()` | `@default_model` in `OpenAISTT` |
 | Text-to-speech | `Codex.Voice.Models.OpenAITTS.model_name()` | `@default_model` in `OpenAITTS` |
 
+The exact text default is catalog-derived, not a permanent public contract. With
+the bundled catalog vendored in this repo, both text auth modes currently resolve
+to `gpt-5.3-codex` unless env overrides or a fresher ChatGPT `/models` cache win.
+
 ### Environment Overrides
 
-The SDK checks these environment variables (in order) before falling back to
-the compiled default:
+The SDK checks these environment variables (in order) before falling back to the
+auth-aware catalog default:
 
 1. `CODEX_MODEL`
 2. `OPENAI_DEFAULT_MODEL`
@@ -52,7 +56,7 @@ current auth mode:
 
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-["gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.2", "gpt-5.1-codex-mini"]
+#=> ["gpt-5.3-codex", ...]
 ```
 
 Each model preset includes:
@@ -150,7 +154,7 @@ iex> Codex.Models.normalize_reasoning_effort("invalid")
 Model and reasoning configuration follows the SDK's layered override system.
 Later layers take precedence:
 
-1. **Compiled defaults** - `Codex.Models.default_model()`, `:medium` effort
+1. **Bundled catalog defaults** - `Codex.Models.default_model()` picks the first visible model for the inferred auth mode (falling back to `Codex.Config.Defaults` only if catalog resolution fails), with `:medium` effort
 2. **Environment variables** - `CODEX_MODEL`, etc.
 3. **`Codex.Options`** - `:model` and `:reasoning_effort` fields
 4. **`Codex.Thread.Options`** - per-thread overrides
@@ -227,21 +231,21 @@ Some models have upgrade paths to newer versions. Query them with:
 
 ```elixir
 iex> Codex.Models.get_upgrade("gpt-5.1-codex-max")
-%{
-  id: "gpt-5.4",
-  migration_config_key: "gpt-5.1-codex-max",
-  reasoning_effort_mapping: nil,
-  ...
-}
+%{id: target, migration_config_key: key, reasoning_effort_mapping: mapping, ...}
 ```
+
+Upgrade targets come from the bundled/current catalog and can change across
+upstream pulls.
 
 ## Architecture: Where Defaults Live
 
-The SDK follows a single-source-of-truth pattern for all model defaults:
+The SDK follows a single-source-of-truth pattern for model defaults and model
+metadata:
 
 | Constant | Module | Used By |
 |----------|--------|---------|
-| `@default_api_model` | `Codex.Models` | `Codex.Options`, `Codex.Thread`, all exec/transport code |
+| Bundled `priv/models.json` catalog | `Codex.Models` | Visible model listing, default selection, upgrade metadata |
+| `Codex.Config.Defaults.default_api_model/0` and `default_chatgpt_model/0` | `Codex.Config.Defaults` | Fallback when catalog-based default selection cannot resolve |
 | `@default_model` | `Codex.Realtime.Agent` | `Codex.Realtime.Session`, examples |
 | `@default_model` | `Codex.Voice.Models.OpenAISTT` | `OpenAIProvider`, examples |
 | `@default_model` | `Codex.Voice.Models.OpenAITTS` | `OpenAIProvider`, examples |

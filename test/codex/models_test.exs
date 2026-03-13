@@ -45,13 +45,13 @@ defmodule Codex.ModelsTest do
     :ok
   end
 
-  test "list_visible/1 returns api defaults when remote models are disabled" do
+  test "list_visible/1 returns bundled api catalog defaults" do
     with_temp_codex_home(fn _home ->
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.4",
                "gpt-5.3-codex",
+               "gpt-5.4",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
@@ -62,18 +62,18 @@ defmodule Codex.ModelsTest do
     end)
   end
 
-  test "list_visible/1 returns chatgpt defaults when remote models are disabled" do
+  test "list_visible/1 returns bundled chatgpt catalog defaults" do
     with_temp_codex_home(fn _home ->
       models = Models.list_visible(:chatgpt)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.4",
                "gpt-5.3-codex",
-               "gpt-5.3-codex-spark",
+               "gpt-5.4",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
-               "gpt-5.1-codex-mini"
+               "gpt-5.1-codex-mini",
+               "gpt-5.3-codex-spark"
              ]
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
@@ -98,39 +98,38 @@ defmodule Codex.ModelsTest do
     assert Models.default_model() == "custom-model"
   end
 
-  test "remote models are gated behind features.remote_models" do
+  test "bundled catalog does not depend on features.remote_models" do
     with_temp_codex_home(fn home ->
-      # Without remote_models config, we should get local presets
       models = Models.list_visible(:api)
-      assert Enum.any?(models, &(&1.id == "gpt-5.4"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       assert Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
       assert length(models) >= 6
 
       write_config!(home, true)
-      models = Models.list_visible(:api)
-      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
+      assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)
     end)
   end
 
-  test "does not override default model when codex-auto-balanced is available" do
+  test "chatgpt defaults can come from cached catalog while api filters API-hidden models" do
     with_temp_codex_home(fn home ->
-      write_config!(home, true)
-
       write_models_cache!(home, [
         remote_model_info("codex-auto-balanced", 0,
           visibility: "list",
           supported_in_api: false
+        ),
+        remote_model_info(default_model(), 1,
+          visibility: "list",
+          supported_in_api: true
         )
       ])
 
-      assert Models.default_model() == default_model()
+      assert Models.default_model(:chatgpt) == "codex-auto-balanced"
+      assert Models.default_model(:api) == default_model()
     end)
   end
 
   test "upgrade metadata includes reasoning effort mapping for remote models" do
     with_temp_codex_home(fn home ->
-      write_config!(home, true)
-
       write_models_cache!(home, [
         remote_model_info(default_model(), 0,
           visibility: "list",

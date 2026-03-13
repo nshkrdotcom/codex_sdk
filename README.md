@@ -84,9 +84,9 @@ to the codex subprocess to align with provider expectations.
 Base URL precedence is: explicit `:base_url` in `Codex.Options.new/1`, then `OPENAI_BASE_URL`,
 then the OpenAI default (`https://api.openai.com/v1`).
 
-Default model: `gpt-5.4` (unless overridden by `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT`).
+Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.3-codex` for API-auth flows unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT` overrides it.
 
-Remote models are gated behind `features.remote_models = true` in the effective Codex config (system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, and `.codex/config.toml` layers between `cwd` and the project root; root markers default to `.git` and are configurable via `project_root_markers`). When enabled, the SDK merges the remote `/models` list (or bundled `models.json`) with local presets while keeping `gpt-5.4` as the SDK default.
+The SDK always loads the bundled upstream model catalog from `priv/models.json`. When ChatGPT auth tokens are available it can still refresh `/models` and cache the result, but the old `features.remote_models` flag is no longer required for current catalog/default behavior.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
@@ -154,7 +154,7 @@ App-server-only APIs include:
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints (including MCP reload)
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
-Note: app-server v2 does not support sending `UserInput::Skill` directly; use `skills/list` and inject skill content as text if you need emulation.
+App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 
 ### Raw CLI Passthrough and Interactive Sessions
@@ -436,7 +436,7 @@ apply or undo diffs locally:
     model: "o1",
     reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
     model_personality: :friendly,
-    review_model: "gpt-5.4",
+    review_model: Codex.Models.default_model(),
     tool_output_token_limit: 512,
     history: %{persistence: "local", max_bytes: 1_000_000},
     config: %{"model_reasoning_summary" => "concise"}  # global --config baseline

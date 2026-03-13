@@ -262,7 +262,7 @@ Executes a multi-turn run and returns the complete result (blocking mode). Inter
 
 **Parameters**:
 - `thread`: Thread struct from `Codex.start_thread/2` or `Codex.resume_thread/3`
-- `input`: Prompt text or app-server `UserInput` blocks (text/image/localImage)
+- `input`: Prompt text or structured `UserInput` blocks (`text`, `image`, `localImage`, `skill`, `mention`)
 - `opts` (optional): Per-turn options (e.g., `output_schema`, `env`, `attachments`) plus runner settings (`:agent`, `:run_config`, or `:max_turns`)
 
 **Returns**:
@@ -310,7 +310,7 @@ IO.inspect(data["key_points"])
 - Accumulates events and usage across turns
 - Invokes registered tools automatically when codex requests them
 - Thread struct is updated with thread_id after first turn; subsequent calls reuse it for context
-- App-server transport accepts `UserInput` block lists; exec JSONL requires text input
+- App-server transport accepts `UserInput` block lists; exec JSONL also accepts the SDK's normalized JSONL user-input variants (`text`, `image`, `local_image`, `skill`, `mention`)
 
 ---
 
