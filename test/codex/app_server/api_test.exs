@@ -519,18 +519,27 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   describe "thread_compact/2" do
-    test "returns unsupported error for removed API without sending request", %{conn: conn} do
+    test "encodes thread/compact/start requests", %{conn: conn, os_pid: os_pid} do
       task =
         Task.async(fn ->
-          fun = Function.capture(AppServer, :thread_compact, 2)
-          fun.(conn, "thr_123")
+          AppServer.thread_compact(conn, "thr_123")
         end)
 
-      refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 100
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
 
-      assert {:error, {:unsupported, message}} = Task.await(task, 200)
-      assert message =~ "thread/compact"
-      assert message =~ "removed"
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "thread/compact/start",
+                "params" => %{"threadId" => "thr_123"}
+              }} = Jason.decode(request_line)
+
+      send(
+        conn,
+        {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "started"})}
+      )
+
+      assert {:ok, %{"status" => "started"}} = Task.await(task, 200)
     end
   end
 end

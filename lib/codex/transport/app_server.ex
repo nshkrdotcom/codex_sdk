@@ -252,23 +252,34 @@ defmodule Codex.Transport.AppServer do
 
       {:codex_request, id, method, params} ->
         cond do
-          request_matches?(state, id, method, params) ->
+          approval_request_matches?(state, method, params) ->
             _ =
               AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
 
             next_event(state)
 
-          user_input_request_method?(method) ->
-            {[request_user_input_event(id, params)], state}
-
           true ->
-            next_event(state)
+            case request_event(state, id, method, params) do
+              {:ok, event} -> {[event], state}
+              :ignore -> next_event(state)
+            end
         end
     after
       timeout_ms ->
         {:halt, state}
     end
   end
+
+  defp request_event(%{thread_id: thread_id, turn_id: turn_id}, id, method, %{} = params)
+       when is_binary(method) do
+    if correlated_request_method?(method) and not request_ids_match?(thread_id, turn_id, params) do
+      :ignore
+    else
+      build_request_event(id, method, params)
+    end
+  end
+
+  defp request_event(_state, _id, _method, _params), do: :ignore
 
   defp normalize_config(nil), do: nil
   defp normalize_config(%{} = config) when map_size(config) == 0, do: nil
@@ -315,15 +326,25 @@ defmodule Codex.Transport.AppServer do
 
   defp default_model(_thread, _mode), do: nil
 
-  defp request_matches?(%{thread_id: thread_id, turn_id: turn_id}, _id, method, params)
+  defp approval_request_matches?(%{thread_id: thread_id, turn_id: turn_id}, method, params)
        when is_binary(method) and is_map(params) do
     approval_request_method?(method) and request_ids_match?(thread_id, turn_id, params)
   end
 
-  defp request_matches?(_state, _id, _method, _params), do: false
+  defp approval_request_matches?(_state, _method, _params), do: false
 
   defp approval_request_method?(method),
     do: method in ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"]
+
+  defp correlated_request_method?(method) do
+    method in [
+      "item/tool/requestUserInput",
+      "item/tool/request_user_input",
+      "mcpServer/elicitation/request",
+      "item/permissions/requestApproval",
+      "item/tool/call"
+    ]
+  end
 
   defp user_input_request_method?(method),
     do: method in ["item/tool/requestUserInput", "item/tool/request_user_input"]
@@ -336,10 +357,79 @@ defmodule Codex.Transport.AppServer do
 
     %Events.RequestUserInput{
       id: id,
+      thread_id: fetch_any(params, ["threadId", "thread_id"]),
       turn_id: fetch_any(params, ["turnId", "turn_id"]),
+      item_id: fetch_any(params, ["itemId", "item_id"]),
       questions: questions
     }
   end
+
+  defp build_request_event(id, method, params) do
+    if user_input_request_method?(method) do
+      {:ok, request_user_input_event(id, params)}
+    else
+      do_build_request_event(id, method, params)
+    end
+  end
+
+  defp do_build_request_event(id, "mcpServer/elicitation/request", %{} = params) do
+    request =
+      params
+      |> deep_stringify_keys()
+      |> Map.drop(["threadId", "thread_id", "turnId", "turn_id", "serverName", "server_name"])
+
+    {:ok,
+     %Events.McpElicitationRequested{
+       id: id,
+       thread_id: fetch_any(params, ["threadId", "thread_id"]) || "",
+       turn_id: fetch_any(params, ["turnId", "turn_id"]),
+       server_name: fetch_any(params, ["serverName", "server_name"]) || "",
+       request_mode: Map.get(request, "mode"),
+       message: Map.get(request, "message"),
+       request: request
+     }}
+  end
+
+  defp do_build_request_event(id, "item/permissions/requestApproval", %{} = params) do
+    permissions =
+      params
+      |> fetch_any(["permissions", :permissions])
+      |> deep_stringify_keys()
+
+    {:ok,
+     %Events.PermissionsApprovalRequested{
+       id: id,
+       thread_id: fetch_any(params, ["threadId", "thread_id"]) || "",
+       turn_id: fetch_any(params, ["turnId", "turn_id"]) || "",
+       item_id: fetch_any(params, ["itemId", "item_id"]) || "",
+       reason: fetch_any(params, ["reason", :reason]),
+       permissions: permissions || %{}
+     }}
+  end
+
+  defp do_build_request_event(id, "item/tool/call", %{} = params) do
+    {:ok,
+     %Events.DynamicToolCallRequested{
+       id: id,
+       thread_id: fetch_any(params, ["threadId", "thread_id"]) || "",
+       turn_id: fetch_any(params, ["turnId", "turn_id"]) || "",
+       call_id: fetch_any(params, ["callId", "call_id"]) || "",
+       tool_name: fetch_any(params, ["tool", :tool]) || "",
+       arguments: fetch_any(params, ["arguments", :arguments])
+     }}
+  end
+
+  defp do_build_request_event(id, "account/chatgptAuthTokens/refresh", %{} = params) do
+    {:ok,
+     %Events.ChatgptAuthTokensRefreshRequested{
+       id: id,
+       reason: fetch_any(params, ["reason", :reason]) || "",
+       previous_account_id:
+         fetch_any(params, ["previousAccountId", "previous_account_id", :previous_account_id])
+     }}
+  end
+
+  defp do_build_request_event(_id, _method, _params), do: :ignore
 
   defp normalize_request_user_input_questions(nil), do: []
 
@@ -354,24 +444,19 @@ defmodule Codex.Transport.AppServer do
   defp normalize_request_user_input_questions(_), do: []
 
   defp normalize_request_user_input_question(%{} = question) do
-    question
-    |> Enum.map(fn {key, value} -> {to_string(key), value} end)
-    |> Enum.map(fn
-      {"options", opts} when is_list(opts) -> {"options", Enum.map(opts, &stringify_keys/1)}
-      other -> other
-    end)
-    |> Map.new()
+    deep_stringify_keys(question)
   end
 
-  defp normalize_request_user_input_question(other), do: stringify_keys(other)
+  defp normalize_request_user_input_question(other), do: deep_stringify_keys(other)
 
-  defp stringify_keys(%{} = map) do
+  defp deep_stringify_keys(%{} = map) do
     map
-    |> Enum.map(fn {key, value} -> {to_string(key), value} end)
+    |> Enum.map(fn {key, value} -> {to_string(key), deep_stringify_keys(value)} end)
     |> Map.new()
   end
 
-  defp stringify_keys(other), do: %{"value" => other}
+  defp deep_stringify_keys(list) when is_list(list), do: Enum.map(list, &deep_stringify_keys/1)
+  defp deep_stringify_keys(other), do: other
 
   defp request_ids_match?(thread_id, turn_id, params) do
     request_thread_id =

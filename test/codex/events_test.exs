@@ -312,26 +312,55 @@ defmodule Codex.EventsTest do
         Events.parse!(%{
           "type" => "request_user_input",
           "id" => "req_1",
+          "thread_id" => "thr_1",
           "turn_id" => "turn_1",
+          "item_id" => "item_1",
           "questions" => [
             %{
               "id" => "q1",
               "header" => "Pick one",
               "question" => "Which?",
+              "isOther" => true,
+              "isSecret" => true,
               "options" => [%{"label" => "A", "description" => "Option A"}]
             }
           ]
         })
 
-      assert %Events.RequestUserInput{id: "req_1", turn_id: "turn_1", questions: [question]} =
-               event
+      assert %Events.RequestUserInput{
+               id: "req_1",
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "item_1",
+               questions: [question]
+             } = event
 
       assert %Codex.Protocol.RequestUserInput.Question{
                id: "q1",
                header: "Pick one",
                question: "Which?",
+               is_other: true,
+               is_secret: true,
                options: [%Codex.Protocol.RequestUserInput.Option{label: "A"}]
              } = question
+
+      assert %{
+               "type" => "request_user_input",
+               "id" => "req_1",
+               "thread_id" => "thr_1",
+               "turn_id" => "turn_1",
+               "item_id" => "item_1",
+               "questions" => [
+                 %{
+                   "id" => "q1",
+                   "header" => "Pick one",
+                   "question" => "Which?",
+                   "isOther" => true,
+                   "isSecret" => true,
+                   "options" => [%{"label" => "A", "description" => "Option A"}]
+                 }
+               ]
+             } = Events.to_map(event)
     end
 
     test "parses MCP startup updates with status maps" do

@@ -207,6 +207,8 @@ defmodule Codex.AppServerTransportTest do
           "id" => "q1",
           "header" => "Pick one",
           "question" => "Which?",
+          "isOther" => true,
+          "isSecret" => true,
           "options" => [%{"label" => "A", "description" => "Option A"}]
         }
       ]
@@ -244,7 +246,216 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, result} = Task.await(task, 500)
 
     assert Enum.any?(result.events, fn
-             %Codex.Events.RequestUserInput{id: 5, turn_id: "turn_1"} -> true
+             %Codex.Events.RequestUserInput{
+               id: 5,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "item_1",
+               questions: [
+                 %Codex.Protocol.RequestUserInput.Question{
+                   id: "q1",
+                   is_other: true,
+                   is_secret: true
+                 }
+               ]
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+  end
+
+  test "app-server transport emits typed request events for current upstream request methods" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    ignored_tool_call = %{
+      "threadId" => "thr_other",
+      "turnId" => "turn_1",
+      "callId" => "call_ignored",
+      "tool" => "echo",
+      "arguments" => %{"text" => "ignore me"}
+    }
+
+    dynamic_tool_call = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "callId" => "call_1",
+      "tool" => "echo",
+      "arguments" => %{"text" => "hello"}
+    }
+
+    elicitation_request = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "serverName" => "filesystem",
+      "mode" => "form",
+      "message" => "Need a root path",
+      "requestedSchema" => %{
+        "type" => "object",
+        "properties" => %{
+          "path" => %{"type" => "string", "title" => "Path"}
+        },
+        "required" => ["path"]
+      }
+    }
+
+    permissions_request = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "perm_1",
+      "reason" => "Need additional permissions",
+      "permissions" => %{
+        "mode" => "workspaceWrite",
+        "writableRoots" => ["/tmp"],
+        "networkAccess" => true
+      }
+    }
+
+    auth_refresh_request = %{
+      "reason" => "unauthorized",
+      "previousAccountId" => "acct_1"
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_request(6, "item/tool/call", ignored_tool_call),
+         Protocol.encode_request(7, "item/tool/call", dynamic_tool_call),
+         Protocol.encode_request(8, "mcpServer/elicitation/request", elicitation_request),
+         Protocol.encode_request(
+           9,
+           "item/permissions/requestApproval",
+           permissions_request
+         ),
+         Protocol.encode_request(
+           10,
+           "account/chatgptAuthTokens/refresh",
+           auth_refresh_request
+         )
+       ]}
+    )
+
+    notifications = [
+      Protocol.encode_notification("turn/started", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "inProgress", "items" => [], "error" => nil}
+      }),
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ]
+
+    send(conn, {:stdout, os_pid, notifications})
+
+    assert {:ok, result} = Task.await(task, 500)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.DynamicToolCallRequested{
+               id: 7,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               call_id: "call_1",
+               tool_name: "echo",
+               arguments: %{"text" => "hello"}
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.McpElicitationRequested{
+               id: 8,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               server_name: "filesystem",
+               request_mode: "form",
+               message: "Need a root path"
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.PermissionsApprovalRequested{
+               id: 9,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "perm_1",
+               reason: "Need additional permissions",
+               permissions: %{"mode" => "workspaceWrite"}
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.ChatgptAuthTokensRefreshRequested{
+               id: 10,
+               reason: "unauthorized",
+               previous_account_id: "acct_1"
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    refute Enum.any?(result.events, fn
+             %Codex.Events.DynamicToolCallRequested{call_id: "call_ignored"} -> true
              _ -> false
            end)
   end
@@ -834,6 +1045,91 @@ defmodule Codex.AppServerTransportTest do
     ]
 
     send(conn, {:stdout, os_pid, notifications})
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server transport ignores foreign-thread approval requests" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approval_hook: ExecpolicyApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    foreign_approval_request = %{
+      "threadId" => "thr_other",
+      "turnId" => "turn_1",
+      "itemId" => "item_1",
+      "reason" => "needs approval"
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         14,
+         "item/commandExecution/requestApproval",
+         foreign_approval_request
+       )}
+    )
+
+    refute_receive {:app_server_subprocess_send, ^conn, _approval_response_line}
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
 
     assert {:ok, _result} = Task.await(task, 500)
   end

@@ -626,12 +626,95 @@ defmodule Codex.Events do
     Event emitted when the agent requests user input.
     """
 
-    defstruct id: nil, turn_id: nil, questions: []
+    defstruct id: nil, thread_id: nil, turn_id: nil, item_id: nil, questions: []
 
     @type t :: %__MODULE__{
-            id: String.t() | nil,
+            id: String.t() | integer() | nil,
+            thread_id: String.t() | nil,
             turn_id: String.t() | nil,
+            item_id: String.t() | nil,
             questions: list()
+          }
+  end
+
+  defmodule McpElicitationRequested do
+    @moduledoc """
+    Event emitted when the app-server requests an MCP elicitation response from the client.
+    """
+
+    @enforce_keys [:id, :thread_id, :server_name, :request]
+    defstruct id: nil,
+              thread_id: nil,
+              turn_id: nil,
+              server_name: nil,
+              request_mode: nil,
+              message: nil,
+              request: %{}
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            thread_id: String.t(),
+            turn_id: String.t() | nil,
+            server_name: String.t(),
+            request_mode: String.t() | nil,
+            message: String.t() | nil,
+            request: map()
+          }
+  end
+
+  defmodule PermissionsApprovalRequested do
+    @moduledoc """
+    Event emitted when the app-server requests additional permissions from the client.
+    """
+
+    @enforce_keys [:id, :thread_id, :turn_id, :item_id, :permissions]
+    defstruct id: nil, thread_id: nil, turn_id: nil, item_id: nil, reason: nil, permissions: %{}
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            thread_id: String.t(),
+            turn_id: String.t(),
+            item_id: String.t(),
+            reason: String.t() | nil,
+            permissions: map()
+          }
+  end
+
+  defmodule DynamicToolCallRequested do
+    @moduledoc """
+    Event emitted when the app-server asks the client to execute a dynamic tool call.
+    """
+
+    @enforce_keys [:id, :thread_id, :turn_id, :call_id, :tool_name]
+    defstruct id: nil,
+              thread_id: nil,
+              turn_id: nil,
+              call_id: nil,
+              tool_name: nil,
+              arguments: %{}
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            thread_id: String.t(),
+            turn_id: String.t(),
+            call_id: String.t(),
+            tool_name: String.t(),
+            arguments: map() | list() | String.t() | nil
+          }
+  end
+
+  defmodule ChatgptAuthTokensRefreshRequested do
+    @moduledoc """
+    Event emitted when the app-server asks the client to refresh ChatGPT auth tokens.
+    """
+
+    @enforce_keys [:id, :reason]
+    defstruct id: nil, reason: nil, previous_account_id: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            reason: String.t(),
+            previous_account_id: String.t() | nil
           }
   end
 
@@ -923,6 +1006,10 @@ defmodule Codex.Events do
     ContextCompacted,
     ThreadRolledBack,
     RequestUserInput,
+    McpElicitationRequested,
+    PermissionsApprovalRequested,
+    DynamicToolCallRequested,
+    ChatgptAuthTokensRefreshRequested,
     McpStartupUpdate,
     McpStartupComplete,
     ElicitationRequest,
@@ -981,6 +1068,10 @@ defmodule Codex.Events do
           | ContextCompacted.t()
           | ThreadRolledBack.t()
           | RequestUserInput.t()
+          | McpElicitationRequested.t()
+          | PermissionsApprovalRequested.t()
+          | DynamicToolCallRequested.t()
+          | ChatgptAuthTokensRefreshRequested.t()
           | McpStartupUpdate.t()
           | McpStartupComplete.t()
           | ElicitationRequest.t()
@@ -1110,11 +1201,55 @@ defmodule Codex.Events do
       when type in ["request_user_input", "requestUserInput"] do
     %RequestUserInput{
       id: Map.get(map, "id") || Map.get(map, "call_id") || Map.get(map, "callId"),
+      thread_id: Map.get(map, "thread_id") || Map.get(map, "threadId"),
       turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
+      item_id: Map.get(map, "item_id") || Map.get(map, "itemId"),
       questions:
         map
         |> Map.get("questions")
         |> parse_request_user_input_questions()
+    }
+  end
+
+  def parse!(%{"type" => "mcp_elicitation_requested"} = map) do
+    %McpElicitationRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.get(map, "turn_id"),
+      server_name: Map.fetch!(map, "server_name"),
+      request_mode: Map.get(map, "request_mode"),
+      message: Map.get(map, "message"),
+      request: Map.get(map, "request") || %{}
+    }
+  end
+
+  def parse!(%{"type" => "permissions_approval_requested"} = map) do
+    %PermissionsApprovalRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      item_id: Map.fetch!(map, "item_id"),
+      reason: Map.get(map, "reason"),
+      permissions: Map.get(map, "permissions") || %{}
+    }
+  end
+
+  def parse!(%{"type" => "dynamic_tool_call_requested"} = map) do
+    %DynamicToolCallRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      call_id: Map.fetch!(map, "call_id"),
+      tool_name: Map.fetch!(map, "tool_name"),
+      arguments: Map.get(map, "arguments")
+    }
+  end
+
+  def parse!(%{"type" => "chatgpt_auth_tokens_refresh_requested"} = map) do
+    %ChatgptAuthTokensRefreshRequested{
+      id: Map.fetch!(map, "id"),
+      reason: Map.fetch!(map, "reason"),
+      previous_account_id: Map.get(map, "previous_account_id")
     }
   end
 
@@ -1786,8 +1921,56 @@ defmodule Codex.Events do
       "type" => "request_user_input"
     }
     |> put_optional("id", event.id)
+    |> put_optional("thread_id", event.thread_id)
     |> put_optional("turn_id", event.turn_id)
+    |> put_optional("item_id", event.item_id)
     |> put_optional("questions", encode_request_user_input_questions(event.questions))
+  end
+
+  def to_map(%McpElicitationRequested{} = event) do
+    %{
+      "type" => "mcp_elicitation_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id,
+      "server_name" => event.server_name,
+      "request" => event.request
+    }
+    |> put_optional("turn_id", event.turn_id)
+    |> put_optional("request_mode", event.request_mode)
+    |> put_optional("message", event.message)
+  end
+
+  def to_map(%PermissionsApprovalRequested{} = event) do
+    %{
+      "type" => "permissions_approval_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "item_id" => event.item_id,
+      "permissions" => event.permissions
+    }
+    |> put_optional("reason", event.reason)
+  end
+
+  def to_map(%DynamicToolCallRequested{} = event) do
+    %{
+      "type" => "dynamic_tool_call_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "call_id" => event.call_id,
+      "tool_name" => event.tool_name
+    }
+    |> put_optional("arguments", event.arguments)
+  end
+
+  def to_map(%ChatgptAuthTokensRefreshRequested{} = event) do
+    %{
+      "type" => "chatgpt_auth_tokens_refresh_requested",
+      "id" => event.id,
+      "reason" => event.reason
+    }
+    |> put_optional("previous_account_id", event.previous_account_id)
   end
 
   def to_map(%McpStartupUpdate{} = event) do
@@ -2053,12 +2236,7 @@ defmodule Codex.Events do
   defp encode_request_user_input_questions(questions) when is_list(questions) do
     Enum.map(questions, fn
       %RequestUserInputQuestion{} = question ->
-        %{
-          "id" => question.id,
-          "header" => question.header,
-          "question" => question.question
-        }
-        |> put_optional("options", encode_request_user_input_options(question.options))
+        RequestUserInputQuestion.to_map(question)
 
       %{} = question ->
         question
@@ -2069,23 +2247,6 @@ defmodule Codex.Events do
   end
 
   defp encode_request_user_input_questions(other), do: other
-
-  defp encode_request_user_input_options(nil), do: nil
-
-  defp encode_request_user_input_options(options) when is_list(options) do
-    Enum.map(options, fn
-      %Codex.Protocol.RequestUserInput.Option{} = option ->
-        %{"label" => option.label, "description" => option.description}
-
-      %{} = option ->
-        option
-
-      other ->
-        other
-    end)
-  end
-
-  defp encode_request_user_input_options(other), do: other
 
   defp normalize_mcp_startup_status(nil), do: {nil, nil}
 

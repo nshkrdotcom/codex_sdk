@@ -8,6 +8,8 @@ defmodule Codex.Protocol.RequestUserInputTest do
       "id" => "q1",
       "header" => "Choose a mode",
       "question" => "Which mode?",
+      "isOther" => true,
+      "isSecret" => true,
       "options" => [
         %{"label" => "A", "description" => "Option A"},
         %{"label" => "B", "description" => "Option B"}
@@ -18,11 +20,35 @@ defmodule Codex.Protocol.RequestUserInputTest do
              id: "q1",
              header: "Choose a mode",
              question: "Which mode?",
+             is_other: true,
+             is_secret: true,
              options: [
                %RequestUserInput.Option{label: "A", description: "Option A"},
                %RequestUserInput.Option{label: "B", description: "Option B"}
              ]
            } = RequestUserInput.Question.from_map(data)
+  end
+
+  test "question encoding preserves flags" do
+    question = %RequestUserInput.Question{
+      id: "q1",
+      header: "Choose a mode",
+      question: "Which mode?",
+      is_other: true,
+      is_secret: true,
+      options: [
+        %RequestUserInput.Option{label: "A", description: "Option A"}
+      ]
+    }
+
+    assert %{
+             "id" => "q1",
+             "header" => "Choose a mode",
+             "question" => "Which mode?",
+             "isOther" => true,
+             "isSecret" => true,
+             "options" => [%{"label" => "A", "description" => "Option A"}]
+           } = RequestUserInput.Question.to_map(question)
   end
 
   test "response encodes answers map" do
