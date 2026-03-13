@@ -5,20 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.0] - 2026-03-12
+
+### Added
+
+- New app-server request event types: MCP elicitation (`mcp_approval_request`), permissions approval (`permissions_approval_request`), dynamic tool calls (`dynamic_tool_call_request`), and ChatGPT auth-token refresh (`chatgpt_token_refresh_request`).
+- `Codex.Protocol.RequestUserInput` struct with `is_other` and `is_secret` flags for richer question payloads.
+- `Codex.Protocol.Ops` module for protocol-level operation helpers.
+- App-server transport now filters events by thread correlation, preventing cross-thread race conditions.
+- New notification and item adapters for upstream thread lifecycle, hook lifecycle, realtime, fuzzy-file-search, and model-reroute variants.
+- Expanded item type coverage in `Codex.Items` for newer upstream item variants.
+- Comprehensive test suites for all new event types, transport filtering, notification/item adapters, and protocol structs.
 
 ### Changed
 
-- App-server parity now covers current upstream request families, including permissions approvals, dynamic tool calls, MCP elicitation requests, and ChatGPT auth-token refresh requests, while `Codex.AppServer.thread_compact/2` once again targets upstream `thread/compact/start`.
-- User-input handling across app-server and exec JSONL now includes `skill` and `mention`, and request-user-input question payloads now round-trip `is_other` and `is_secret`.
-- Model default selection is now catalog-derived instead of effectively hardcoded. With the synced bundled catalog in this repo, the current default resolves to `gpt-5.3-codex` unless env overrides or fresher ChatGPT catalog data win.
-- Bundled `priv/models.json` is now re-synced with upstream, and the SDK no longer documents `features.remote_models` as required for normal catalog/default behavior.
-- Config layer loading now uses real TOML parsing, trust-aware project-layer enablement, cwd `config.toml` project support, and sibling `requirements.toml` merging for system config.
+- `Codex.AppServer.thread_compact/2` now targets upstream `thread/compact/start` instead of the deprecated `thread/compact`.
+- User-input handling across app-server and exec JSONL now supports `skill` and `mention` blocks.
+- Model default selection is now catalog-derived from bundled `priv/models.json` instead of hardcoded, defaulting to `gpt-5.3-codex` unless env overrides or fresher ChatGPT catalog data take precedence.
+- Bundled `priv/models.json` re-synced with upstream; `features.remote_models` is no longer required for normal catalog/default behavior.
+- Config layer loading rewritten with real TOML parsing, trust-aware project-layer enablement, cwd `config.toml` project support, and sibling `requirements.toml` merging for system config.
+- App-server `Params` module expanded with builders for all new request families.
+- App-server `Account` module updated for current upstream account fields.
+- Documentation, guides, and example runners updated to reflect catalog-driven model defaults instead of `gpt-5.4` / `features.remote_models` assumptions.
+- Added `toml` dependency for config layer TOML parsing.
 
 ### Fixed
 
-- App-server notifications and items now cover current upstream thread lifecycle, hook lifecycle, realtime, fuzzy-file-search, model-reroute, and newer item variants without silently dropping them.
-- README, guides, and example runner defaults now describe the current bundled catalog behavior instead of the old `gpt-5.4` and `features.remote_models` assumptions.
+- App-server notifications and items no longer silently drop current upstream variants (thread lifecycle, hook lifecycle, realtime, fuzzy-file-search, model-reroute).
+- `Codex.Events` parser now correctly handles all current upstream exec JSONL event shapes (~600 new lines of event coverage).
+- Config defaults test expectations updated to match catalog-derived defaults.
 
 ## [0.11.0] - 2026-03-05
 
