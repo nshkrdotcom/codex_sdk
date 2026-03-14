@@ -51,8 +51,21 @@ defmodule Codex.IO.Buffer do
         {:non_json, line}
 
       {:error, reason} ->
-        Logger.warning("Failed to decode JSON line: #{inspect(reason)} (#{line})")
+        Logger.warning(
+          "Failed to decode JSON line: #{inspect(reason)} (#{format_binary_for_log(line)})"
+        )
+
         {:non_json, line}
+    end
+  end
+
+  @doc false
+  @spec format_binary_for_log(binary()) :: binary()
+  def format_binary_for_log(data) when is_binary(data) do
+    if String.valid?(data) and String.printable?(data) do
+      data
+    else
+      inspect(data)
     end
   end
 

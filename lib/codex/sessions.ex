@@ -5,6 +5,7 @@ defmodule Codex.Sessions do
 
   alias Codex.Config.Defaults
   alias Codex.Items
+  alias Codex.ProcessExit
   alias Codex.Runtime.Erlexec
 
   @default_sessions_dir Defaults.sessions_dir()
@@ -479,23 +480,13 @@ defmodule Codex.Sessions do
   defp normalize_exit_status(:normal), do: 0
 
   defp normalize_exit_status({:exit_status, status}) when is_integer(status) do
-    case :exec.status(status) do
-      {:status, code} -> code
-      {:signal, signal, _core?} -> 128 + signal_to_int(signal)
-    end
-  rescue
-    _ -> status
+    ProcessExit.normalize_wait_status(status)
   end
+
+  defp normalize_exit_status(status) when is_integer(status),
+    do: ProcessExit.normalize_wait_status(status)
 
   defp normalize_exit_status(_), do: 1
-
-  defp signal_to_int(signal) when is_integer(signal), do: signal
-
-  defp signal_to_int(signal) when is_atom(signal) do
-    :exec.signal_to_int(signal)
-  rescue
-    _ -> 1
-  end
 
   defp ensure_erlexec_started do
     Erlexec.ensure_started()

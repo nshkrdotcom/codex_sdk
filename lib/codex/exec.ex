@@ -16,9 +16,11 @@ defmodule Codex.Exec do
   alias Codex.Exec.CancellationRegistry
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
+  alias Codex.IO.Buffer
   alias Codex.IO.Transport.Erlexec, as: IOTransport
   alias Codex.Models
   alias Codex.Options
+  alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
   alias Codex.TransportError
 
@@ -723,7 +725,10 @@ defmodule Codex.Exec do
         end
 
       {:error, reason} ->
-        Logger.warning("Failed to decode codex event: #{inspect(reason)} (#{line})")
+        Logger.warning(
+          "Failed to decode codex event: #{inspect(reason)} (#{Buffer.format_binary_for_log(line)})"
+        )
+
         {[], [line]}
     end
   end
@@ -812,26 +817,12 @@ defmodule Codex.Exec do
 
   defp exit_status_from_reason(:normal), do: {:ok, 0}
 
-  defp exit_status_from_reason({:exit_status, status}) do
-    {:ok, normalize_exit_status(status)}
-  end
-
-  defp exit_status_from_reason(status) when is_integer(status) do
-    {:ok, normalize_exit_status(status)}
-  end
-
-  defp exit_status_from_reason(reason), do: {:error, reason}
-
-  defp normalize_exit_status(raw_status) when is_integer(raw_status) do
-    case :exec.status(raw_status) do
-      {:status, code} -> code
-      {:signal, signal, _core?} -> 128 + :exec.signal_to_int(signal)
+  defp exit_status_from_reason(reason) do
+    case ProcessExit.exit_status(reason) do
+      {:ok, status} -> {:ok, status}
+      :unknown -> {:error, reason}
     end
-  rescue
-    _ -> raw_status
   end
-
-  defp normalize_exit_status(raw_status), do: raw_status
 
   defp append_stderr(_existing, _data, max_size, _already_truncated?)
        when not is_integer(max_size) or max_size <= 0,

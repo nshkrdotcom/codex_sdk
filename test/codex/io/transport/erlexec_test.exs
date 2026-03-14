@@ -35,6 +35,20 @@ defmodule Codex.IO.Transport.ErlexecTest do
       assert_receive {:codex_io_transport, ^ref, {:message, "world"}}, 2_000
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
     end
+
+    test "normalizes non-zero exit statuses for tagged subscribers" do
+      ref = make_ref()
+      script = create_test_script("exit 9")
+
+      {:ok, _transport} =
+        ErlexecTransport.start_link(
+          command: script,
+          args: [],
+          subscriber: {self(), ref}
+        )
+
+      assert_receive {:codex_io_transport, ^ref, {:exit, {:exit_code, 9}}}, 2_000
+    end
   end
 
   describe "legacy subscriber dispatch" do

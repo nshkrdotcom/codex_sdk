@@ -1,6 +1,8 @@
 defmodule Codex.IO.BufferTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   @moduletag :capture_log
 
   alias Codex.IO.Buffer
@@ -117,6 +119,17 @@ defmodule Codex.IO.BufferTest do
 
     test "returns non_json for empty string" do
       assert {:non_json, ""} = Buffer.decode_line("")
+    end
+
+    test "logs invalid binary lines safely" do
+      log =
+        capture_log(fn ->
+          assert {:non_json, <<255>>} = Buffer.decode_line(<<255>>)
+        end)
+
+      assert log =~ "Failed to decode JSON line"
+      assert log =~ "<<255>>"
+      refute log =~ "FORMATTER ERROR"
     end
   end
 

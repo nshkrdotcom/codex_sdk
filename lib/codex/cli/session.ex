@@ -20,6 +20,7 @@ defmodule Codex.CLI.Session do
   """
 
   alias Codex.Config.Defaults
+  alias Codex.ProcessExit
   alias Codex.Runtime.Erlexec
 
   @enforce_keys [:args, :command, :os_pid, :pid, :receiver]
@@ -184,24 +185,10 @@ defmodule Codex.CLI.Session do
     :exit, reason -> {:error, reason}
   end
 
-  defp exit_code(:normal), do: 0
-
-  defp exit_code({:exit_status, raw_status}) when is_integer(raw_status) do
-    normalize_exit_status(raw_status)
-  end
-
-  defp exit_code(raw_status) when is_integer(raw_status) do
-    normalize_exit_status(raw_status)
-  end
-
-  defp exit_code(_reason), do: -1
-
-  defp normalize_exit_status(raw_status) when is_integer(raw_status) do
-    case :exec.status(raw_status) do
-      {:status, code} -> code
-      {:signal, signal, _core?} -> 128 + :exec.signal_to_int(signal)
+  defp exit_code(reason) do
+    case ProcessExit.exit_status(reason) do
+      {:ok, status} -> status
+      :unknown -> -1
     end
-  rescue
-    _ -> raw_status
   end
 end

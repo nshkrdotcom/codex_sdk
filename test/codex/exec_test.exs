@@ -871,6 +871,35 @@ defmodule Codex.ExecTest do
     assert log =~ "50"
   end
 
+  test "logs invalid binary event lines safely and continues processing" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      printf '\\377\\n'
+      echo "{\\"type\\":\\"turn.completed\\",\\"turn_id\\":\\"turn_invalid\\",\\"thread_id\\":\\"thread_invalid\\",\\"final_response\\":{\\"type\\":\\"text\\",\\"text\\":\\"ok\\"}}"
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    log =
+      capture_log(fn ->
+        assert {:ok, %{events: events}} = Exec.run("invalid", %{codex_opts: codex_opts})
+
+        assert Enum.any?(events, fn
+                 %Events.TurnCompleted{final_response: response} ->
+                   final_text(response) == "ok"
+
+                 _ ->
+                   false
+               end)
+      end)
+
+    assert log =~ "Failed to decode codex event"
+    assert log =~ "<<255>>"
+    refute log =~ "FORMATTER ERROR"
+  end
+
   defp final_text(%Items.AgentMessage{text: text}), do: text
   defp final_text(%{"text" => text}), do: text
   defp final_text(%{text: text}), do: text

@@ -16,6 +16,7 @@ defmodule Codex.AppServer.Connection do
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
   @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
   @max_stderr_buffer_size Defaults.transport_max_stderr_buffer_size()
+  @default_call_timeout_ms 5_000
 
   defmodule State do
     @moduledoc false
@@ -56,26 +57,26 @@ defmodule Codex.AppServer.Connection do
   @spec await_ready(connection(), pos_integer()) :: :ok | {:error, term()}
   def await_ready(conn, timeout_ms)
       when is_pid(conn) and is_integer(timeout_ms) and timeout_ms > 0 do
-    GenServer.call(conn, :await_ready, timeout_ms)
-  catch
-    :exit, {{:init_failed, _} = reason, {GenServer, :call, _}} ->
-      {:error, reason}
-
-    :exit, {{:init_timeout, _} = reason, {GenServer, :call, _}} ->
-      {:error, reason}
-
-    :exit, {:noproc, {GenServer, :call, _}} ->
-      {:error, :not_connected}
+    case safe_connection_call(conn, :await_ready, timeout_ms) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @spec subscribe(connection(), keyword()) :: :ok | {:error, term()}
   def subscribe(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
-    GenServer.call(conn, {:subscribe, self(), opts})
+    case safe_connection_call(conn, {:subscribe, self(), opts}, @default_call_timeout_ms) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @spec unsubscribe(connection()) :: :ok
   def unsubscribe(conn) when is_pid(conn) do
-    GenServer.call(conn, {:unsubscribe, self()})
+    case safe_connection_call(conn, {:unsubscribe, self()}, @default_call_timeout_ms) do
+      {:ok, :ok} -> :ok
+      {:error, _reason} -> :ok
+    end
   end
 
   @spec request(connection(), String.t(), map() | list() | nil, keyword()) ::
@@ -83,12 +84,19 @@ defmodule Codex.AppServer.Connection do
   def request(conn, method, params \\ nil, opts \\ [])
       when is_pid(conn) and is_binary(method) and is_list(opts) do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_request_timeout_ms)
-    GenServer.call(conn, {:request, method, params, timeout_ms}, timeout_ms + 1_000)
+
+    case safe_connection_call(conn, {:request, method, params, timeout_ms}, timeout_ms + 1_000) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @spec respond(connection(), request_id(), map()) :: :ok | {:error, term()}
   def respond(conn, id, result) when is_pid(conn) and is_map(result) do
-    GenServer.call(conn, {:respond, id, result})
+    case safe_connection_call(conn, {:respond, id, result}, @default_call_timeout_ms) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @impl true
@@ -260,8 +268,10 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_info({:codex_io_transport, ref, {:exit, reason}}, %State{transport_ref: ref} = state) do
-    Logger.warning("codex app-server exited: #{inspect(reason)}")
-    {:stop, {:app_server_down, reason}, state}
+    failure = app_server_down_failure(state, reason)
+    Logger.warning("codex app-server exited: #{inspect(failure)}")
+    state = fail_transport_waiters(state, failure)
+    {:stop, {:shutdown, failure}, state}
   end
 
   # Backward-compatibility for tests that still send legacy subprocess-shaped messages.
@@ -298,8 +308,10 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %State{transport_ref: ref} = state) do
-    Logger.warning("codex app-server exited: #{inspect(reason)}")
-    {:stop, {:app_server_down, reason}, state}
+    failure = app_server_down_failure(state, reason)
+    Logger.warning("codex app-server exited: #{inspect(failure)}")
+    state = fail_transport_waiters(state, failure)
+    {:stop, {:shutdown, failure}, state}
   end
 
   def handle_info({:DOWN, ref, :process, pid, _reason}, %State{} = state) do
@@ -410,6 +422,21 @@ defmodule Codex.AppServer.Connection do
 
   defp reply_ready_waiters(waiters, reply) do
     Enum.each(waiters, fn from -> GenServer.reply(from, reply) end)
+  end
+
+  defp fail_transport_waiters(%State{} = state, failure) do
+    reply_ready_waiters(state.ready_waiters, {:error, failure})
+
+    Enum.each(state.pending, fn
+      {_id, %{from: :init, timer_ref: timer_ref}} ->
+        _ = Process.cancel_timer(timer_ref)
+
+      {_id, %{from: from, timer_ref: timer_ref}} ->
+        _ = Process.cancel_timer(timer_ref)
+        GenServer.reply(from, {:error, failure})
+    end)
+
+    %State{state | pending: %{}, ready_waiters: []}
   end
 
   defp handle_incoming_result({:ok, %State{} = state}), do: {:noreply, state}
@@ -545,6 +572,33 @@ defmodule Codex.AppServer.Connection do
   defp normalize_transport_value(other, source) do
     raise ArgumentError, "invalid #{source} option: #{inspect(other)}"
   end
+
+  defp safe_connection_call(conn, message, timeout) do
+    {:ok, GenServer.call(conn, message, timeout)}
+  catch
+    :exit, reason ->
+      {:error, normalize_call_exit(reason)}
+  end
+
+  defp normalize_call_exit({reason, {GenServer, :call, _}}), do: normalize_call_exit(reason)
+  defp normalize_call_exit({:shutdown, reason}), do: normalize_call_exit(reason)
+  defp normalize_call_exit({:init_failed, _} = reason), do: reason
+  defp normalize_call_exit({:init_timeout, _} = reason), do: reason
+  defp normalize_call_exit({:app_server_down, _} = reason), do: reason
+  defp normalize_call_exit(:noproc), do: :not_connected
+  defp normalize_call_exit(:timeout), do: :timeout
+  defp normalize_call_exit(reason), do: reason
+
+  defp app_server_down_failure(%State{} = state, reason) do
+    details =
+      %{reason: reason}
+      |> maybe_put_detail(:stderr, state.stderr)
+
+    {:app_server_down, details}
+  end
+
+  defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
+  defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)
 
   defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
   defp maybe_ensure_erlexec(_other), do: :ok

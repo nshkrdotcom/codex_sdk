@@ -64,6 +64,7 @@ defmodule Codex.Tools.ShellTool do
   @behaviour Codex.Tool
 
   alias Codex.Config.Defaults
+  alias Codex.ProcessExit
   alias Codex.Runtime.Erlexec, as: RuntimeErlexec
   alias Codex.Tools.Hosted
 
@@ -321,7 +322,7 @@ defmodule Codex.Tools.ShellTool do
 
       {:DOWN, ^os_pid, :process, _proc, {:exit_status, status}} ->
         output = combine_output(stdout_acc, stderr_acc)
-        {:ok, output, normalize_exit_status(status)}
+        {:ok, output, ProcessExit.normalize_wait_status(status)}
     after
       timeout_ms ->
         safe_stop(pid)
@@ -337,25 +338,6 @@ defmodule Codex.Tools.ShellTool do
         _ -> :ok
       end
     end
-  end
-
-  defp normalize_exit_status(raw_status) when is_integer(raw_status) do
-    case :exec.status(raw_status) do
-      {:status, code} -> code
-      {:signal, signal, _core?} -> 128 + signal_to_int(signal)
-    end
-  rescue
-    _ -> raw_status
-  end
-
-  defp normalize_exit_status(raw_status), do: raw_status
-
-  defp signal_to_int(signal) when is_integer(signal), do: signal
-
-  defp signal_to_int(signal) when is_atom(signal) do
-    :exec.signal_to_int(signal)
-  rescue
-    _ -> 1
   end
 
   defp format_result(output, exit_code, max_bytes) do

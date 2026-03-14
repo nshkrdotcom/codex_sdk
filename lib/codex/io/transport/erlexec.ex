@@ -6,6 +6,7 @@ defmodule Codex.IO.Transport.Erlexec do
   import Kernel, except: [send: 2]
 
   alias Codex.Config.Defaults
+  alias Codex.ProcessExit
   alias Codex.TaskSupport
 
   @behaviour Codex.IO.Transport
@@ -290,7 +291,7 @@ defmodule Codex.IO.Transport.Erlexec do
         send_event(state.subscribers, {:stderr, state.stderr_buffer})
       end
 
-      send_event(state.subscribers, {:exit, reason})
+      send_event(state.subscribers, {:exit, ProcessExit.normalize_reason(reason)})
       {:stop, :normal, %{state | status: :disconnected, subprocess: nil}}
     else
       Kernel.send(self(), {:finalize_exit, os_pid, pid, reason})

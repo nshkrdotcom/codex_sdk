@@ -94,6 +94,38 @@ defmodule Codex.AppServer.ConnectionTest do
     refute Process.alive?(conn)
   end
 
+  test "transport exit during initialization returns a typed error with stderr context", %{
+    codex_opts: codex_opts
+  } do
+    previous = Process.flag(:trap_exit, true)
+    on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
+
+    ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
+    wait_for_ready_waiter(conn, 1)
+
+    send(conn, {:codex_io_transport, transport_ref, {:stderr, "bootstrap stderr"}})
+    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+
+    assert {:error, {:app_server_down, %{reason: :boom, stderr: "bootstrap stderr"}}} =
+             Task.await(ready_task, 200)
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: "bootstrap stderr"}}}},
+                   200
+  end
+
   test "correlates request responses by id while interleaving notifications", %{
     codex_opts: codex_opts
   } do
@@ -150,6 +182,134 @@ defmodule Codex.AppServer.ConnectionTest do
 
     assert {:error, {:timeout, "thread/list", 10}} =
              Connection.request(conn, "thread/list", %{}, timeout_ms: 10)
+  end
+
+  test "transport exit while a request is pending returns a typed error with stderr context", %{
+    codex_opts: codex_opts
+  } do
+    previous = Process.flag(:trap_exit, true)
+    on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    task =
+      Task.async(fn ->
+        Connection.request(conn, "thread/list", %{}, timeout_ms: 200)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+    assert {:ok, %{"method" => "thread/list"}} = Jason.decode(request_line)
+
+    send(conn, {:codex_io_transport, transport_ref, {:stderr, "request stderr"}})
+    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+
+    assert {:error, {:app_server_down, %{reason: :boom, stderr: "request stderr"}}} =
+             Task.await(task, 200)
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: "request stderr"}}}},
+                   200
+  end
+
+  test "subscribe returns not_connected after the connection has gone down", %{
+    codex_opts: codex_opts
+  } do
+    previous = Process.flag(:trap_exit, true)
+    on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                   200
+
+    assert {:error, :not_connected} = Connection.subscribe(conn)
+  end
+
+  test "respond returns not_connected after the connection has gone down", %{
+    codex_opts: codex_opts
+  } do
+    previous = Process.flag(:trap_exit, true)
+    on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                   200
+
+    assert {:error, :not_connected} = Connection.respond(conn, 123, %{"ok" => true})
+  end
+
+  test "unsubscribe is a no-op after the connection has gone down", %{codex_opts: codex_opts} do
+    previous = Process.flag(:trap_exit, true)
+    on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    monitor_ref = Process.monitor(conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                   200
+
+    assert :ok = Connection.unsubscribe(conn)
   end
 
   test "stderr retention is capped to the configured tail size", %{codex_opts: codex_opts} do
