@@ -83,6 +83,27 @@ defmodule Codex.ThreadTest do
       assert opts.approvals_reviewer == :user
     end
 
+    test "accepts granular ask_for_approval maps for app-server parity" do
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          ask_for_approval: %{
+            type: :granular,
+            sandbox_approval: true,
+            rules: true,
+            request_permissions: true
+          }
+        })
+
+      assert opts.ask_for_approval == %{
+               type: :granular,
+               sandbox_approval: true,
+               rules: true,
+               skill_approval: false,
+               request_permissions: true,
+               mcp_elicitations: false
+             }
+    end
+
     test "defaults web search to cached mode" do
       {:ok, opts} = ThreadOptions.new(%{})
 

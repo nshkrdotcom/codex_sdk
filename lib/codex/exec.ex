@@ -587,8 +587,25 @@ defmodule Codex.Exec do
 
   defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: policy}}) do
     case approval_policy(policy) do
-      nil -> []
-      value -> ["--config", ~s(approval_policy="#{value}")]
+      nil ->
+        []
+
+      value when is_binary(value) ->
+        ["--config", ~s(approval_policy="#{value}")]
+
+      %{} = value ->
+        value
+        |> Map.new(fn
+          {:type, entry} when is_atom(entry) -> {"type", Atom.to_string(entry)}
+          {"type", entry} when is_atom(entry) -> {"type", Atom.to_string(entry)}
+          {key, entry} -> {to_string(key), entry}
+        end)
+        |> then(&%{"approval_policy" => &1})
+        |> Overrides.normalize_config_overrides()
+        |> case do
+          {:ok, overrides} -> Overrides.cli_args(overrides)
+          {:error, _reason} -> []
+        end
     end
   end
 
@@ -602,6 +619,7 @@ defmodule Codex.Exec do
   defp approval_policy("on-failure"), do: "on-failure"
   defp approval_policy("on-request"), do: "on-request"
   defp approval_policy("never"), do: "never"
+  defp approval_policy(%{} = policy), do: policy
   defp approval_policy(nil), do: nil
   defp approval_policy(value) when is_binary(value), do: value
   defp approval_policy(_), do: nil

@@ -8,11 +8,18 @@ alias Codex.RunResultStreaming
 defmodule CodexExamples.LiveAppServerApprovals do
   @moduledoc false
 
-  @default_prompt """
-  Run `pwd` and `ls -la` in the current working directory, then create a small file named
-  `approval_demo.txt` containing the current directory path. If you need additional permissions
-  to read outside the working directory or access the network, request them explicitly first and
-  then report exactly what completed.
+  @command_file_prompt """
+  Run `pwd` and `ls -la` in the current working directory, then create `tmp/approval_demo.txt`
+  (create `tmp/` first if needed) containing the current directory path. If you choose shell
+  commands, keep them separate so approval events stay easy to read, then report exactly what
+  completed.
+  """
+
+  @permissions_prompt """
+  Before doing anything else, explicitly request additional write permission for
+  `/tmp/codex_sdk_permissions_demo.txt` outside the current working directory. After the permission
+  decision resolves, do not write the file. Reply with one short sentence describing whether the
+  permission request was granted.
   """
 
   @command_approval_method "item/commandExecution/requestApproval"
@@ -20,9 +27,9 @@ defmodule CodexExamples.LiveAppServerApprovals do
   @permissions_approval_method "item/permissions/requestApproval"
 
   def main(argv) do
-    prompt =
+    command_file_prompt =
       case argv do
-        [] -> @default_prompt
+        [] -> @command_file_prompt
         values -> Enum.join(values, " ")
       end
 
@@ -50,16 +57,10 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
       :ok = await_approvals_ready!(approval_pid)
 
-      {:ok, thread} =
-        Codex.start_thread(codex_opts, %{
-          transport: {:app_server, conn},
-          working_directory: File.cwd!(),
-          ask_for_approval: :untrusted
-        })
-
       IO.puts("""
       Streaming over app-server with manual approvals.
-        prompt: #{prompt}
+        command/file prompt: #{command_file_prompt}
+        permissions prompt: #{@permissions_prompt}
 
       This run prints:
         - proposed commandExecution/fileChange items
@@ -69,26 +70,98 @@ defmodule CodexExamples.LiveAppServerApprovals do
         - serverRequest/resolved notifications
         - approval responses sent
         - completion status for command/file items
+        - a deterministic permissions-response fallback if the connected build/model never emits
+          item/permissions/requestApproval
+        - an automatic retry with legacy `:untrusted` approvals if the connected Codex build
+          does not produce usable live events under the granular policy
+
+      The thread uses a granular approval policy with `request_permissions: true` so live
+      permissions approvals are actually eligible when the connected Codex build supports them.
       """)
 
-      case Codex.Thread.run_streamed(thread, prompt, %{timeout_ms: 120_000}) do
-        {:ok, stream} ->
-          stream
-          |> RunResultStreaming.raw_events()
-          |> Enum.each(&print_event(&1, parent))
+      {:ok, granular_thread} = start_demo_thread(codex_opts, conn, granular_approval_policy())
 
-          IO.puts("\nusage: #{inspect(RunResultStreaming.usage(stream))}")
+      granular_audit =
+        new_audit_state()
+        |> run_demo_turn!(granular_thread, command_file_prompt, parent, "command/file")
 
-        {:error, reason} ->
-          Mix.raise("Streaming run failed: #{inspect(reason)}")
-      end
+      {thread, audit} =
+        if granular_audit == new_audit_state() do
+          IO.puts("""
 
-      audit = drain_audit_messages(new_audit_state())
+          The connected Codex build did not produce usable live events under the granular approval
+          policy. Retrying the command/file demo with legacy `:untrusted` approvals for backwards
+          compatibility, while keeping the structured permissions fallback below.
+          """)
+
+          {:ok, legacy_thread} = start_demo_thread(codex_opts, conn, :untrusted)
+
+          {legacy_thread,
+           new_audit_state()
+           |> run_demo_turn!(
+             legacy_thread,
+             command_file_prompt,
+             parent,
+             "command/file (legacy policy)"
+           )}
+        else
+          {granular_thread, granular_audit}
+        end
+
+      audit = maybe_run_permissions_turn!(audit, thread, parent)
+
       print_audit_summary(audit)
 
       send(approval_pid, :stop)
     after
       :ok = Codex.AppServer.disconnect(conn)
+    end
+  end
+
+  defp run_demo_turn!(audit, thread, prompt, parent, label) do
+    case Codex.Thread.run_streamed(thread, prompt, %{timeout_ms: 120_000}) do
+      {:ok, stream} ->
+        IO.puts("\n--- #{label} turn ---")
+
+        stream
+        |> RunResultStreaming.raw_events()
+        |> Enum.each(&print_event(&1, parent))
+
+        IO.puts("\nusage: #{inspect(RunResultStreaming.usage(stream))}")
+        drain_audit_messages(audit)
+
+      {:error, reason} ->
+        Mix.raise("#{label} streaming run failed: #{inspect(reason)}")
+    end
+  end
+
+  defp start_demo_thread(codex_opts, conn, approval_policy) do
+    Codex.start_thread(codex_opts, %{
+      transport: {:app_server, conn},
+      working_directory: File.cwd!(),
+      ask_for_approval: approval_policy,
+      approvals_reviewer: :user
+    })
+  end
+
+  defp maybe_run_permissions_turn!(audit, thread, parent) do
+    if MapSet.member?(audit.approval_request_methods, @permissions_approval_method) do
+      audit
+    else
+      IO.puts("""
+
+      No live permissions approval was observed in the first turn.
+      Running a supplemental turn that explicitly asks for out-of-cwd write permission.
+      """)
+
+      updated_audit = run_demo_turn!(audit, thread, @permissions_prompt, parent, "permissions")
+
+      if MapSet.member?(updated_audit.approval_request_methods, @permissions_approval_method) do
+        updated_audit
+      else
+        print_permissions_response_fallback()
+        updated_audit
+      end
     end
   end
 
@@ -141,6 +214,17 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
   defp maybe_log_execpolicy_hint(_params), do: :ok
 
+  defp granular_approval_policy do
+    %{
+      type: :granular,
+      sandbox_approval: true,
+      rules: true,
+      skill_approval: true,
+      request_permissions: true,
+      mcp_elicitations: true
+    }
+  end
+
   defp build_permissions_response(%{} = params) do
     requested =
       params
@@ -168,6 +252,26 @@ defmodule CodexExamples.LiveAppServerApprovals do
     writes = get_in(requested, [:file_system, :write]) || []
 
     "network=#{inspect(network)} read=#{inspect(reads)} write=#{inspect(writes)}"
+  end
+
+  defp print_permissions_response_fallback do
+    params = %{
+      "permissions" => %{
+        "network" => %{"enabled" => false},
+        "fileSystem" => %{"write" => ["/tmp/codex_sdk_permissions_demo.txt"]}
+      }
+    }
+
+    response = build_permissions_response(params)
+
+    IO.puts("""
+
+    [permissions.fallback]
+      The connected build/model did not emit `item/permissions/requestApproval`, so this example
+      is printing the exact SDK response shape it would send for a structured grant:
+      request: #{inspect(params["permissions"])}
+      response: #{inspect(response)}
+    """)
   end
 
   defp await_approvals_ready!(task_pid) when is_pid(task_pid) do
@@ -384,6 +488,18 @@ defmodule CodexExamples.LiveAppServerApprovals do
     if MapSet.size(audit.approval_request_methods) == 0 do
       IO.puts(
         "  note: no approval requests observed for this prompt/policy combination; check item events above to confirm whether tools were invoked."
+      )
+    end
+
+    if not MapSet.member?(audit.approval_request_methods, @file_approval_method) do
+      IO.puts(
+        "  note: no live fileChange approval was observed; the model handled file updates without a separate fileChange approval item in this run."
+      )
+    end
+
+    if not MapSet.member?(audit.approval_request_methods, @permissions_approval_method) do
+      IO.puts(
+        "  note: no live permissions approval was observed even after the supplemental turn; see [permissions.fallback] above for the exact structured response payload."
       )
     end
   end

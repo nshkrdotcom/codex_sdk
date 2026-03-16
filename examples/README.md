@@ -58,7 +58,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove)
 - `examples/live_app_server_plugins.exs` — `plugin/list` discovery plus `plugin/read` detail loading
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
-- `examples/live_app_server_approvals.exs` — demonstrates command/file/permissions approval responses plus guardian and request-resolution events
+- `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, enables live permissions approvals with granular `request_permissions: true`, and prints a structured-grant fallback plus guardian/request-resolution events when needed
 - `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
 - `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a supported preset (or skips when the connected CLI build lacks collaboration-mode capability)
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides

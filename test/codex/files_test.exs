@@ -190,9 +190,23 @@ defmodule Codex.FilesTest do
   end
 
   defp stop_registry do
-    case Process.whereis(Codex.Files.Registry) do
-      pid when is_pid(pid) -> GenServer.stop(pid, :normal)
-      _ -> :ok
+    case Process.whereis(Codex.Supervisor) do
+      pid when is_pid(pid) ->
+        case Supervisor.terminate_child(Codex.Supervisor, Codex.Files.Registry) do
+          :ok -> wait_for_registry_stop()
+          {:error, :not_found} -> wait_for_registry_stop()
+          {:error, :running} -> wait_for_registry_stop()
+        end
+
+      _ ->
+        case Process.whereis(Codex.Files.Registry) do
+          pid when is_pid(pid) ->
+            GenServer.stop(pid, :normal)
+            wait_for_registry_stop()
+
+          _ ->
+            :ok
+        end
     end
   end
 
@@ -212,6 +226,20 @@ defmodule Codex.FilesTest do
     end
 
     stop_registry()
+  end
+
+  defp wait_for_registry_stop(timeout_ms \\ 200)
+
+  defp wait_for_registry_stop(timeout_ms) when timeout_ms <= 0, do: :ok
+
+  defp wait_for_registry_stop(timeout_ms) do
+    if Process.whereis(Codex.Files.Registry) == nil and
+         :ets.info(:codex_files_manifest) == :undefined do
+      :ok
+    else
+      Process.sleep(10)
+      wait_for_registry_stop(timeout_ms - 10)
+    end
   end
 
   def forward_event(event, measurements, metadata, pid) do

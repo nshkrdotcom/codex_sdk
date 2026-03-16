@@ -60,7 +60,12 @@ To keep your existing `Codex.Thread.*` usage but switch the underlying transport
   Codex.start_thread(codex_opts, %{
     transport: {:app_server, conn},
     working_directory: "/path/to/project",
-    ask_for_approval: :untrusted,
+    ask_for_approval: %{
+      type: :granular,
+      sandbox_approval: true,
+      rules: true,
+      request_permissions: true
+    },
     approvals_reviewer: :guardian_subagent,
     sandbox: :workspace_write
   })
@@ -299,10 +304,15 @@ Permissions approvals use `review_permissions/3` when implemented:
 - `{:allow, permissions: subset, scope: :session}` → grant the intersected subset for the session
 - `{:deny, reason}` → respond with an empty granted-permissions profile and turn scope
 
+To see live `item/permissions/requestApproval` requests from Codex itself, prefer a granular
+approval policy with `request_permissions: true`; the legacy string policies are not enough to
+reliably exercise that request path on newer builds.
+
 See `examples/live_app_server_filesystem.exs` for a runnable `fs/*` walkthrough
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
-`examples/live_app_server_approvals.exs` demonstrates command/file/permissions approvals plus
-guardian review and request-resolution events.
+`examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live
+permissions approvals with granular `request_permissions: true`, and prints a deterministic
+structured-grant fallback when the connected build/model never emits a permissions request.
 MCP-qualified tool names shown to OpenAI are sanitized to ASCII alphanumerics plus `_` before
 hash/truncation, while original MCP server/tool names are preserved for actual MCP calls.
 

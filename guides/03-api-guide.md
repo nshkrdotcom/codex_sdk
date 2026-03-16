@@ -1470,7 +1470,18 @@ Thread-specific configuration.
   view_image_tool_enabled: boolean() | nil,
   unified_exec_enabled: boolean() | nil,
   skills_enabled: boolean() | nil,
-  ask_for_approval: atom() | String.t() | nil,
+  ask_for_approval:
+    atom()
+    | String.t()
+    | %{
+        optional(:type) => :granular,
+        optional(:sandbox_approval) => boolean(),
+        optional(:rules) => boolean(),
+        optional(:skill_approval) => boolean(),
+        optional(:request_permissions) => boolean(),
+        optional(:mcp_elicitations) => boolean()
+      }
+    | nil,
   attachments: [map()],
   file_search: Codex.FileSearch.t() | nil,
   profile: String.t() | nil,
@@ -1531,7 +1542,7 @@ Thread-specific configuration.
 - `view_image_tool_enabled`: Enable the view_image tool (`features.view_image_tool`)
 - `unified_exec_enabled`: Enable unified exec tool (`features.unified_exec`)
 - `skills_enabled`: Enable skills discovery/injection (`features.skills`)
-- `ask_for_approval`: Approval policy hint for app-server turns
+- `ask_for_approval`: Approval policy hint for app-server turns; accepts legacy string/atom policies or granular maps (for example `%{type: :granular, request_permissions: true}`)
 - `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
 - `profile`: Config profile name (`--profile`)

@@ -1435,8 +1435,10 @@ mix run examples/live_thread_management.exs
 `live_app_server_filesystem.exs` demonstrates the thin `fs/*` wrappers end to
 end, including base64 round-tripping. `live_app_server_plugins.exs` demonstrates
 `plugin/list` discovery followed by `plugin/read` detail loading.
-`live_app_server_approvals.exs` demonstrates command/file/permissions approvals plus guardian
-review and `serverRequest/resolved` events. `live_app_server_mcp.exs` and
+`live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
+`request_permissions: true` for live permissions requests, and falls back to printing the exact
+structured grant payload when the connected build/model does not emit `item/permissions/requestApproval`.
+It also surfaces guardian review and `serverRequest/resolved` events. `live_app_server_mcp.exs` and
 `live_mcp_and_sessions.exs` print original MCP tool names alongside sanitized qualified names.
 
 Minimal usage with existing thread APIs:

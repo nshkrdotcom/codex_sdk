@@ -282,6 +282,55 @@ defmodule Codex.ExecTest do
     assert ~s(web_search="cached") in flag_values(args, "--config")
   end
 
+  test "serializes granular ask_for_approval policies as config overrides" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_granular_approval_args_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        ask_for_approval: %{
+          type: :granular,
+          sandbox_approval: true,
+          rules: true,
+          request_permissions: true
+        }
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, _} = Thread.run(thread, "granular approval policy")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    configs = flag_values(args, "--config")
+
+    assert ~s(approval_policy.type="granular") in configs
+    assert "approval_policy.sandbox_approval=true" in configs
+    assert "approval_policy.rules=true" in configs
+    assert "approval_policy.request_permissions=true" in configs
+    assert "approval_policy.skill_approval=false" in configs
+    assert "approval_policy.mcp_elicitations=false" in configs
+  end
+
   test "forwards model provider and instruction overrides via config" do
     capture_path =
       Path.join(

@@ -108,6 +108,21 @@ defmodule Codex.Thread.Options do
   @type personality :: Codex.Protocol.ConfigTypes.personality()
   @type approvals_reviewer :: :user | :guardian_subagent
   @type collaboration_mode :: Codex.Protocol.CollaborationMode.t()
+  @type granular_approval_policy :: %{
+          required(:type) => :granular,
+          optional(:sandbox_approval) => boolean(),
+          optional(:rules) => boolean(),
+          optional(:skill_approval) => boolean(),
+          optional(:request_permissions) => boolean(),
+          optional(:mcp_elicitations) => boolean()
+        }
+  @type ask_for_approval ::
+          :untrusted
+          | :on_failure
+          | :on_request
+          | :never
+          | String.t()
+          | granular_approval_policy()
 
   @type retry_opts :: keyword()
   @type rate_limit_opts :: keyword()
@@ -147,7 +162,7 @@ defmodule Codex.Thread.Options do
           view_image_tool_enabled: boolean() | nil,
           unified_exec_enabled: boolean() | nil,
           skills_enabled: boolean() | nil,
-          ask_for_approval: :untrusted | :on_failure | :on_request | :never | String.t() | nil,
+          ask_for_approval: ask_for_approval() | nil,
           attachments: [map()] | [],
           file_search: FileSearch.t() | nil,
           profile: String.t() | nil,
@@ -951,8 +966,62 @@ defmodule Codex.Thread.Options do
   defp normalize_ask_for_approval("on-failure"), do: {:ok, :on_failure}
   defp normalize_ask_for_approval("on-request"), do: {:ok, :on_request}
   defp normalize_ask_for_approval("never"), do: {:ok, :never}
+
+  defp normalize_ask_for_approval(value) when is_list(value),
+    do: value |> Map.new() |> normalize_ask_for_approval()
+
+  defp normalize_ask_for_approval(%{} = value) do
+    case fetch_any(value, [:type, "type"]) do
+      type when type in [:granular, "granular"] ->
+        {:ok,
+         %{
+           type: :granular,
+           sandbox_approval:
+             approval_policy_boolean(value, [
+               :sandbox_approval,
+               "sandbox_approval",
+               :sandboxApproval,
+               "sandboxApproval"
+             ]),
+           rules: approval_policy_boolean(value, [:rules, "rules"]),
+           skill_approval:
+             approval_policy_boolean(value, [
+               :skill_approval,
+               "skill_approval",
+               :skillApproval,
+               "skillApproval"
+             ]),
+           request_permissions:
+             approval_policy_boolean(
+               value,
+               [
+                 :request_permissions,
+                 "request_permissions",
+                 :requestPermissions,
+                 "requestPermissions"
+               ]
+             ),
+           mcp_elicitations:
+             approval_policy_boolean(
+               value,
+               [:mcp_elicitations, "mcp_elicitations", :mcpElicitations, "mcpElicitations"]
+             )
+         }}
+
+      _other ->
+        {:error, {:invalid_ask_for_approval, value}}
+    end
+  end
+
   defp normalize_ask_for_approval(value) when is_binary(value), do: {:ok, value}
   defp normalize_ask_for_approval(value), do: {:error, {:invalid_ask_for_approval, value}}
+
+  defp approval_policy_boolean(map, keys) do
+    case fetch_any(map, keys) do
+      true -> true
+      _ -> false
+    end
+  end
 
   defp fetch_any(map, keys) when is_map(map) and is_list(keys) do
     Enum.reduce_while(keys, nil, fn key, _acc ->
