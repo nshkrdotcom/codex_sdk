@@ -137,6 +137,10 @@ The SDK defaults to exec JSONL for backwards compatibility. To use the stateful 
 {:ok, %{"data" => skills}} = Codex.AppServer.skills_list(conn, cwds: ["/project"])
 ```
 
+When you need experimental app-server fields such as `approvals_reviewer` or
+granular approval policies, create the connection with
+`Codex.AppServer.connect(codex_opts, experimental_api: true)`.
+
 Multi-modal input is supported on app-server transport:
 
 ```elixir
@@ -596,7 +600,9 @@ or `{:deny, reason}`. App-server streams now also surface `%Codex.Events.Guardia
 `%Codex.Events.GuardianApprovalReviewCompleted{}`, and `%Codex.Events.ServerRequestResolved{}` when
 the connected Codex build emits guardian review and request-resolution notifications. Use
 `approvals_reviewer: :user | :guardian_subagent` on thread options to control upstream review routing.
-For live request-permissions flows, use a granular approval policy with `request_permissions: true`.
+These app-server approval fields are experimental upstream, so connect with
+`experimental_api: true` before using them. For live request-permissions flows,
+use a granular approval policy with `request_permissions: true`.
 
 Tool-call events can also arrive pre-approved via `approved_by_policy` (or `approved`) from the
 CLI; the SDK mirrors that bypass and skips hooks while still emitting telemetry. Sandbox warnings

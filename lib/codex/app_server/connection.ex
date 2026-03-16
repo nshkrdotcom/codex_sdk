@@ -107,6 +107,11 @@ defmodule Codex.AppServer.Connection do
     client_name = Keyword.get(opts, :client_name, "codex_sdk")
     client_title = Keyword.get(opts, :client_title)
     client_version = Keyword.get(opts, :client_version, default_client_version())
+    experimental_api = Keyword.get(opts, :experimental_api, false)
+
+    init_params =
+      initialize_params(client_name, client_version, client_title, experimental_api)
+
     transport_ref = make_ref()
 
     with :ok <- maybe_ensure_erlexec(transport_mod),
@@ -119,43 +124,14 @@ defmodule Codex.AppServer.Connection do
                subscriber: {self(), transport_ref}
              ] ++ transport_opts
            ) do
-      case transport_mod.send(
-             transport,
-             Protocol.encode_request(0, "initialize", %{
-               "clientInfo" =>
-                 %{"name" => client_name, "version" => client_version}
-                 |> put_optional("title", client_title)
-             })
-           ) do
-        :ok ->
-          timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
-
-          {:ok,
-           %State{
-             codex_opts: codex_opts,
-             transport_mod: transport_mod,
-             transport: transport,
-             transport_ref: transport_ref,
-             phase: :initializing,
-             next_id: 1,
-             stderr: "",
-             pending: %{
-               0 => %{
-                 from: :init,
-                 method: "initialize",
-                 timeout_ms: init_timeout_ms,
-                 timer_ref: timer_ref
-               }
-             },
-             ready_waiters: [],
-             subscribers: %{},
-             subscriber_refs: %{}
-           }}
-
-        {:error, _} = error ->
-          _ = transport_mod.force_close(transport)
-          error
-      end
+      initialize_transport(
+        transport_mod,
+        transport,
+        transport_ref,
+        codex_opts,
+        init_timeout_ms,
+        init_params
+      )
     else
       {:error, _} = error ->
         error
@@ -163,6 +139,65 @@ defmodule Codex.AppServer.Connection do
       other ->
         {:stop, other}
     end
+  end
+
+  defp initialize_transport(
+         transport_mod,
+         transport,
+         transport_ref,
+         codex_opts,
+         init_timeout_ms,
+         init_params
+       ) do
+    case transport_mod.send(
+           transport,
+           Protocol.encode_request(
+             0,
+             "initialize",
+             init_params
+           )
+         ) do
+      :ok ->
+        timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
+
+        {:ok,
+         %State{
+           codex_opts: codex_opts,
+           transport_mod: transport_mod,
+           transport: transport,
+           transport_ref: transport_ref,
+           phase: :initializing,
+           next_id: 1,
+           stderr: "",
+           pending: %{
+             0 => %{
+               from: :init,
+               method: "initialize",
+               timeout_ms: init_timeout_ms,
+               timer_ref: timer_ref
+             }
+           },
+           ready_waiters: [],
+           subscribers: %{},
+           subscriber_refs: %{}
+         }}
+
+      {:error, _} = error ->
+        _ = transport_mod.force_close(transport)
+        error
+    end
+  end
+
+  defp initialize_params(client_name, client_version, client_title, experimental_api) do
+    %{
+      "clientInfo" =>
+        %{"name" => client_name, "version" => client_version}
+        |> put_optional("title", client_title)
+    }
+    |> put_optional(
+      "capabilities",
+      if(experimental_api, do: %{"experimentalApi" => true}, else: nil)
+    )
   end
 
   @impl true

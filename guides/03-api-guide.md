@@ -109,6 +109,9 @@ Select transport per-thread via `Codex.Thread.Options.transport`:
 {:ok, thread} = Codex.start_thread(codex_opts, %{transport: {:app_server, conn}})
 ```
 
+When you need experimental app-server fields such as `approvals_reviewer` or
+granular approval policies, connect with `experimental_api: true`.
+
 For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
 conversation APIs.
 
@@ -1524,7 +1527,7 @@ Thread-specific configuration.
 - `auto_run`: Enable CLI-driven auto-run (default: false)
 - `transport`: `:exec` or `{:app_server, pid()}` for JSON-RPC transport
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
-- `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals
+- `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
 - `working_directory`: Working directory passed to codex (`--cd` / `cwd`)
@@ -1542,7 +1545,7 @@ Thread-specific configuration.
 - `view_image_tool_enabled`: Enable the view_image tool (`features.view_image_tool`)
 - `unified_exec_enabled`: Enable unified exec tool (`features.unified_exec`)
 - `skills_enabled`: Enable skills discovery/injection (`features.skills`)
-- `ask_for_approval`: Approval policy hint for app-server turns; accepts legacy string/atom policies or granular maps (for example `%{type: :granular, request_permissions: true}`)
+- `ask_for_approval`: Approval policy hint for app-server turns; accepts legacy string/atom policies or granular maps (for example `%{type: :granular, request_permissions: true}`); granular policies require an app-server connection created with `experimental_api: true`
 - `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
 - `profile`: Config profile name (`--profile`)

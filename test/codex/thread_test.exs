@@ -104,6 +104,28 @@ defmodule Codex.ThreadTest do
              }
     end
 
+    test "accepts externally tagged granular approval maps" do
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          ask_for_approval: %{
+            granular: %{
+              sandbox_approval: true,
+              rules: true,
+              request_permissions: true
+            }
+          }
+        })
+
+      assert opts.ask_for_approval == %{
+               type: :granular,
+               sandbox_approval: true,
+               rules: true,
+               skill_approval: false,
+               request_permissions: true,
+               mcp_elicitations: false
+             }
+    end
+
     test "defaults web search to cached mode" do
       {:ok, opts} = ThreadOptions.new(%{})
 

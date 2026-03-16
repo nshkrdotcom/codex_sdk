@@ -182,6 +182,65 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
   end
 
+  test "thread and turn start encode granular approval policies with upstream external tagging",
+       %{
+         conn: conn,
+         os_pid: os_pid
+       } do
+    approval_policy = %{
+      type: :granular,
+      sandbox_approval: true,
+      rules: true,
+      request_permissions: true
+    }
+
+    thread_task =
+      Task.async(fn ->
+        AppServer.thread_start(conn, approval_policy: approval_policy)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_line}
+
+    assert {:ok, %{"id" => thread_id, "method" => "thread/start", "params" => thread_params}} =
+             Jason.decode(thread_line)
+
+    assert thread_params["approvalPolicy"] == %{
+             "granular" => %{
+               "sandbox_approval" => true,
+               "rules" => true,
+               "skill_approval" => false,
+               "request_permissions" => true,
+               "mcp_elicitations" => false
+             }
+           }
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(thread_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(thread_task, 200)
+
+    turn_task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi", approval_policy: approval_policy)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_line}
+
+    assert {:ok, %{"id" => turn_id, "method" => "turn/start", "params" => turn_params}} =
+             Jason.decode(turn_line)
+
+    assert turn_params["threadId"] == "thr_1"
+    assert turn_params["approvalPolicy"] == thread_params["approvalPolicy"]
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(turn_task, 200)
+  end
+
   test "thread_fork/3 encodes fork params", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->

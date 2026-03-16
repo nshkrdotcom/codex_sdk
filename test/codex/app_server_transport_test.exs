@@ -133,6 +133,7 @@ defmodule Codex.AppServerTransportTest do
     {:ok, conn} =
       Connection.start_link(codex_opts,
         subprocess: {AppServerSubprocess, owner: self()},
+        experimental_api: true,
         init_timeout_ms: 200
       )
 
@@ -564,12 +565,11 @@ defmodule Codex.AppServerTransportTest do
              Jason.decode(start_line)
 
     assert start_params["approvalsReviewer"] == "guardian_subagent"
-    assert start_params["approvalPolicy"]["type"] == "granular"
-    assert start_params["approvalPolicy"]["sandboxApproval"] == true
-    assert start_params["approvalPolicy"]["rules"] == true
-    assert start_params["approvalPolicy"]["requestPermissions"] == true
-    assert start_params["approvalPolicy"]["skillApproval"] == false
-    assert start_params["approvalPolicy"]["mcpElicitations"] == false
+    assert start_params["approvalPolicy"]["granular"]["sandbox_approval"] == true
+    assert start_params["approvalPolicy"]["granular"]["rules"] == true
+    assert start_params["approvalPolicy"]["granular"]["request_permissions"] == true
+    assert start_params["approvalPolicy"]["granular"]["skill_approval"] == false
+    assert start_params["approvalPolicy"]["granular"]["mcp_elicitations"] == false
 
     send(
       conn,
@@ -636,8 +636,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert resume_params["threadId"] == "thr_resume"
     assert resume_params["approvalsReviewer"] == "user"
-    assert resume_params["approvalPolicy"]["type"] == "granular"
-    assert resume_params["approvalPolicy"]["requestPermissions"] == true
+    assert resume_params["approvalPolicy"]["granular"]["request_permissions"] == true
 
     send(
       conn,

@@ -1,6 +1,7 @@
 defmodule Codex.AppServer.Params do
   @moduledoc false
 
+  alias Codex.ApprovalPolicy
   alias Codex.Protocol.ByteRange
   alias Codex.Protocol.CollaborationMode
   alias Codex.Protocol.TextElement
@@ -12,70 +13,7 @@ defmodule Codex.AppServer.Params do
 
   @spec ask_for_approval(map() | keyword() | atom() | String.t() | nil) ::
           map() | String.t() | nil
-  def ask_for_approval(nil), do: nil
-  def ask_for_approval(:untrusted), do: "untrusted"
-  def ask_for_approval(:on_failure), do: "on-failure"
-  def ask_for_approval(:on_request), do: "on-request"
-  def ask_for_approval(:never), do: "never"
-  def ask_for_approval("untrusted"), do: "untrusted"
-  def ask_for_approval("on-failure"), do: "on-failure"
-  def ask_for_approval("on-request"), do: "on-request"
-  def ask_for_approval("never"), do: "never"
-  def ask_for_approval(policy) when is_list(policy), do: policy |> Map.new() |> ask_for_approval()
-
-  def ask_for_approval(%{} = policy) do
-    policy = normalize_map(policy)
-
-    case fetch_any(policy, [:type, "type"]) do
-      value when value in [:granular, "granular"] ->
-        %{
-          "type" => "granular",
-          "sandboxApproval" =>
-            truthy?(
-              fetch_any(policy, [
-                :sandbox_approval,
-                "sandbox_approval",
-                :sandboxApproval,
-                "sandboxApproval"
-              ])
-            ),
-          "rules" => truthy?(fetch_any(policy, [:rules, "rules"])),
-          "skillApproval" =>
-            truthy?(
-              fetch_any(policy, [
-                :skill_approval,
-                "skill_approval",
-                :skillApproval,
-                "skillApproval"
-              ])
-            ),
-          "requestPermissions" =>
-            truthy?(
-              fetch_any(policy, [
-                :request_permissions,
-                "request_permissions",
-                :requestPermissions,
-                "requestPermissions"
-              ])
-            ),
-          "mcpElicitations" =>
-            truthy?(
-              fetch_any(policy, [
-                :mcp_elicitations,
-                "mcp_elicitations",
-                :mcpElicitations,
-                "mcpElicitations"
-              ])
-            )
-        }
-
-      _ ->
-        nil
-    end
-  end
-
-  def ask_for_approval(value) when is_binary(value), do: value
-  def ask_for_approval(_), do: nil
+  def ask_for_approval(policy), do: ApprovalPolicy.to_external(policy)
 
   @type sandbox_policy ::
           String.t()
@@ -730,8 +668,6 @@ defmodule Codex.AppServer.Params do
   defp only_for_types(value, type, types) do
     if type in types, do: value, else: nil
   end
-
-  defp truthy?(value), do: value in [true, "true", 1, "1"]
 
   defp fetch_any(map, keys) when is_list(keys) and is_map(map) do
     Enum.reduce_while(keys, nil, fn key, _acc ->

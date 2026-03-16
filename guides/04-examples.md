@@ -1436,8 +1436,9 @@ mix run examples/live_thread_management.exs
 end, including base64 round-tripping. `live_app_server_plugins.exs` demonstrates
 `plugin/list` discovery followed by `plugin/read` detail loading.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
-`request_permissions: true` for live permissions requests, and falls back to printing the exact
-structured grant payload when the connected build/model does not emit `item/permissions/requestApproval`.
+`request_permissions: true` for live permissions requests on an `experimental_api: true`
+connection, retries without experimental fields when the connected build rejects them, and falls
+back to printing the exact structured grant payload when live permissions events are unavailable.
 It also surfaces guardian review and `serverRequest/resolved` events. `live_app_server_mcp.exs` and
 `live_mcp_and_sessions.exs` print original MCP tool names alongside sanitized qualified names.
 

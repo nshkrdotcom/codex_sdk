@@ -42,7 +42,8 @@ defmodule CodexExamples.LiveAppServerApprovals do
         reasoning_effort: :low
       })
 
-    {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)
+    {:ok, conn, experimental_api?, init_fallback_reason} =
+      connect_for_approvals_demo(codex_opts)
 
     try do
       parent = self()
@@ -72,29 +73,59 @@ defmodule CodexExamples.LiveAppServerApprovals do
         - completion status for command/file items
         - a deterministic permissions-response fallback if the connected build/model never emits
           item/permissions/requestApproval
+        - a reconnect without `initialize.capabilities.experimentalApi` when the connected build
+          rejects experimental app-server fields
         - an automatic retry with legacy `:untrusted` approvals if the connected Codex build
           does not produce usable live events under the granular policy
 
-      The thread uses a granular approval policy with `request_permissions: true` so live
-      permissions approvals are actually eligible when the connected Codex build supports them.
+      Live guardian review routing and live request-permissions prompts require an app-server
+      connection initialized with `experimentalApi = true`. This script tries that first and
+      reconnects without it when the connected build rejects the capability.
       """)
 
-      {:ok, granular_thread} = start_demo_thread(codex_opts, conn, granular_approval_policy())
+      if not experimental_api? do
+        IO.puts("""
 
-      granular_audit =
-        new_audit_state()
-        |> run_demo_turn!(granular_thread, command_file_prompt, parent, "command/file")
+        The connected Codex build rejected `initialize.capabilities.experimentalApi`:
+          #{format_connect_reason(init_fallback_reason)}
+        Reconnected without experimental app-server fields. This run will show legacy
+        command/file approvals and the exact structured permissions fallback payload instead of
+        live guardian/request-permissions events.
+        """)
+      end
 
       {thread, audit} =
-        if granular_audit == new_audit_state() do
-          IO.puts("""
+        if experimental_api? do
+          {:ok, granular_thread} =
+            start_demo_thread(codex_opts, conn, granular_approval_policy(), :user)
 
-          The connected Codex build did not produce usable live events under the granular approval
-          policy. Retrying the command/file demo with legacy `:untrusted` approvals for backwards
-          compatibility, while keeping the structured permissions fallback below.
-          """)
+          granular_audit =
+            new_audit_state()
+            |> run_demo_turn!(granular_thread, command_file_prompt, parent, "command/file")
 
-          {:ok, legacy_thread} = start_demo_thread(codex_opts, conn, :untrusted)
+          if granular_audit == new_audit_state() do
+            IO.puts("""
+
+            The connected Codex build did not produce usable live events under the granular
+            approval policy. Retrying the command/file demo with legacy `:untrusted` approvals for
+            backwards compatibility, while keeping the structured permissions fallback below.
+            """)
+
+            {:ok, legacy_thread} = start_demo_thread(codex_opts, conn, :untrusted, nil)
+
+            {legacy_thread,
+             new_audit_state()
+             |> run_demo_turn!(
+               legacy_thread,
+               command_file_prompt,
+               parent,
+               "command/file (legacy policy)"
+             )}
+          else
+            {granular_thread, granular_audit}
+          end
+        else
+          {:ok, legacy_thread} = start_demo_thread(codex_opts, conn, :untrusted, nil)
 
           {legacy_thread,
            new_audit_state()
@@ -104,11 +135,15 @@ defmodule CodexExamples.LiveAppServerApprovals do
              parent,
              "command/file (legacy policy)"
            )}
-        else
-          {granular_thread, granular_audit}
         end
 
-      audit = maybe_run_permissions_turn!(audit, thread, parent)
+      audit =
+        if experimental_api? do
+          maybe_run_permissions_turn!(audit, thread, parent)
+        else
+          print_permissions_response_fallback()
+          audit
+        end
 
       print_audit_summary(audit)
 
@@ -135,13 +170,14 @@ defmodule CodexExamples.LiveAppServerApprovals do
     end
   end
 
-  defp start_demo_thread(codex_opts, conn, approval_policy) do
-    Codex.start_thread(codex_opts, %{
+  defp start_demo_thread(codex_opts, conn, approval_policy, approvals_reviewer) do
+    %{
       transport: {:app_server, conn},
       working_directory: File.cwd!(),
-      ask_for_approval: approval_policy,
-      approvals_reviewer: :user
-    })
+      ask_for_approval: approval_policy
+    }
+    |> maybe_put(:approvals_reviewer, approvals_reviewer)
+    |> then(&Codex.start_thread(codex_opts, &1))
   end
 
   defp maybe_run_permissions_turn!(audit, thread, parent) do
@@ -214,6 +250,27 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
   defp maybe_log_execpolicy_hint(_params), do: :ok
 
+  defp connect_for_approvals_demo(codex_opts) do
+    experimental_opts = [init_timeout_ms: 30_000, experimental_api: true]
+
+    case Codex.AppServer.connect(codex_opts, experimental_opts) do
+      {:ok, conn} ->
+        {:ok, conn, true, nil}
+
+      {:error, {:init_failed, reason}} ->
+        case Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+          {:ok, conn} ->
+            {:ok, conn, false, reason}
+
+          {:error, retry_reason} ->
+            {:error, {:experimental_api_init_failed, reason, retry_reason}}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp granular_approval_policy do
     %{
       type: :granular,
@@ -273,6 +330,17 @@ defmodule CodexExamples.LiveAppServerApprovals do
       response: #{inspect(response)}
     """)
   end
+
+  defp format_connect_reason(%{} = reason) do
+    reason
+    |> Map.take(["code", "message"])
+    |> inspect()
+  end
+
+  defp format_connect_reason(reason), do: inspect(reason)
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp await_approvals_ready!(task_pid) when is_pid(task_pid) do
     receive do

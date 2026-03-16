@@ -40,6 +40,26 @@ defmodule Codex.AppServer.ConnectionTest do
     assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
   end
 
+  test "handshake can opt into experimental app-server APIs", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        experimental_api: true,
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+
+    assert {:ok, %{"id" => 0, "method" => "initialize", "params" => params}} =
+             Jason.decode(init_line)
+
+    assert params["capabilities"] == %{"experimentalApi" => true}
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+  end
+
   test "init failure stops subprocess when initialize send fails", %{codex_opts: codex_opts} do
     assert {:error, :send_failed} =
              Connection.start_link(codex_opts,

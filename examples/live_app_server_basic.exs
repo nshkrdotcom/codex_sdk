@@ -55,7 +55,8 @@ defmodule CodexExamples.LiveAppServerBasic do
         IO.puts("""
         approvals_reviewer note:
           set `approvals_reviewer: :user` or `:guardian_subagent` on `Codex.start_thread/2`
-          when you want upstream guardian review routing on newer app-server builds.
+          and create the connection with `experimental_api: true` when you want upstream guardian
+          review routing on newer app-server builds.
         """)
 
         IO.puts("\nskills/list:")

@@ -15,7 +15,8 @@ defmodule Codex.AppServer do
           init_timeout_ms: pos_integer(),
           client_name: String.t(),
           client_title: String.t(),
-          client_version: String.t()
+          client_version: String.t(),
+          experimental_api: boolean()
         ]
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()

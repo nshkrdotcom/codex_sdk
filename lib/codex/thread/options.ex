@@ -5,6 +5,7 @@ defmodule Codex.Thread.Options do
 
   # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
 
+  alias Codex.ApprovalPolicy
   alias Codex.Config.Defaults
   alias Codex.Config.OptionNormalizers
   alias Codex.Config.Overrides
@@ -957,71 +958,7 @@ defmodule Codex.Thread.Options do
   defp normalize_optional_keyword_list(value, field),
     do: {:error, {:"invalid_#{field}", value}}
 
-  defp normalize_ask_for_approval(nil), do: {:ok, nil}
-  defp normalize_ask_for_approval(:untrusted), do: {:ok, :untrusted}
-  defp normalize_ask_for_approval(:on_failure), do: {:ok, :on_failure}
-  defp normalize_ask_for_approval(:on_request), do: {:ok, :on_request}
-  defp normalize_ask_for_approval(:never), do: {:ok, :never}
-  defp normalize_ask_for_approval("untrusted"), do: {:ok, :untrusted}
-  defp normalize_ask_for_approval("on-failure"), do: {:ok, :on_failure}
-  defp normalize_ask_for_approval("on-request"), do: {:ok, :on_request}
-  defp normalize_ask_for_approval("never"), do: {:ok, :never}
-
-  defp normalize_ask_for_approval(value) when is_list(value),
-    do: value |> Map.new() |> normalize_ask_for_approval()
-
-  defp normalize_ask_for_approval(%{} = value) do
-    case fetch_any(value, [:type, "type"]) do
-      type when type in [:granular, "granular"] ->
-        {:ok,
-         %{
-           type: :granular,
-           sandbox_approval:
-             approval_policy_boolean(value, [
-               :sandbox_approval,
-               "sandbox_approval",
-               :sandboxApproval,
-               "sandboxApproval"
-             ]),
-           rules: approval_policy_boolean(value, [:rules, "rules"]),
-           skill_approval:
-             approval_policy_boolean(value, [
-               :skill_approval,
-               "skill_approval",
-               :skillApproval,
-               "skillApproval"
-             ]),
-           request_permissions:
-             approval_policy_boolean(
-               value,
-               [
-                 :request_permissions,
-                 "request_permissions",
-                 :requestPermissions,
-                 "requestPermissions"
-               ]
-             ),
-           mcp_elicitations:
-             approval_policy_boolean(
-               value,
-               [:mcp_elicitations, "mcp_elicitations", :mcpElicitations, "mcpElicitations"]
-             )
-         }}
-
-      _other ->
-        {:error, {:invalid_ask_for_approval, value}}
-    end
-  end
-
-  defp normalize_ask_for_approval(value) when is_binary(value), do: {:ok, value}
-  defp normalize_ask_for_approval(value), do: {:error, {:invalid_ask_for_approval, value}}
-
-  defp approval_policy_boolean(map, keys) do
-    case fetch_any(map, keys) do
-      true -> true
-      _ -> false
-    end
-  end
+  defp normalize_ask_for_approval(value), do: ApprovalPolicy.normalize(value)
 
   defp fetch_any(map, keys) when is_map(map) and is_list(keys) do
     Enum.reduce_while(keys, nil, fn key, _acc ->

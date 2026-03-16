@@ -323,12 +323,11 @@ defmodule Codex.ExecTest do
 
     configs = flag_values(args, "--config")
 
-    assert ~s(approval_policy.type="granular") in configs
-    assert "approval_policy.sandbox_approval=true" in configs
-    assert "approval_policy.rules=true" in configs
-    assert "approval_policy.request_permissions=true" in configs
-    assert "approval_policy.skill_approval=false" in configs
-    assert "approval_policy.mcp_elicitations=false" in configs
+    assert "approval_policy.granular.sandbox_approval=true" in configs
+    assert "approval_policy.granular.rules=true" in configs
+    assert "approval_policy.granular.request_permissions=true" in configs
+    assert "approval_policy.granular.skill_approval=false" in configs
+    assert "approval_policy.granular.mcp_elicitations=false" in configs
   end
 
   test "forwards model provider and instruction overrides via config" do

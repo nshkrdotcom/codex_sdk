@@ -26,10 +26,12 @@ If you need the literal command surface instead of the managed JSON-RPC connecti
 
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
 If the application supervision tree is unavailable, `connect/2` returns `{:error, :supervisor_unavailable}`.
+Pass `experimental_api: true` when you need upstream experimental fields such as
+`approvals_reviewer` or granular approval policies.
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{api_key: System.get_env("CODEX_API_KEY")})
-{:ok, conn} = Codex.AppServer.connect(codex_opts)
+{:ok, conn} = Codex.AppServer.connect(codex_opts, experimental_api: true)
 
 # ... use conn ...
 
@@ -54,7 +56,7 @@ You can identify your application in the handshake:
 To keep your existing `Codex.Thread.*` usage but switch the underlying transport, set `transport: {:app_server, conn}` in thread options:
 
 ```elixir
-{:ok, conn} = Codex.AppServer.connect(codex_opts)
+{:ok, conn} = Codex.AppServer.connect(codex_opts, experimental_api: true)
 
 {:ok, thread} =
   Codex.start_thread(codex_opts, %{
@@ -306,13 +308,15 @@ Permissions approvals use `review_permissions/3` when implemented:
 
 To see live `item/permissions/requestApproval` requests from Codex itself, prefer a granular
 approval policy with `request_permissions: true`; the legacy string policies are not enough to
-reliably exercise that request path on newer builds.
+reliably exercise that request path on newer builds. That path also requires the connection to be
+initialized with `experimental_api: true`.
 
 See `examples/live_app_server_filesystem.exs` for a runnable `fs/*` walkthrough
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
 `examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live
-permissions approvals with granular `request_permissions: true`, and prints a deterministic
-structured-grant fallback when the connected build/model never emits a permissions request.
+permissions approvals with granular `request_permissions: true`, retries without
+`experimentalApi` when the connected build rejects it, and prints a deterministic structured-grant
+fallback when live permissions requests are unavailable.
 MCP-qualified tool names shown to OpenAI are sanitized to ASCII alphanumerics plus `_` before
 hash/truncation, while original MCP server/tool names are preserved for actual MCP calls.
 
