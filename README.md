@@ -1046,6 +1046,7 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 - **API Reference**: Generated docs available via `mix docs` or on [HexDocs](https://hexdocs.pm/codex_sdk)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
+- **Repo Appendix**: `sentience/` contains optional repo folklore documents
 
 ## License
 
