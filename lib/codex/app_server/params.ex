@@ -12,7 +12,7 @@ defmodule Codex.AppServer.Params do
   def normalize_map(list) when is_list(list), do: Map.new(list)
 
   @spec ask_for_approval(map() | keyword() | atom() | String.t() | nil) ::
-          map() | String.t() | nil
+          {:ok, map() | String.t() | nil} | {:error, term()}
   def ask_for_approval(policy), do: ApprovalPolicy.to_external(policy)
 
   @type sandbox_policy ::

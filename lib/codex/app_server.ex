@@ -106,61 +106,61 @@ defmodule Codex.AppServer do
   def thread_start(conn, params \\ %{}) when is_pid(conn) do
     params = Params.normalize_map(params)
 
-    wire_params =
-      %{}
-      |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
-      |> Params.put_optional(
-        "modelProvider",
-        fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
-      )
-      |> Params.put_optional(
-        "cwd",
-        fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
-      )
-      |> Params.put_optional(
-        "approvalPolicy",
-        params
-        |> fetch_any([:approval_policy, "approval_policy"])
-        |> Params.ask_for_approval()
-      )
-      |> Params.put_optional(
-        "approvalsReviewer",
-        params
-        |> fetch_any([
-          :approvals_reviewer,
-          "approvals_reviewer",
-          :approvalsReviewer,
-          "approvalsReviewer"
-        ])
-        |> Params.approvals_reviewer()
-      )
-      |> Params.put_optional(
-        "sandbox",
-        params
-        |> fetch_any([:sandbox, "sandbox"])
-        |> Params.sandbox_mode()
-      )
-      |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
-      |> Params.put_optional(
-        "baseInstructions",
-        fetch_any(params, [:base_instructions, "base_instructions"])
-      )
-      |> Params.put_optional(
-        "developerInstructions",
-        fetch_any(params, [:developer_instructions, "developer_instructions"])
-      )
-      |> Params.put_optional(
-        "personality",
-        params
-        |> fetch_any([:personality, "personality"])
-        |> Params.personality()
-      )
-      |> Params.put_optional(
-        "experimentalRawEvents",
-        fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
-      )
+    with {:ok, approval_policy} <-
+           params
+           |> fetch_any([:approval_policy, "approval_policy"])
+           |> Params.ask_for_approval() do
+      wire_params =
+        %{}
+        |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+        |> Params.put_optional(
+          "modelProvider",
+          fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
+        )
+        |> Params.put_optional(
+          "cwd",
+          fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+        )
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "approvalsReviewer",
+          params
+          |> fetch_any([
+            :approvals_reviewer,
+            "approvals_reviewer",
+            :approvalsReviewer,
+            "approvalsReviewer"
+          ])
+          |> Params.approvals_reviewer()
+        )
+        |> Params.put_optional(
+          "sandbox",
+          params
+          |> fetch_any([:sandbox, "sandbox"])
+          |> Params.sandbox_mode()
+        )
+        |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
+        |> Params.put_optional(
+          "baseInstructions",
+          fetch_any(params, [:base_instructions, "base_instructions"])
+        )
+        |> Params.put_optional(
+          "developerInstructions",
+          fetch_any(params, [:developer_instructions, "developer_instructions"])
+        )
+        |> Params.put_optional(
+          "personality",
+          params
+          |> fetch_any([:personality, "personality"])
+          |> Params.personality()
+        )
+        |> Params.put_optional(
+          "experimentalRawEvents",
+          fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
+        )
 
-    Connection.request(conn, "thread/start", wire_params, timeout_ms: 30_000)
+      Connection.request(conn, "thread/start", wire_params, timeout_ms: 30_000)
+    end
   end
 
   @spec thread_resume(connection(), String.t(), map() | keyword()) ::
@@ -168,63 +168,63 @@ defmodule Codex.AppServer do
   def thread_resume(conn, thread_id, params \\ %{}) when is_pid(conn) and is_binary(thread_id) do
     params = Params.normalize_map(params)
 
-    wire_params =
-      %{"threadId" => thread_id}
-      |> Params.put_optional("history", fetch_any(params, [:history, "history"]))
-      |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
-      |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
-      |> Params.put_optional(
-        "modelProvider",
-        fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
-      )
-      |> Params.put_optional(
-        "cwd",
-        fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
-      )
-      |> Params.put_optional(
-        "approvalPolicy",
-        params
-        |> fetch_any([:approval_policy, "approval_policy"])
-        |> Params.ask_for_approval()
-      )
-      |> Params.put_optional(
-        "approvalsReviewer",
-        params
-        |> fetch_any([
-          :approvals_reviewer,
-          "approvals_reviewer",
-          :approvalsReviewer,
-          "approvalsReviewer"
-        ])
-        |> Params.approvals_reviewer()
-      )
-      |> Params.put_optional(
-        "sandbox",
-        params
-        |> fetch_any([:sandbox, "sandbox"])
-        |> Params.sandbox_mode()
-      )
-      |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
-      |> Params.put_optional(
-        "baseInstructions",
-        fetch_any(params, [:base_instructions, "base_instructions"])
-      )
-      |> Params.put_optional(
-        "developerInstructions",
-        fetch_any(params, [:developer_instructions, "developer_instructions"])
-      )
-      |> Params.put_optional(
-        "personality",
-        params
-        |> fetch_any([:personality, "personality"])
-        |> Params.personality()
-      )
-      |> Params.put_optional(
-        "experimentalRawEvents",
-        fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
-      )
+    with {:ok, approval_policy} <-
+           params
+           |> fetch_any([:approval_policy, "approval_policy"])
+           |> Params.ask_for_approval() do
+      wire_params =
+        %{"threadId" => thread_id}
+        |> Params.put_optional("history", fetch_any(params, [:history, "history"]))
+        |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
+        |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+        |> Params.put_optional(
+          "modelProvider",
+          fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
+        )
+        |> Params.put_optional(
+          "cwd",
+          fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+        )
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "approvalsReviewer",
+          params
+          |> fetch_any([
+            :approvals_reviewer,
+            "approvals_reviewer",
+            :approvalsReviewer,
+            "approvalsReviewer"
+          ])
+          |> Params.approvals_reviewer()
+        )
+        |> Params.put_optional(
+          "sandbox",
+          params
+          |> fetch_any([:sandbox, "sandbox"])
+          |> Params.sandbox_mode()
+        )
+        |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
+        |> Params.put_optional(
+          "baseInstructions",
+          fetch_any(params, [:base_instructions, "base_instructions"])
+        )
+        |> Params.put_optional(
+          "developerInstructions",
+          fetch_any(params, [:developer_instructions, "developer_instructions"])
+        )
+        |> Params.put_optional(
+          "personality",
+          params
+          |> fetch_any([:personality, "personality"])
+          |> Params.personality()
+        )
+        |> Params.put_optional(
+          "experimentalRawEvents",
+          fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
+        )
 
-    Connection.request(conn, "thread/resume", wire_params, timeout_ms: 30_000)
+      Connection.request(conn, "thread/resume", wire_params, timeout_ms: 30_000)
+    end
   end
 
   @spec thread_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -267,52 +267,52 @@ defmodule Codex.AppServer do
       when is_pid(conn) and is_binary(thread_id) do
     params = Params.normalize_map(params)
 
-    wire_params =
-      %{"threadId" => thread_id}
-      |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
-      |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
-      |> Params.put_optional(
-        "modelProvider",
-        fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
-      )
-      |> Params.put_optional(
-        "cwd",
-        fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
-      )
-      |> Params.put_optional(
-        "approvalPolicy",
-        params
-        |> fetch_any([:approval_policy, "approval_policy"])
-        |> Params.ask_for_approval()
-      )
-      |> Params.put_optional(
-        "approvalsReviewer",
-        params
-        |> fetch_any([
-          :approvals_reviewer,
-          "approvals_reviewer",
-          :approvalsReviewer,
-          "approvalsReviewer"
-        ])
-        |> Params.approvals_reviewer()
-      )
-      |> Params.put_optional(
-        "sandbox",
-        params
-        |> fetch_any([:sandbox, "sandbox"])
-        |> Params.sandbox_mode()
-      )
-      |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
-      |> Params.put_optional(
-        "baseInstructions",
-        fetch_any(params, [:base_instructions, "base_instructions"])
-      )
-      |> Params.put_optional(
-        "developerInstructions",
-        fetch_any(params, [:developer_instructions, "developer_instructions"])
-      )
+    with {:ok, approval_policy} <-
+           params
+           |> fetch_any([:approval_policy, "approval_policy"])
+           |> Params.ask_for_approval() do
+      wire_params =
+        %{"threadId" => thread_id}
+        |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
+        |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+        |> Params.put_optional(
+          "modelProvider",
+          fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
+        )
+        |> Params.put_optional(
+          "cwd",
+          fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+        )
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "approvalsReviewer",
+          params
+          |> fetch_any([
+            :approvals_reviewer,
+            "approvals_reviewer",
+            :approvalsReviewer,
+            "approvalsReviewer"
+          ])
+          |> Params.approvals_reviewer()
+        )
+        |> Params.put_optional(
+          "sandbox",
+          params
+          |> fetch_any([:sandbox, "sandbox"])
+          |> Params.sandbox_mode()
+        )
+        |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
+        |> Params.put_optional(
+          "baseInstructions",
+          fetch_any(params, [:base_instructions, "base_instructions"])
+        )
+        |> Params.put_optional(
+          "developerInstructions",
+          fetch_any(params, [:developer_instructions, "developer_instructions"])
+        )
 
-    Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
+      Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
+    end
   end
 
   @spec thread_rollback(connection(), String.t(), pos_integer()) ::
@@ -446,42 +446,45 @@ defmodule Codex.AppServer do
           {:ok, map()} | {:error, term()}
   def turn_start(conn, thread_id, input, opts \\ [])
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
-    wire_params =
-      %{
-        "threadId" => thread_id,
-        "input" => Params.user_input(input)
-      }
-      |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
-      |> Params.put_optional(
-        "approvalPolicy",
-        opts
-        |> Keyword.get(:approval_policy)
-        |> Params.ask_for_approval()
-      )
-      |> Params.put_optional(
-        "approvalsReviewer",
-        opts
-        |> Keyword.get(:approvals_reviewer)
-        |> Params.approvals_reviewer()
-      )
-      |> Params.put_optional(
-        "sandboxPolicy",
-        opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
-      )
-      |> Params.put_optional("model", Keyword.get(opts, :model))
-      |> Params.put_optional("effort", opts |> Keyword.get(:effort) |> Params.reasoning_effort())
-      |> Params.put_optional("summary", Keyword.get(opts, :summary))
-      |> Params.put_optional(
-        "personality",
-        opts |> Keyword.get(:personality) |> Params.personality()
-      )
-      |> Params.put_optional("outputSchema", Keyword.get(opts, :output_schema))
-      |> Params.put_optional(
-        "collaborationMode",
-        opts |> Keyword.get(:collaboration_mode) |> Params.collaboration_mode()
-      )
+    with {:ok, approval_policy} <-
+           opts
+           |> Keyword.get(:approval_policy)
+           |> Params.ask_for_approval() do
+      wire_params =
+        %{
+          "threadId" => thread_id,
+          "input" => Params.user_input(input)
+        }
+        |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "approvalsReviewer",
+          opts
+          |> Keyword.get(:approvals_reviewer)
+          |> Params.approvals_reviewer()
+        )
+        |> Params.put_optional(
+          "sandboxPolicy",
+          opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
+        )
+        |> Params.put_optional("model", Keyword.get(opts, :model))
+        |> Params.put_optional(
+          "effort",
+          opts |> Keyword.get(:effort) |> Params.reasoning_effort()
+        )
+        |> Params.put_optional("summary", Keyword.get(opts, :summary))
+        |> Params.put_optional(
+          "personality",
+          opts |> Keyword.get(:personality) |> Params.personality()
+        )
+        |> Params.put_optional("outputSchema", Keyword.get(opts, :output_schema))
+        |> Params.put_optional(
+          "collaborationMode",
+          opts |> Keyword.get(:collaboration_mode) |> Params.collaboration_mode()
+        )
 
-    Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
+      Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
+    end
   end
 
   @spec turn_steer(connection(), String.t(), String.t() | [map()], keyword()) ::

@@ -6,7 +6,7 @@ defmodule Codex.MCP.Client do
 
   When `list_tools/2` is called with `qualify?: true`, tool names are qualified with
   the server name prefix in the format `mcp__<server>__<tool>`. This follows the
-  OpenAI tool name constraint by exposing only ASCII alphanumerics and underscores
+  OpenAI tool name constraint by exposing only ASCII alphanumerics, `_`, and `-`
   in the qualified key.
 
   If the qualified name exceeds 64 characters, it is truncated and a SHA1 hash suffix
@@ -535,7 +535,7 @@ defmodule Codex.MCP.Client do
 
   Returns the fully qualified name in the format `mcp__<server>__<tool>`.
   Server and tool components are sanitized for the OpenAI-facing key by replacing
-  any non-ASCII-alphanumeric, non-underscore character with `_`. If the qualified
+  any non-ASCII-alphanumeric character other than `_` or `-` with `_`. If the qualified
   name exceeds 64 characters, it is truncated and a SHA1 hash suffix derived from
   the raw unsanitized qualified name is appended to ensure uniqueness.
 
@@ -579,6 +579,7 @@ defmodule Codex.MCP.Client do
       char when char in ?A..?Z -> char
       char when char in ?a..?z -> char
       ?_ -> ?_
+      ?- -> ?-
       _ -> ?_
     end)
     |> to_string()

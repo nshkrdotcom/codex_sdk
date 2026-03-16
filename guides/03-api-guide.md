@@ -1545,7 +1545,7 @@ Thread-specific configuration.
 - `view_image_tool_enabled`: Enable the view_image tool (`features.view_image_tool`)
 - `unified_exec_enabled`: Enable unified exec tool (`features.unified_exec`)
 - `skills_enabled`: Enable skills discovery/injection (`features.skills`)
-- `ask_for_approval`: Approval policy hint for app-server turns; accepts legacy string/atom policies or granular maps (for example `%{type: :granular, request_permissions: true}`); granular policies require an app-server connection created with `experimental_api: true`
+- `ask_for_approval`: Approval policy hint for app-server turns; accepts legacy string/atom policies, inline granular maps like `%{type: :granular, request_permissions: true}`, or the upstream external-tagged shape `%{granular: %{request_permissions: true}}`; malformed granular maps are rejected instead of being silently dropped, and granular policies require an app-server connection created with `experimental_api: true`
 - `attachments`: List of `%Codex.Files.Attachment{}` forwarded to the codex binary
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
 - `profile`: Config profile name (`--profile`)

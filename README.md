@@ -602,7 +602,10 @@ the connected Codex build emits guardian review and request-resolution notificat
 `approvals_reviewer: :user | :guardian_subagent` on thread options to control upstream review routing.
 These app-server approval fields are experimental upstream, so connect with
 `experimental_api: true` before using them. For live request-permissions flows,
-use a granular approval policy with `request_permissions: true`.
+use a granular approval policy with `request_permissions: true`. The SDK accepts both
+the local inline shape (`%{type: :granular, request_permissions: true}`) and the
+upstream external-tagged shape (`%{granular: %{request_permissions: true}}`); malformed
+granular maps now fail fast instead of being silently dropped.
 
 Tool-call events can also arrive pre-approved via `approved_by_policy` (or `approved`) from the
 CLI; the SDK mirrors that bypass and skips hooks while still emitting telemetry. Sandbox warnings
@@ -672,16 +675,16 @@ auth support for remote MCP servers.
 Transport failures are normalized to `{:error, reason}` tuples.
 
 Tool name qualification now sanitizes each server/tool component to ASCII alphanumerics plus `_`
-before joining them for OpenAI-facing tool names. Original MCP server/tool names are preserved for
-actual MCP calls. Names exceeding 64 characters are truncated with a SHA1 hash suffix for
-disambiguation:
+and `-` before joining them for OpenAI-facing tool names. Original MCP server/tool names are
+preserved for actual MCP calls. Names exceeding 64 characters are truncated with a SHA1 hash
+suffix for disambiguation:
 
 ```elixir
 Codex.MCP.Client.qualify_tool_name("server1", "tool_a")
 #=> "mcp__server1__tool_a"
 
 Codex.MCP.Client.qualify_tool_name("server.one", "tool.two-three")
-#=> "mcp__server_one__tool_two_three"
+#=> "mcp__server_one__tool_two-three"
 
 # Long names are truncated with SHA1 suffix
 Codex.MCP.Client.qualify_tool_name("srv", String.duplicate("a", 80))

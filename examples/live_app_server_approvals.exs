@@ -258,12 +258,16 @@ defmodule CodexExamples.LiveAppServerApprovals do
         {:ok, conn, true, nil}
 
       {:error, {:init_failed, reason}} ->
-        case Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
-          {:ok, conn} ->
-            {:ok, conn, false, reason}
+        if experimental_api_rejected?(reason) do
+          case Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+            {:ok, conn} ->
+              {:ok, conn, false, reason}
 
-          {:error, retry_reason} ->
-            {:error, {:experimental_api_init_failed, reason, retry_reason}}
+            {:error, retry_reason} ->
+              {:error, {:experimental_api_init_failed, reason, retry_reason}}
+          end
+        else
+          {:error, {:init_failed, reason}}
         end
 
       {:error, reason} ->
@@ -338,6 +342,23 @@ defmodule CodexExamples.LiveAppServerApprovals do
   end
 
   defp format_connect_reason(reason), do: inspect(reason)
+
+  defp experimental_api_rejected?(%{} = reason) do
+    message =
+      reason
+      |> Map.get("message", Map.get(reason, :message, ""))
+      |> to_string()
+      |> String.downcase()
+
+    String.contains?(message, "experimentalapi") or
+      String.contains?(message, "experimental api") or
+      (String.contains?(message, "capabilities") and
+         (String.contains?(message, "unknown field") or
+            String.contains?(message, "unexpected field") or
+            String.contains?(message, "invalid params")))
+  end
+
+  defp experimental_api_rejected?(_reason), do: false
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

@@ -241,6 +241,17 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(turn_task, 200)
   end
 
+  test "thread_start/2 rejects malformed granular approval policies without sending a request", %{
+    conn: conn
+  } do
+    assert {:error, {:invalid_ask_for_approval, _reason}} =
+             AppServer.thread_start(conn,
+               approval_policy: %{granular: %{request_permissions: "yes"}}
+             )
+
+    refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 50
+  end
+
   test "thread_fork/3 encodes fork params", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->

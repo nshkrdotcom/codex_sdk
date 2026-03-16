@@ -317,8 +317,10 @@ and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
 permissions approvals with granular `request_permissions: true`, retries without
 `experimentalApi` when the connected build rejects it, and prints a deterministic structured-grant
 fallback when live permissions requests are unavailable.
-MCP-qualified tool names shown to OpenAI are sanitized to ASCII alphanumerics plus `_` before
-hash/truncation, while original MCP server/tool names are preserved for actual MCP calls.
+The SDK accepts both `%{type: :granular, ...}` and `%{granular: %{...}}` for these approval
+policies and now rejects malformed granular maps instead of silently omitting `approvalPolicy`.
+MCP-qualified tool names shown to OpenAI are sanitized to ASCII alphanumerics plus `_` and `-`
+before hash/truncation, while original MCP server/tool names are preserved for actual MCP calls.
 
 ## Turn diffs
 

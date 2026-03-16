@@ -126,6 +126,28 @@ defmodule Codex.ThreadTest do
              }
     end
 
+    test "rejects granular approval policies with invalid flag values" do
+      assert {:error, {:invalid_ask_for_approval, _reason}} =
+               ThreadOptions.new(%{
+                 ask_for_approval: %{
+                   granular: %{
+                     request_permissions: "yes"
+                   }
+                 }
+               })
+    end
+
+    test "rejects granular approval policies with unknown keys" do
+      assert {:error, {:invalid_ask_for_approval, _reason}} =
+               ThreadOptions.new(%{
+                 ask_for_approval: %{
+                   type: :granular,
+                   sandbox_approval: true,
+                   unexpected: true
+                 }
+               })
+    end
+
     test "defaults web search to cached mode" do
       {:ok, opts} = ThreadOptions.new(%{})
 

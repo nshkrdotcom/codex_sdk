@@ -369,7 +369,8 @@ defmodule Codex.Exec do
   defp build_args(%ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts, command_args) do
     command_args = command_args || command_args_for_run(exec_opts)
 
-    with {:ok, config_args} <- config_override_args(exec_opts) do
+    with {:ok, approval_args} <- ask_for_approval_args(exec_opts.thread),
+         {:ok, config_args} <- config_override_args(exec_opts) do
       {:ok,
        ["exec", "--json"] ++
          profile_args(exec_opts) ++
@@ -386,7 +387,7 @@ defmodule Codex.Exec do
          additional_directories_args(exec_opts.thread) ++
          skip_git_repo_check_args(exec_opts.thread) ++
          network_access_args(exec_opts.thread) ++
-         ask_for_approval_args(exec_opts.thread) ++
+         approval_args ++
          command_args ++
          continuation_args(exec_opts.continuation_token) ++
          cancellation_args(exec_opts.cancellation_token) ++
@@ -584,27 +585,31 @@ defmodule Codex.Exec do
 
   defp network_access_args(_), do: []
 
-  defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: nil}}), do: []
+  defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: nil}}),
+    do: {:ok, []}
 
   defp ask_for_approval_args(%{thread_opts: %Codex.Thread.Options{ask_for_approval: policy}}) do
     case ApprovalPolicy.to_external(policy) do
-      nil ->
-        []
+      {:ok, nil} ->
+        {:ok, []}
 
-      value when is_binary(value) ->
-        ["--config", ~s(approval_policy="#{value}")]
+      {:ok, value} when is_binary(value) ->
+        {:ok, ["--config", ~s(approval_policy="#{value}")]}
 
-      %{} = value ->
+      {:ok, %{} = value} ->
         %{"approval_policy" => value}
         |> Overrides.normalize_config_overrides()
         |> case do
-          {:ok, overrides} -> Overrides.cli_args(overrides)
-          {:error, _reason} -> []
+          {:ok, overrides} -> {:ok, Overrides.cli_args(overrides)}
+          {:error, reason} -> {:error, reason}
         end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp ask_for_approval_args(_), do: []
+  defp ask_for_approval_args(_), do: {:ok, []}
 
   defp resume_args(%{thread_id: thread_id}) when is_binary(thread_id), do: ["resume", thread_id]
   defp resume_args(%{resume: :last}), do: ["resume", "--last"]

@@ -827,7 +827,7 @@ defmodule Codex.MCPClientTest do
 
       assert {:ok, [tool], _} = Client.list_tools(client, qualify?: true)
       assert tool["name"] == "tool.two-three"
-      assert tool["qualified_name"] == "mcp__server_one__tool_two_three"
+      assert tool["qualified_name"] == "mcp__server_one__tool_two-three"
       assert tool["server_name"] == "server.one"
     end
 
@@ -889,9 +889,9 @@ defmodule Codex.MCPClientTest do
       assert result == "mcp__server1__tool_a"
     end
 
-    test "sanitizes dots and hyphens in server and tool names" do
+    test "sanitizes dots while preserving hyphens in server and tool names" do
       result = Client.qualify_tool_name("server.one", "tool.two-three")
-      assert result == "mcp__server_one__tool_two_three"
+      assert result == "mcp__server_one__tool_two-three"
     end
 
     test "truncates names exceeding 64 chars with SHA1 suffix" do
@@ -933,9 +933,8 @@ defmodule Codex.MCPClientTest do
 
       assert String.length(result) == 64
       assert String.starts_with?(result, "mcp__server_one__tool_tw")
-      assert Regex.match?(~r/^[A-Za-z0-9_]+$/, result)
+      assert Regex.match?(~r/^[A-Za-z0-9_-]+$/, result)
       refute String.contains?(result, ".")
-      refute String.contains?(result, "-")
       refute String.contains?(result, "/")
       refute String.contains?(result, "+")
     end
@@ -953,7 +952,7 @@ defmodule Codex.MCPClientTest do
 
     test "matches Rust sanitization output for known inputs" do
       assert Client.qualify_tool_name("server.one", "tool.two-three") ==
-               "mcp__server_one__tool_two_three"
+               "mcp__server_one__tool_two-three"
     end
   end
 end

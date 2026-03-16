@@ -12,9 +12,9 @@ defmodule Codex.AppServer.V1 do
   def new_conversation(conn, params \\ %{}) when is_pid(conn) do
     params = Params.normalize_map(params)
 
-    wire_params = build_new_conversation_params(params)
-
-    Connection.request(conn, "newConversation", wire_params, timeout_ms: 30_000)
+    with {:ok, wire_params} <- build_new_conversation_params(params) do
+      Connection.request(conn, "newConversation", wire_params, timeout_ms: 30_000)
+    end
   end
 
   @spec list_conversations(connection(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -32,17 +32,24 @@ defmodule Codex.AppServer.V1 do
   def resume_conversation(conn, params \\ %{}) when is_pid(conn) do
     params = Params.normalize_map(params)
 
-    wire_params =
-      %{}
-      |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
-      |> Params.put_optional(
-        "conversationId",
-        fetch_any(params, [:conversation_id, "conversation_id", :conversationId, "conversationId"])
-      )
-      |> Params.put_optional("history", fetch_any(params, [:history, "history"]))
-      |> Params.put_optional("overrides", encode_new_conversation_params(params))
+    with {:ok, overrides} <- encode_new_conversation_params(params) do
+      wire_params =
+        %{}
+        |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
+        |> Params.put_optional(
+          "conversationId",
+          fetch_any(params, [
+            :conversation_id,
+            "conversation_id",
+            :conversationId,
+            "conversationId"
+          ])
+        )
+        |> Params.put_optional("history", fetch_any(params, [:history, "history"]))
+        |> Params.put_optional("overrides", overrides)
 
-    Connection.request(conn, "resumeConversation", wire_params, timeout_ms: 30_000)
+      Connection.request(conn, "resumeConversation", wire_params, timeout_ms: 30_000)
+    end
   end
 
   @spec send_user_message(connection(), String.t(), String.t() | [map()]) ::
@@ -58,25 +65,28 @@ defmodule Codex.AppServer.V1 do
           {:ok, map()} | {:error, term()}
   def send_user_turn(conn, conversation_id, input, opts \\ [])
       when is_pid(conn) and is_binary(conversation_id) and is_list(opts) do
-    params =
-      %{
-        "conversationId" => conversation_id,
-        "items" => user_input_v1(input)
-      }
-      |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
-      |> Params.put_optional(
-        "approvalPolicy",
-        opts |> Keyword.get(:approval_policy) |> Params.ask_for_approval()
-      )
-      |> Params.put_optional(
-        "sandboxPolicy",
-        opts |> Keyword.get(:sandbox_policy) |> sandbox_policy_v1()
-      )
-      |> Params.put_optional("model", Keyword.get(opts, :model))
-      |> Params.put_optional("effort", opts |> Keyword.get(:effort) |> Params.reasoning_effort())
-      |> Params.put_optional("summary", Keyword.get(opts, :summary))
+    with {:ok, approval_policy} <-
+           opts |> Keyword.get(:approval_policy) |> Params.ask_for_approval() do
+      params =
+        %{
+          "conversationId" => conversation_id,
+          "items" => user_input_v1(input)
+        }
+        |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "sandboxPolicy",
+          opts |> Keyword.get(:sandbox_policy) |> sandbox_policy_v1()
+        )
+        |> Params.put_optional("model", Keyword.get(opts, :model))
+        |> Params.put_optional(
+          "effort",
+          opts |> Keyword.get(:effort) |> Params.reasoning_effort()
+        )
+        |> Params.put_optional("summary", Keyword.get(opts, :summary))
 
-    Connection.request(conn, "sendUserTurn", params, timeout_ms: 300_000)
+      Connection.request(conn, "sendUserTurn", params, timeout_ms: 300_000)
+    end
   end
 
   @spec interrupt_conversation(connection(), String.t()) :: {:ok, map()} | {:error, term()}
@@ -106,57 +116,58 @@ defmodule Codex.AppServer.V1 do
 
   defp encode_new_conversation_params(params) do
     case fetch_any(params, [:overrides, "overrides"]) do
-      nil -> nil
+      nil -> {:ok, nil}
       overrides -> build_new_conversation_params(Params.normalize_map(overrides))
     end
   end
 
   defp build_new_conversation_params(params) do
-    %{}
-    |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
-    |> Params.put_optional(
-      "modelProvider",
-      fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
-    )
-    |> Params.put_optional("profile", fetch_any(params, [:profile, "profile"]))
-    |> Params.put_optional(
-      "cwd",
-      fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
-    )
-    |> Params.put_optional(
-      "approvalPolicy",
-      params
-      |> fetch_any([:approval_policy, "approval_policy"])
-      |> Params.ask_for_approval()
-    )
-    |> Params.put_optional(
-      "sandbox",
-      params
-      |> fetch_any([:sandbox, "sandbox"])
-      |> normalize_sandbox_mode_v1()
-    )
-    |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
-    |> Params.put_optional(
-      "baseInstructions",
-      fetch_any(params, [:base_instructions, "base_instructions"])
-    )
-    |> Params.put_optional(
-      "developerInstructions",
-      fetch_any(params, [:developer_instructions, "developer_instructions"])
-    )
-    |> Params.put_optional(
-      "compactPrompt",
-      fetch_any(params, [:compact_prompt, "compact_prompt", :compactPrompt, "compactPrompt"])
-    )
-    |> Params.put_optional(
-      "includeApplyPatchTool",
-      fetch_any(params, [
-        :include_apply_patch_tool,
-        "include_apply_patch_tool",
-        :includeApplyPatchTool,
-        "includeApplyPatchTool"
-      ])
-    )
+    with {:ok, approval_policy} <-
+           params
+           |> fetch_any([:approval_policy, "approval_policy"])
+           |> Params.ask_for_approval() do
+      {:ok,
+       %{}
+       |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+       |> Params.put_optional(
+         "modelProvider",
+         fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
+       )
+       |> Params.put_optional("profile", fetch_any(params, [:profile, "profile"]))
+       |> Params.put_optional(
+         "cwd",
+         fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+       )
+       |> Params.put_optional("approvalPolicy", approval_policy)
+       |> Params.put_optional(
+         "sandbox",
+         params
+         |> fetch_any([:sandbox, "sandbox"])
+         |> normalize_sandbox_mode_v1()
+       )
+       |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
+       |> Params.put_optional(
+         "baseInstructions",
+         fetch_any(params, [:base_instructions, "base_instructions"])
+       )
+       |> Params.put_optional(
+         "developerInstructions",
+         fetch_any(params, [:developer_instructions, "developer_instructions"])
+       )
+       |> Params.put_optional(
+         "compactPrompt",
+         fetch_any(params, [:compact_prompt, "compact_prompt", :compactPrompt, "compactPrompt"])
+       )
+       |> Params.put_optional(
+         "includeApplyPatchTool",
+         fetch_any(params, [
+           :include_apply_patch_tool,
+           "include_apply_patch_tool",
+           :includeApplyPatchTool,
+           "includeApplyPatchTool"
+         ])
+       )}
+    end
   end
 
   defp user_input_v1(input) when is_binary(input) do
