@@ -75,6 +75,14 @@ defmodule Codex.ThreadTest do
       assert opts.personality == :none
     end
 
+    test "accepts approvals reviewer overrides" do
+      {:ok, opts} = ThreadOptions.new(%{approvals_reviewer: :guardian_subagent})
+      assert opts.approvals_reviewer == :guardian_subagent
+
+      {:ok, opts} = ThreadOptions.new(%{approvals_reviewer: "user"})
+      assert opts.approvals_reviewer == :user
+    end
+
     test "defaults web search to cached mode" do
       {:ok, opts} = ThreadOptions.new(%{})
 

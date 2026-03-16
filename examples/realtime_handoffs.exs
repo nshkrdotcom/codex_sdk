@@ -3,6 +3,8 @@
 # Realtime Handoffs Example
 #
 # Demonstrates agent-to-agent handoffs in realtime sessions.
+# TLS note: set CODEX_CA_CERTIFICATE to a PEM bundle to override trust roots for HTTPS/WSS.
+# If unset, SSL_CERT_FILE is used instead; blank values are ignored.
 #
 # Usage:
 #   mix run examples/realtime_handoffs.exs

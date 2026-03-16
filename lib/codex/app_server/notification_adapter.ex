@@ -79,6 +79,10 @@ defmodule Codex.AppServer.NotificationAdapter do
        model_provider_id:
          Map.get(params, "modelProviderId") || Map.get(params, "model_provider_id"),
        approval_policy: Map.get(params, "approvalPolicy") || Map.get(params, "approval_policy"),
+       approvals_reviewer:
+         params
+         |> Map.get("approvalsReviewer", Map.get(params, "approvals_reviewer"))
+         |> normalize_approvals_reviewer(),
        sandbox_policy: Map.get(params, "sandboxPolicy") || Map.get(params, "sandbox_policy"),
        cwd: Map.get(params, "cwd"),
        reasoning_effort: Map.get(params, "reasoningEffort"),
@@ -156,6 +160,36 @@ defmodule Codex.AppServer.NotificationAdapter do
        thread_id: fetch(params, "threadId", "thread_id") || "",
        turn_id: fetch(params, "turnId", "turn_id"),
        run: Map.get(params, "run") || %{}
+     }}
+  end
+
+  def to_event("item/autoApprovalReview/started", %{} = params) do
+    {:ok,
+     %Events.GuardianApprovalReviewStarted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       turn_id: fetch(params, "turnId", "turn_id") || "",
+       target_item_id: fetch(params, "targetItemId", "target_item_id") || "",
+       review: normalize_guardian_review(Map.get(params, "review")),
+       action: Map.get(params, "action")
+     }}
+  end
+
+  def to_event("item/autoApprovalReview/completed", %{} = params) do
+    {:ok,
+     %Events.GuardianApprovalReviewCompleted{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       turn_id: fetch(params, "turnId", "turn_id") || "",
+       target_item_id: fetch(params, "targetItemId", "target_item_id") || "",
+       review: normalize_guardian_review(Map.get(params, "review")),
+       action: Map.get(params, "action")
+     }}
+  end
+
+  def to_event("serverRequest/resolved", %{} = params) do
+    {:ok,
+     %Events.ServerRequestResolved{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       request_id: fetch(params, "requestId", "request_id")
      }}
   end
 
@@ -539,6 +573,48 @@ defmodule Codex.AppServer.NotificationAdapter do
   end
 
   defp normalize_turn_status(status), do: status
+
+  defp normalize_approvals_reviewer("user"), do: :user
+  defp normalize_approvals_reviewer("guardian_subagent"), do: :guardian_subagent
+  defp normalize_approvals_reviewer(:user), do: :user
+  defp normalize_approvals_reviewer(:guardian_subagent), do: :guardian_subagent
+  defp normalize_approvals_reviewer(nil), do: nil
+  defp normalize_approvals_reviewer(value), do: value
+
+  defp normalize_guardian_review(%{} = review) do
+    %Events.GuardianApprovalReview{
+      status: normalize_guardian_review_status(Map.get(review, "status")),
+      risk_score: Map.get(review, "riskScore") || Map.get(review, "risk_score"),
+      risk_level:
+        normalize_guardian_risk_level(
+          Map.get(review, "riskLevel") || Map.get(review, "risk_level")
+        ),
+      rationale: Map.get(review, "rationale")
+    }
+  end
+
+  defp normalize_guardian_review(_review) do
+    %Events.GuardianApprovalReview{status: :in_progress}
+  end
+
+  defp normalize_guardian_review_status("inProgress"), do: :in_progress
+  defp normalize_guardian_review_status("in_progress"), do: :in_progress
+  defp normalize_guardian_review_status("approved"), do: :approved
+  defp normalize_guardian_review_status("denied"), do: :denied
+  defp normalize_guardian_review_status("aborted"), do: :aborted
+  defp normalize_guardian_review_status(:in_progress), do: :in_progress
+  defp normalize_guardian_review_status(:approved), do: :approved
+  defp normalize_guardian_review_status(:denied), do: :denied
+  defp normalize_guardian_review_status(:aborted), do: :aborted
+  defp normalize_guardian_review_status(_), do: :in_progress
+
+  defp normalize_guardian_risk_level("low"), do: :low
+  defp normalize_guardian_risk_level("medium"), do: :medium
+  defp normalize_guardian_risk_level("high"), do: :high
+  defp normalize_guardian_risk_level(:low), do: :low
+  defp normalize_guardian_risk_level(:medium), do: :medium
+  defp normalize_guardian_risk_level(:high), do: :high
+  defp normalize_guardian_risk_level(_), do: nil
 
   defp normalize_thread_status(nil), do: nil
 

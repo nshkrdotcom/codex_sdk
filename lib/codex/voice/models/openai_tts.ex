@@ -40,6 +40,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
 
   alias Codex.Auth
   alias Codex.Config.Defaults
+  alias Codex.Net.CA
   alias Codex.Voice.Config.TTSSettings
 
   defstruct [:model, :client, :api_key, :base_url]
@@ -137,15 +138,19 @@ defmodule Codex.Voice.Models.OpenAITTS do
   defp start_streaming_request(base_url, api_key, body, client) do
     request_client = resolve_request_client(client)
 
+    req_opts =
+      [
+        headers: [
+          {"Authorization", "Bearer #{api_key}"},
+          {"Content-Type", "application/json"}
+        ],
+        json: body,
+        into: :self
+      ]
+      |> CA.merge_req_options()
+
     # Create a streaming request
-    case request_client.("#{base_url}/audio/speech",
-           headers: [
-             {"Authorization", "Bearer #{api_key}"},
-             {"Content-Type", "application/json"}
-           ],
-           json: body,
-           into: :self
-         ) do
+    case request_client.("#{base_url}/audio/speech", req_opts) do
       {:ok, response} ->
         normalize_stream_start_response(response)
 

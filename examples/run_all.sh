@@ -37,6 +37,8 @@ cli_examples=(
   "examples/tool_bridging_auto_run.exs"
   "examples/sandbox_warnings_and_approval_bypass.exs"
   "examples/live_app_server_basic.exs"
+  "examples/live_app_server_filesystem.exs"
+  "examples/live_app_server_plugins.exs"
   "examples/live_app_server_streaming.exs"
   "examples/live_app_server_approvals.exs"
   "examples/live_app_server_mcp.exs"

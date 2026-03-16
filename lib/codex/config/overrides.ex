@@ -17,6 +17,11 @@ defmodule Codex.Config.Overrides do
   def derived_overrides(%Options{} = codex_opts, thread_opts) do
     []
     |> maybe_put_override("model_provider", thread_value(thread_opts, :model_provider))
+    |> maybe_put_override(
+      "approvals_reviewer",
+      thread_value(thread_opts, :approvals_reviewer)
+      |> encode_approvals_reviewer()
+    )
     |> maybe_put_override("base_instructions", thread_value(thread_opts, :base_instructions))
     |> maybe_put_override(
       "developer_instructions",
@@ -249,6 +254,11 @@ defmodule Codex.Config.Overrides do
   defp encode_personality(value) when is_atom(value), do: Atom.to_string(value)
   defp encode_personality(value) when is_binary(value), do: value
   defp encode_personality(_), do: nil
+
+  defp encode_approvals_reviewer(nil), do: nil
+  defp encode_approvals_reviewer(value) when is_atom(value), do: Atom.to_string(value)
+  defp encode_approvals_reviewer(value) when is_binary(value), do: value
+  defp encode_approvals_reviewer(_), do: nil
 
   defp web_search_mode_override(%ThreadOptions{} = opts) do
     case normalize_web_search_mode(thread_value(opts, :web_search_mode)) do

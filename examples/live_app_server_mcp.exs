@@ -39,11 +39,7 @@ defmodule CodexExamples.LiveAppServerMcp do
     name = Map.get(server, "name") || "(unknown)"
     requires_auth = Map.get(server, "requiresAuth")
 
-    tools =
-      case Map.get(server, "tools") do
-        %{} = tools -> map_size(tools)
-        _ -> 0
-      end
+    tool_names = tool_names(server)
 
     resources =
       case Map.get(server, "resources") do
@@ -55,10 +51,31 @@ defmodule CodexExamples.LiveAppServerMcp do
 
     - #{name}
       requiresAuth: #{inspect(requires_auth)}
-      tools: #{tools}
+      tools: #{length(tool_names)}
       resources: #{resources}
     """)
+
+    Enum.each(tool_names, fn tool_name ->
+      qualified_name = Codex.MCP.Client.qualify_tool_name(name, tool_name)
+
+      IO.puts("    tool: #{tool_name}")
+      IO.puts("    qualified: #{qualified_name}")
+    end)
   end
+
+  defp tool_names(%{"tools" => %{} = tools}) do
+    Map.keys(tools)
+  end
+
+  defp tool_names(%{"tools" => tools}) when is_list(tools) do
+    Enum.map(tools, fn
+      %{"name" => name} -> name
+      %{name: name} -> name
+      other -> inspect(other)
+    end)
+  end
+
+  defp tool_names(_server), do: []
 
   defp fetch_codex_path! do
     System.get_env("CODEX_PATH") ||

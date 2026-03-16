@@ -6,7 +6,8 @@ defmodule Codex.MCP.Client do
 
   When `list_tools/2` is called with `qualify?: true`, tool names are qualified with
   the server name prefix in the format `mcp__<server>__<tool>`. This follows the
-  OpenAI tool name constraint (`^[a-zA-Z0-9_-]+$`).
+  OpenAI tool name constraint by exposing only ASCII alphanumerics and underscores
+  in the qualified key.
 
   If the qualified name exceeds 64 characters, it is truncated and a SHA1 hash suffix
   is appended to ensure uniqueness.
@@ -533,8 +534,10 @@ defmodule Codex.MCP.Client do
   Qualifies a tool name with the server prefix.
 
   Returns the fully qualified name in the format `mcp__<server>__<tool>`.
-  If the qualified name exceeds 64 characters, it is truncated and a SHA1
-  hash suffix is appended to ensure uniqueness.
+  Server and tool components are sanitized for the OpenAI-facing key by replacing
+  any non-ASCII-alphanumeric, non-underscore character with `_`. If the qualified
+  name exceeds 64 characters, it is truncated and a SHA1 hash suffix derived from
+  the raw unsanitized qualified name is appended to ensure uniqueness.
 
   ## Examples
 
@@ -548,20 +551,41 @@ defmodule Codex.MCP.Client do
   """
   @spec qualify_tool_name(String.t(), String.t()) :: String.t()
   def qualify_tool_name(server_name, tool_name) do
-    qualified =
+    raw_qualified =
       "mcp#{@mcp_tool_name_delimiter}#{server_name}#{@mcp_tool_name_delimiter}#{tool_name}"
 
+    qualified =
+      "mcp#{@mcp_tool_name_delimiter}#{sanitize_tool_component(server_name)}" <>
+        "#{@mcp_tool_name_delimiter}#{sanitize_tool_component(tool_name)}"
+
     if String.length(qualified) > @max_tool_name_length do
-      truncate_with_hash(qualified)
+      truncate_with_hash(qualified, raw_qualified)
     else
       qualified
     end
   end
 
-  defp truncate_with_hash(qualified_name) do
-    sha1 = :crypto.hash(:sha, qualified_name) |> Base.encode16(case: :lower)
+  defp truncate_with_hash(qualified_name, raw_qualified_name) do
+    sha1 = :crypto.hash(:sha, raw_qualified_name) |> Base.encode16(case: :lower)
     prefix_len = @max_tool_name_length - String.length(sha1)
     String.slice(qualified_name, 0, prefix_len) <> sha1
+  end
+
+  defp sanitize_tool_component(component) when is_binary(component) do
+    component
+    |> String.to_charlist()
+    |> Enum.map(fn
+      char when char in ?0..?9 -> char
+      char when char in ?A..?Z -> char
+      char when char in ?a..?z -> char
+      ?_ -> ?_
+      _ -> ?_
+    end)
+    |> to_string()
+    |> case do
+      "" -> "_"
+      sanitized -> sanitized
+    end
   end
 
   defp maybe_qualify_tools(tools, _server_name, false), do: tools

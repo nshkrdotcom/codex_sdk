@@ -197,6 +197,75 @@ defmodule Codex.Config.LayerStackTest do
     assert get_in(config, ["shell_environment_policy", "set"]) == %{"FOO" => "bar"}
   end
 
+  test "parses openai_base_url and merges custom model providers across layers", %{
+    tmp_root: tmp_root,
+    system_path: system_path
+  } do
+    codex_home = Path.join(tmp_root, "home")
+    File.mkdir_p!(codex_home)
+
+    write_config!(system_path, """
+    openai_base_url = "https://system.example.com/v1"
+
+    [model_providers.system_custom]
+    name = "System Custom"
+    base_url = "https://system-provider.example.com/v1"
+    env_key = "SYSTEM_PROVIDER_KEY"
+    wire_api = "responses"
+    """)
+
+    write_config!(Path.join(codex_home, "config.toml"), """
+    openai_base_url = "https://user.example.com/v1"
+
+    [model_providers.user_custom]
+    name = "User Custom"
+    base_url = "https://user-provider.example.com/v1"
+    env_key = "USER_PROVIDER_KEY"
+    wire_api = "chat_completions"
+    """)
+
+    assert {:ok, layers} = LayerStack.load(codex_home, nil)
+    config = LayerStack.effective_config(layers)
+
+    assert config["openai_base_url"] == "https://user.example.com/v1"
+
+    assert get_in(config, ["model_providers", "system_custom", "base_url"]) ==
+             "https://system-provider.example.com/v1"
+
+    assert get_in(config, ["model_providers", "user_custom", "base_url"]) ==
+             "https://user-provider.example.com/v1"
+  end
+
+  test "rejects non-string openai_base_url", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    config_path = Path.join(codex_home, "config.toml")
+    File.mkdir_p!(codex_home)
+
+    write_config!(config_path, """
+    openai_base_url = 123
+    """)
+
+    assert {:error, {:invalid_toml, ^config_path, {:invalid_openai_base_url, 123}}} =
+             LayerStack.load(codex_home, nil)
+  end
+
+  test "rejects reserved built-in model provider ids", %{tmp_root: tmp_root} do
+    codex_home = Path.join(tmp_root, "home")
+    config_path = Path.join(codex_home, "config.toml")
+    File.mkdir_p!(codex_home)
+
+    write_config!(config_path, """
+    [model_providers.openai]
+    name = "Custom OpenAI"
+    base_url = "https://custom-openai.example.com/v1"
+    env_key = "OPENAI_API_KEY"
+    wire_api = "responses"
+    """)
+
+    assert {:error, {:invalid_toml, ^config_path, {:reserved_model_provider_ids, ["openai"]}}} =
+             LayerStack.load(codex_home, nil)
+  end
+
   defp write_config!(path, contents) do
     path
     |> Path.dirname()

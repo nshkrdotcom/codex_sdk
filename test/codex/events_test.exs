@@ -50,6 +50,80 @@ defmodule Codex.EventsTest do
              } = Events.to_map(event)
     end
 
+    test "parses guardian approval review lifecycle events" do
+      started =
+        Events.parse!(%{
+          "type" => "guardian_approval_review_started",
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "target_item_id" => "item_1",
+          "review" => %{
+            "status" => "in_progress",
+            "risk_score" => 42,
+            "risk_level" => "medium",
+            "rationale" => "Needs more context"
+          },
+          "action" => %{"type" => "allow"}
+        })
+
+      assert %Events.GuardianApprovalReviewStarted{
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               target_item_id: "item_1",
+               review: %Events.GuardianApprovalReview{
+                 status: :in_progress,
+                 risk_score: 42,
+                 risk_level: :medium,
+                 rationale: "Needs more context"
+               },
+               action: %{"type" => "allow"}
+             } = started
+
+      completed =
+        Events.parse!(%{
+          "type" => "guardian_approval_review_completed",
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "target_item_id" => "item_1",
+          "review" => %{"status" => "approved"}
+        })
+
+      assert %Events.GuardianApprovalReviewCompleted{
+               review: %Events.GuardianApprovalReview{status: :approved}
+             } = completed
+
+      assert %{
+               "type" => "guardian_approval_review_started",
+               "thread_id" => "thr_1",
+               "turn_id" => "turn_1",
+               "target_item_id" => "item_1",
+               "review" => %{
+                 "status" => "in_progress",
+                 "risk_score" => 42,
+                 "risk_level" => "medium",
+                 "rationale" => "Needs more context"
+               },
+               "action" => %{"type" => "allow"}
+             } = Events.to_map(started)
+    end
+
+    test "parses server request resolved events" do
+      event =
+        Events.parse!(%{
+          "type" => "server_request_resolved",
+          "thread_id" => "thr_1",
+          "request_id" => 9
+        })
+
+      assert %Events.ServerRequestResolved{thread_id: "thr_1", request_id: 9} = event
+
+      assert %{
+               "type" => "server_request_resolved",
+               "thread_id" => "thr_1",
+               "request_id" => 9
+             } = Events.to_map(event)
+    end
+
     test "parses item.started and item.updated events into typed structs" do
       started =
         Events.parse!(%{

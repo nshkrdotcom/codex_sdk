@@ -7,6 +7,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   alias Codex.Config.Defaults
   alias Codex.MCP.OAuth
+  alias Codex.Net.CA
 
   defmodule State do
     @moduledoc false
@@ -333,7 +334,9 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
   end
 
   defp do_post(url, body, headers, timeout_ms) do
-    opts = [headers: headers, body: body, receive_timeout: timeout_ms]
+    opts =
+      [headers: headers, body: body, receive_timeout: timeout_ms]
+      |> CA.merge_req_options()
 
     case Req.post(url, opts) do
       {:ok, %Req.Response{status: status, body: response_body}} when status in 200..299 ->

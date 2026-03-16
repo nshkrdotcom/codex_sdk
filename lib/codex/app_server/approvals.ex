@@ -7,6 +7,7 @@ defmodule Codex.AppServer.Approvals do
   alias Codex.AppServer.ApprovalDecision
   alias Codex.AppServer.Connection
   alias Codex.Config.Defaults
+  alias Codex.Protocol.RequestPermissions
   alias Codex.Thread
 
   @spec maybe_auto_respond(
@@ -39,7 +40,7 @@ defmodule Codex.AppServer.Approvals do
     with {:ok, callback, event} <- approval_event(method, params),
          :ok <- ensure_matches_thread(thread, event),
          {:ok, decision} <- review(handler, callback, event, thread),
-         :ok <- Connection.respond(conn, id, %{decision: ApprovalDecision.from_hook(decision)}) do
+         :ok <- Connection.respond(conn, id, approval_response(callback, decision, event)) do
       :ok
     else
       :ignore ->
@@ -49,9 +50,17 @@ defmodule Codex.AppServer.Approvals do
         Logger.debug("Failed to auto-respond to app-server approval request: #{inspect(reason)}")
 
         _ =
-          Connection.respond(conn, id, %{
-            decision: ApprovalDecision.from_hook({:deny, "approval error: #{inspect(reason)}"})
-          })
+          Connection.respond(
+            conn,
+            id,
+            approval_response(
+              callback_for_method(method),
+              {:deny, "approval error: #{inspect(reason)}"},
+              %{
+                permissions: %RequestPermissions.RequestPermissionProfile{}
+              }
+            )
+          )
 
         :ok
     end
@@ -83,7 +92,27 @@ defmodule Codex.AppServer.Approvals do
      }}
   end
 
+  defp approval_event("item/permissions/requestApproval", %{} = params) do
+    {:ok, :review_permissions,
+     %{
+       type: :permissions_approval,
+       thread_id: Map.get(params, "threadId") || Map.get(params, "thread_id") || "",
+       turn_id: Map.get(params, "turnId") || Map.get(params, "turn_id") || "",
+       item_id: Map.get(params, "itemId") || Map.get(params, "item_id") || "",
+       reason: Map.get(params, "reason"),
+       permissions:
+         params
+         |> Map.get("permissions", Map.get(params, :permissions))
+         |> RequestPermissions.RequestPermissionProfile.from_map()
+     }}
+  end
+
   defp approval_event(_method, _params), do: :ignore
+
+  defp callback_for_method("item/commandExecution/requestApproval"), do: :review_command
+  defp callback_for_method("item/fileChange/requestApproval"), do: :review_file
+  defp callback_for_method("item/permissions/requestApproval"), do: :review_permissions
+  defp callback_for_method(_method), do: :review_command
 
   defp ensure_matches_thread(%Thread{thread_id: nil}, _event), do: :ok
 
@@ -145,6 +174,22 @@ defmodule Codex.AppServer.Approvals do
     else
       Hook.default_review(event, context, opts)
     end
+  end
+
+  defp invoke_review(handler, :review_permissions, event, context, opts) do
+    if function_exported?(handler, :review_permissions, 3) do
+      handler.review_permissions(event, context, opts)
+    else
+      Hook.default_review(event, context, opts)
+    end
+  end
+
+  defp approval_response(:review_permissions, decision, event) do
+    ApprovalDecision.from_permissions_hook(decision, Map.get(event, :permissions))
+  end
+
+  defp approval_response(_callback, decision, _event) do
+    %{decision: ApprovalDecision.from_hook(decision)}
   end
 
   defp resolve_decision(_handler, :allow, _timeout), do: {:ok, :allow}

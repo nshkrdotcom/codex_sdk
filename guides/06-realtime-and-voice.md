@@ -17,6 +17,9 @@ Realtime/Voice auth precedence:
 
 If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. Live examples print `SKIPPED` with the detected reason and exit cleanly.
 
+Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. Blank values are
+ignored. The same PEM bundle is applied to HTTPS requests and secure realtime websockets.
+
 ## Realtime API
 
 ### Core API surface
@@ -212,5 +215,6 @@ mix run examples/voice_with_agent.exs
 ## Notes
 
 - Realtime and Voice are direct API integrations; they do not rely on Codex CLI login tokens alone.
+- `CODEX_CA_CERTIFICATE` takes precedence over `SSL_CERT_FILE` for HTTPS/WSS trust roots.
 - Keep examples deterministic by setting voice and explicit audio turn boundaries.
 - For CI or no-credit environments, treat `insufficient_quota` as a known skip condition for direct API demos.

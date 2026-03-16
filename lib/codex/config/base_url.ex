@@ -32,7 +32,13 @@ defmodule Codex.Config.BaseURL do
   end
 
   defp explicit_base_url(attrs) do
-    fetch_first(attrs, [:base_url, "base_url"])
+    fetch_first(attrs, [:base_url, "base_url"]) ||
+      fetch_first(attrs, [
+        :openai_base_url,
+        "openai_base_url",
+        :openaiBaseUrl,
+        "openaiBaseUrl"
+      ])
   end
 
   defp fetch_first(attrs, [key | rest]) do

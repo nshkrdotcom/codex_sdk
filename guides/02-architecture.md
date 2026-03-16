@@ -20,12 +20,20 @@ and the root interactive client.
 - **Exec JSONL (default)**: spawns `codex exec --json` and parses JSONL events
 - **App-server JSON-RPC (optional)**: maintains a stateful `codex app-server` subprocess and speaks newline-delimited JSON-RPC over stdio
 
+The app-server path is the parity transport for upstream v2 features such as `fs/*`, `plugin/read`,
+structured `item/permissions/requestApproval` responses, guardian review notifications, and
+`serverRequest/resolved`.
+
 Transport selection is per-thread via `Codex.Thread.Options.transport`:
 
 ```elixir
 {:ok, conn} = Codex.AppServer.connect(codex_opts)
 {:ok, thread_opts} = Codex.Thread.Options.new(%{transport: {:app_server, conn}})
 ```
+
+Across both transports, TLS configuration is centralized in `Codex.Net.CA`: subprocess
+environment injection, Req clients, `:httpc`, and realtime websocket SSL options all resolve
+`CODEX_CA_CERTIFICATE` first, then `SSL_CERT_FILE`.
 
 ## Component Architecture
 

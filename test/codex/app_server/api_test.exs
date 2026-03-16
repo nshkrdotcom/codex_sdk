@@ -149,6 +149,39 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
+  test "thread start and resume encode approvals reviewer", %{conn: conn, os_pid: os_pid} do
+    start_task =
+      Task.async(fn ->
+        AppServer.thread_start(conn, approvals_reviewer: :guardian_subagent)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["approvalsReviewer"] == "guardian_subagent"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
+
+    resume_task =
+      Task.async(fn ->
+        AppServer.thread_resume(conn, "thr_1", approvals_reviewer: :user)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert resume_params["threadId"] == "thr_1"
+    assert resume_params["approvalsReviewer"] == "user"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(resume_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
+  end
+
   test "thread_fork/3 encodes fork params", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn ->
@@ -675,6 +708,24 @@ defmodule Codex.AppServer.ApiTest do
     send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
     assert {:ok, %{}} = Task.await(uninstall_task, 200)
 
+    plugin_read_task =
+      Task.async(fn -> AppServer.plugin_read(conn, "/tmp/marketplace.json", "demo-plugin") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, plugin_read_line}
+
+    assert {:ok,
+            %{
+              "id" => plugin_read_id,
+              "method" => "plugin/read",
+              "params" => %{
+                "marketplacePath" => "/tmp/marketplace.json",
+                "pluginName" => "demo-plugin"
+              }
+            }} = Jason.decode(plugin_read_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(plugin_read_id, %{"plugin" => %{}})})
+    assert {:ok, %{"plugin" => %{}}} = Task.await(plugin_read_task, 200)
+
     experimental_task =
       Task.async(fn -> AppServer.experimental_feature_list(conn, cursor: "cur", limit: 5) end)
 
@@ -715,6 +766,147 @@ defmodule Codex.AppServer.ApiTest do
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"files" => []})})
 
     assert {:ok, %{"files" => []}} = Task.await(task, 200)
+  end
+
+  test "filesystem wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+    read_task = Task.async(fn -> AppServer.fs_read_file(conn, "/tmp/demo.txt") end)
+    assert_receive {:app_server_subprocess_send, ^conn, read_line}
+
+    assert {:ok,
+            %{
+              "id" => read_id,
+              "method" => "fs/readFile",
+              "params" => %{"path" => "/tmp/demo.txt"}
+            }} = Jason.decode(read_line)
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(read_id, %{"dataBase64" => "aGVsbG8="})}
+    )
+
+    assert {:ok, %{"dataBase64" => "aGVsbG8="}} = Task.await(read_task, 200)
+
+    write_task =
+      Task.async(fn -> AppServer.fs_write_file(conn, "/tmp/demo.txt", "aGVsbG8=") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, write_line}
+
+    assert {:ok,
+            %{
+              "id" => write_id,
+              "method" => "fs/writeFile",
+              "params" => %{"path" => "/tmp/demo.txt", "dataBase64" => "aGVsbG8="}
+            }} = Jason.decode(write_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(write_id, %{})})
+    assert {:ok, %{}} = Task.await(write_task, 200)
+
+    create_task =
+      Task.async(fn ->
+        AppServer.fs_create_directory(conn, "/tmp/demo/nested", recursive: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, create_line}
+
+    assert {:ok,
+            %{
+              "id" => create_id,
+              "method" => "fs/createDirectory",
+              "params" => %{"path" => "/tmp/demo/nested", "recursive" => true}
+            }} = Jason.decode(create_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(create_id, %{})})
+    assert {:ok, %{}} = Task.await(create_task, 200)
+
+    metadata_task = Task.async(fn -> AppServer.fs_get_metadata(conn, "/tmp/demo.txt") end)
+    assert_receive {:app_server_subprocess_send, ^conn, metadata_line}
+
+    assert {:ok,
+            %{
+              "id" => metadata_id,
+              "method" => "fs/getMetadata",
+              "params" => %{"path" => "/tmp/demo.txt"}
+            }} = Jason.decode(metadata_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(metadata_id, %{
+         "isDirectory" => false,
+         "isFile" => true,
+         "createdAtMs" => 1,
+         "modifiedAtMs" => 2
+       })}
+    )
+
+    assert {:ok,
+            %{
+              "isDirectory" => false,
+              "isFile" => true,
+              "createdAtMs" => 1,
+              "modifiedAtMs" => 2
+            }} = Task.await(metadata_task, 200)
+
+    read_directory_task = Task.async(fn -> AppServer.fs_read_directory(conn, "/tmp/demo") end)
+    assert_receive {:app_server_subprocess_send, ^conn, read_directory_line}
+
+    assert {:ok,
+            %{
+              "id" => read_directory_id,
+              "method" => "fs/readDirectory",
+              "params" => %{"path" => "/tmp/demo"}
+            }} = Jason.decode(read_directory_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(read_directory_id, %{
+         "entries" => [
+           %{"fileName" => "demo.txt", "isDirectory" => false, "isFile" => true}
+         ]
+       })}
+    )
+
+    assert {:ok,
+            %{
+              "entries" => [%{"fileName" => "demo.txt", "isDirectory" => false, "isFile" => true}]
+            }} = Task.await(read_directory_task, 200)
+
+    remove_task =
+      Task.async(fn -> AppServer.fs_remove(conn, "/tmp/demo", recursive: true, force: true) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, remove_line}
+
+    assert {:ok,
+            %{
+              "id" => remove_id,
+              "method" => "fs/remove",
+              "params" => %{"path" => "/tmp/demo", "recursive" => true, "force" => true}
+            }} = Jason.decode(remove_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(remove_id, %{})})
+    assert {:ok, %{}} = Task.await(remove_task, 200)
+
+    copy_task =
+      Task.async(fn ->
+        AppServer.fs_copy(conn, "/tmp/demo.txt", "/tmp/demo-copy.txt", recursive: false)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, copy_line}
+
+    assert {:ok,
+            %{
+              "id" => copy_id,
+              "method" => "fs/copy",
+              "params" => %{
+                "sourcePath" => "/tmp/demo.txt",
+                "destinationPath" => "/tmp/demo-copy.txt",
+                "recursive" => false
+              }
+            }} = Jason.decode(copy_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(copy_id, %{})})
+    assert {:ok, %{}} = Task.await(copy_task, 200)
   end
 
   test "fuzzy file search session wrappers encode current upstream params", %{

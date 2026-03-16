@@ -801,6 +801,11 @@ Configure based on environment.
 
 The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.3-codex`. The SDK always loads bundled upstream model metadata from `priv/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
+For provider parity, layered config also honors `openai_base_url` and user-defined
+`[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and
+`examples/live_options_config_overrides.exs` for runnable demonstrations, including the reserved
+built-in provider restriction (`openai`, `ollama`, `lmstudio` cannot be redefined).
+
 ```elixir
 defmodule MyApp.Codex do
   def start_thread do
@@ -1416,6 +1421,8 @@ See `guides/05-app-server-transport.md` for the complete guide, and run the live
 
 ```bash
 mix run examples/live_app_server_basic.exs
+mix run examples/live_app_server_filesystem.exs
+mix run examples/live_app_server_plugins.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
 mix run examples/live_app_server_approvals.exs
 mix run examples/live_cli_passthrough.exs completion zsh
@@ -1424,6 +1431,13 @@ mix run examples/live_collaboration_modes.exs
 mix run examples/live_personality.exs
 mix run examples/live_thread_management.exs
 ```
+
+`live_app_server_filesystem.exs` demonstrates the thin `fs/*` wrappers end to
+end, including base64 round-tripping. `live_app_server_plugins.exs` demonstrates
+`plugin/list` discovery followed by `plugin/read` detail loading.
+`live_app_server_approvals.exs` demonstrates command/file/permissions approvals plus guardian
+review and `serverRequest/resolved` events. `live_app_server_mcp.exs` and
+`live_mcp_and_sessions.exs` print original MCP tool names alongside sanitized qualified names.
 
 Minimal usage with existing thread APIs:
 
@@ -1453,6 +1467,10 @@ first_skill = skills |> List.first() |> Map.get("skills") |> List.first()
 ```
 
 ## Realtime Voice Interactions
+
+Direct API examples support custom trust roots via `CODEX_CA_CERTIFICATE` first and
+`SSL_CERT_FILE` second. Blank values are ignored. The live realtime/voice example files mention
+this in their headers so users can configure HTTPS/WSS trust before running them.
 
 ### Basic Realtime Session
 

@@ -13,6 +13,7 @@ defmodule Codex.Config.LayerStack do
 
   @default_system_config_path Defaults.system_config_path()
   @default_project_root_markers Defaults.project_root_markers()
+  @reserved_model_provider_ids ~w(openai ollama lmstudio)
 
   @spec load(String.t(), String.t() | nil) :: {:ok, [layer()]} | {:error, term()}
   def load(codex_home, cwd \\ nil) when is_binary(codex_home) do
@@ -254,6 +255,8 @@ defmodule Codex.Config.LayerStack do
   defp validate_config(%{} = config) do
     with :ok <- validate_features(config),
          :ok <- validate_model_provider(config),
+         :ok <- validate_openai_base_url(config),
+         :ok <- validate_model_providers(config),
          :ok <- validate_history(config),
          :ok <- validate_shell_environment_policy(config),
          :ok <- validate_project_root_markers(config),
@@ -286,6 +289,56 @@ defmodule Codex.Config.LayerStack do
 
       other ->
         {:error, {:invalid_model_provider, other}}
+    end
+  end
+
+  defp validate_openai_base_url(config) do
+    case fetch_value(config, ["openai_base_url", :openai_base_url]) do
+      nil ->
+        :ok
+
+      value when is_binary(value) ->
+        :ok
+
+      other ->
+        {:error, {:invalid_openai_base_url, other}}
+    end
+  end
+
+  defp validate_model_providers(config) do
+    case fetch_value(config, ["model_providers", :model_providers]) do
+      nil ->
+        :ok
+
+      %{} = providers ->
+        with :ok <- validate_model_provider_entries(providers) do
+          validate_reserved_model_provider_ids(providers)
+        end
+
+      other ->
+        {:error, {:invalid_model_providers, other}}
+    end
+  end
+
+  defp validate_model_provider_entries(providers) when is_map(providers) do
+    if Enum.all?(providers, fn {key, value} -> is_binary(key) and is_map(value) end) do
+      :ok
+    else
+      {:error, {:invalid_model_providers, providers}}
+    end
+  end
+
+  defp validate_reserved_model_provider_ids(providers) when is_map(providers) do
+    conflicts =
+      providers
+      |> Map.keys()
+      |> Enum.filter(&(&1 in @reserved_model_provider_ids))
+      |> Enum.sort()
+
+    if conflicts == [] do
+      :ok
+    else
+      {:error, {:reserved_model_provider_ids, conflicts}}
     end
   end
 

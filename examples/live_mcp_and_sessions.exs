@@ -34,7 +34,7 @@ defmodule CodexExamples.StubMcpTransport do
           {{:ok, response}, state}
 
         "tools/list" ->
-          tools = [%{"name" => "stub.echo", "description" => "echoes arguments"}]
+          tools = [%{"name" => "tool.two-three", "description" => "echoes arguments"}]
 
           response = %{
             "jsonrpc" => "2.0",
@@ -111,26 +111,31 @@ defmodule CodexExamples.LiveMcpAndSessions do
       Codex.MCP.Client.handshake({CodexExamples.StubMcpTransport, transport},
         client: "codex-elixir-demo",
         version: "0.1.0",
-        server_name: "stub_server"
+        server_name: "server.one"
       )
 
     # Demonstrate tool discovery with filtering and qualification
-    {:ok, tools, client} = Codex.MCP.Client.list_tools(client, allow: ["stub.echo"])
+    {:ok, tools, client} = Codex.MCP.Client.list_tools(client, allow: ["tool.two-three"])
     IO.puts("MCP tools (filtered): #{inspect(Enum.map(tools, & &1["name"]))}")
 
-    # Show qualified tool names (mcp__server__tool format)
+    # Show original + qualified tool names after sanitization.
     {:ok, qualified_tools, _} = Codex.MCP.Client.list_tools(client, qualify?: true)
 
-    IO.puts(
-      "MCP tools (qualified): #{inspect(Enum.map(qualified_tools, & &1["qualified_name"]))}"
-    )
+    IO.puts("MCP tools (qualified):")
+
+    Enum.each(qualified_tools, fn tool ->
+      IO.puts("  #{tool["name"]} -> #{tool["qualified_name"]}")
+    end)
 
     # Demonstrate direct tool invocation with call_tool/4
     IO.puts("\n--- Direct MCP Tool Invocation ---")
 
     # Invocation with retry and approval callback
     demo_result =
-      Codex.MCP.Client.call_tool(client, "stub.echo", %{"message" => "Hello from call_tool!"},
+      Codex.MCP.Client.call_tool(
+        client,
+        "tool.two-three",
+        %{"message" => "Hello from call_tool!"},
         retries: 2,
         backoff: &mcp_backoff/1,
         approval: fn tool, args, _ctx ->
@@ -152,7 +157,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
       |> Tools.register(
         name: "hosted_mcp",
         client: client,
-        tool: "stub.echo",
+        tool: "tool.two-three",
         retries: 1,
         backoff: &mcp_backoff/1
       )

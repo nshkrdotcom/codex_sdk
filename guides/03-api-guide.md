@@ -21,11 +21,12 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
-| `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, request_user_input, rate limits) |
+| `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, request_user_input, request_permissions, rate limits) |
 | `Codex.Config.Overrides` | Config override serialization, nested map flattening, and TOML value validation |
 | `Codex.Runtime.Erlexec` | Unified erlexec startup shared across subprocess modules |
-| `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding) |
-| `Codex.Config.BaseURL` | Base URL resolution with option → env → default precedence |
+| `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding, CA env forwarding) |
+| `Codex.Config.BaseURL` | Base URL resolution with option/config → env → default precedence |
+| `Codex.Net.CA` | Shared CA bundle resolution for subprocesses, Req, `:httpc`, and websockets |
 | `Codex.Config.OptionNormalizers` | Shared validation for reasoning summary, verbosity, history persistence |
 | `Codex.Realtime` | Bidirectional voice via OpenAI Realtime API (WebSocket) |
 | `Codex.Voice` | Non-realtime STT → Workflow → TTS pipeline |
@@ -110,6 +111,13 @@ Select transport per-thread via `Codex.Thread.Options.transport`:
 
 For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
 conversation APIs.
+
+The direct `Codex.AppServer` surface also includes upstream v2 filesystem and
+plugin helpers:
+
+- `fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`,
+  `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
+- `plugin_list/2`, `plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
 
 ## Codex
 
@@ -1435,6 +1443,7 @@ Thread-specific configuration.
   approval_policy: module() | nil,
   approval_hook: module() | nil,
   approval_timeout_ms: pos_integer(),
+  approvals_reviewer: :user | :guardian_subagent | nil,
   sandbox:
     :default
     | :strict
@@ -1504,6 +1513,7 @@ Thread-specific configuration.
 - `auto_run`: Enable CLI-driven auto-run (default: false)
 - `transport`: `:exec` or `{:app_server, pid()}` for JSON-RPC transport
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
+- `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
 - `working_directory`: Working directory passed to codex (`--cd` / `cwd`)

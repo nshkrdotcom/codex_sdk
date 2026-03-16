@@ -29,6 +29,7 @@ defmodule Codex.Thread.Options do
             web_search_mode: :disabled,
             web_search_mode_explicit: false,
             personality: nil,
+            approvals_reviewer: nil,
             collaboration_mode: nil,
             compact_prompt: nil,
             show_raw_agent_reasoning: false,
@@ -105,6 +106,7 @@ defmodule Codex.Thread.Options do
   @type model_verbosity :: :low | :medium | :high | String.t()
   @type web_search_mode :: Codex.Protocol.ConfigTypes.web_search_mode()
   @type personality :: Codex.Protocol.ConfigTypes.personality()
+  @type approvals_reviewer :: :user | :guardian_subagent
   @type collaboration_mode :: Codex.Protocol.CollaborationMode.t()
 
   @type retry_opts :: keyword()
@@ -136,6 +138,7 @@ defmodule Codex.Thread.Options do
           web_search_mode: web_search_mode(),
           web_search_mode_explicit: boolean(),
           personality: personality() | nil,
+          approvals_reviewer: approvals_reviewer() | nil,
           collaboration_mode: collaboration_mode() | nil,
           compact_prompt: String.t() | nil,
           show_raw_agent_reasoning: boolean(),
@@ -240,6 +243,17 @@ defmodule Codex.Thread.Options do
       has_any_key?(attrs, [:web_search_mode, "web_search_mode", :webSearchMode, "webSearchMode"])
 
     personality = Map.get(attrs, :personality, Map.get(attrs, "personality"))
+
+    approvals_reviewer =
+      Map.get(
+        attrs,
+        :approvals_reviewer,
+        Map.get(
+          attrs,
+          "approvals_reviewer",
+          Map.get(attrs, :approvalsReviewer, Map.get(attrs, "approvalsReviewer"))
+        )
+      )
 
     collaboration_mode =
       Map.get(attrs, :collaboration_mode, Map.get(attrs, "collaboration_mode"))
@@ -406,6 +420,7 @@ defmodule Codex.Thread.Options do
          :ok <- validate_boolean(web_search_enabled, :web_search_enabled),
          {:ok, web_search_mode} <- normalize_web_search_mode(web_search_mode),
          {:ok, personality} <- normalize_personality(personality),
+         {:ok, approvals_reviewer} <- normalize_approvals_reviewer(approvals_reviewer),
          {:ok, collaboration_mode} <- normalize_collaboration_mode(collaboration_mode),
          :ok <- validate_optional_string(compact_prompt, :compact_prompt),
          {:ok, show_raw_agent_reasoning} <-
@@ -500,6 +515,7 @@ defmodule Codex.Thread.Options do
          web_search_mode: web_search_mode,
          web_search_mode_explicit: web_search_mode_explicit,
          personality: personality,
+         approvals_reviewer: approvals_reviewer,
          collaboration_mode: collaboration_mode,
          compact_prompt: compact_prompt,
          show_raw_agent_reasoning: show_raw_agent_reasoning,
@@ -786,6 +802,15 @@ defmodule Codex.Thread.Options do
   end
 
   defp normalize_personality(other), do: {:error, {:invalid_personality, other}}
+
+  defp normalize_approvals_reviewer(nil), do: {:ok, nil}
+  defp normalize_approvals_reviewer(:user), do: {:ok, :user}
+  defp normalize_approvals_reviewer(:guardian_subagent), do: {:ok, :guardian_subagent}
+  defp normalize_approvals_reviewer("user"), do: {:ok, :user}
+  defp normalize_approvals_reviewer("guardian_subagent"), do: {:ok, :guardian_subagent}
+
+  defp normalize_approvals_reviewer(other),
+    do: {:error, {:invalid_approvals_reviewer, other}}
 
   defp normalize_collaboration_mode(nil), do: {:ok, nil}
 

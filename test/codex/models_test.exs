@@ -5,7 +5,17 @@ defmodule Codex.ModelsTest do
   import Codex.Test.ModelFixtures
 
   setup do
-    env_keys = ~w(CODEX_MODEL OPENAI_DEFAULT_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME)
+    env_keys =
+      ~w(
+        CODEX_MODEL
+        OPENAI_DEFAULT_MODEL
+        CODEX_MODEL_DEFAULT
+        CODEX_API_KEY
+        CODEX_HOME
+        CODEX_CA_CERTIFICATE
+        SSL_CERT_FILE
+        OPENAI_BASE_URL
+      )
 
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
 
@@ -179,6 +189,35 @@ defmodule Codex.ModelsTest do
     assert Models.parse_client_version("0.60.0") == {0, 60, 0}
     assert Models.parse_client_version("0.60.0-alpha.1") == {0, 60, 0}
     assert Models.parse_client_version("invalid") == {0, 0, 0}
+  end
+
+  test "remote models http options include custom CA ssl settings" do
+    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex-ca.pem")
+
+    opts = Models.remote_models_http_options()
+    timeout = Keyword.fetch!(opts, :timeout)
+
+    assert Keyword.get(opts, :ssl) == [cacertfile: "/tmp/codex-ca.pem"]
+    assert is_integer(timeout)
+    assert timeout > 0
+  end
+
+  test "remote models url prefers layered openai_base_url over env" do
+    with_temp_codex_home(fn home ->
+      System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+
+      File.write!(
+        Path.join(home, "config.toml"),
+        """
+        openai_base_url = "https://config.example.com/v1"
+        """
+      )
+
+      url = Models.remote_models_url()
+
+      assert String.starts_with?(url, "https://config.example.com/v1/models?")
+      assert url =~ "client_version="
+    end)
   end
 
   defp with_temp_codex_home(fun) when is_function(fun, 1) do

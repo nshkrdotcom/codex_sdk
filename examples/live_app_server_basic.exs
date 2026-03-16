@@ -8,84 +8,116 @@ defmodule CodexExamples.LiveAppServerBasic do
   @default_prompt "Reply with exactly ok and nothing else."
 
   def main(argv) do
+    case run(argv) do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+    end
+  end
+
+  defp run(argv) do
     prompt =
       case argv do
         [] -> @default_prompt
         values -> Enum.join(values, " ")
       end
 
-    codex_path = fetch_codex_path!()
-    ensure_app_server_supported!(codex_path)
+    with {:ok, codex_path} <- fetch_codex_path(),
+         :ok <- ensure_app_server_supported(codex_path),
+         :ok <- ensure_auth_available(),
+         {:ok, codex_opts} <-
+           Codex.Options.new(%{
+             codex_path_override: codex_path,
+             reasoning_effort: :low
+           }),
+         {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+      try do
+        personality = :friendly
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: codex_path,
-        reasoning_effort: :low
-      })
+        {:ok, thread} =
+          Codex.start_thread(codex_opts, %{
+            transport: {:app_server, conn},
+            working_directory: File.cwd!(),
+            personality: personality
+          })
 
-    {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)
+        {:ok, result} = Codex.Thread.run(thread, prompt, %{timeout_ms: 120_000})
 
-    try do
-      personality = :friendly
+        IO.puts("""
+        App-server turn completed.
+          personality: #{personality}
+          thread_id: #{inspect(result.thread.thread_id)}
+          final_response: #{extract_text(result.final_response)}
+        """)
 
-      {:ok, thread} =
-        Codex.start_thread(codex_opts, %{
-          transport: {:app_server, conn},
-          working_directory: File.cwd!(),
-          personality: personality
-        })
+        IO.puts("""
+        approvals_reviewer note:
+          set `approvals_reviewer: :user` or `:guardian_subagent` on `Codex.start_thread/2`
+          when you want upstream guardian review routing on newer app-server builds.
+        """)
 
-      {:ok, result} = Codex.Thread.run(thread, prompt, %{timeout_ms: 120_000})
+        IO.puts("\nskills/list:")
+        skills_result = Codex.AppServer.skills_list(conn, cwds: [File.cwd!()])
 
-      IO.puts("""
-      App-server turn completed.
-        personality: #{personality}
-        thread_id: #{inspect(result.thread.thread_id)}
-        final_response: #{extract_text(result.final_response)}
-      """)
+        case skills_result do
+          {:error, %{"code" => -32600, "message" => message}} ->
+            IO.puts("""
+            skills/list is not supported by this `codex app-server` build.
+            Upgrade your Codex CLI and retry.
+            Raw error: #{message}
+            """)
 
-      IO.puts("\nskills/list:")
-      skills_result = Codex.AppServer.skills_list(conn, cwds: [File.cwd!()])
+          other ->
+            IO.inspect(other)
+        end
 
-      case skills_result do
-        {:error, %{"code" => -32600, "message" => message}} ->
-          IO.puts("""
-          skills/list is not supported by this `codex app-server` build.
-          Upgrade your Codex CLI and retry.
-          Raw error: #{message}
-          """)
+        IO.puts("\nmodel/list (limit 5):")
+        IO.inspect(Codex.AppServer.model_list(conn, limit: 5))
 
-        other ->
-          IO.inspect(other)
+        IO.puts("\nthread/list (limit 3):")
+        IO.inspect(Codex.AppServer.thread_list(conn, limit: 3))
+
+        IO.puts("""
+
+        Additional app-server demos:
+          mix run examples/live_app_server_filesystem.exs
+          mix run examples/live_app_server_plugins.exs
+        """)
+
+        :ok
+      after
+        :ok = Codex.AppServer.disconnect(conn)
       end
-
-      IO.puts("\nmodel/list (limit 5):")
-      IO.inspect(Codex.AppServer.model_list(conn, limit: 5))
-
-      IO.puts("\nthread/list (limit 3):")
-      IO.inspect(Codex.AppServer.thread_list(conn, limit: 3))
-    after
-      :ok = Codex.AppServer.disconnect(conn)
     end
   end
 
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
+  defp fetch_codex_path do
+    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
+      nil ->
+        {:skip, "install the `codex` CLI or set CODEX_PATH before running this example"}
+
+      path ->
+        {:ok, path}
+    end
   end
 
-  defp ensure_app_server_supported!(codex_path) do
+  defp ensure_app_server_supported(codex_path) do
     {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
 
     if status != 0 do
-      Mix.raise("""
-      Your `codex` CLI does not appear to support `codex app-server`.
-      Upgrade via `npm install -g @openai/codex` and retry.
-      """)
+      {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
+    else
+      :ok
+    end
+  end
+
+  defp ensure_auth_available do
+    if Codex.Auth.api_key() || Codex.Auth.chatgpt_access_token() do
+      :ok
+    else
+      {:skip, "authenticate with `codex login` or set CODEX_API_KEY before running this example"}
     end
   end
 

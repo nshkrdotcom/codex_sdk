@@ -4,6 +4,7 @@ Mix.Task.run("app.start")
 alias Codex.{Agent, AgentRunner, Guardrail, Handoff, RunConfig, ToolGuardrail, Tools}
 alias Codex.FunctionTool
 alias Codex.Items.AgentMessage
+alias Codex.Protocol.RequestPermissions
 alias Codex.StreamEvent.{GuardrailResult, ToolApproval}
 alias Codex.RunResultStreaming
 alias Codex.Events
@@ -28,6 +29,21 @@ defmodule CodexExamples.DemoApprovalHook do
   def await(_ref, timeout) do
     Process.sleep(min(timeout, 200))
     {:ok, :allow}
+  end
+
+  @impl true
+  def review_permissions(event, _context, _opts) do
+    requested = Map.get(event, :permissions) || Map.get(event, "permissions") || %{}
+    requested = RequestPermissions.RequestPermissionProfile.from_map(requested)
+    requested_reads = requested.file_system && requested.file_system.read
+
+    cond do
+      requested.network && requested.network.enabled == true ->
+        {:allow, permissions: %{network: %{enabled: true}}, scope: :session}
+
+      true ->
+        {:allow, permissions: %{file_system: %{read: requested_reads}}}
+    end
   end
 end
 
@@ -167,9 +183,25 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
         %{}
       )
 
+    permissions_event = %{
+      thread_id: "demo",
+      turn_id: "t1",
+      item_id: "perm-1",
+      permissions: %{
+        network: %{enabled: true},
+        file_system: %{read: ["/tmp/demo.txt"], write: ["/tmp/demo.txt"]}
+      },
+      reason: "Need temporary network and filesystem access"
+    }
+
+    permissions =
+      CodexExamples.DemoApprovalHook.review_permissions(permissions_event, %{}, [])
+
     IO.puts(
       "Approval hook demo: allow=#{inspect(allow)} deny=#{inspect(deny)} async=#{inspect(async)}"
     )
+
+    IO.puts("Permissions approval demo: #{inspect(permissions)}")
   end
 
   defp consume_stream(stream) do

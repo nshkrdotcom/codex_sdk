@@ -25,6 +25,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
   alias Codex.Auth
   alias Codex.Config.Defaults
+  alias Codex.Net.CA
   alias Codex.Voice.Config.STTSettings
   alias Codex.Voice.Input.AudioInput
   alias Codex.Voice.Input.StreamedAudioInput
@@ -125,9 +126,13 @@ defmodule Codex.Voice.Models.OpenAISTT do
 
     request_client = resolve_request_client(model.client)
 
-    case request_client.("#{model.base_url}/audio/transcriptions",
-           headers: [{"Authorization", "Bearer #{api_key}"}],
-           form_multipart: multipart
+    req_opts =
+      [headers: [{"Authorization", "Bearer #{api_key}"}], form_multipart: multipart]
+      |> CA.merge_req_options()
+
+    case request_client.(
+           "#{model.base_url}/audio/transcriptions",
+           req_opts
          ) do
       {:ok, %{status: 200, body: %{"text" => text}}} ->
         {:ok, text}

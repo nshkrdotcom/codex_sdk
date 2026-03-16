@@ -805,6 +805,32 @@ defmodule Codex.MCPClientTest do
       assert tool["server_name"] == "shell"
     end
 
+    test "list_tools preserves original MCP names while sanitizing the qualified name" do
+      {:ok, transport} =
+        FakeTransport.start_link([
+          rpc_ok(%{
+            "capabilities" => %{},
+            "protocolVersion" => "2025-06-18",
+            "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
+          }),
+          rpc_ok(%{"tools" => [%{"name" => "tool.two-three", "description" => "echoes input"}]})
+        ])
+
+      transport_ref = {FakeTransport, transport}
+
+      {:ok, client} =
+        Client.handshake(transport_ref,
+          client: "codex",
+          version: @sdk_version,
+          server_name: "server.one"
+        )
+
+      assert {:ok, [tool], _} = Client.list_tools(client, qualify?: true)
+      assert tool["name"] == "tool.two-three"
+      assert tool["qualified_name"] == "mcp__server_one__tool_two_three"
+      assert tool["server_name"] == "server.one"
+    end
+
     test "list_tools without qualify? option returns original names only" do
       {:ok, transport} =
         FakeTransport.start_link([
@@ -863,6 +889,11 @@ defmodule Codex.MCPClientTest do
       assert result == "mcp__server1__tool_a"
     end
 
+    test "sanitizes dots and hyphens in server and tool names" do
+      result = Client.qualify_tool_name("server.one", "tool.two-three")
+      assert result == "mcp__server_one__tool_two_three"
+    end
+
     test "truncates names exceeding 64 chars with SHA1 suffix" do
       long_tool =
         "extremely_lengthy_function_name_that_absolutely_surpasses_all_reasonable_limits"
@@ -893,6 +924,22 @@ defmodule Codex.MCPClientTest do
       assert String.length(result2) == 64
     end
 
+    test "sanitizes invalid characters before truncation and hashing" do
+      long_tool =
+        "tool.two-three/four+five?" <>
+          String.duplicate(".segment-with+invalid/chars", 4)
+
+      result = Client.qualify_tool_name("server.one", long_tool)
+
+      assert String.length(result) == 64
+      assert String.starts_with?(result, "mcp__server_one__tool_tw")
+      assert Regex.match?(~r/^[A-Za-z0-9_]+$/, result)
+      refute String.contains?(result, ".")
+      refute String.contains?(result, "-")
+      refute String.contains?(result, "/")
+      refute String.contains?(result, "+")
+    end
+
     test "matches Rust implementation output for known inputs" do
       # From Rust tests: mcp__my_server__extremely_lengthy -> truncated with specific hash
       result =
@@ -902,6 +949,11 @@ defmodule Codex.MCPClientTest do
         )
 
       assert result == "mcp__my_server__extremel119a2b97664e41363932dc84de21e2ff1b93b3e9"
+    end
+
+    test "matches Rust sanitization output for known inputs" do
+      assert Client.qualify_tool_name("server.one", "tool.two-three") ==
+               "mcp__server_one__tool_two_three"
     end
   end
 end

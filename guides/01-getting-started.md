@@ -26,6 +26,10 @@ end
   - `auth.json` `OPENAI_API_KEY`
   - Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
 
+For custom trust roots, set `CODEX_CA_CERTIFICATE` to a PEM bundle. If it is unset, the SDK falls
+back to `SSL_CERT_FILE`. Blank values are ignored. This applies to Codex CLI subprocesses, direct
+HTTP clients, remote model fetches, realtime websockets, MCP HTTP/OAuth, and voice requests.
+
 The SDK resolves the executable in this order:
 1. `codex_path_override` in `Codex.Options`
 2. `CODEX_PATH`
@@ -132,6 +136,9 @@ and resume them:
 - **Exec JSONL (default):** `codex exec --json` for a simple subprocess flow.
 - **App-server JSON-RPC (optional):** `codex app-server` for v2 APIs and server-driven
   approvals.
+
+App-server is also where upstream `fs/*`, `plugin/read`, structured permissions approvals,
+guardian review notifications, and `serverRequest/resolved` events are exposed.
 
 See `guides/05-app-server-transport.md` for the app-server guide.
 

@@ -20,6 +20,10 @@ This SDK contains two distinct subsystems with different authentication:
 By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the current bundled default (`gpt-5.3-codex`) for reproducibility; override it by exporting `CODEX_MODEL` before running. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model requires a higher minimum.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
+For TLS interception or private roots, set `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE`
+second. Direct HTTP/WebSocket examples mention this in comments, and the same trust root also
+applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
+
 ## Running everything
 
 ```bash
@@ -51,9 +55,11 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
+- `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove)
+- `examples/live_app_server_plugins.exs` — `plugin/list` discovery plus `plugin/read` detail loading
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
-- `examples/live_app_server_approvals.exs` — demonstrates manual responses to app-server approval requests
-- `examples/live_app_server_mcp.exs` — lists MCP servers via `Codex.AppServer.Mcp.list_servers/2` (uses `mcpServerStatus/list` with fallback)
+- `examples/live_app_server_approvals.exs` — demonstrates command/file/permissions approval responses plus guardian and request-resolution events
+- `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
 - `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a supported preset (or skips when the connected CLI build lacks collaboration-mode capability)
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
 - `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
@@ -67,11 +73,11 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_multi_turn_runner.exs` — multi-turn runner with tool_use_behavior, max_turns, and usage summary
 - `examples/live_tooling_guardrails_approvals.exs` — guardrail events, handoffs, and approval hook demos
 - `examples/live_structured_hosted_tools.exs` — structured function tool outputs plus hosted shell/apply_patch/computer/file_search/image
-- `examples/live_mcp_and_sessions.exs` — hosted MCP stub with retries/filters and a resumable session flow
+- `examples/live_mcp_and_sessions.exs` — hosted MCP stub with retries/filters, sanitized qualified names, and a resumable session flow
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
-- `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
-- `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and runtime validation
+- `examples/live_config_overrides.exs` — nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity
+- `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, runtime validation, and reserved-provider notes
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
 
 ## Realtime Voice Examples (OpenAI Agents SDK)

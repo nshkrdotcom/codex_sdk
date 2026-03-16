@@ -44,6 +44,17 @@ config :codex_sdk,
   default_transport: :exec
 ```
 
+## Layered Config Notes
+
+Not every runtime behavior is a `Codex.Config.Defaults` constant. Two important upstream-parity
+settings live in layered `config.toml` files instead:
+
+- `openai_base_url` overrides the built-in `openai` provider base URL and takes precedence over `OPENAI_BASE_URL`
+- `[model_providers.<id>]` entries extend the built-in provider set, but reserved IDs (`openai`, `ollama`, `lmstudio`) are rejected
+
+Custom trust roots are also environment-driven rather than `Defaults`-driven: `CODEX_CA_CERTIFICATE`
+is preferred over `SSL_CERT_FILE`, with blank values treated as unset.
+
 ## Defaults Reference
 
 ### Transport Timeouts

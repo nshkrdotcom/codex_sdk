@@ -61,6 +61,7 @@ To keep your existing `Codex.Thread.*` usage but switch the underlying transport
     transport: {:app_server, conn},
     working_directory: "/path/to/project",
     ask_for_approval: :untrusted,
+    approvals_reviewer: :guardian_subagent,
     sandbox: :workspace_write
   })
 
@@ -95,11 +96,20 @@ use `Codex.Skills.list/2` and `Codex.Skills.load/2`, which honor `features.skill
 
 {:ok, %{"files" => files}} =
   Codex.AppServer.fuzzy_file_search(conn, "readme", roots: ["/path/to/project"])
+
+encoded = Base.encode64("hello from app-server")
+{:ok, _} = Codex.AppServer.fs_write_file(conn, "/tmp/demo.txt", encoded)
+{:ok, %{"dataBase64" => encoded_back}} = Codex.AppServer.fs_read_file(conn, "/tmp/demo.txt")
+IO.puts(Base.decode64!(encoded_back))
+
+{:ok, %{"marketplaces" => marketplaces}} = Codex.AppServer.plugin_list(conn, cwds: [File.cwd!()])
 ```
 
 Additional v2 APIs include:
 
 - `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
+- `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
+- `Codex.AppServer.plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
 - `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
 - `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
 
@@ -160,7 +170,15 @@ You can filter by thread id and/or method list:
 ```elixir
 :ok = Codex.AppServer.subscribe(conn,
   thread_id: "thr_123",
-  methods: ["turn/completed", "item/completed", "item/commandExecution/requestApproval"]
+  methods: [
+    "turn/completed",
+    "item/completed",
+    "item/commandExecution/requestApproval",
+    "item/permissions/requestApproval",
+    "item/autoApprovalReview/started",
+    "item/autoApprovalReview/completed",
+    "serverRequest/resolved"
+  ]
 )
 ```
 
@@ -196,10 +214,12 @@ Question payloads now include `is_other` and `is_secret` when upstream sets them
 
 ### Manual approval handling (UI loop)
 
-When Codex needs approval for a command or file change during a `turn/start`, it sends a server request:
+When Codex needs approval for a command, file change, or extra permissions during a `turn/start`,
+it sends a server request:
 
 - `item/commandExecution/requestApproval`
 - `item/fileChange/requestApproval`
+- `item/permissions/requestApproval`
 
 Respond by echoing the request `id` back with a result payload containing `decision`.
 
@@ -207,6 +227,23 @@ Respond by echoing the request `id` back with a result payload containing `decis
 receive do
   {:codex_request, id, "item/commandExecution/requestApproval", _params} ->
     :ok = Codex.AppServer.respond(conn, id, %{decision: "accept"})
+
+  {:codex_request, id, "item/permissions/requestApproval", params} ->
+    requested =
+      params["permissions"]
+      |> Codex.Protocol.RequestPermissions.RequestPermissionProfile.from_map()
+
+    response =
+      %Codex.Protocol.RequestPermissions.Response{
+        permissions:
+          requested
+          |> Codex.Protocol.RequestPermissions.RequestPermissionProfile.to_map()
+          |> Codex.Protocol.RequestPermissions.GrantedPermissionProfile.from_map(),
+        scope: :turn
+      }
+      |> Codex.Protocol.RequestPermissions.Response.to_map()
+
+    :ok = Codex.AppServer.respond(conn, id, response)
 end
 ```
 
@@ -220,6 +257,10 @@ Supported `decision` values include:
 
 Note: request `id` can be an integer or a string.
 
+Permissions approvals are different: they do not use string decisions. Reply with a structured
+payload containing `"permissions"` and `"scope"` (`"turn"` or `"session"`). Denials are encoded as
+an empty granted-permissions profile, not `"decline"`.
+
 ### Additional request families
 
 Current upstream builds can also send these server requests:
@@ -228,6 +269,12 @@ Current upstream builds can also send these server requests:
 - `item/permissions/requestApproval`
 - `item/tool/call`
 - `account/chatgptAuthTokens/refresh`
+
+And these notifications for review lifecycle / request correlation:
+
+- `item/autoApprovalReview/started`
+- `item/autoApprovalReview/completed`
+- `serverRequest/resolved`
 
 The SDK's app-server streaming transport surfaces these as typed
 `%Codex.Events.*{}` structs, so callers do not need to parse raw JSON-RPC
@@ -244,6 +291,20 @@ Supported hook returns (backwards compatible):
 - `{:allow, for_session: true}` → `"acceptForSession"`
 - `{:allow, execpolicy_amendment: ["cmd", "arg"]}` → `"acceptWithExecpolicyAmendment"`
 - `{:deny, reason}` → `"decline"`
+
+Permissions approvals use `review_permissions/3` when implemented:
+
+- `:allow` → grant the full requested profile for the current turn
+- `{:allow, permissions: subset}` → grant the intersected subset for the current turn
+- `{:allow, permissions: subset, scope: :session}` → grant the intersected subset for the session
+- `{:deny, reason}` → respond with an empty granted-permissions profile and turn scope
+
+See `examples/live_app_server_filesystem.exs` for a runnable `fs/*` walkthrough
+and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
+`examples/live_app_server_approvals.exs` demonstrates command/file/permissions approvals plus
+guardian review and request-resolution events.
+MCP-qualified tool names shown to OpenAI are sanitized to ASCII alphanumerics plus `_` before
+hash/truncation, while original MCP server/tool names are preserved for actual MCP calls.
 
 ## Turn diffs
 

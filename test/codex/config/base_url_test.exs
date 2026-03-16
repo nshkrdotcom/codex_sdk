@@ -23,6 +23,13 @@ defmodule Codex.Config.BaseURLTest do
              "https://explicit.example.com/v1"
   end
 
+  test "resolve/1 uses openai_base_url from config attrs before env" do
+    System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+
+    assert BaseURL.resolve(%{openai_base_url: "https://config.example.com/v1"}) ==
+             "https://config.example.com/v1"
+  end
+
   test "resolve/1 falls back to env" do
     System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
     assert BaseURL.resolve(%{}) == "https://env.example.com/v1"

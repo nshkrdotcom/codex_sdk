@@ -5,6 +5,7 @@ defmodule Codex.AppServerTransportTest do
   alias Codex.AppServer.Protocol
   alias Codex.Items
   alias Codex.Options
+  alias Codex.Protocol.RequestPermissions
   alias Codex.TestSupport.AppServerSubprocess
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
@@ -45,6 +46,61 @@ defmodule Codex.AppServerTransportTest do
 
     @impl true
     def review_file(_event, _context, _opts), do: {:allow, grant_root: "/tmp"}
+  end
+
+  defmodule AllowPermissionsApprovalHook do
+    @behaviour Codex.Approvals.Hook
+
+    @impl true
+    def review_tool(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_command(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_file(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_permissions(_event, _context, _opts), do: :allow
+  end
+
+  defmodule SessionPermissionsApprovalHook do
+    @behaviour Codex.Approvals.Hook
+
+    @impl true
+    def review_tool(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_command(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_file(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_permissions(_event, _context, _opts) do
+      {:allow,
+       permissions: %{
+         network: %{enabled: true},
+         file_system: %{write: ["/tmp/project", "/tmp/ignored"]}
+       },
+       scope: :session}
+    end
+  end
+
+  defmodule DenyPermissionsApprovalHook do
+    @behaviour Codex.Approvals.Hook
+
+    @impl true
+    def review_tool(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_command(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_file(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_permissions(_event, _context, _opts), do: {:deny, "no"}
   end
 
   defmodule DenyApprovalHook do
@@ -351,9 +407,11 @@ defmodule Codex.AppServerTransportTest do
       "itemId" => "perm_1",
       "reason" => "Need additional permissions",
       "permissions" => %{
-        "mode" => "workspaceWrite",
-        "writableRoots" => ["/tmp"],
-        "networkAccess" => true
+        "network" => %{"enabled" => true},
+        "fileSystem" => %{
+          "read" => ["/tmp/readable"],
+          "write" => ["/tmp"]
+        }
       }
     }
 
@@ -434,7 +492,13 @@ defmodule Codex.AppServerTransportTest do
                turn_id: "turn_1",
                item_id: "perm_1",
                reason: "Need additional permissions",
-               permissions: %{"mode" => "workspaceWrite"}
+               permissions: %RequestPermissions.RequestPermissionProfile{
+                 network: %RequestPermissions.AdditionalNetworkPermissions{enabled: true},
+                 file_system: %RequestPermissions.AdditionalFileSystemPermissions{
+                   read: ["/tmp/readable"],
+                   write: ["/tmp"]
+                 }
+               }
              } ->
                true
 
@@ -458,6 +522,243 @@ defmodule Codex.AppServerTransportTest do
              %Codex.Events.DynamicToolCallRequested{call_id: "call_ignored"} -> true
              _ -> false
            end)
+  end
+
+  test "app-server transport forwards approvals reviewer through thread start and resume params" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, start_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approvals_reviewer: :guardian_subagent
+      })
+
+    start_thread = Thread.build(codex_opts, start_opts)
+
+    start_task = Task.async(fn -> Thread.run_turn(start_thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["approvalsReviewer"] == "guardian_subagent"
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{"id" => "thr_start"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_turn_line}
+
+    assert {:ok, %{"id" => start_turn_id, "method" => "turn/start"}} =
+             Jason.decode(start_turn_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(start_turn_id, %{
+         "turn" => %{
+           "id" => "turn_start",
+           "items" => [],
+           "status" => "inProgress",
+           "error" => nil
+         }
+       })}
+    )
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_start",
+           "turn" => %{
+             "id" => "turn_start",
+             "status" => "completed",
+             "items" => [],
+             "error" => nil
+           }
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(start_task, 500)
+
+    {:ok, resume_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approvals_reviewer: :user
+      })
+
+    resume_thread = Thread.build(codex_opts, resume_opts, thread_id: "thr_resume")
+
+    resume_task = Task.async(fn -> Thread.run_turn(resume_thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert resume_params["threadId"] == "thr_resume"
+    assert resume_params["approvalsReviewer"] == "user"
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(resume_id, %{"thread" => %{"id" => "thr_resume"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_turn_line}
+
+    assert {:ok, %{"id" => resume_turn_id, "method" => "turn/start"}} =
+             Jason.decode(resume_turn_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(resume_turn_id, %{
+         "turn" => %{
+           "id" => "turn_resume",
+           "items" => [],
+           "status" => "inProgress",
+           "error" => nil
+         }
+       })}
+    )
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_resume",
+           "turn" => %{
+             "id" => "turn_resume",
+             "status" => "completed",
+             "items" => [],
+             "error" => nil
+           }
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(resume_task, 500)
+  end
+
+  test "Thread.run_turn/3 collects guardian review and resolved request notifications in order" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("item/autoApprovalReview/started", %{
+           "threadId" => "thr_1",
+           "turnId" => "turn_1",
+           "targetItemId" => "perm_1",
+           "review" => %{"status" => "inProgress", "riskLevel" => "medium"},
+           "action" => %{"type" => "allow"}
+         }),
+         Protocol.encode_notification("serverRequest/resolved", %{
+           "threadId" => "thr_1",
+           "requestId" => 77
+         }),
+         Protocol.encode_notification("item/autoApprovalReview/completed", %{
+           "threadId" => "thr_1",
+           "turnId" => "turn_1",
+           "targetItemId" => "perm_1",
+           "review" => %{"status" => "approved"}
+         }),
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, result} = Task.await(task, 500)
+
+    started_index =
+      Enum.find_index(result.events, &match?(%Codex.Events.GuardianApprovalReviewStarted{}, &1))
+
+    resolved_index =
+      Enum.find_index(result.events, &match?(%Codex.Events.ServerRequestResolved{}, &1))
+
+    completed_index =
+      Enum.find_index(result.events, &match?(%Codex.Events.GuardianApprovalReviewCompleted{}, &1))
+
+    turn_completed_index =
+      Enum.find_index(result.events, &match?(%Codex.Events.TurnCompleted{}, &1))
+
+    assert is_integer(started_index)
+    assert is_integer(resolved_index)
+    assert is_integer(completed_index)
+    assert is_integer(turn_completed_index)
+    assert started_index < resolved_index
+    assert resolved_index < turn_completed_index
+    assert completed_index < turn_completed_index
   end
 
   test "Thread.run/3 via app-server accepts multimodal input blocks" do
@@ -1119,6 +1420,392 @@ defmodule Codex.AppServerTransportTest do
     )
 
     refute_receive {:app_server_subprocess_send, ^conn, _approval_response_line}
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server transport ignores mismatched-turn permissions approvals" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approval_hook: AllowPermissionsApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    approval_request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_other",
+      "itemId" => "perm_1",
+      "permissions" => %{"network" => %{"enabled" => true}}
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         18,
+         "item/permissions/requestApproval",
+         approval_request_params
+       )}
+    )
+
+    refute_receive {:app_server_subprocess_send, ^conn, _approval_response_line}
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server transport auto-responds to permissions approvals using the requested turn grants" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approval_hook: AllowPermissionsApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    approval_request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "perm_1",
+      "reason" => "Need additional permissions",
+      "permissions" => %{
+        "network" => %{"enabled" => true},
+        "fileSystem" => %{
+          "read" => ["/tmp/read-only"],
+          "write" => ["/tmp/project"]
+        }
+      }
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         15,
+         "item/permissions/requestApproval",
+         approval_request_params
+       )}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
+
+    assert {:ok,
+            %{
+              "id" => 15,
+              "result" => %{
+                "permissions" => %{
+                  "network" => %{"enabled" => true},
+                  "fileSystem" => %{
+                    "read" => ["/tmp/read-only"],
+                    "write" => ["/tmp/project"]
+                  }
+                },
+                "scope" => "turn"
+              }
+            }} = Jason.decode(approval_response_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server transport supports partial session permission grants" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approval_hook: SessionPermissionsApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    approval_request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "perm_1",
+      "permissions" => %{
+        "network" => %{"enabled" => true},
+        "fileSystem" => %{
+          "read" => ["/tmp/read-only"],
+          "write" => ["/tmp/project"]
+        }
+      }
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         16,
+         "item/permissions/requestApproval",
+         approval_request_params
+       )}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
+
+    assert {:ok,
+            %{
+              "id" => 16,
+              "result" => %{
+                "permissions" => %{
+                  "network" => %{"enabled" => true},
+                  "fileSystem" => %{"write" => ["/tmp/project"]}
+                },
+                "scope" => "session"
+              }
+            }} = Jason.decode(approval_response_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server transport denies permissions approvals with an empty turn grant profile" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        approval_hook: DenyPermissionsApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    approval_request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "perm_1",
+      "permissions" => %{"network" => %{"enabled" => true}}
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         17,
+         "item/permissions/requestApproval",
+         approval_request_params
+       )}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
+
+    assert {:ok,
+            %{
+              "id" => 17,
+              "result" => %{"permissions" => %{}, "scope" => "turn"}
+            }} = Jason.decode(approval_response_line)
 
     send(
       conn,

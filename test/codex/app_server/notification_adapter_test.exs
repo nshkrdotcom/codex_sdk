@@ -139,6 +139,51 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                })
     end
 
+    test "maps guardian approval review notifications" do
+      params = %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "targetItemId" => "item_1",
+        "review" => %{
+          "status" => "inProgress",
+          "riskScore" => 7,
+          "riskLevel" => "high",
+          "rationale" => "Suspicious command"
+        },
+        "action" => %{"type" => "deny"}
+      }
+
+      assert {:ok,
+              %Events.GuardianApprovalReviewStarted{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                target_item_id: "item_1",
+                review: %Events.GuardianApprovalReview{
+                  status: :in_progress,
+                  risk_score: 7,
+                  risk_level: :high,
+                  rationale: "Suspicious command"
+                },
+                action: %{"type" => "deny"}
+              }} = NotificationAdapter.to_event("item/autoApprovalReview/started", params)
+
+      assert {:ok,
+              %Events.GuardianApprovalReviewCompleted{
+                thread_id: "thr_1",
+                turn_id: "turn_1",
+                target_item_id: "item_1",
+                review: %Events.GuardianApprovalReview{status: :in_progress}
+              }} = NotificationAdapter.to_event("item/autoApprovalReview/completed", params)
+    end
+
+    test "maps resolved server requests" do
+      assert {:ok, %Events.ServerRequestResolved{thread_id: "thr_1", request_id: "req_1"}} =
+               NotificationAdapter.to_event("serverRequest/resolved", %{
+                 "threadId" => "thr_1",
+                 "requestId" => "req_1"
+               })
+    end
+
     test "maps reasoning summary part added notifications" do
       params = %{
         "threadId" => "thr_1",

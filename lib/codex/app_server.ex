@@ -123,6 +123,17 @@ defmodule Codex.AppServer do
         |> Params.ask_for_approval()
       )
       |> Params.put_optional(
+        "approvalsReviewer",
+        params
+        |> fetch_any([
+          :approvals_reviewer,
+          "approvals_reviewer",
+          :approvalsReviewer,
+          "approvalsReviewer"
+        ])
+        |> Params.approvals_reviewer()
+      )
+      |> Params.put_optional(
         "sandbox",
         params
         |> fetch_any([:sandbox, "sandbox"])
@@ -174,6 +185,17 @@ defmodule Codex.AppServer do
         params
         |> fetch_any([:approval_policy, "approval_policy"])
         |> Params.ask_for_approval()
+      )
+      |> Params.put_optional(
+        "approvalsReviewer",
+        params
+        |> fetch_any([
+          :approvals_reviewer,
+          "approvals_reviewer",
+          :approvalsReviewer,
+          "approvalsReviewer"
+        ])
+        |> Params.approvals_reviewer()
       )
       |> Params.put_optional(
         "sandbox",
@@ -261,6 +283,17 @@ defmodule Codex.AppServer do
         params
         |> fetch_any([:approval_policy, "approval_policy"])
         |> Params.ask_for_approval()
+      )
+      |> Params.put_optional(
+        "approvalsReviewer",
+        params
+        |> fetch_any([
+          :approvals_reviewer,
+          "approvals_reviewer",
+          :approvalsReviewer,
+          "approvalsReviewer"
+        ])
+        |> Params.approvals_reviewer()
       )
       |> Params.put_optional(
         "sandbox",
@@ -423,6 +456,12 @@ defmodule Codex.AppServer do
         opts
         |> Keyword.get(:approval_policy)
         |> Params.ask_for_approval()
+      )
+      |> Params.put_optional(
+        "approvalsReviewer",
+        opts
+        |> Keyword.get(:approvals_reviewer)
+        |> Params.approvals_reviewer()
       )
       |> Params.put_optional(
         "sandboxPolicy",
@@ -621,6 +660,86 @@ defmodule Codex.AppServer do
     Connection.request(conn, "model/list", params, timeout_ms: 30_000)
   end
 
+  @doc """
+  Reads a file via the app-server filesystem API, returning a base64 payload.
+  """
+  @spec fs_read_file(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_read_file(conn, path) when is_pid(conn) and is_binary(path) do
+    Connection.request(conn, "fs/readFile", %{"path" => path}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Writes base64-encoded file contents via the app-server filesystem API.
+  """
+  @spec fs_write_file(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_write_file(conn, path, data_base64)
+      when is_pid(conn) and is_binary(path) and is_binary(data_base64) do
+    Connection.request(
+      conn,
+      "fs/writeFile",
+      %{"path" => path, "dataBase64" => data_base64},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Creates a directory via the app-server filesystem API.
+  """
+  @spec fs_create_directory(connection(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def fs_create_directory(conn, path, opts \\ [])
+      when is_pid(conn) and is_binary(path) and is_list(opts) do
+    params =
+      %{"path" => path}
+      |> Params.put_optional("recursive", Keyword.get(opts, :recursive))
+
+    Connection.request(conn, "fs/createDirectory", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Fetches file or directory metadata via the app-server filesystem API.
+  """
+  @spec fs_get_metadata(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_get_metadata(conn, path) when is_pid(conn) and is_binary(path) do
+    Connection.request(conn, "fs/getMetadata", %{"path" => path}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Lists directory entries via the app-server filesystem API.
+  """
+  @spec fs_read_directory(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_read_directory(conn, path) when is_pid(conn) and is_binary(path) do
+    Connection.request(conn, "fs/readDirectory", %{"path" => path}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Removes a file or directory via the app-server filesystem API.
+  """
+  @spec fs_remove(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def fs_remove(conn, path, opts \\ []) when is_pid(conn) and is_binary(path) and is_list(opts) do
+    params =
+      %{"path" => path}
+      |> Params.put_optional("recursive", Keyword.get(opts, :recursive))
+      |> Params.put_optional("force", Keyword.get(opts, :force))
+
+    Connection.request(conn, "fs/remove", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Copies a file or directory via the app-server filesystem API.
+  """
+  @spec fs_copy(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def fs_copy(conn, source_path, destination_path, opts \\ [])
+      when is_pid(conn) and is_binary(source_path) and is_binary(destination_path) and
+             is_list(opts) do
+    params =
+      %{"sourcePath" => source_path, "destinationPath" => destination_path}
+      |> Params.put_optional("recursive", Keyword.get(opts, :recursive))
+
+    Connection.request(conn, "fs/copy", params, timeout_ms: 30_000)
+  end
+
   @spec plugin_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def plugin_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
     params =
@@ -640,6 +759,20 @@ defmodule Codex.AppServer do
     Connection.request(
       conn,
       "plugin/install",
+      %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Reads plugin details from a marketplace entry via the app-server plugin API.
+  """
+  @spec plugin_read(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def plugin_read(conn, marketplace_path, plugin_name)
+      when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) do
+    Connection.request(
+      conn,
+      "plugin/read",
       %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name},
       timeout_ms: 30_000
     )

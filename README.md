@@ -81,8 +81,15 @@ When `cli_auth_credentials_store = "auto"` and keyring is unavailable, the SDK f
 When an API key is supplied, the SDK forwards it as both `CODEX_API_KEY` and `OPENAI_API_KEY`
 to the codex subprocess to align with provider expectations.
 
-Base URL precedence is: explicit `:base_url` in `Codex.Options.new/1`, then `OPENAI_BASE_URL`,
-then the OpenAI default (`https://api.openai.com/v1`).
+Base URL precedence is: explicit `:base_url` in `Codex.Options.new/1`, then layered
+`openai_base_url` from `config.toml`, then `OPENAI_BASE_URL`, then the OpenAI default
+(`https://api.openai.com/v1`). User-defined `[model_providers]` entries extend the built-in
+provider set, but reserved built-ins such as `openai`, `ollama`, and `lmstudio` cannot be
+redefined.
+
+Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. Blank values are
+ignored. The same PEM bundle is applied consistently to Codex CLI subprocesses, direct HTTP
+clients, remote model fetches, MCP HTTP/OAuth, realtime websockets, and voice HTTP requests.
 
 Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.3-codex` for API-auth flows unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT` overrides it.
 
@@ -147,12 +154,17 @@ App-server-only APIs include:
 
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
+- `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
+- `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
 - `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
 - `Codex.AppServer.turn_interrupt/3`
 - `Codex.AppServer.fuzzy_file_search/3` (legacy v1 helper used by `@` file search)
 - `Codex.AppServer.command_write_stdin/4` (interactive command stdin)
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints (including MCP reload)
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
+
+Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
+and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
@@ -578,6 +590,13 @@ requests that require review.
 For app-server file-change approvals, hooks can return `{:allow, grant_root: "/path"}` to accept
 the proposed root for the current session.
 
+App-server permission approvals use structured grant payloads rather than string decisions.
+Hooks can implement `review_permissions/3` and return `:allow`, `{:allow, permissions: ..., scope: :turn | :session}`,
+or `{:deny, reason}`. App-server streams now also surface `%Codex.Events.GuardianApprovalReviewStarted{}`,
+`%Codex.Events.GuardianApprovalReviewCompleted{}`, and `%Codex.Events.ServerRequestResolved{}` when
+the connected Codex build emits guardian review and request-resolution notifications. Use
+`approvals_reviewer: :user | :guardian_subagent` on thread options to control upstream review routing.
+
 Tool-call events can also arrive pre-approved via `approved_by_policy` (or `approved`) from the
 CLI; the SDK mirrors that bypass and skips hooks while still emitting telemetry. Sandbox warnings
 are normalized so Windows paths dedupe cleanly (e.g., `C:/Temp` and `C:\\Temp` coalesce). See
@@ -645,12 +664,17 @@ The SDK provides MCP client helpers for discovering and invoking tools from MCP 
 auth support for remote MCP servers.
 Transport failures are normalized to `{:error, reason}` tuples.
 
-Tool name qualification follows the OpenAI convention (`^[a-zA-Z0-9_-]+$`). Names exceeding
-64 characters are truncated with a SHA1 hash suffix for disambiguation:
+Tool name qualification now sanitizes each server/tool component to ASCII alphanumerics plus `_`
+before joining them for OpenAI-facing tool names. Original MCP server/tool names are preserved for
+actual MCP calls. Names exceeding 64 characters are truncated with a SHA1 hash suffix for
+disambiguation:
 
 ```elixir
 Codex.MCP.Client.qualify_tool_name("server1", "tool_a")
 #=> "mcp__server1__tool_a"
+
+Codex.MCP.Client.qualify_tool_name("server.one", "tool.two-three")
+#=> "mcp__server_one__tool_two_three"
 
 # Long names are truncated with SHA1 suffix
 Codex.MCP.Client.qualify_tool_name("srv", String.duplicate("a", 80))
@@ -995,15 +1019,15 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
-- **`live_config_overrides.exs`** - Nested config override auto-flattening (thread and turn level)
-- **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, and validation
+- **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
+- **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes
 - **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
 - **`live_web_search_modes.exs`** - Web search mode toggles with disabled/live validation and cached-mode event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows
-- **`live_realtime_voice.exs`** - Full realtime voice interaction demo with event handling
-- **`realtime_basic.exs`**, **`realtime_tools.exs`**, **`realtime_handoffs.exs`** - Realtime API examples for sessions, tools, and agent handoffs
-- **`voice_pipeline.exs`**, **`voice_multi_turn.exs`**, **`voice_with_agent.exs`** - Voice pipeline examples for STT/TTS workflows
+- **`live_realtime_voice.exs`** - Full realtime voice interaction demo with event handling and CA env notes
+- **`realtime_basic.exs`**, **`realtime_tools.exs`**, **`realtime_handoffs.exs`** - Realtime API examples for sessions, tools, handoffs, and CA env notes
+- **`voice_pipeline.exs`**, **`voice_multi_turn.exs`**, **`voice_with_agent.exs`** - Voice pipeline examples for STT/TTS workflows with CA env notes
 
 Run examples with:
 

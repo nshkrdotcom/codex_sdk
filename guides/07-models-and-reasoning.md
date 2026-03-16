@@ -161,6 +161,29 @@ Later layers take precedence:
 5. **`Codex.Thread.Options.config_overrides`** - TOML-style key/value pairs
 6. **Per-turn `config_overrides`** - passed to `Codex.Thread.run/3`
 
+### `openai_base_url` and `model_providers`
+
+Layered `config.toml` files can also affect provider resolution:
+
+- `openai_base_url` overrides the built-in `openai` provider base URL and wins over `OPENAI_BASE_URL`
+- user `[model_providers.<id>]` entries extend the built-in provider set
+- reserved built-ins such as `openai`, `ollama`, and `lmstudio` cannot be overridden
+
+Example:
+
+```toml
+openai_base_url = "https://gateway.example.com/v1"
+
+[model_providers.openai_custom]
+name = "OpenAI Custom"
+base_url = "https://gateway.example.com/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+```
+
+Use `model_provider = "openai_custom"` in config, or pass `model_provider` in thread options,
+when you want turns to target the custom provider ID.
+
 ### Config Overrides
 
 Both `Codex.Options` and `Codex.Thread.Options` accept a `:config` map that

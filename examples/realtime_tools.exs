@@ -3,6 +3,8 @@
 # Realtime with Tools Example
 #
 # Demonstrates realtime sessions with custom tool definitions.
+# TLS note: set CODEX_CA_CERTIFICATE to a PEM bundle to override trust roots for HTTPS/WSS.
+# If unset, SSL_CERT_FILE is used instead; blank values are ignored.
 #
 # Note: The realtime API expects tool definitions in a specific format.
 # This example shows how to set up tools for realtime agents.

@@ -1,11 +1,13 @@
 Mix.Task.run("app.start")
 
 alias Codex.{Options, Thread}
+alias Codex.Config.LayerStack
 
 defmodule LiveConfigOverrides do
   @moduledoc false
 
   def main do
+    demo_layered_provider_config()
     codex_path = fetch_codex_path!()
 
     {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path, reasoning_effort: :low})
@@ -57,6 +59,39 @@ defmodule LiveConfigOverrides do
 
       {:error, reason} ->
         IO.puts("Error: #{inspect(reason)}")
+    end
+  end
+
+  defp demo_layered_provider_config do
+    tmp_home =
+      Path.join(System.tmp_dir!(), "codex_config_example_#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(tmp_home)
+
+    try do
+      File.write!(
+        Path.join(tmp_home, "config.toml"),
+        """
+        openai_base_url = "https://gateway.example.com/v1"
+
+        [model_providers.openai_custom]
+        name = "OpenAI Custom"
+        base_url = "https://gateway.example.com/v1"
+        env_key = "OPENAI_API_KEY"
+        wire_api = "responses"
+        """
+      )
+
+      {:ok, layers} = LayerStack.load(tmp_home, File.cwd!())
+      config = LayerStack.effective_config(layers)
+
+      IO.puts("""
+      Layered config parity demo:
+        openai_base_url: #{config["openai_base_url"]}
+        model_providers: #{inspect(Map.keys(config["model_providers"] || %{}))}
+      """)
+    after
+      File.rm_rf(tmp_home)
     end
   end
 

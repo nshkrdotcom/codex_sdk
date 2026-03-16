@@ -6,6 +6,8 @@ defmodule Codex.Models do
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.Defaults
+  alias Codex.Config.LayerStack
+  alias Codex.Net.CA
 
   @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
 
@@ -620,22 +622,22 @@ defmodule Codex.Models do
 
   defp remote_models(:api, _cwd), do: load_models_json()
 
-  defp remote_models(:chatgpt, _cwd) do
+  defp remote_models(:chatgpt, cwd) do
     case load_models_cache() do
       {:ok, models} -> models
-      :miss -> fetch_or_load_models()
+      :miss -> fetch_or_load_models(cwd)
     end
   end
 
-  defp fetch_or_load_models do
+  defp fetch_or_load_models(cwd) do
     case Auth.chatgpt_access_token() do
       nil -> load_models_json()
-      token -> fetch_models_with_token(token)
+      token -> fetch_models_with_token(token, cwd)
     end
   end
 
-  defp fetch_models_with_token(token) do
-    case fetch_remote_models(token) do
+  defp fetch_models_with_token(token, cwd) do
+    case fetch_remote_models(token, cwd) do
       {:ok, models, etag} ->
         save_models_cache(models, etag)
         models
@@ -714,10 +716,10 @@ defmodule Codex.Models do
     end
   end
 
-  defp fetch_remote_models(token) do
-    url = models_url()
+  defp fetch_remote_models(token, cwd) do
+    url = models_url(cwd)
     headers = [{~c"authorization", ~c"Bearer " ++ String.to_charlist(token)}]
-    http_opts = [timeout: Defaults.remote_models_http_timeout_ms()]
+    http_opts = remote_models_http_options()
     request_opts = [body_format: :binary]
 
     :inets.start()
@@ -739,12 +741,37 @@ defmodule Codex.Models do
     end
   end
 
-  defp models_url do
-    base = BaseURL.resolve()
+  @doc false
+  @spec remote_models_http_options() :: keyword()
+  def remote_models_http_options do
+    [timeout: Defaults.remote_models_http_timeout_ms()]
+    |> CA.merge_httpc_options()
+  end
+
+  @doc false
+  @spec remote_models_url(String.t() | nil) :: String.t()
+  def remote_models_url(cwd \\ default_cwd()) do
+    models_url(cwd)
+  end
+
+  defp models_url(cwd) do
+    base = resolve_models_base_url(cwd)
     base = String.trim_trailing(base, "/")
     client_version = client_version()
 
     "#{base}/models?client_version=#{client_version}"
+  end
+
+  defp resolve_models_base_url(cwd) do
+    case LayerStack.load(Auth.codex_home(), cwd) do
+      {:ok, layers} ->
+        layers
+        |> LayerStack.effective_config()
+        |> BaseURL.resolve()
+
+      {:error, _reason} ->
+        BaseURL.resolve()
+    end
   end
 
   defp header_etag(headers) do

@@ -2,6 +2,7 @@ Mix.Task.run("app.start")
 
 alias Codex.Events
 alias Codex.Items
+alias Codex.Protocol.RequestPermissions
 alias Codex.RunResultStreaming
 
 defmodule CodexExamples.LiveAppServerApprovals do
@@ -9,11 +10,14 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
   @default_prompt """
   Run `pwd` and `ls -la` in the current working directory, then create a small file named
-  `approval_demo.txt` containing the current directory path and report exactly what completed.
+  `approval_demo.txt` containing the current directory path. If you need additional permissions
+  to read outside the working directory or access the network, request them explicitly first and
+  then report exactly what completed.
   """
 
   @command_approval_method "item/commandExecution/requestApproval"
   @file_approval_method "item/fileChange/requestApproval"
+  @permissions_approval_method "item/permissions/requestApproval"
 
   def main(argv) do
     prompt =
@@ -59,7 +63,10 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
       This run prints:
         - proposed commandExecution/fileChange items
+        - permissions approval requests with structured grant responses
         - incoming app-server request methods
+        - guardian review started/completed notifications when emitted by Codex
+        - serverRequest/resolved notifications
         - approval responses sent
         - completion status for command/file items
       """)
@@ -106,6 +113,14 @@ defmodule CodexExamples.LiveAppServerApprovals do
             IO.puts("[approval] responded to fileChange request")
             send(parent, {:audit, {:response_sent, method}})
 
+          @permissions_approval_method ->
+            response = build_permissions_response(params)
+            IO.puts("[approval] requested permissions: #{describe_permissions_request(params)}")
+            :ok = Codex.AppServer.respond(conn, id, response)
+            IO.puts("[approval] responded to permissions request with structured grant payload")
+            send(parent, {:audit, {:permissions_granted, response}})
+            send(parent, {:audit, {:response_sent, method}})
+
           _other ->
             IO.puts("[codex_request] no handler configured for #{method}")
         end
@@ -125,6 +140,35 @@ defmodule CodexExamples.LiveAppServerApprovals do
   end
 
   defp maybe_log_execpolicy_hint(_params), do: :ok
+
+  defp build_permissions_response(%{} = params) do
+    requested =
+      params
+      |> Map.get("permissions", %{})
+      |> RequestPermissions.RequestPermissionProfile.from_map()
+
+    %RequestPermissions.Response{
+      permissions:
+        requested
+        |> RequestPermissions.RequestPermissionProfile.to_map()
+        |> RequestPermissions.GrantedPermissionProfile.from_map(),
+      scope: :turn
+    }
+    |> RequestPermissions.Response.to_map()
+  end
+
+  defp describe_permissions_request(%{} = params) do
+    requested =
+      params
+      |> Map.get("permissions", %{})
+      |> RequestPermissions.RequestPermissionProfile.from_map()
+
+    network = get_in(requested, [:network, :enabled])
+    reads = get_in(requested, [:file_system, :read]) || []
+    writes = get_in(requested, [:file_system, :write]) || []
+
+    "network=#{inspect(network)} read=#{inspect(reads)} write=#{inspect(writes)}"
+  end
 
   defp await_approvals_ready!(task_pid) when is_pid(task_pid) do
     receive do
@@ -191,6 +235,43 @@ defmodule CodexExamples.LiveAppServerApprovals do
     end
   end
 
+  defp print_event(%Events.GuardianApprovalReviewStarted{} = event, parent) do
+    IO.puts("""
+
+    [guardian.review.started]
+      target_item_id: #{event.target_item_id}
+      status: #{inspect(event.review.status)}
+      risk_level: #{inspect(event.review.risk_level)}
+      rationale: #{inspect(event.review.rationale)}
+    """)
+
+    send(parent, {:audit, {:guardian_started, event.target_item_id}})
+  end
+
+  defp print_event(%Events.GuardianApprovalReviewCompleted{} = event, parent) do
+    IO.puts("""
+
+    [guardian.review.completed]
+      target_item_id: #{event.target_item_id}
+      status: #{inspect(event.review.status)}
+      risk_level: #{inspect(event.review.risk_level)}
+      rationale: #{inspect(event.review.rationale)}
+    """)
+
+    send(parent, {:audit, {:guardian_completed, event.review.status}})
+  end
+
+  defp print_event(%Events.ServerRequestResolved{} = event, parent) do
+    IO.puts("""
+
+    [server_request.resolved]
+      thread_id: #{event.thread_id}
+      request_id: #{inspect(event.request_id)}
+    """)
+
+    send(parent, {:audit, {:resolved_request, event.request_id}})
+  end
+
   defp print_event(%Events.TurnCompleted{status: status}, _parent) do
     IO.puts("\n[turn.completed] status=#{inspect(status)}")
   end
@@ -203,6 +284,10 @@ defmodule CodexExamples.LiveAppServerApprovals do
       file_proposed?: false,
       approval_request_methods: MapSet.new(),
       approval_response_methods: MapSet.new(),
+      permissions_grants: [],
+      guardian_started_items: [],
+      guardian_completed_statuses: [],
+      resolved_request_ids: [],
       command_completed_statuses: [],
       file_completed_statuses: []
     }
@@ -223,6 +308,27 @@ defmodule CodexExamples.LiveAppServerApprovals do
       {:audit, {:response_sent, method}} ->
         methods = MapSet.put(state.approval_response_methods, method)
         drain_audit_messages(%{state | approval_response_methods: methods})
+
+      {:audit, {:permissions_granted, response}} ->
+        drain_audit_messages(%{state | permissions_grants: [response | state.permissions_grants]})
+
+      {:audit, {:guardian_started, item_id}} ->
+        drain_audit_messages(%{
+          state
+          | guardian_started_items: [item_id | state.guardian_started_items]
+        })
+
+      {:audit, {:guardian_completed, status}} ->
+        drain_audit_messages(%{
+          state
+          | guardian_completed_statuses: [status | state.guardian_completed_statuses]
+        })
+
+      {:audit, {:resolved_request, request_id}} ->
+        drain_audit_messages(%{
+          state
+          | resolved_request_ids: [request_id | state.resolved_request_ids]
+        })
 
       {:audit, {:command_completed, status}} ->
         drain_audit_messages(%{
@@ -254,6 +360,18 @@ defmodule CodexExamples.LiveAppServerApprovals do
     IO.puts(
       "  approval response methods: #{inspect(MapSet.to_list(audit.approval_response_methods))}"
     )
+
+    IO.puts("  permissions grants sent: #{inspect(Enum.reverse(audit.permissions_grants))}")
+
+    IO.puts(
+      "  guardian review started items: #{inspect(Enum.reverse(audit.guardian_started_items))}"
+    )
+
+    IO.puts(
+      "  guardian review completed statuses: #{inspect(Enum.reverse(audit.guardian_completed_statuses))}"
+    )
+
+    IO.puts("  resolved request ids: #{inspect(Enum.reverse(audit.resolved_request_ids))}")
 
     IO.puts(
       "  commandExecution completed statuses: #{inspect(Enum.reverse(audit.command_completed_statuses))}"

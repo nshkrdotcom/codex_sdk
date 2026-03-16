@@ -42,6 +42,14 @@ defmodule Codex.Config.OverridesTest do
     assert merged["model_personality"] == "pragmatic"
   end
 
+  test "merge_config derives approvals reviewer overrides from thread options" do
+    thread_opts = %ThreadOptions{approvals_reviewer: :guardian_subagent}
+
+    merged = Overrides.merge_config(%{}, %Options{}, thread_opts)
+
+    assert merged["approvals_reviewer"] == "guardian_subagent"
+  end
+
   describe "flatten_config_map/1" do
     test "flattens nested maps to dotted key tuples" do
       input = %{

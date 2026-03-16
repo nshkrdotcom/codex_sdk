@@ -90,9 +90,11 @@ defmodule Codex.HTTPClient.Req do
 
   @behaviour Codex.HTTPClient
 
+  alias Codex.Net.CA
+
   @impl true
   def get(url, headers) do
-    case Req.get(url, headers: headers) do
+    case Req.get(url, request_options(headers: headers)) do
       {:ok, %Req.Response{status: status, body: body}} ->
         {:ok, %{status: status, body: normalize_body(body)}}
 
@@ -103,13 +105,19 @@ defmodule Codex.HTTPClient.Req do
 
   @impl true
   def post(url, body, headers) do
-    case Req.post(url, body: body, headers: headers) do
+    case Req.post(url, request_options(body: body, headers: headers)) do
       {:ok, %Req.Response{status: status, body: body}} ->
         {:ok, %{status: status, body: normalize_body(body)}}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc false
+  @spec request_options(keyword()) :: keyword()
+  def request_options(opts \\ []) when is_list(opts) do
+    CA.merge_req_options(opts)
   end
 
   # Req may return decoded JSON as a map, but we want to keep it consistent

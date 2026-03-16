@@ -4,6 +4,8 @@
 #
 # This example demonstrates real-time voice interaction using
 # the OpenAI Realtime API with actual audio input and output.
+# TLS note: set CODEX_CA_CERTIFICATE to a PEM bundle to override trust roots for HTTPS/WSS.
+# If unset, SSL_CERT_FILE is used instead; blank values are ignored.
 #
 # Uses a real audio file (test/fixtures/audio/voice_sample.wav) for input.
 # Saves received audio to /tmp/codex_realtime_response.pcm

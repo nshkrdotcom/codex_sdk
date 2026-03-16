@@ -11,6 +11,7 @@ defmodule Codex.Transport.AppServer do
   alias Codex.Events
   alias Codex.Models
   alias Codex.Options
+  alias Codex.Protocol.RequestPermissions
   alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
   alias Codex.Thread
   alias Codex.Transport.Support
@@ -172,6 +173,7 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:model_provider, thread.thread_opts.model_provider)
     |> maybe_put(:working_directory, thread.thread_opts.working_directory)
     |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
+    |> maybe_put(:approvals_reviewer, thread.thread_opts.approvals_reviewer)
     |> maybe_put(:sandbox, thread.thread_opts.sandbox)
     |> maybe_put(:config, config)
     |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
@@ -201,6 +203,10 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put_kw(
       :approval_policy,
       select_turn_opt(turn_opts, :approval_policy, thread.thread_opts.ask_for_approval)
+    )
+    |> maybe_put_kw(
+      :approvals_reviewer,
+      select_turn_opt(turn_opts, :approvals_reviewer, thread.thread_opts.approvals_reviewer)
     )
     |> maybe_put_kw(
       :sandbox_policy,
@@ -237,35 +243,56 @@ defmodule Codex.Transport.AppServer do
   defp next_event(%{completion_timeout_ms: timeout_ms} = state) do
     receive do
       {:codex_notification, method, params} ->
-        if notification_matches?(state, method, params) do
-          {:ok, event} = NotificationAdapter.to_event(method, params)
-
-          done? =
-            match?(%Events.TurnCompleted{}, event) and
-              Map.get(event, :thread_id) == state.thread_id and
-              Map.get(event, :turn_id) == state.turn_id
-
-          {[event], %{state | done?: done?}}
-        else
-          next_event(state)
-        end
+        handle_notification_message(state, method, params)
 
       {:codex_request, id, method, params} ->
-        if approval_request_matches?(state, method, params) do
-          _ =
-            AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params)
-
-          next_event(state)
-        else
-          case request_event(state, id, method, params) do
-            {:ok, event} -> {[event], state}
-            :ignore -> next_event(state)
-          end
-        end
+        handle_request_message(state, id, method, params)
     after
       timeout_ms ->
         {:halt, state}
     end
+  end
+
+  defp handle_notification_message(state, method, params) do
+    if notification_matches?(state, method, params) do
+      {:ok, event} = NotificationAdapter.to_event(method, params)
+      {[event], %{state | done?: turn_completed_for_stream?(state, event)}}
+    else
+      next_event(state)
+    end
+  end
+
+  defp handle_request_message(state, id, method, params) do
+    if approval_request_matches?(state, method, params) do
+      state
+      |> maybe_auto_respond_request(id, method, params)
+      |> case do
+        :continue -> request_event_or_continue(state, id, method, params)
+        other -> other
+      end
+    else
+      request_event_or_continue(state, id, method, params)
+    end
+  end
+
+  defp maybe_auto_respond_request(state, id, method, params) do
+    case AppServerApprovals.maybe_auto_respond(state.conn, state.thread, id, method, params) do
+      :ok -> next_event(state)
+      :ignore -> :continue
+    end
+  end
+
+  defp request_event_or_continue(state, id, method, params) do
+    case request_event(state, id, method, params) do
+      {:ok, event} -> {[event], state}
+      :ignore -> next_event(state)
+    end
+  end
+
+  defp turn_completed_for_stream?(state, event) do
+    match?(%Events.TurnCompleted{}, event) and
+      Map.get(event, :thread_id) == state.thread_id and
+      Map.get(event, :turn_id) == state.turn_id
   end
 
   defp request_event(%{thread_id: thread_id, turn_id: turn_id}, id, method, %{} = params)
@@ -332,7 +359,12 @@ defmodule Codex.Transport.AppServer do
   defp approval_request_matches?(_state, _method, _params), do: false
 
   defp approval_request_method?(method),
-    do: method in ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"]
+    do:
+      method in [
+        "item/commandExecution/requestApproval",
+        "item/fileChange/requestApproval",
+        "item/permissions/requestApproval"
+      ]
 
   defp correlated_request_method?(method) do
     method in [
@@ -392,7 +424,7 @@ defmodule Codex.Transport.AppServer do
     permissions =
       params
       |> fetch_any(["permissions", :permissions])
-      |> deep_stringify_keys()
+      |> RequestPermissions.RequestPermissionProfile.from_map()
 
     {:ok,
      %Events.PermissionsApprovalRequested{
@@ -401,7 +433,7 @@ defmodule Codex.Transport.AppServer do
        turn_id: fetch_any(params, ["turnId", "turn_id"]) || "",
        item_id: fetch_any(params, ["itemId", "item_id"]) || "",
        reason: fetch_any(params, ["reason", :reason]),
-       permissions: permissions || %{}
+       permissions: permissions
      }}
   end
 

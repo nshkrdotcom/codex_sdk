@@ -8,6 +8,7 @@ defmodule Codex.Events do
 
   alias Codex.Items
   alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
+  alias Codex.Protocol.RequestPermissions
   alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
 
   defmodule ThreadStarted do
@@ -782,6 +783,7 @@ defmodule Codex.Events do
               model: nil,
               model_provider_id: nil,
               approval_policy: nil,
+              approvals_reviewer: nil,
               sandbox_policy: nil,
               cwd: nil,
               reasoning_effort: nil,
@@ -796,6 +798,7 @@ defmodule Codex.Events do
             model: String.t() | nil,
             model_provider_id: String.t() | nil,
             approval_policy: term(),
+            approvals_reviewer: :user | :guardian_subagent | String.t() | nil,
             sandbox_policy: term(),
             cwd: String.t() | nil,
             reasoning_effort: String.t() | atom() | nil,
@@ -891,7 +894,7 @@ defmodule Codex.Events do
     """
 
     @enforce_keys [:id, :thread_id, :turn_id, :item_id, :permissions]
-    defstruct id: nil, thread_id: nil, turn_id: nil, item_id: nil, reason: nil, permissions: %{}
+    defstruct id: nil, thread_id: nil, turn_id: nil, item_id: nil, reason: nil, permissions: nil
 
     @type t :: %__MODULE__{
             id: String.t() | integer(),
@@ -899,7 +902,74 @@ defmodule Codex.Events do
             turn_id: String.t(),
             item_id: String.t(),
             reason: String.t() | nil,
-            permissions: map()
+            permissions: RequestPermissions.RequestPermissionProfile.t() | map()
+          }
+  end
+
+  defmodule GuardianApprovalReview do
+    @moduledoc """
+    Review payload emitted by guardian auto-approval review notifications.
+    """
+
+    @type status :: :in_progress | :approved | :denied | :aborted
+    @type risk_level :: :low | :medium | :high
+
+    @enforce_keys [:status]
+    defstruct status: nil, risk_score: nil, risk_level: nil, rationale: nil
+
+    @type t :: %__MODULE__{
+            status: status(),
+            risk_score: non_neg_integer() | nil,
+            risk_level: risk_level() | nil,
+            rationale: String.t() | nil
+          }
+  end
+
+  defmodule GuardianApprovalReviewStarted do
+    @moduledoc """
+    Event emitted when guardian review begins for an approval request.
+    """
+
+    @enforce_keys [:thread_id, :turn_id, :target_item_id, :review]
+    defstruct thread_id: nil, turn_id: nil, target_item_id: nil, review: nil, action: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            turn_id: String.t(),
+            target_item_id: String.t(),
+            review: GuardianApprovalReview.t(),
+            action: map() | String.t() | nil
+          }
+  end
+
+  defmodule GuardianApprovalReviewCompleted do
+    @moduledoc """
+    Event emitted when guardian review completes for an approval request.
+    """
+
+    @enforce_keys [:thread_id, :turn_id, :target_item_id, :review]
+    defstruct thread_id: nil, turn_id: nil, target_item_id: nil, review: nil, action: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            turn_id: String.t(),
+            target_item_id: String.t(),
+            review: GuardianApprovalReview.t(),
+            action: map() | String.t() | nil
+          }
+  end
+
+  defmodule ServerRequestResolved do
+    @moduledoc """
+    Event emitted when the app-server resolves a prior server request.
+    """
+
+    @enforce_keys [:thread_id, :request_id]
+    defstruct thread_id: nil, request_id: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            request_id: String.t() | integer()
           }
   end
 
@@ -1247,6 +1317,9 @@ defmodule Codex.Events do
     RequestUserInput,
     McpElicitationRequested,
     PermissionsApprovalRequested,
+    GuardianApprovalReviewStarted,
+    GuardianApprovalReviewCompleted,
+    ServerRequestResolved,
     DynamicToolCallRequested,
     ChatgptAuthTokensRefreshRequested,
     McpStartupUpdate,
@@ -1325,6 +1398,9 @@ defmodule Codex.Events do
           | RequestUserInput.t()
           | McpElicitationRequested.t()
           | PermissionsApprovalRequested.t()
+          | GuardianApprovalReviewStarted.t()
+          | GuardianApprovalReviewCompleted.t()
+          | ServerRequestResolved.t()
           | DynamicToolCallRequested.t()
           | ChatgptAuthTokensRefreshRequested.t()
           | McpStartupUpdate.t()
@@ -1527,7 +1603,37 @@ defmodule Codex.Events do
       turn_id: Map.fetch!(map, "turn_id"),
       item_id: Map.fetch!(map, "item_id"),
       reason: Map.get(map, "reason"),
-      permissions: Map.get(map, "permissions") || %{}
+      permissions:
+        map
+        |> Map.get("permissions")
+        |> RequestPermissions.RequestPermissionProfile.from_map()
+    }
+  end
+
+  def parse!(%{"type" => "guardian_approval_review_started"} = map) do
+    %GuardianApprovalReviewStarted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      target_item_id: Map.fetch!(map, "target_item_id"),
+      review: parse_guardian_review(Map.get(map, "review") || %{}),
+      action: Map.get(map, "action")
+    }
+  end
+
+  def parse!(%{"type" => "guardian_approval_review_completed"} = map) do
+    %GuardianApprovalReviewCompleted{
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      target_item_id: Map.fetch!(map, "target_item_id"),
+      review: parse_guardian_review(Map.get(map, "review") || %{}),
+      action: Map.get(map, "action")
+    }
+  end
+
+  def parse!(%{"type" => "server_request_resolved"} = map) do
+    %ServerRequestResolved{
+      thread_id: Map.fetch!(map, "thread_id"),
+      request_id: Map.fetch!(map, "request_id")
     }
   end
 
@@ -2382,6 +2488,7 @@ defmodule Codex.Events do
     |> put_optional("model", event.model)
     |> put_optional("model_provider_id", event.model_provider_id)
     |> put_optional("approval_policy", event.approval_policy)
+    |> put_optional("approvals_reviewer", event.approvals_reviewer)
     |> put_optional("sandbox_policy", event.sandbox_policy)
     |> put_optional("cwd", event.cwd)
     |> put_optional("reasoning_effort", event.reasoning_effort)
@@ -2444,9 +2551,39 @@ defmodule Codex.Events do
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id,
       "item_id" => event.item_id,
-      "permissions" => event.permissions
+      "permissions" => RequestPermissions.RequestPermissionProfile.to_map(event.permissions)
     }
     |> put_optional("reason", event.reason)
+  end
+
+  def to_map(%GuardianApprovalReviewStarted{} = event) do
+    %{
+      "type" => "guardian_approval_review_started",
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "target_item_id" => event.target_item_id,
+      "review" => guardian_review_to_map(event.review)
+    }
+    |> put_optional("action", event.action)
+  end
+
+  def to_map(%GuardianApprovalReviewCompleted{} = event) do
+    %{
+      "type" => "guardian_approval_review_completed",
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "target_item_id" => event.target_item_id,
+      "review" => guardian_review_to_map(event.review)
+    }
+    |> put_optional("action", event.action)
+  end
+
+  def to_map(%ServerRequestResolved{} = event) do
+    %{
+      "type" => "server_request_resolved",
+      "thread_id" => event.thread_id,
+      "request_id" => event.request_id
+    }
   end
 
   def to_map(%DynamicToolCallRequested{} = event) do
@@ -2665,6 +2802,7 @@ defmodule Codex.Events do
       model: Map.get(map, "model"),
       model_provider_id: fetch_any(map, ["model_provider_id", "modelProviderId"]),
       approval_policy: fetch_any(map, ["approval_policy", "approvalPolicy"]),
+      approvals_reviewer: fetch_any(map, ["approvals_reviewer", "approvalsReviewer"]),
       sandbox_policy: fetch_any(map, ["sandbox_policy", "sandboxPolicy"]),
       cwd: Map.get(map, "cwd"),
       reasoning_effort: fetch_any(map, ["reasoning_effort", "reasoningEffort"]),
@@ -2744,6 +2882,66 @@ defmodule Codex.Events do
   end
 
   defp encode_request_user_input_questions(other), do: other
+
+  defp parse_guardian_review(%{} = review) do
+    %GuardianApprovalReview{
+      status:
+        review
+        |> Map.get("status")
+        |> parse_guardian_review_status(),
+      risk_score: Map.get(review, "risk_score") || Map.get(review, "riskScore"),
+      risk_level:
+        review
+        |> Map.get("risk_level", Map.get(review, "riskLevel"))
+        |> parse_guardian_risk_level(),
+      rationale: Map.get(review, "rationale")
+    }
+  end
+
+  defp parse_guardian_review(_review) do
+    %GuardianApprovalReview{status: :in_progress}
+  end
+
+  defp guardian_review_to_map(%GuardianApprovalReview{} = review) do
+    %{
+      "status" => guardian_review_status_to_string(review.status)
+    }
+    |> put_optional("risk_score", review.risk_score)
+    |> put_optional("risk_level", guardian_risk_level_to_string(review.risk_level))
+    |> put_optional("rationale", review.rationale)
+  end
+
+  defp guardian_review_status_to_string(:in_progress), do: "in_progress"
+  defp guardian_review_status_to_string(:approved), do: "approved"
+  defp guardian_review_status_to_string(:denied), do: "denied"
+  defp guardian_review_status_to_string(:aborted), do: "aborted"
+  defp guardian_review_status_to_string(value) when is_binary(value), do: value
+  defp guardian_review_status_to_string(_), do: "in_progress"
+
+  defp parse_guardian_review_status("inProgress"), do: :in_progress
+  defp parse_guardian_review_status("in_progress"), do: :in_progress
+  defp parse_guardian_review_status("approved"), do: :approved
+  defp parse_guardian_review_status("denied"), do: :denied
+  defp parse_guardian_review_status("aborted"), do: :aborted
+  defp parse_guardian_review_status(:in_progress), do: :in_progress
+  defp parse_guardian_review_status(:approved), do: :approved
+  defp parse_guardian_review_status(:denied), do: :denied
+  defp parse_guardian_review_status(:aborted), do: :aborted
+  defp parse_guardian_review_status(_), do: :in_progress
+
+  defp guardian_risk_level_to_string(:low), do: "low"
+  defp guardian_risk_level_to_string(:medium), do: "medium"
+  defp guardian_risk_level_to_string(:high), do: "high"
+  defp guardian_risk_level_to_string(value) when is_binary(value), do: value
+  defp guardian_risk_level_to_string(_), do: nil
+
+  defp parse_guardian_risk_level("low"), do: :low
+  defp parse_guardian_risk_level("medium"), do: :medium
+  defp parse_guardian_risk_level("high"), do: :high
+  defp parse_guardian_risk_level(:low), do: :low
+  defp parse_guardian_risk_level(:medium), do: :medium
+  defp parse_guardian_risk_level(:high), do: :high
+  defp parse_guardian_risk_level(_), do: nil
 
   defp normalize_mcp_startup_status(nil), do: {nil, nil}
 

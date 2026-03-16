@@ -144,6 +144,14 @@ defmodule Codex.AppServer.Params do
   def personality(value) when is_binary(value), do: value
   def personality(_), do: nil
 
+  @spec approvals_reviewer(atom() | String.t() | nil) :: String.t() | nil
+  def approvals_reviewer(nil), do: nil
+  def approvals_reviewer(:user), do: "user"
+  def approvals_reviewer(:guardian_subagent), do: "guardian_subagent"
+  def approvals_reviewer("user"), do: "user"
+  def approvals_reviewer("guardian_subagent"), do: "guardian_subagent"
+  def approvals_reviewer(_), do: nil
+
   @type collaboration_mode_map :: %{optional(String.t()) => term()}
 
   @spec collaboration_mode(term()) :: collaboration_mode_map() | nil

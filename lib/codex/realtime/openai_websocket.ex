@@ -30,6 +30,7 @@ defmodule Codex.Realtime.OpenAIWebSocket do
 
   use WebSockex
 
+  alias Codex.Net.CA
   alias Codex.Realtime.Config.ModelConfig
   alias Codex.Realtime.ModelEvents
 
@@ -78,7 +79,11 @@ defmodule Codex.Realtime.OpenAIWebSocket do
       config: config
     }
 
-    WebSockex.start_link(url, __MODULE__, state, extra_headers: headers)
+    ws_opts =
+      [extra_headers: headers]
+      |> maybe_put_ssl_options(CA.websocket_ssl_options())
+
+    WebSockex.start_link(url, __MODULE__, state, ws_opts)
   end
 
   @doc """
@@ -189,6 +194,9 @@ defmodule Codex.Realtime.OpenAIWebSocket do
       headers when is_map(headers) -> base_headers ++ Map.to_list(headers)
     end
   end
+
+  defp maybe_put_ssl_options(opts, []), do: opts
+  defp maybe_put_ssl_options(opts, ssl_options), do: Keyword.put(opts, :ssl_options, ssl_options)
 
   defp handle_json_message(json, state) do
     # First emit raw server event

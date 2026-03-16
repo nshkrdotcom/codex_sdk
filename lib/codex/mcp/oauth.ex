@@ -6,6 +6,7 @@ defmodule Codex.MCP.OAuth do
   alias Codex.Auth
   alias Codex.Config.Defaults
   alias Codex.Config.LayerStack
+  alias Codex.Net.CA
   alias Codex.Runtime.KeyringWarning
 
   @typedoc "Where to store OAuth credentials."
@@ -114,7 +115,10 @@ defmodule Codex.MCP.OAuth do
     ]
 
     headers = [{"content-type", "application/x-www-form-urlencoded"}]
-    opts = [headers: headers, form: form, receive_timeout: timeout_ms]
+
+    opts =
+      [headers: headers, form: form, receive_timeout: timeout_ms]
+      |> CA.merge_req_options()
 
     case Req.post(token_endpoint, opts) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
@@ -198,7 +202,7 @@ defmodule Codex.MCP.OAuth do
 
   defp fetch_token_endpoint(url, headers, timeout_ms) do
     with {:ok, %Req.Response{status: 200, body: body}} <-
-           Req.get(url, headers: headers, receive_timeout: timeout_ms),
+           Req.get(url, CA.merge_req_options(headers: headers, receive_timeout: timeout_ms)),
          {:ok, response} <- normalize_json_body(body),
          {:ok, token_endpoint} <- extract_token_endpoint(response) do
       {:ok, token_endpoint}

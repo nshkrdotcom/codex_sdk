@@ -3,7 +3,7 @@ defmodule Codex.Approvals.Hook do
   Behaviour for implementing pluggable approval hooks.
 
   Hooks can provide synchronous or asynchronous approval decisions for tool invocations,
-  command executions, and file access operations.
+  command executions, file access operations, and request-permissions prompts.
 
   ## Callbacks
 
@@ -11,6 +11,7 @@ defmodule Codex.Approvals.Hook do
   - `c:review_tool/3` - Review a tool invocation
   - `c:review_command/3` - Review a command execution (optional)
   - `c:review_file/3` - Review a file access operation (optional)
+  - `c:review_permissions/3` - Review a request-permissions approval prompt (optional)
   - `c:await/2` - Wait for an async approval decision (optional)
 
   ## Return Values
@@ -25,7 +26,8 @@ defmodule Codex.Approvals.Hook do
   - `{:async, ref, metadata}` - defer decision with additional metadata
 
   `{:allow, opts}` supports `:grant_root` to grant file-change approvals for the
-  session when requested by the app-server.
+  session when requested by the app-server. Permissions approvals additionally
+  support `:permissions` and `:scope`.
 
   ## Example
 
@@ -58,13 +60,20 @@ defmodule Codex.Approvals.Hook do
       end
   """
 
+  alias Codex.Protocol.RequestPermissions
+
   @type event :: map()
   @type context :: map()
   @type opts :: keyword()
   @type allow_opts :: [
           for_session: boolean(),
           execpolicy_amendment: [String.t()],
-          grant_root: String.t() | Path.t()
+          grant_root: String.t() | Path.t(),
+          permissions:
+            RequestPermissions.RequestPermissionProfile.t()
+            | RequestPermissions.GrantedPermissionProfile.t()
+            | map(),
+          scope: RequestPermissions.PermissionGrantScope.t()
         ]
 
   @type decision :: :allow | {:allow, allow_opts()} | {:deny, String.t() | atom()}
@@ -111,6 +120,13 @@ defmodule Codex.Approvals.Hook do
   @callback review_file(event(), context(), opts()) :: review_result()
 
   @doc """
+  Review a request-permissions approval request (optional).
+
+  If not implemented, permissions requests are allowed by default.
+  """
+  @callback review_permissions(event(), context(), opts()) :: review_result()
+
+  @doc """
   Wait for an async approval decision.
 
   This callback is called when a review returned `{:async, ref}` and the
@@ -128,7 +144,11 @@ defmodule Codex.Approvals.Hook do
   @callback await(async_ref(), timeout :: pos_integer()) ::
               {:ok, decision()} | {:error, :timeout | term()}
 
-  @optional_callbacks prepare: 2, review_command: 3, review_file: 3, await: 2
+  @optional_callbacks prepare: 2,
+                      review_command: 3,
+                      review_file: 3,
+                      review_permissions: 3,
+                      await: 2
 
   @doc """
   Default prepare implementation that returns the context unchanged.

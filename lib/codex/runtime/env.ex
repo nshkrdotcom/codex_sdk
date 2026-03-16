@@ -4,6 +4,7 @@ defmodule Codex.Runtime.Env do
   """
 
   alias Codex.Config.BaseURL
+  alias Codex.Net.CA
 
   @originator_env "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
   @sdk_originator "codex_sdk_elixir"
@@ -14,6 +15,7 @@ defmodule Codex.Runtime.Env do
     |> maybe_put("CODEX_API_KEY", api_key)
     |> maybe_put("OPENAI_API_KEY", api_key)
     |> maybe_put_openai_base_url(base_url)
+    |> Map.merge(CA.env_overrides())
     |> Map.put_new(@originator_env, @sdk_originator)
   end
 
