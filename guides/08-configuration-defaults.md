@@ -136,8 +136,8 @@ is preferred over `SSL_CERT_FILE`, with blank values treated as unset.
 
 | Function | Default |
 |----------|---------|
-| `default_api_model/0` | `"gpt-5.3-codex"` |
-| `default_chatgpt_model/0` | `"gpt-5.3-codex"` |
+| `default_api_model/0` | `"gpt-5.4"` |
+| `default_chatgpt_model/0` | `"gpt-5.4"` |
 | `remote_models_cache_ttl_seconds/0` | 300 |
 
 ### Protocol Constants

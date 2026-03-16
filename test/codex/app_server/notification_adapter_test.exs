@@ -286,14 +286,14 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               %Events.ModelRerouted{
                 thread_id: "thr_1",
                 turn_id: "turn_1",
-                from_model: "gpt-5.3-codex",
+                from_model: "gpt-5.2-codex",
                 to_model: "gpt-5.4",
                 reason: :high_risk_cyber_activity
               }} =
                NotificationAdapter.to_event("model/rerouted", %{
                  "threadId" => "thr_1",
                  "turnId" => "turn_1",
-                 "fromModel" => "gpt-5.3-codex",
+                 "fromModel" => "gpt-5.2-codex",
                  "toModel" => "gpt-5.4",
                  "reason" => "highRiskCyberActivity"
                })

@@ -19,6 +19,24 @@ defmodule Codex.Protocol.CollaborationModeTest do
            } = CollaborationMode.from_map(data)
   end
 
+  test "from_map/1 accepts upstream nested settings" do
+    data = %{
+      "mode" => "plan",
+      "settings" => %{
+        "model" => "gpt-5.1-codex",
+        "reasoningEffort" => "high",
+        "developerInstructions" => "Keep it brief."
+      }
+    }
+
+    assert %CollaborationMode{
+             mode: :plan,
+             model: "gpt-5.1-codex",
+             reasoning_effort: :high,
+             developer_instructions: "Keep it brief."
+           } = CollaborationMode.from_map(data)
+  end
+
   test "to_map/1 encodes collaboration modes" do
     mode = %CollaborationMode{
       mode: :pair_programming,
@@ -29,8 +47,11 @@ defmodule Codex.Protocol.CollaborationModeTest do
 
     assert %{
              "mode" => "pair_programming",
-             "model" => "gpt-5.1-codex",
-             "reasoning_effort" => "low"
+             "settings" => %{
+               "model" => "gpt-5.1-codex",
+               "reasoning_effort" => "low",
+               "developer_instructions" => nil
+             }
            } = CollaborationMode.to_map(mode)
   end
 

@@ -7,7 +7,7 @@ defmodule LiveCollaborationModes do
   @moduledoc false
 
   @default_prompt "Give a 3-step plan to add coverage for the core modules."
-  @preferred_modes [:pair_programming, :code, :default, :plan, :execute, :custom]
+  @preferred_modes [:plan, :pair_programming, :code, :default, :execute, :custom]
 
   def main(argv) do
     case run(argv) do
@@ -30,9 +30,19 @@ defmodule LiveCollaborationModes do
 
     with {:ok, codex_opts} <-
            Options.new(%{codex_path_override: codex_path, reasoning_effort: :low}),
-         {:ok, conn} <- AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+         {:ok, conn, experimental_api?, fallback_reason} <-
+           connect_for_collaboration_modes(codex_opts) do
       try do
         IO.puts("collaboration_mode/list:")
+
+        if not experimental_api? do
+          IO.puts("""
+          experimentalApi initialize fallback:
+            #{format_connect_reason(fallback_reason)}
+          Reconnected without experimental app-server fields; this run will skip if the connected
+          build still does not advertise `collaborationMode/list`.
+          """)
+        end
 
         with {:ok, available_modes} <- list_supported_modes(conn),
              {:ok, selected_mode} <- choose_mode(available_modes) do
@@ -64,11 +74,11 @@ defmodule LiveCollaborationModes do
   end
 
   defp run_turn(codex_opts, conn, prompt, selected_mode) do
-    model = Models.default_model()
-    effort = Models.coerce_reasoning_effort(model, :low)
+    model = selected_mode.model || Models.default_model()
+    effort = selected_mode.reasoning_effort || Models.coerce_reasoning_effort(model, :low)
 
     mode = %CollaborationMode{
-      mode: selected_mode,
+      mode: selected_mode.mode,
       model: model,
       reasoning_effort: effort,
       developer_instructions: "Keep output brief and practical."
@@ -95,12 +105,14 @@ defmodule LiveCollaborationModes do
   end
 
   defp choose_mode(available_modes) when is_list(available_modes) do
-    case Enum.find(@preferred_modes, &(&1 in available_modes)) do
+    case Enum.find(@preferred_modes, fn preferred ->
+           Enum.any?(available_modes, &(&1.mode == preferred))
+         end) do
       nil ->
         {:skip, "no supported collaboration mode was advertised by this Codex build"}
 
       mode ->
-        {:ok, mode}
+        {:ok, Enum.find(available_modes, &(&1.mode == mode))}
     end
   end
 
@@ -112,18 +124,31 @@ defmodule LiveCollaborationModes do
 
   defp normalize_mode_entries(entries) do
     entries
-    |> Enum.flat_map(&normalize_mode_entry/1)
-    |> Enum.uniq()
+    |> Enum.map(&normalize_mode_entry/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq_by(& &1.mode)
   end
 
   defp normalize_mode_entry(entry) when is_binary(entry) do
     case normalize_mode_value(entry) do
-      nil -> []
-      mode -> [mode]
+      nil -> nil
+      mode -> %{mode: mode, model: nil, reasoning_effort: nil}
     end
   end
 
   defp normalize_mode_entry(%{} = entry) do
+    with mode when not is_nil(mode) <- normalize_mode_from_entry(entry) do
+      %{
+        mode: mode,
+        model: extract_mode_model(entry),
+        reasoning_effort: extract_mode_effort(entry)
+      }
+    end
+  end
+
+  defp normalize_mode_entry(_), do: nil
+
+  defp normalize_mode_from_entry(entry) do
     [
       Map.get(entry, "mode"),
       Map.get(entry, :mode),
@@ -135,10 +160,31 @@ defmodule LiveCollaborationModes do
       get_in(entry, [:preset, :mode])
     ]
     |> Enum.map(&normalize_mode_value/1)
-    |> Enum.reject(&is_nil/1)
+    |> Enum.find(& &1)
   end
 
-  defp normalize_mode_entry(_), do: []
+  defp extract_mode_model(entry) do
+    Map.get(entry, "model") ||
+      Map.get(entry, :model) ||
+      get_in(entry, ["settings", "model"]) ||
+      get_in(entry, [:settings, :model])
+  end
+
+  defp extract_mode_effort(entry) do
+    entry
+    |> List.wrap()
+    |> then(fn _ ->
+      Map.get(entry, "reasoning_effort") ||
+        Map.get(entry, :reasoning_effort) ||
+        Map.get(entry, "reasoningEffort") ||
+        Map.get(entry, :reasoningEffort) ||
+        get_in(entry, ["settings", "reasoning_effort"]) ||
+        get_in(entry, ["settings", "reasoningEffort"]) ||
+        get_in(entry, [:settings, :reasoning_effort]) ||
+        get_in(entry, [:settings, :reasoningEffort])
+    end)
+    |> normalize_effort_value()
+  end
 
   defp normalize_mode_value(value) when is_atom(value),
     do: normalize_mode_value(Atom.to_string(value))
@@ -159,6 +205,24 @@ defmodule LiveCollaborationModes do
 
   defp normalize_mode_value(_), do: nil
 
+  defp normalize_effort_value(nil), do: nil
+
+  defp normalize_effort_value(value) when is_atom(value) do
+    case Models.normalize_reasoning_effort(value) do
+      {:ok, effort} -> effort
+      _ -> nil
+    end
+  end
+
+  defp normalize_effort_value(value) when is_binary(value) do
+    case Models.normalize_reasoning_effort(value) do
+      {:ok, effort} -> effort
+      _ -> nil
+    end
+  end
+
+  defp normalize_effort_value(_), do: nil
+
   defp unsupported_capability?(message) do
     lowered = String.downcase(message)
 
@@ -166,6 +230,56 @@ defmodule LiveCollaborationModes do
       String.contains?(lowered, "requires experimentalapi capability") or
       String.contains?(lowered, "method not found")
   end
+
+  defp connect_for_collaboration_modes(codex_opts) do
+    experimental_opts = [init_timeout_ms: 30_000, experimental_api: true]
+
+    case AppServer.connect(codex_opts, experimental_opts) do
+      {:ok, conn} ->
+        {:ok, conn, true, nil}
+
+      {:error, {:init_failed, reason}} ->
+        if experimental_api_rejected?(reason) do
+          case AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+            {:ok, conn} ->
+              {:ok, conn, false, reason}
+
+            {:error, retry_reason} ->
+              {:error, {:experimental_api_init_failed, reason, retry_reason}}
+          end
+        else
+          {:error, {:init_failed, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp experimental_api_rejected?(%{} = reason) do
+    message =
+      reason
+      |> Map.get("message", Map.get(reason, :message, ""))
+      |> to_string()
+      |> String.downcase()
+
+    String.contains?(message, "experimentalapi") or
+      String.contains?(message, "experimental api") or
+      (String.contains?(message, "capabilities") and
+         (String.contains?(message, "unknown field") or
+            String.contains?(message, "unexpected field") or
+            String.contains?(message, "invalid params")))
+  end
+
+  defp experimental_api_rejected?(_reason), do: false
+
+  defp format_connect_reason(%{} = reason) do
+    reason
+    |> Map.take(["code", "message"])
+    |> inspect()
+  end
+
+  defp format_connect_reason(reason), do: inspect(reason)
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_argv), do: @default_prompt

@@ -508,7 +508,7 @@ defmodule Codex.EventsTest do
           "type" => "model/rerouted",
           "thread_id" => "thr_1",
           "turn_id" => "turn_1",
-          "from_model" => "gpt-5.3-codex",
+          "from_model" => "gpt-5.2-codex",
           "to_model" => "gpt-5.4",
           "reason" => "highRiskCyberActivity"
         })
@@ -516,7 +516,7 @@ defmodule Codex.EventsTest do
       assert %Events.ModelRerouted{
                thread_id: "thr_1",
                turn_id: "turn_1",
-               from_model: "gpt-5.3-codex",
+               from_model: "gpt-5.2-codex",
                to_model: "gpt-5.4",
                reason: :high_risk_cyber_activity
              } = reroute_event

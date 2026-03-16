@@ -20,4 +20,64 @@ defmodule Codex.Protocol.OpsTest do
              ]
            } = Ops.to_map(op)
   end
+
+  test "encodes granular approval policies with upstream external tagging" do
+    op =
+      Ops.new(:user_turn, %{
+        ask_for_approval: %{
+          granular: %{
+            sandbox_approval: true,
+            request_permissions: true
+          }
+        }
+      })
+
+    assert %{
+             "type" => "user_turn",
+             "approval_policy" => %{
+               "granular" => %{
+                 "sandbox_approval" => true,
+                 "rules" => false,
+                 "skill_approval" => false,
+                 "request_permissions" => true,
+                 "mcp_elicitations" => false
+               }
+             }
+           } = Ops.to_map(op)
+  end
+
+  test "surfaces malformed granular approval policies instead of dropping them" do
+    op =
+      Ops.new(:override_turn_context, %{
+        approval_policy: %{granular: %{request_permissions: "yes"}}
+      })
+
+    assert_raise ArgumentError, ~r/invalid approval_policy for protocol op/, fn ->
+      Ops.to_map(op)
+    end
+  end
+
+  test "normalizes collaboration mode maps to the upstream nested settings shape" do
+    op =
+      Ops.new(:user_turn, %{
+        collaboration_mode: %{
+          mode: :plan,
+          model: "gpt-5.1-codex",
+          reasoningEffort: :high,
+          developerInstructions: "Keep it brief."
+        }
+      })
+
+    assert %{
+             "type" => "user_turn",
+             "collaboration_mode" => %{
+               "mode" => "plan",
+               "settings" => %{
+                 "model" => "gpt-5.1-codex",
+                 "reasoning_effort" => "high",
+                 "developer_instructions" => "Keep it brief."
+               }
+             }
+           } = Ops.to_map(op)
+  end
 end

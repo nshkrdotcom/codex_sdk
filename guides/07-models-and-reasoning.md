@@ -7,7 +7,7 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the SDK default model (currently resolves to gpt-5.3-codex from the bundled catalog)
+# Use the SDK default model (currently resolves to gpt-5.4 from the bundled catalog)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
@@ -34,7 +34,7 @@ The SDK derives default text models in `Codex.Models`:
 
 The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
-to `gpt-5.3-codex` unless env overrides or a fresher ChatGPT `/models` cache win.
+to `gpt-5.4` unless env overrides or a fresher ChatGPT `/models` cache win.
 
 ### Environment Overrides
 
@@ -56,7 +56,7 @@ current auth mode:
 
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-#=> ["gpt-5.3-codex", ...]
+#=> ["gpt-5.4", ...]
 ```
 
 Each model preset includes:

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-DEFAULT_MODEL="gpt-5.3-codex"
+DEFAULT_MODEL="gpt-5.4"
 
 export CODEX_MODEL="${CODEX_MODEL:-${DEFAULT_MODEL}}"
 export CODEX_MODEL_DEFAULT="${CODEX_MODEL_DEFAULT:-${CODEX_MODEL}}"

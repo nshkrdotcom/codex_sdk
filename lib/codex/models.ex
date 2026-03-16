@@ -135,15 +135,8 @@ defmodule Codex.Models do
 
   # -- Upgrade target ----------------------------------------------------------
 
-  @default_model_upgrade %{
-    id: @default_api_model,
-    reasoning_effort_mapping: nil,
-    migration_config_key: @default_api_model,
-    model_link: nil,
-    upgrade_copy:
-      "Codex is now powered by #{@default_api_model}, our latest frontier agentic coding model. " <>
-        "It is smarter and faster than its predecessors and capable of long-running project-scale work."
-  }
+  @default_model_upgrade_copy "Codex is now powered by #{@default_api_model}, our latest frontier agentic coding model. " <>
+                                "It is smarter and faster than its predecessors and capable of long-running project-scale work."
 
   # -- Local model presets -----------------------------------------------------
   # Each preset uses `id` as the single source of truth for `model` and
@@ -156,6 +149,16 @@ defmodule Codex.Models do
                      supported_reasoning_efforts: @efforts_full,
                      is_default: true,
                      upgrade: nil,
+                     show_in_picker: true,
+                     supported_in_api: true,
+                     shell_type: :shell_command
+                   },
+                   %{
+                     id: "gpt-5.3-codex",
+                     description: "Frontier Codex-optimized agentic coding model.",
+                     supported_reasoning_efforts: @efforts_full,
+                     is_default: false,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -176,7 +179,7 @@ defmodule Codex.Models do
                      description: "Frontier agentic coding model.",
                      supported_reasoning_efforts: @efforts_full,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -186,7 +189,7 @@ defmodule Codex.Models do
                      description: "Codex-optimized flagship for deep and fast reasoning.",
                      supported_reasoning_efforts: @efforts_full,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -197,7 +200,7 @@ defmodule Codex.Models do
                        "Latest frontier model with improvements across knowledge, reasoning and coding",
                      supported_reasoning_efforts: @efforts_frontier_xhigh,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -207,7 +210,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex. Cheaper, faster, but less capable.",
                      supported_reasoning_efforts: @efforts_mini,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: true,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -217,7 +220,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex.",
                      supported_reasoning_efforts: @efforts_standard,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -227,7 +230,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex. Cheaper, faster, but less capable.",
                      supported_reasoning_efforts: @efforts_mini,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -237,7 +240,7 @@ defmodule Codex.Models do
                      description: "Optimized for codex.",
                      supported_reasoning_efforts: @efforts_standard,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
@@ -247,7 +250,7 @@ defmodule Codex.Models do
                      description: "Broad world knowledge with strong general reasoning.",
                      supported_reasoning_efforts: @efforts_gpt5,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :default
@@ -257,14 +260,30 @@ defmodule Codex.Models do
                      description: "Broad world knowledge with strong general reasoning.",
                      supported_reasoning_efforts: @efforts_frontier,
                      is_default: false,
-                     upgrade: @default_model_upgrade,
+                     upgrade: :default_model_upgrade,
                      show_in_picker: false,
                      supported_in_api: true,
                      shell_type: :shell_command
                    }
                  ]
                  |> Enum.map(fn preset ->
+                   upgrade =
+                     case Map.get(preset, :upgrade) do
+                       :default_model_upgrade ->
+                         %{
+                           id: @default_api_model,
+                           reasoning_effort_mapping: nil,
+                           migration_config_key: preset.id,
+                           model_link: nil,
+                           upgrade_copy: @default_model_upgrade_copy
+                         }
+
+                       other ->
+                         other
+                     end
+
                    preset
+                   |> Map.put(:upgrade, upgrade)
                    |> Map.put_new(:model, preset.id)
                    |> Map.put_new(:display_name, preset.id)
                    |> Map.put_new(:default_reasoning_effort, :medium)

@@ -91,7 +91,7 @@ Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. 
 ignored. The same PEM bundle is applied consistently to Codex CLI subprocesses, direct HTTP
 clients, remote model fetches, MCP HTTP/OAuth, realtime websockets, and voice HTTP requests.
 
-Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.3-codex` for API-auth flows unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, or `CODEX_MODEL_DEFAULT` overrides it.
+Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.4` with the bundled catalog unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, `CODEX_MODEL_DEFAULT`, or a fresher ChatGPT `/models` cache overrides it.
 
 The SDK always loads the bundled upstream model catalog from `priv/models.json`. When ChatGPT auth tokens are available it can still refresh `/models` and cache the result, but the old `features.remote_models` flag is no longer required for current catalog/default behavior.
 
@@ -168,7 +168,8 @@ App-server-only APIs include:
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
-and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
+and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
+repo-local marketplace fixture rather than your real plugin config.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
@@ -1027,7 +1028,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
-- **`live_collaboration_modes.exs`** - Collaboration mode presets and a live turn
+- **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn, with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes

@@ -313,6 +313,11 @@ initialized with `experimental_api: true`.
 
 See `examples/live_app_server_filesystem.exs` for a runnable `fs/*` walkthrough
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
+Those live scripts probe the connected build first and self-skip when current
+Codex binaries do not advertise the older parity methods. The plugin example
+creates a disposable repo-local marketplace fixture under the system temp
+directory, so it does not need an existing plugin install, does not require a
+prior Codex login, and does not mutate `$CODEX_HOME`.
 `examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live
 permissions approvals with granular `request_permissions: true`, retries without
 `experimentalApi` when the connected build rejects it, and prints a deterministic structured-grant

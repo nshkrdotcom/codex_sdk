@@ -60,8 +60,8 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.3-codex",
                "gpt-5.4",
+               "gpt-5.3-codex",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
@@ -77,8 +77,8 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.3-codex",
                "gpt-5.4",
+               "gpt-5.3-codex",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
@@ -151,8 +151,7 @@ defmodule Codex.ModelsTest do
           supported_in_api: true,
           upgrade: %{
             "model" => default_model(),
-            "migration_markdown" =>
-              "Learn more: https://openai.com/index/introducing-gpt-5-3-codex/"
+            "migration_markdown" => "Learn more: https://openai.com/index/introducing-gpt-5-4/"
           }
         )
       ])

@@ -799,7 +799,7 @@ end
 
 Configure based on environment.
 
-The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.3-codex`. The SDK always loads bundled upstream model metadata from `priv/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
+The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.4`. The SDK always loads bundled upstream model metadata from `priv/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
 For provider parity, layered config also honors `openai_base_url` and user-defined
 `[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and
@@ -1350,7 +1350,7 @@ end
 
 `examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or a CLI login) and mirrors the latest defaults:
 
-- Uses the SDK default model (`Codex.Models.default_model/0`, currently `gpt-5.3-codex` with the bundled catalog) and reasoning effort.
+- Uses the SDK default model (`Codex.Models.default_model/0`, currently `gpt-5.4` with the bundled catalog) and `:low` reasoning effort, coercing upward only when the selected model requires it.
 - Streams events, printing token-usage deltas and turn diffs as they arrive.
 - Captures explicit compaction notifications (including usage deltas) and merges them into the displayed token totals.
 - Prints the final agent response alongside merged usage.
@@ -1361,7 +1361,7 @@ Run it with:
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
 
-Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.3-codex` by default for reproducible live runs. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string, so overriding `CODEX_MODEL` is usually enough if you want a different model.
+Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.4` by default for reproducible live runs. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string and explicitly prefer `reasoning_effort: :low`, so overriding `CODEX_MODEL` is usually enough if you want a different model.
 
 ## Live Exec Controls
 
@@ -1405,7 +1405,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
-- `examples/live_collaboration_modes.exs` — lists collaboration presets and runs a turn
+- `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration presets, and runs a turn when the connected build advertises `collaborationMode/list`
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and validation
@@ -1433,8 +1433,14 @@ mix run examples/live_thread_management.exs
 ```
 
 `live_app_server_filesystem.exs` demonstrates the thin `fs/*` wrappers end to
-end, including base64 round-tripping. `live_app_server_plugins.exs` demonstrates
-`plugin/list` discovery followed by `plugin/read` detail loading.
+end, including base64 round-tripping, and self-skips when the connected build no
+longer advertises those legacy parity methods. `live_app_server_plugins.exs`
+creates a disposable repo-local marketplace and plugin bundle under the system
+temp directory, then demonstrates `plugin/list` discovery followed by
+`plugin/read` detail loading without mutating your real `CODEX_HOME`. Because
+the example never installs or enables that temporary plugin in user config,
+`installed` and `enabled` are expected to remain `false`, and no prior Codex
+login or plugin install is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
 `request_permissions: true` for live permissions requests on an `experimental_api: true`
 connection, retries without experimental fields when the connected build rejects them, and falls

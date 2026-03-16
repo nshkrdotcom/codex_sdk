@@ -19,45 +19,52 @@ defmodule CodexExamples.LiveAppServerPlugins do
   defp run do
     with {:ok, codex_path} <- fetch_codex_path(),
          :ok <- ensure_app_server_supported(codex_path),
-         :ok <- ensure_auth_available(),
-         {:ok, codex_opts} <-
-           Codex.Options.new(%{
-             codex_path_override: codex_path,
-             reasoning_effort: :low
-           }),
-         {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+         {:ok, fixture} <- build_demo_plugin_fixture() do
       try do
-        with :ok <- ensure_plugin_read_supported(conn),
-             {:ok, %{"marketplaces" => marketplaces} = list_result} <-
-               call_with_timeout(
-                 fn ->
-                   request_or_skip(
-                     Codex.AppServer.plugin_list(conn, cwds: [File.cwd!()]),
-                     "plugin"
-                   )
-                 end,
-                 10_000,
-                 "plugin/list timed out; retry after configuring plugins or marketplace access"
-               ),
-             {:ok, marketplace, plugin_summary} <- pick_first_plugin(marketplaces, list_result),
-             marketplace_path when is_binary(marketplace_path) <- Map.get(marketplace, "path"),
-             plugin_name when is_binary(plugin_name) <- Map.get(plugin_summary, "name"),
-             {:ok, %{"plugin" => plugin_detail}} <-
-               call_with_timeout(
-                 fn ->
-                   request_or_skip(
-                     Codex.AppServer.plugin_read(conn, marketplace_path, plugin_name),
-                     "plugin/read"
-                   )
-                 end,
-                 10_000,
-                 "plugin/read timed out while loading plugin details"
-               ) do
-          print_plugin_detail(plugin_detail)
-          :ok
+        with {:ok, codex_opts} <-
+               Codex.Options.new(%{
+                 codex_path_override: codex_path,
+                 reasoning_effort: :low
+               }),
+             {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+          try do
+            with :ok <- ensure_plugin_read_supported(conn),
+                 {:ok, %{"marketplaces" => marketplaces} = list_result} <-
+                   call_with_timeout(
+                     fn ->
+                       request_or_skip(
+                         Codex.AppServer.plugin_list(conn, cwds: [fixture.repo_root]),
+                         "plugin"
+                       )
+                     end,
+                     10_000,
+                     "plugin/list timed out while loading the temporary local marketplace"
+                   ),
+                 {:ok, marketplace, plugin_summary} <-
+                   pick_demo_plugin(marketplaces, list_result, fixture),
+                 marketplace_path when is_binary(marketplace_path) <-
+                   Map.get(marketplace, "path"),
+                 plugin_name when is_binary(plugin_name) <- Map.get(plugin_summary, "name"),
+                 {:ok, %{"plugin" => plugin_detail}} <-
+                   call_with_timeout(
+                     fn ->
+                       request_or_skip(
+                         Codex.AppServer.plugin_read(conn, marketplace_path, plugin_name),
+                         "plugin/read"
+                       )
+                     end,
+                     10_000,
+                     "plugin/read timed out while loading the temporary plugin details"
+                   ) do
+              print_plugin_detail(plugin_detail, fixture)
+              :ok
+            end
+          after
+            :ok = Codex.AppServer.disconnect(conn)
+          end
         end
       after
-        :ok = Codex.AppServer.disconnect(conn)
+        cleanup_fixture(fixture)
       end
     else
       {:skip, _reason} = skip ->
@@ -68,6 +75,102 @@ defmodule CodexExamples.LiveAppServerPlugins do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp build_demo_plugin_fixture do
+    suffix = System.unique_integer([:positive])
+    temp_root = Path.join(System.tmp_dir!(), "codex_plugin_example_#{suffix}")
+    repo_root = Path.join(temp_root, "repo")
+    marketplace_name = "codex-sdk-demo-marketplace-#{suffix}"
+    plugin_name = "codex-sdk-demo-plugin-#{suffix}"
+    plugin_root = Path.join(repo_root, "plugins/#{plugin_name}")
+    marketplace_path = Path.join(repo_root, ".agents/plugins/marketplace.json")
+
+    marketplace_json = """
+    {
+      "name": "#{marketplace_name}",
+      "plugins": [
+        {
+          "name": "#{plugin_name}",
+          "source": {
+            "source": "local",
+            "path": "./plugins/#{plugin_name}"
+          },
+          "installPolicy": "AVAILABLE",
+          "authPolicy": "ON_INSTALL",
+          "category": "Design"
+        }
+      ]
+    }
+    """
+
+    plugin_json = """
+    {
+      "name": "#{plugin_name}",
+      "description": "Local Codex SDK demo plugin loaded from a disposable fixture",
+      "interface": {
+        "displayName": "Codex SDK Demo Plugin",
+        "shortDescription": "Disposable plugin fixture for plugin/read parity checks",
+        "longDescription": "This plugin bundle is created under the system temp directory so the example can exercise plugin/list and plugin/read without mutating your real Codex home.",
+        "developerName": "OpenAI",
+        "category": "Productivity"
+      }
+    }
+    """
+
+    app_json = """
+    {
+      "apps": {
+        "gmail": {
+          "id": "gmail"
+        }
+      }
+    }
+    """
+
+    mcp_json = """
+    {
+      "mcpServers": {
+        "demo": {
+          "command": "demo-server"
+        }
+      }
+    }
+    """
+
+    with :ok <- File.mkdir_p(Path.join(repo_root, ".git")),
+         :ok <- File.mkdir_p(Path.join(repo_root, ".agents/plugins")),
+         :ok <- File.mkdir_p(Path.join(plugin_root, ".codex-plugin")),
+         :ok <- File.mkdir_p(Path.join(plugin_root, "skills/thread-summarizer")),
+         :ok <- File.write(marketplace_path, marketplace_json),
+         :ok <- File.write(Path.join(plugin_root, ".codex-plugin/plugin.json"), plugin_json),
+         :ok <-
+           File.write(
+             Path.join(plugin_root, "skills/thread-summarizer/SKILL.md"),
+             """
+             ---
+             name: thread-summarizer
+             description: Summarize email threads
+             ---
+
+             # Thread Summarizer
+             """
+           ),
+         :ok <- File.write(Path.join(plugin_root, ".app.json"), app_json),
+         :ok <- File.write(Path.join(plugin_root, ".mcp.json"), mcp_json) do
+      {:ok,
+       %{
+         temp_root: temp_root,
+         repo_root: repo_root,
+         marketplace_name: marketplace_name,
+         marketplace_path: marketplace_path,
+         plugin_name: plugin_name
+       }}
+    else
+      {:error, reason} ->
+        cleanup_fixture(%{temp_root: temp_root})
+        {:error, {:plugin_fixture_setup_failed, reason}}
     end
   end
 
@@ -113,30 +216,34 @@ defmodule CodexExamples.LiveAppServerPlugins do
     end
   end
 
-  defp pick_first_plugin(marketplaces, %{"remoteSyncError" => remote_sync_error})
+  defp pick_demo_plugin(marketplaces, %{"remoteSyncError" => remote_sync_error}, fixture)
        when is_list(marketplaces) do
-    case Enum.find(
-           marketplaces,
-           &(is_list(Map.get(&1, "plugins")) and Map.get(&1, "plugins") != [])
-         ) do
+    case Enum.find(marketplaces, &(Map.get(&1, "path") == fixture.marketplace_path)) do
       nil when is_binary(remote_sync_error) and remote_sync_error != "" ->
         {:skip,
-         "plugin/list returned no plugins and reported remoteSyncError: #{remote_sync_error}"}
+         "plugin/list did not surface the temporary marketplace and reported remoteSyncError: #{remote_sync_error}"}
 
       nil ->
         {:skip,
-         "plugin/list returned no plugins; enable plugins in Codex config or add a marketplace before rerunning"}
+         "plugin/list did not surface the temporary repo-local marketplace; this build may lack repo marketplace discovery parity"}
 
-      %{"plugins" => [plugin | _]} = marketplace ->
-        {:ok, marketplace, plugin}
+      %{"plugins" => plugins} = marketplace when is_list(plugins) ->
+        case Enum.find(plugins, &(Map.get(&1, "name") == fixture.plugin_name)) do
+          nil ->
+            {:skip,
+             "plugin/list returned the temporary marketplace but not the expected demo plugin"}
+
+          plugin ->
+            {:ok, marketplace, plugin}
+        end
     end
   end
 
-  defp pick_first_plugin(marketplaces, _response) when is_list(marketplaces) do
-    pick_first_plugin(marketplaces, %{})
+  defp pick_demo_plugin(marketplaces, _response, fixture) when is_list(marketplaces) do
+    pick_demo_plugin(marketplaces, %{}, fixture)
   end
 
-  defp print_plugin_detail(%{} = plugin) do
+  defp print_plugin_detail(%{} = plugin, fixture) do
     summary = Map.get(plugin, "summary") || %{}
     interface = Map.get(summary, "interface") || %{}
     skills = Map.get(plugin, "skills") || []
@@ -145,6 +252,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
 
     IO.puts("""
     App-server plugin/read demo completed.
+      fixture_root: #{fixture.temp_root}
       marketplace: #{Map.get(plugin, "marketplaceName")}
       marketplace_path: #{Map.get(plugin, "marketplacePath")}
       id: #{Map.get(summary, "id")}
@@ -154,6 +262,11 @@ defmodule CodexExamples.LiveAppServerPlugins do
       enabled: #{inspect(Map.get(summary, "enabled"))}
       install_policy: #{inspect(Map.get(summary, "installPolicy"))}
       auth_policy: #{inspect(Map.get(summary, "authPolicy"))}
+    """)
+
+    IO.puts("""
+    Note: this example creates a disposable local marketplace fixture under the system temp
+    directory and never touches your real CODEX_HOME, so installed/enabled should usually be false.
     """)
 
     if description = Map.get(plugin, "description") do
@@ -211,13 +324,10 @@ defmodule CodexExamples.LiveAppServerPlugins do
     end
   end
 
-  defp ensure_auth_available do
-    if Codex.Auth.api_key() || Codex.Auth.chatgpt_access_token() do
-      :ok
-    else
-      {:skip, "authenticate with `codex login` or set CODEX_API_KEY before running this example"}
-    end
-  end
+  defp cleanup_fixture(%{temp_root: temp_root}) when is_binary(temp_root),
+    do: File.rm_rf(temp_root)
+
+  defp cleanup_fixture(_fixture), do: :ok
 end
 
 CodexExamples.LiveAppServerPlugins.main(System.argv())

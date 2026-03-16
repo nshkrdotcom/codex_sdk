@@ -21,12 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Codex.AppServer.thread_compact/2` now targets upstream `thread/compact/start` instead of the deprecated `thread/compact`.
 - User-input handling across app-server and exec JSONL now supports `skill` and `mention` blocks.
-- Model default selection is now catalog-derived from bundled `priv/models.json` instead of hardcoded, defaulting to `gpt-5.3-codex` unless env overrides or fresher ChatGPT catalog data take precedence.
+- Model default selection is now catalog-derived from bundled `priv/models.json` instead of hardcoded, defaulting to `gpt-5.4` unless env overrides or fresher ChatGPT catalog data take precedence.
 - Bundled `priv/models.json` re-synced with upstream; `features.remote_models` is no longer required for normal catalog/default behavior.
 - Config layer loading rewritten with real TOML parsing, trust-aware project-layer enablement, cwd `config.toml` project support, and sibling `requirements.toml` merging for system config.
 - App-server `Params` module expanded with builders for all new request families.
 - App-server `Account` module updated for current upstream account fields.
-- Documentation, guides, and example runners updated to reflect catalog-driven model defaults instead of `gpt-5.4` / `features.remote_models` assumptions.
+- Documentation, guides, and example runners updated to reflect catalog-driven model defaults instead of stale `gpt-5.3-codex` / `features.remote_models` assumptions.
 - Added `toml` dependency for config layer TOML parsing.
 
 ### Fixed

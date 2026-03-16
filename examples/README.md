@@ -9,7 +9,7 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via erlexec subprocess
    - Uses `codex login` authentication (no separate API key needed)
-   - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.3-codex` from the bundled catalog unless env overrides win)
+   - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.4` from the bundled catalog unless env overrides or a fresher ChatGPT `/models` cache win)
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
@@ -17,7 +17,7 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL` to the current bundled default (`gpt-5.3-codex`) for reproducibility; override it by exporting `CODEX_MODEL` before running. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model requires a higher minimum.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL` to `gpt-5.4` for reproducibility; override it by exporting `CODEX_MODEL` before running. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model or live collaboration-mode preset requires a higher minimum.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 For TLS interception or private roots, set `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE`
@@ -55,12 +55,12 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
-- `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove)
-- `examples/live_app_server_plugins.exs` — `plugin/list` discovery plus `plugin/read` detail loading
+- `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
+- `examples/live_app_server_plugins.exs` — provisions a disposable local marketplace under the system temp directory, then exercises `plugin/list` + `plugin/read` without mutating `~/.codex` or requiring a preinstalled plugin; self-skips when the connected CLI build does not advertise `plugin/read`
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
 - `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi` for live permissions/guardian events when supported, and prints a structured-grant fallback plus guardian/request-resolution events when needed
 - `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
-- `examples/live_collaboration_modes.exs` — lists collaboration mode presets and runs a turn with a supported preset (or skips when the connected CLI build lacks collaboration-mode capability)
+- `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration mode presets, and runs a turn with a supported preset (or skips when the connected CLI build rejects that capability or omits `collaborationMode/list`)
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
 - `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
 - `examples/live_web_search_modes.exs` — demonstrates `web_search_mode` toggles, validates disabled/live behavior, and reports cached-mode search events when available

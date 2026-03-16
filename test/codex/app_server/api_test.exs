@@ -537,7 +537,15 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params["personality"] == "friendly"
     assert %{"type" => "object"} = params["outputSchema"]
-    assert %{"mode" => "plan", "model" => "gpt-5.1-codex"} = params["collaborationMode"]
+
+    assert %{
+             "mode" => "plan",
+             "settings" => %{
+               "model" => "gpt-5.1-codex",
+               "reasoning_effort" => "high",
+               "developer_instructions" => "Plan carefully."
+             }
+           } = params["collaborationMode"]
 
     send(
       conn,
@@ -553,7 +561,7 @@ defmodule Codex.AppServer.ApiTest do
   test "turn_start/4 encodes pair_programming collaboration mode", %{conn: conn, os_pid: os_pid} do
     collab = %Codex.Protocol.CollaborationMode{
       mode: :pair_programming,
-      model: "gpt-5.3-codex",
+      model: "gpt-5.4",
       reasoning_effort: :medium,
       developer_instructions: "Keep output practical."
     }
@@ -568,7 +576,14 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
              Jason.decode(request_line)
 
-    assert %{"mode" => "pair_programming", "model" => "gpt-5.3-codex"} =
+    assert %{
+             "mode" => "pair_programming",
+             "settings" => %{
+               "model" => "gpt-5.4",
+               "reasoning_effort" => "medium",
+               "developer_instructions" => "Keep output practical."
+             }
+           } =
              params["collaborationMode"]
 
     send(

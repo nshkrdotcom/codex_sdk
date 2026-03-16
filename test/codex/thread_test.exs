@@ -148,6 +148,25 @@ defmodule Codex.ThreadTest do
                })
     end
 
+    test "accepts upstream nested collaboration mode settings" do
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          collaboration_mode: %{
+            mode: "plan",
+            settings: %{
+              model: "gpt-5.1-codex",
+              reasoningEffort: "high",
+              developerInstructions: "Keep it brief."
+            }
+          }
+        })
+
+      assert opts.collaboration_mode.mode == :plan
+      assert opts.collaboration_mode.model == "gpt-5.1-codex"
+      assert opts.collaboration_mode.reasoning_effort == :high
+      assert opts.collaboration_mode.developer_instructions == "Keep it brief."
+    end
+
     test "defaults web search to cached mode" do
       {:ok, opts} = ThreadOptions.new(%{})
 

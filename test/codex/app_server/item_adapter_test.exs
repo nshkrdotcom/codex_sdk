@@ -109,7 +109,7 @@ defmodule Codex.AppServer.ItemAdapterTest do
         "senderThreadId" => "thread_sender",
         "receiverThreadIds" => ["thread_receiver"],
         "prompt" => "delegate this",
-        "model" => "gpt-5.3-codex",
+        "model" => "gpt-5.4",
         "reasoningEffort" => "high",
         "agentsStates" => %{"thread_receiver" => %{"status" => "running"}}
       }
@@ -122,7 +122,7 @@ defmodule Codex.AppServer.ItemAdapterTest do
                 sender_thread_id: "thread_sender",
                 receiver_thread_ids: ["thread_receiver"],
                 prompt: "delegate this",
-                model: "gpt-5.3-codex",
+                model: "gpt-5.4",
                 reasoning_effort: "high",
                 agents_states: %{"thread_receiver" => %{"status" => "running"}}
               }} = ItemAdapter.to_item(collab_item)

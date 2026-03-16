@@ -5,6 +5,7 @@ defmodule Codex.Protocol.Ops do
 
   use TypedStruct
 
+  alias Codex.ApprovalPolicy
   alias Codex.Models
 
   alias Codex.Protocol.{
@@ -537,7 +538,13 @@ defmodule Codex.Protocol.Ops do
 
   defp encode_collaboration_mode(nil), do: nil
   defp encode_collaboration_mode(%CollaborationMode{} = mode), do: CollaborationMode.to_map(mode)
-  defp encode_collaboration_mode(%{} = mode), do: mode
+
+  defp encode_collaboration_mode(%{} = mode) do
+    mode
+    |> CollaborationMode.from_map()
+    |> CollaborationMode.to_map()
+  end
+
   defp encode_collaboration_mode(other), do: other
 
   defp encode_personality(nil), do: nil
@@ -571,17 +578,16 @@ defmodule Codex.Protocol.Ops do
     end
   end
 
-  defp encode_approval_policy(nil), do: nil
-  defp encode_approval_policy(:untrusted), do: "untrusted"
-  defp encode_approval_policy(:on_failure), do: "on-failure"
-  defp encode_approval_policy(:on_request), do: "on-request"
-  defp encode_approval_policy(:never), do: "never"
-  defp encode_approval_policy("untrusted"), do: "untrusted"
-  defp encode_approval_policy("on-failure"), do: "on-failure"
-  defp encode_approval_policy("on-request"), do: "on-request"
-  defp encode_approval_policy("never"), do: "never"
-  defp encode_approval_policy(value) when is_binary(value), do: value
-  defp encode_approval_policy(_), do: nil
+  defp encode_approval_policy(value) do
+    case ApprovalPolicy.to_external(value) do
+      {:ok, encoded} ->
+        encoded
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "invalid approval_policy for protocol op: #{inspect(reason)}"
+    end
+  end
 
   defp encode_sandbox_policy(nil), do: nil
   defp encode_sandbox_policy(%{} = policy), do: normalize_sandbox_policy(policy)
