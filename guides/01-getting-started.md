@@ -140,6 +140,11 @@ and resume them:
 App-server is also where upstream `fs/*`, `plugin/read`, structured permissions approvals,
 guardian review notifications, and `serverRequest/resolved` events are exposed.
 
+When you need the managed app-server child to run against a temporary repo or
+isolated `CODEX_HOME`, pass `cwd:` and `process_env:` to
+`Codex.AppServer.connect/2`. Thread working directories are still configured per
+thread.
+
 See `guides/05-app-server-transport.md` for the app-server guide.
 
 ## Realtime and Voice

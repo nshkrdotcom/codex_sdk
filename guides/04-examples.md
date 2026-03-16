@@ -1436,9 +1436,10 @@ mix run examples/live_thread_management.exs
 end, including base64 round-tripping, and self-skips when the connected build no
 longer advertises those legacy parity methods. `live_app_server_plugins.exs`
 creates a disposable repo-local marketplace and plugin bundle under the system
-temp directory, then demonstrates `plugin/list` discovery followed by
-`plugin/read` detail loading without mutating your real `CODEX_HOME`. Because
-the example never installs or enables that temporary plugin in user config,
+temp directory, launches `codex app-server` with an isolated child `cwd` plus a
+temporary `CODEX_HOME`, then demonstrates `plugin/list` discovery followed by
+`plugin/read` detail loading without mutating your real Codex config. Because
+the example never installs or enables that temporary plugin in the isolated home,
 `installed` and `enabled` are expected to remain `false`, and no prior Codex
 login or plugin install is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular

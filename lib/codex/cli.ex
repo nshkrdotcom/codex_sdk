@@ -481,7 +481,7 @@ defmodule Codex.CLI do
   defp build_env(%Options{} = codex_opts, opts) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
 
-    with {:ok, custom_env} <- normalize_process_env(process_env) do
+    with {:ok, custom_env} <- RuntimeEnv.normalize_overrides(process_env) do
       base_env =
         RuntimeEnv.base_overrides(codex_opts.api_key, codex_opts.base_url)
 
@@ -498,25 +498,6 @@ defmodule Codex.CLI do
 
       {:ok, env}
     end
-  end
-
-  defp normalize_process_env(nil), do: {:ok, %{}}
-  defp normalize_process_env(%{} = env), do: {:ok, stringify_map(env)}
-
-  defp normalize_process_env(env) when is_list(env) do
-    if Keyword.keyword?(env) do
-      {:ok, env |> Map.new() |> stringify_map()}
-    else
-      {:error, {:invalid_env, env}}
-    end
-  end
-
-  defp normalize_process_env(env), do: {:error, {:invalid_env, env}}
-
-  defp stringify_map(map) do
-    map
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Enum.into(%{}, fn {key, value} -> {to_string(key), to_string(value)} end)
   end
 
   defp preserved_env do

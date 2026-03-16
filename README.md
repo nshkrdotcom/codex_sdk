@@ -141,6 +141,26 @@ When you need experimental app-server fields such as `approvals_reviewer` or
 granular approval policies, create the connection with
 `Codex.AppServer.connect(codex_opts, experimental_api: true)`.
 
+When the managed `codex app-server` child should run against an isolated repo or
+temporary Codex home, pass launch overrides to `connect/2` itself:
+
+```elixir
+tmp_home = Path.join(System.tmp_dir!(), "codex-sdk-app-server-home")
+
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    cwd: "/project",
+    process_env: %{
+      "CODEX_HOME" => tmp_home,
+      "HOME" => Path.dirname(tmp_home),
+      "USERPROFILE" => Path.dirname(tmp_home)
+    }
+  )
+```
+
+`cwd` and `process_env` apply to the app-server child process. Per-thread working
+directories still belong on `working_directory` / `cwd` thread params.
+
 Multi-modal input is supported on app-server transport:
 
 ```elixir
@@ -169,7 +189,8 @@ App-server-only APIs include:
 
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
-repo-local marketplace fixture rather than your real plugin config.
+repo-local marketplace fixture plus an isolated temporary `CODEX_HOME`, rather than your real
+plugin config.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
@@ -924,7 +945,9 @@ endpoint = "https://otel.example.com:4317"
 ```
 
 See `codex/docs/config.md` for the full upstream reference. To point Codex at an isolated config
-directory from the SDK, pass `env: %{"CODEX_HOME" => "/path/to/codex_home"}` in turn options.
+directory from the SDK, pass `env: %{"CODEX_HOME" => "/path/to/codex_home"}` in turn options for
+exec transport, or `Codex.AppServer.connect(codex_opts, process_env: %{"CODEX_HOME" => ...})`
+for a managed app-server child.
 
 ## Architecture
 

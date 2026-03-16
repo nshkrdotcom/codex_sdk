@@ -75,6 +75,7 @@ defmodule Codex.TestSupport.AppServerSubprocess do
       end
 
     Kernel.send(owner, {:app_server_subprocess_started, subscriber_pid, tag})
+    Kernel.send(owner, {:app_server_subprocess_start_opts, subscriber_pid, tag, opts})
 
     {:ok,
      %__MODULE__{

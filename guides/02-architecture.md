@@ -31,6 +31,9 @@ Transport selection is per-thread via `Codex.Thread.Options.transport`:
 {:ok, thread_opts} = Codex.Thread.Options.new(%{transport: {:app_server, conn}})
 ```
 
+`Codex.AppServer.connect/2` can also isolate the managed child with `cwd:` and
+`process_env:` launch overrides when you need a temporary `CODEX_HOME`.
+
 Across both transports, TLS configuration is centralized in `Codex.Net.CA`: subprocess
 environment injection, Req clients, `:httpc`, and realtime websocket SSL options all resolve
 `CODEX_CA_CERTIFICATE` first, then `SSL_CERT_FILE`.

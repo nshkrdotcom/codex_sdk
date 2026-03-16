@@ -116,11 +116,14 @@ defmodule Codex.AppServer.Connection do
 
     with :ok <- maybe_ensure_erlexec(transport_mod),
          {:ok, command} <- build_command(codex_opts),
+         {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
+         {:ok, env} <- build_env(codex_opts, opts),
          {:ok, transport} <-
            transport_mod.start_link(
              [
                command: command,
-               env: build_env(codex_opts),
+               cwd: cwd,
+               env: env,
                subscriber: {self(), transport_ref}
              ] ++ transport_opts
            ) do
@@ -652,14 +655,28 @@ defmodule Codex.AppServer.Connection do
 
   defp stop_subprocess(%State{}), do: :ok
 
-  defp build_env(%Options{} = opts) do
-    opts.api_key
-    |> RuntimeEnv.base_overrides(opts.base_url)
-    |> RuntimeEnv.to_charlist_env()
+  defp build_env(%Options{} = codex_opts, opts) when is_list(opts) do
+    process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
+
+    with {:ok, custom_env} <- RuntimeEnv.normalize_overrides(process_env) do
+      codex_opts.api_key
+      |> RuntimeEnv.base_overrides(codex_opts.base_url)
+      |> Map.merge(custom_env, fn _key, _base, custom -> custom end)
+      |> RuntimeEnv.to_charlist_env()
+      |> then(&{:ok, &1})
+    end
   end
 
   defp default_client_version, do: Defaults.client_version()
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_cwd(nil), do: {:ok, nil}
+
+  defp normalize_cwd(cwd) when is_binary(cwd) do
+    if String.trim(cwd) == "", do: {:error, {:invalid_cwd, cwd}}, else: {:ok, cwd}
+  end
+
+  defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
 end

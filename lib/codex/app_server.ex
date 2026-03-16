@@ -11,16 +11,31 @@ defmodule Codex.AppServer do
 
   @type connection :: pid()
 
+  @typedoc """
+  Options for launching and initializing a managed `codex app-server` child process.
+
+  `cwd` and `process_env` / `env` apply to the child process itself. Per-thread working
+  directories still belong on `thread/start`, `thread/resume`, or `Codex.Thread.Options`.
+  """
   @type connect_opts :: [
           init_timeout_ms: pos_integer(),
           client_name: String.t(),
           client_title: String.t(),
           client_version: String.t(),
-          experimental_api: boolean()
+          experimental_api: boolean(),
+          cwd: String.t(),
+          process_env: map() | keyword(),
+          env: map() | keyword()
         ]
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
 
+  @doc """
+  Starts a supervised `codex app-server` subprocess and completes the `initialize` handshake.
+
+  Use `cwd` and `process_env` (or the `env` alias) when the app-server child must run with an
+  isolated working directory or `CODEX_HOME` without mutating the caller's shell environment.
+  """
   @spec connect(Options.t(), connect_opts()) :: {:ok, connection()} | {:error, term()}
   def connect(%Options{} = codex_opts, opts \\ []) do
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)

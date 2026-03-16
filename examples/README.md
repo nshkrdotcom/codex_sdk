@@ -56,7 +56,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
-- `examples/live_app_server_plugins.exs` — provisions a disposable local marketplace under the system temp directory, then exercises `plugin/list` + `plugin/read` without mutating `~/.codex` or requiring a preinstalled plugin; self-skips when the connected CLI build does not advertise `plugin/read`
+- `examples/live_app_server_plugins.exs` — provisions a disposable local marketplace under the system temp directory, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises `plugin/list` + `plugin/read` without mutating `~/.codex` or requiring a preinstalled plugin; self-skips when the connected CLI build does not advertise `plugin/read`
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
 - `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi` for live permissions/guardian events when supported, and prints a structured-grant fallback plus guardian/request-resolution events when needed
 - `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names

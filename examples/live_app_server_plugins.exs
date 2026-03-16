@@ -26,7 +26,12 @@ defmodule CodexExamples.LiveAppServerPlugins do
                  codex_path_override: codex_path,
                  reasoning_effort: :low
                }),
-             {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
+             {:ok, conn} <-
+               Codex.AppServer.connect(codex_opts,
+                 cwd: fixture.repo_root,
+                 process_env: isolated_process_env(fixture),
+                 init_timeout_ms: 30_000
+               ) do
           try do
             with :ok <- ensure_plugin_read_supported(conn),
                  {:ok, %{"marketplaces" => marketplaces} = list_result} <-
@@ -82,6 +87,8 @@ defmodule CodexExamples.LiveAppServerPlugins do
     suffix = System.unique_integer([:positive])
     temp_root = Path.join(System.tmp_dir!(), "codex_plugin_example_#{suffix}")
     repo_root = Path.join(temp_root, "repo")
+    home_root = Path.join(temp_root, "home")
+    codex_home = Path.join(home_root, ".codex")
     marketplace_name = "codex-sdk-demo-marketplace-#{suffix}"
     plugin_name = "codex-sdk-demo-plugin-#{suffix}"
     plugin_root = Path.join(repo_root, "plugins/#{plugin_name}")
@@ -140,6 +147,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
     """
 
     with :ok <- File.mkdir_p(Path.join(repo_root, ".git")),
+         :ok <- File.mkdir_p(codex_home),
          :ok <- File.mkdir_p(Path.join(repo_root, ".agents/plugins")),
          :ok <- File.mkdir_p(Path.join(plugin_root, ".codex-plugin")),
          :ok <- File.mkdir_p(Path.join(plugin_root, "skills/thread-summarizer")),
@@ -163,6 +171,8 @@ defmodule CodexExamples.LiveAppServerPlugins do
        %{
          temp_root: temp_root,
          repo_root: repo_root,
+         home_root: home_root,
+         codex_home: codex_home,
          marketplace_name: marketplace_name,
          marketplace_path: marketplace_path,
          plugin_name: plugin_name
@@ -253,6 +263,8 @@ defmodule CodexExamples.LiveAppServerPlugins do
     IO.puts("""
     App-server plugin/read demo completed.
       fixture_root: #{fixture.temp_root}
+      app_server_cwd: #{fixture.repo_root}
+      isolated_codex_home: #{fixture.codex_home}
       marketplace: #{Map.get(plugin, "marketplaceName")}
       marketplace_path: #{Map.get(plugin, "marketplacePath")}
       id: #{Map.get(summary, "id")}
@@ -265,8 +277,10 @@ defmodule CodexExamples.LiveAppServerPlugins do
     """)
 
     IO.puts("""
-    Note: this example creates a disposable local marketplace fixture under the system temp
-    directory and never touches your real CODEX_HOME, so installed/enabled should usually be false.
+    Note: this example launches `codex app-server` with an isolated child `cwd` and
+    temporary `CODEX_HOME`, so it never touches your real Codex config. Because it only
+    exercises `plugin/list` + `plugin/read` and does not install the plugin, `installed`
+    and `enabled` should usually remain false.
     """)
 
     if description = Map.get(plugin, "description") do
@@ -328,6 +342,14 @@ defmodule CodexExamples.LiveAppServerPlugins do
     do: File.rm_rf(temp_root)
 
   defp cleanup_fixture(_fixture), do: :ok
+
+  defp isolated_process_env(fixture) do
+    [
+      CODEX_HOME: fixture.codex_home,
+      HOME: fixture.home_root,
+      USERPROFILE: fixture.home_root
+    ]
+  end
 end
 
 CodexExamples.LiveAppServerPlugins.main(System.argv())

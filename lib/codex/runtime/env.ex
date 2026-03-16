@@ -19,6 +19,25 @@ defmodule Codex.Runtime.Env do
     |> Map.put_new(@originator_env, @sdk_originator)
   end
 
+  @doc false
+  @spec normalize_overrides(map() | keyword() | nil) ::
+          {:ok, map()} | {:error, {:invalid_env, term()}}
+  def normalize_overrides(env) when env in [%{}, nil, []], do: {:ok, %{}}
+
+  def normalize_overrides(env) when is_map(env) do
+    {:ok, stringify_map(env)}
+  end
+
+  def normalize_overrides(env) when is_list(env) do
+    if Keyword.keyword?(env) do
+      {:ok, env |> Map.new() |> stringify_map()}
+    else
+      {:error, {:invalid_env, env}}
+    end
+  end
+
+  def normalize_overrides(env), do: {:error, {:invalid_env, env}}
+
   @spec to_charlist_env(map()) :: [{String.t(), String.t()}]
   def to_charlist_env(env) when is_map(env) do
     Enum.map(env, fn {key, value} -> {to_string(key), to_string(value)} end)
@@ -48,4 +67,10 @@ defmodule Codex.Runtime.Env do
   end
 
   defp normalize(value), do: to_string(value)
+
+  defp stringify_map(map) do
+    map
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Enum.into(%{}, fn {key, value} -> {to_string(key), to_string(value)} end)
+  end
 end

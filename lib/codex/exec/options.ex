@@ -3,6 +3,7 @@ defmodule Codex.Exec.Options do
 
   alias Codex.Files.Attachment
   alias Codex.Options
+  alias Codex.Runtime.Env, as: RuntimeEnv
 
   @enforce_keys [:codex_opts]
   defstruct codex_opts: nil,
@@ -106,36 +107,7 @@ defmodule Codex.Exec.Options do
   defp ensure_list(nil, _field), do: {:ok, []}
   defp ensure_list(value, field), do: {:error, {:invalid_list, field, value}}
 
-  defp normalize_env(env) when env in [%{}, nil, []], do: {:ok, %{}}
-
-  defp normalize_env(env) when is_map(env) do
-    normalized =
-      env
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Enum.into(%{}, fn {key, value} ->
-        {to_string(key), normalize_env_value(value)}
-      end)
-
-    {:ok, normalized}
-  end
-
-  defp normalize_env(env) when is_list(env) do
-    if Keyword.keyword?(env) do
-      env
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Enum.into(%{}, fn {key, value} ->
-        {to_string(key), normalize_env_value(value)}
-      end)
-      |> then(&{:ok, &1})
-    else
-      {:error, {:invalid_env, env}}
-    end
-  end
-
-  defp normalize_env(env), do: {:error, {:invalid_env, env}}
-
-  defp normalize_env_value(value) when is_binary(value), do: value
-  defp normalize_env_value(value), do: to_string(value)
+  defp normalize_env(env), do: RuntimeEnv.normalize_overrides(env)
 
   defp validate_cancellation_token(nil), do: :ok
 

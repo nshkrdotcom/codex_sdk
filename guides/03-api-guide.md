@@ -112,6 +112,11 @@ Select transport per-thread via `Codex.Thread.Options.transport`:
 When you need experimental app-server fields such as `approvals_reviewer` or
 granular approval policies, connect with `experimental_api: true`.
 
+When the managed app-server child itself needs an isolated working directory or
+temporary `CODEX_HOME`, pass `cwd:` and `process_env:` to `connect/2`. Those
+launch options affect the child process; per-thread cwd still belongs on thread
+params.
+
 For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
 conversation APIs.
 

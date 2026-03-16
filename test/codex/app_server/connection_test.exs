@@ -60,6 +60,63 @@ defmodule Codex.AppServer.ConnectionTest do
     assert :ok == Connection.await_ready(conn, 200)
   end
 
+  test "launch options forward cwd and merged child env overrides", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        cwd: "/tmp/codex-app-server-fixture",
+        env: [CODEX_HOME: "/tmp/ignored-home"],
+        process_env: [
+          CODEX_HOME: "/tmp/isolated-codex-home",
+          HOME: "/tmp/isolated-codex-home",
+          USERPROFILE: "/tmp/isolated-codex-home",
+          EXTRA_FLAG: 123
+        ],
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+    assert start_opts[:cwd] == "/tmp/codex-app-server-fixture"
+
+    env =
+      start_opts
+      |> Keyword.fetch!(:env)
+      |> Map.new()
+
+    assert env["CODEX_HOME"] == "/tmp/isolated-codex-home"
+    assert env["HOME"] == "/tmp/isolated-codex-home"
+    assert env["USERPROFILE"] == "/tmp/isolated-codex-home"
+    assert env["EXTRA_FLAG"] == "123"
+    assert env["CODEX_API_KEY"] == "test"
+    assert env["OPENAI_API_KEY"] == "test"
+    assert env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "codex_sdk_elixir"
+  end
+
+  test "launch options reject invalid child env overrides", %{codex_opts: codex_opts} do
+    assert {:error, {:invalid_env, ["/tmp/not-a-keyword"]}} =
+             Connection.start_link(codex_opts,
+               transport: {AppServerSubprocess, owner: self()},
+               process_env: ["/tmp/not-a-keyword"],
+               init_timeout_ms: 200
+             )
+
+    refute_receive {:app_server_subprocess_started, _, _}
+  end
+
+  test "launch options reject invalid cwd overrides", %{codex_opts: codex_opts} do
+    assert {:error, {:invalid_cwd, 123}} =
+             Connection.start_link(codex_opts,
+               transport: {AppServerSubprocess, owner: self()},
+               cwd: 123,
+               init_timeout_ms: 200
+             )
+
+    refute_receive {:app_server_subprocess_started, _, _}
+  end
+
   test "init failure stops subprocess when initialize send fails", %{codex_opts: codex_opts} do
     assert {:error, :send_failed} =
              Connection.start_link(codex_opts,

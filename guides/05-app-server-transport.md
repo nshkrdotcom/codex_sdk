@@ -38,6 +38,32 @@ Pass `experimental_api: true` when you need upstream experimental fields such as
 :ok = Codex.AppServer.disconnect(conn)
 ```
 
+### Child cwd and environment isolation
+
+`Codex.AppServer.connect/2` can also isolate the managed child process itself:
+
+```elixir
+tmp_home = Path.join(System.tmp_dir!(), "codex-sdk-app-server-home")
+
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    cwd: "/path/to/project",
+    process_env: %{
+      "CODEX_HOME" => tmp_home,
+      "HOME" => Path.dirname(tmp_home),
+      "USERPROFILE" => Path.dirname(tmp_home)
+    }
+  )
+```
+
+Use this when you need hermetic plugin/config examples or a temporary `CODEX_HOME`
+without mutating the caller's shell state. `process_env` is the preferred name;
+`env` is accepted as an alias for parity with `Codex.CLI.start/2`.
+
+These launch options apply to the app-server child process. Per-thread working
+directories still belong on `thread/start`, `thread/resume`, or
+`Codex.Thread.Options`.
+
 ### Client identity
 
 You can identify your application in the handshake:
@@ -316,8 +342,9 @@ and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
 Those live scripts probe the connected build first and self-skip when current
 Codex binaries do not advertise the older parity methods. The plugin example
 creates a disposable repo-local marketplace fixture under the system temp
-directory, so it does not need an existing plugin install, does not require a
-prior Codex login, and does not mutate `$CODEX_HOME`.
+directory, launches the child process with an isolated temporary `CODEX_HOME`,
+and therefore does not need an existing plugin install, does not require a
+prior Codex login, and does not mutate your real `$CODEX_HOME`.
 `examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live
 permissions approvals with granular `request_permissions: true`, retries without
 `experimentalApi` when the connected build rejects it, and prints a deterministic structured-grant

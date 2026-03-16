@@ -36,4 +36,21 @@ defmodule Codex.Runtime.EnvTest do
     assert overrides["CODEX_CA_CERTIFICATE"] == "/tmp/ssl.pem"
     assert overrides["SSL_CERT_FILE"] == "/tmp/ssl.pem"
   end
+
+  test "normalize_overrides accepts maps and keywords and stringifies values" do
+    assert {:ok, %{"CODEX_HOME" => "/tmp/codex-home", "EXTRA_FLAG" => "123"}} =
+             Env.normalize_overrides(%{
+               CODEX_HOME: "/tmp/codex-home",
+               EXTRA_FLAG: 123,
+               OMIT_ME: nil
+             })
+
+    assert {:ok, %{"HOME" => "/tmp/home", "USERPROFILE" => "/tmp/home"}} =
+             Env.normalize_overrides(HOME: "/tmp/home", USERPROFILE: "/tmp/home", EMPTY: nil)
+  end
+
+  test "normalize_overrides rejects non-keyword lists" do
+    assert {:error, {:invalid_env, ["/tmp/not-a-keyword"]}} =
+             Env.normalize_overrides(["/tmp/not-a-keyword"])
+  end
 end
