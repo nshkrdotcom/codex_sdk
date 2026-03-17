@@ -7,6 +7,7 @@ defmodule Codex.IO.Transport.Erlexec do
 
   alias Codex.Config.Defaults
   alias Codex.ProcessExit
+  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
   alias Codex.TaskSupport
 
   @behaviour Codex.IO.Transport
@@ -422,20 +423,24 @@ defmodule Codex.IO.Transport.Erlexec do
 
     argv = normalize_command_argv(command, args)
 
-    case :exec.run(argv, exec_opts) do
-      {:ok, pid, os_pid} ->
-        state =
-          state
-          |> Map.put(:subprocess, {pid, os_pid})
-          |> Map.put(:status, :connected)
-
-        with {:ok, state} <- add_bootstrap_subscriber(state, subscriber) do
-          {:ok, maybe_schedule_headless_timer(state)}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with :ok <- RuntimeErlexec.ensure_started(),
+         {:ok, pid, os_pid} <- exec_run(argv, exec_opts),
+         {:ok, state} <- add_bootstrap_subscriber(connected_state(state, pid, os_pid), subscriber) do
+      {:ok, maybe_schedule_headless_timer(state)}
     end
+  end
+
+  defp exec_run(argv, exec_opts) do
+    case :exec.run(argv, exec_opts) do
+      {:ok, pid, os_pid} -> {:ok, pid, os_pid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp connected_state(state, pid, os_pid) do
+    state
+    |> Map.put(:subprocess, {pid, os_pid})
+    |> Map.put(:status, :connected)
   end
 
   defp maybe_put_cwd(opts, nil), do: opts
@@ -743,7 +748,6 @@ defmodule Codex.IO.Transport.Erlexec do
 
   defp stop_subprocess(pid) when is_pid(pid) do
     :exec.stop(pid)
-    _ = :exec.kill(pid, 9)
     :ok
   catch
     _, _ -> :ok

@@ -23,6 +23,7 @@ defmodule Codex.Exec do
   alias Codex.Options
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
+  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
   alias Codex.TransportError
 
   @type exec_opts :: %{
@@ -129,27 +130,29 @@ defmodule Codex.Exec do
         max_stderr_buffer_size: transport_stderr_cap
       ]
 
-    case IOTransport.start_link(transport_opts) do
-      {:ok, transport} ->
-        state = %{
-          transport: transport,
-          transport_ref: transport_ref,
-          exec_opts: exec_opts,
-          non_json_stdout: [],
-          stderr: "",
-          stderr_truncated?: false,
-          max_stderr_buffer_bytes: max_stderr_buffer_bytes,
-          done?: false,
-          timeout_ms: timeout_ms,
-          idle_timeout_ms: idle_timeout_ms,
-          cancellation_token: exec_opts.cancellation_token
-        }
+    with :ok <- RuntimeErlexec.ensure_started() do
+      case IOTransport.start_link(transport_opts) do
+        {:ok, transport} ->
+          state = %{
+            transport: transport,
+            transport_ref: transport_ref,
+            exec_opts: exec_opts,
+            non_json_stdout: [],
+            stderr: "",
+            stderr_truncated?: false,
+            max_stderr_buffer_bytes: max_stderr_buffer_bytes,
+            done?: false,
+            timeout_ms: timeout_ms,
+            idle_timeout_ms: idle_timeout_ms,
+            cancellation_token: exec_opts.cancellation_token
+          }
 
-        :ok = maybe_register_cancellation(state.cancellation_token, transport)
-        {:ok, state}
+          :ok = maybe_register_cancellation(state.cancellation_token, transport)
+          {:ok, state}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

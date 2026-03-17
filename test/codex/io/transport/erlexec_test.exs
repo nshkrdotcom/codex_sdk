@@ -256,6 +256,31 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
       assert :ok = ErlexecTransport.force_close(transport)
     end
+
+    test "force_close does not restart the shared exec worker" do
+      exec_pid = Process.whereis(:exec)
+      assert is_pid(exec_pid)
+
+      exec_ref = Process.monitor(exec_pid)
+      ref = make_ref()
+      script = create_test_script("sleep 60")
+
+      Enum.each(1..10, fn _ ->
+        {:ok, transport} =
+          ErlexecTransport.start_link(
+            command: script,
+            args: [],
+            subscriber: {self(), ref}
+          )
+
+        assert :ok = ErlexecTransport.force_close(transport)
+      end)
+
+      Process.sleep(50)
+
+      refute_received {:DOWN, ^exec_ref, :process, ^exec_pid, _reason}
+      assert Process.alive?(exec_pid)
+    end
   end
 
   describe "headless timeout" do
