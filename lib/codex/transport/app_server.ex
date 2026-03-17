@@ -68,9 +68,8 @@ defmodule Codex.Transport.AppServer do
   end
 
   defp run_turn_streamed_once(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts) do
-    :ok = Connection.subscribe(conn)
-
     with {:ok, thread_id, started_event, thread_start_raw} <- ensure_thread(conn, thread),
+         :ok <- Connection.subscribe(conn, thread_id: thread_id),
          {:ok, turn_id, turn_started_event, turn_start_raw} <-
            start_turn(conn, thread, thread_id, input, turn_opts) do
       thread = %Thread{thread | thread_id: thread_id}

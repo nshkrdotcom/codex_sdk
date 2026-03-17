@@ -537,26 +537,31 @@ defmodule Codex.Models do
   end
 
   defp select_default_model_id(models, auth_mode) do
-    visible_models =
-      case filter_visible_models(models, auth_mode) do
-        [] -> models
-        visible -> visible
-      end
+    visible_models = visible_models_or_all(models, auth_mode)
 
     preferred_default_ids(auth_mode)
-    |> Enum.find_value(fn preferred_id ->
-      Enum.find_value(visible_models, fn model ->
-        if model.id == preferred_id || model.model == preferred_id do
-          preferred_id
-        end
-      end)
-    end) ||
-      case List.first(visible_models) do
-        %{id: id} -> id
-        %{model: model} -> model
-        _ -> nil
-      end
+    |> Enum.find(&model_available?(visible_models, &1))
+    |> Kernel.||(first_model_id(visible_models))
   end
+
+  defp visible_models_or_all(models, auth_mode) do
+    case filter_visible_models(models, auth_mode) do
+      [] -> models
+      visible -> visible
+    end
+  end
+
+  defp model_available?(models, preferred_id) do
+    Enum.any?(models, &model_matches_id?(&1, preferred_id))
+  end
+
+  defp model_matches_id?(model, preferred_id) do
+    model.id == preferred_id || model.model == preferred_id
+  end
+
+  defp first_model_id([%{id: id} | _]), do: id
+  defp first_model_id([%{model: model} | _]), do: model
+  defp first_model_id(_), do: nil
 
   defp merge_presets([], _local_presets), do: []
 

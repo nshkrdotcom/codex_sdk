@@ -548,11 +548,11 @@ defmodule Codex.AppServer.Connection do
   defp thread_matches?(nil, _params), do: true
 
   defp thread_matches?(thread_id, params) when is_binary(thread_id) do
-    params_thread_id =
-      Map.get(params, "threadId") || Map.get(params, "thread_id") ||
-        Map.get(params, :thread_id)
-
-    thread_id == params_thread_id
+    case Map.get(params, "threadId") || Map.get(params, "thread_id") ||
+           Map.get(params, :thread_id) do
+      nil -> true
+      params_thread_id -> thread_id == params_thread_id
+    end
   end
 
   defp thread_matches?(_thread_id, _params), do: false

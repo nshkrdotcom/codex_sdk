@@ -184,4 +184,37 @@ defmodule Codex.SubagentsTest do
 
     assert {:ok, :completed} = Task.await(task, 200)
   end
+
+  test "subagents: await always requests turns even when include_turns is false", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        Subagents.await(conn, "thr_child", timeout: 1_000, interval: 0, include_turns: false)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/read", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params == %{"threadId" => "thr_child", "includeTurns" => true}
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "thread" => %{
+           "id" => "thr_child",
+           "status" => %{"type" => "notLoaded"},
+           "turns" => [
+             %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+           ]
+         }
+       })}
+    )
+
+    assert {:ok, :completed} = Task.await(task, 200)
+  end
 end

@@ -159,6 +159,31 @@ defmodule Codex.AppServer.ItemAdapterTest do
               }} = ItemAdapter.to_item(collab_item)
     end
 
+    test "maps wait tool aliases" do
+      collab_item = %{
+        "type" => "collabAgentToolCall",
+        "id" => "collab_wait_1",
+        "tool" => %{"type" => "wait_agent"},
+        "status" => "completed",
+        "senderThreadId" => "thread_parent",
+        "receiverThreadIds" => ["thread_child"],
+        "agentsStates" => %{"thread_child" => "completed"}
+      }
+
+      assert {:ok,
+              %Items.CollabAgentToolCall{
+                id: "collab_wait_1",
+                tool: "wait_agent",
+                tool_kind: :wait,
+                status: :completed,
+                sender_thread_id: "thread_parent",
+                receiver_thread_ids: ["thread_child"],
+                agents_states: %{
+                  "thread_child" => %CollabAgentState{status: :completed, message: nil}
+                }
+              }} = ItemAdapter.to_item(collab_item)
+    end
+
     test "maps web search and image generation extensions" do
       web_item = %{
         "type" => "webSearch",

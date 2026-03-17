@@ -1211,12 +1211,14 @@ defmodule Codex.Events do
     Collab event emitted when an agent spawn starts.
     """
 
-    defstruct call_id: nil, sender_thread_id: nil, prompt: nil
+    defstruct call_id: nil, sender_thread_id: nil, prompt: nil, model: nil, reasoning_effort: nil
 
     @type t :: %__MODULE__{
             call_id: String.t() | nil,
             sender_thread_id: String.t() | nil,
-            prompt: String.t() | nil
+            prompt: String.t() | nil,
+            model: String.t() | nil,
+            reasoning_effort: String.t() | atom() | nil
           }
   end
 
@@ -1927,7 +1929,12 @@ defmodule Codex.Events do
     %CollabAgentSpawnBegin{
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
       sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
-      prompt: Map.get(map, "prompt")
+      prompt: Map.get(map, "prompt"),
+      model: Map.get(map, "model"),
+      reasoning_effort:
+        normalize_reasoning_effort(
+          Map.get(map, "reasoning_effort") || Map.get(map, "reasoningEffort")
+        )
     }
   end
 
@@ -2958,6 +2965,8 @@ defmodule Codex.Events do
       "sender_thread_id" => event.sender_thread_id
     }
     |> put_optional("prompt", event.prompt)
+    |> put_optional("model", event.model)
+    |> put_optional("reasoning_effort", event.reasoning_effort)
   end
 
   def to_map(%CollabAgentSpawnEnd{} = event) do

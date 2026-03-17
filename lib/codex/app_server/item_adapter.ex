@@ -268,6 +268,8 @@ defmodule Codex.AppServer.ItemAdapter do
   defp normalize_collab_tool_kind("resumeAgent"), do: :resume_agent
   defp normalize_collab_tool_kind("resume_agent"), do: :resume_agent
   defp normalize_collab_tool_kind("wait"), do: :wait
+  defp normalize_collab_tool_kind("waitAgent"), do: :wait
+  defp normalize_collab_tool_kind("wait_agent"), do: :wait
   defp normalize_collab_tool_kind("closeAgent"), do: :close_agent
   defp normalize_collab_tool_kind("close_agent"), do: :close_agent
   defp normalize_collab_tool_kind(_tool), do: :unknown

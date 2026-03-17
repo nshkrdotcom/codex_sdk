@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SDK default selection still prefers `gpt-5.4`, while ChatGPT-auth runtime catalogs continue to prefer `codex-auto-balanced` when that model is advertised remotely.
 - Example runners and example-specific docs now pin `gpt-5.4-mini` for faster live runs, while the library default remains `gpt-5.4`.
 - README and guides were refreshed to document the bundled model catalog source, the current bundled picker-visible snapshot, and the distinction between bundled defaults and example pins.
+- Subagent docs and API guides were audited against the vendored Rust runtime and now document the current feature gating (`features.multi_agent`, `features.enable_fanout`), runtime tool surface, inheritance semantics, CSV fan-out behavior, and custom-agent nickname constraints more accurately.
+- `examples/live_subagent_host_controls.exs` now exercises the full `Codex.Subagents` host-control surface (`list/2`, `children/3`, `source/1`, `parent_thread_id/1`, `child_thread?/1`, `read/3`, `await/3`) and uses the configured/default model instead of a stale hardcoded example model.
+
+### Fixed
+
+- Subagent/runtime parity was tightened: `collab_agent_spawn_begin` now preserves upstream `model` and `reasoning_effort` metadata, subagent source parsing accepts legacy `subagent` / `agent_type` aliases, collab tool parsing recognizes `wait_agent` aliases, and `Codex.Subagents.await/3` now always polls `thread/read` with turns included so terminal-state detection stays reliable.
+- Streamed app-server turns now subscribe to the active thread instead of every thread on the shared connection while still allowing global threadless requests through, and the live subagent host-controls example now uses fresh host-control/child-turn connections plus project-scoped `thread/list` filters to avoid real-world discovery timeouts.
 
 ## [0.13.0] - 2026-03-16
 

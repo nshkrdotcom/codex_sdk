@@ -1,5 +1,6 @@
 defmodule Codex.AppServer.ConnectionTest do
   use ExUnit.Case, async: true
+  @moduletag capture_log: true
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol

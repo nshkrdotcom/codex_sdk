@@ -216,6 +216,10 @@ Common thread-history operations are exposed via:
 When a parent turn spawns child threads, the deterministic host-side control
 surface lives in `Codex.Subagents`.
 
+In the current vendored runtime, child spawning is still gated behind the
+experimental `features.multi_agent` config flag, so enable that before you
+expect a parent turn to create children.
+
 Use it for:
 
 - listing subagent threads with `Codex.Subagents.list/2`

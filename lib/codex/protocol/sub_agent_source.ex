@@ -104,6 +104,7 @@ defmodule Codex.Protocol.SubAgentSource do
   defp normalize_key("agentNickname"), do: "agent_nickname"
   defp normalize_key("agentRole"), do: "agent_role"
   defp normalize_key("agentType"), do: "agent_role"
+  defp normalize_key("agent_type"), do: "agent_role"
   defp normalize_key(key) when is_binary(key), do: key
 
   defp maybe_put(map, _key, nil), do: map

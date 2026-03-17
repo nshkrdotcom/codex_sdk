@@ -35,13 +35,19 @@ area at once can create conflicts and extra coordination work.
 
 ## Availability and Behavior
 
-Current Codex releases enable subagent workflows by default. Codex only uses
-subagents when you explicitly ask for them, and each child agent adds token
-cost because it does its own model and tool work.
+The official product docs describe subagents as generally available, but the
+vendored Codex runtime in this repository still gates the runtime tool surface
+behind `features.multi_agent`, which is experimental and disabled by default in
+the current Rust source tree. Enable it explicitly before you expect a parent
+turn to spawn children.
 
-Subagents inherit the parent session's sandbox and approval posture unless a
-custom agent overrides those settings. That makes the child behave like a real
-continuation of the parent workflow rather than an unrelated fresh session.
+Codex still only uses subagents when you explicitly ask for them, and each
+child agent adds token cost because it does its own model and tool work.
+
+Subagents inherit the parent session's sandbox and approval posture. Custom
+agent files can set child defaults, but the runtime reapplies the parent turn's
+live overrides after role config is layered in, so interactive sandbox or
+approval changes on the parent still win.
 
 ## The Two Parts of Using Subagents From Elixir
 
@@ -88,6 +94,9 @@ functions. There is no host-side `spawn_agent/3`, `delegate/2`, or
 Global subagent settings live under `[agents]` in `.codex/config.toml`.
 
 ```toml
+[features]
+multi_agent = true
+
 [agents]
 max_threads = 2
 max_depth = 1
@@ -97,6 +106,9 @@ Useful defaults from the Codex docs:
 
 - `agents.max_threads` defaults to `6`
 - `agents.max_depth` defaults to `1`
+- `agents.job_max_runtime_seconds` defaults to `nil` in config; the
+  `spawn_agents_on_csv` tool falls back to `1800` seconds only when both the
+  config value and the per-call override are unset
 
 For a simple one-parent -> one-child workflow, `max_depth = 1` is usually what
 you want. It allows the parent to spawn a child but prevents the child from
@@ -110,6 +122,27 @@ You can also set these values through the SDK when you are connected to Codex:
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_threads", 2)
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_depth", 1)
 ```
+
+## Runtime Tool Surface
+
+Prompt-shaped delegation still happens inside the Codex turn, not through
+direct Elixir helper functions. In the current Rust runtime, enabling
+`features.multi_agent` makes these model-callable tools available:
+
+- `spawn_agent`
+- `send_input`
+- `resume_agent`
+- `wait`
+- `close_agent`
+
+When `features.enable_fanout` is enabled as well, the runtime also exposes the
+experimental CSV batch tools:
+
+- `spawn_agents_on_csv`
+- `report_agent_job_result`
+
+`Codex.Subagents` intentionally does not wrap those tools. It only gives host
+code deterministic visibility into the threads and metadata they create.
 
 ## Built-In and Custom Agents
 
@@ -130,8 +163,8 @@ Every custom agent file should define:
 - `developer_instructions`
 
 Optional fields such as `nickname_candidates`, `model`,
-`model_reasoning_effort`, and `sandbox_mode` inherit from the parent when you
-omit them.
+`model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, and `skills.config`
+inherit from the parent when you omit them.
 
 Example:
 
@@ -150,6 +183,10 @@ sandbox_mode = "read-only"
 
 Keep custom agents narrow and opinionated. A good custom agent has one clear
 job and instructions that keep it from drifting into adjacent work.
+
+If you use `nickname_candidates`, keep the list non-empty and unique, and stick
+to ASCII letters, digits, spaces, hyphens, and underscores. The runtime
+validates those constraints when it loads agent files.
 
 ## Basic SDK Workflow
 
@@ -223,7 +260,9 @@ The important pattern is simple:
   thread
 
 For a runnable end-to-end version of this flow, see
-`examples/live_subagent_host_controls.exs`.
+`examples/live_subagent_host_controls.exs`. That example now exercises
+`list/2`, `children/3`, `source/1`, `parent_thread_id/1`, `child_thread?/1`,
+`read/3`, and `await/3`.
 
 ## Streaming and Observability
 
@@ -322,8 +361,9 @@ needs most:
 
 ## Approvals and Sandbox Controls
 
-Subagents inherit the parent session's sandbox and approval posture unless you
-override them in a custom agent.
+Subagents inherit the parent session's sandbox and approval posture. Custom
+agent files can set child defaults, but the runtime still reapplies the parent
+turn's live sandbox and approval overrides after the role config is applied.
 
 That means:
 
@@ -334,6 +374,22 @@ That means:
 
 For review, exploration, and documentation tasks, a read-only child is often
 the right default.
+
+## CSV Fan-Out Jobs
+
+The underlying runtime also ships an experimental CSV batch workflow for
+repeated subagent work items. This is distinct from `Codex.Subagents`:
+
+- enable `features.enable_fanout = true` before expecting the tools to exist
+- ask Codex to call `spawn_agents_on_csv`
+- each worker must call `report_agent_job_result` exactly once
+- `agents.max_threads` still caps concurrent open threads
+- `agents.job_max_runtime_seconds` provides a config default, while the tool's
+  `max_runtime_seconds` argument overrides it per job
+
+This workflow is useful for repeated audits such as one file/package/service
+per row. It remains model-mediated and is not wrapped as a direct Elixir API in
+this SDK.
 
 ## Choosing Agents and Models
 

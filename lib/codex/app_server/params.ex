@@ -143,6 +143,7 @@ defmodule Codex.AppServer.Params do
   def thread_source_kind(:unknown), do: "unknown"
   def thread_source_kind("app_server"), do: "appServer"
   def thread_source_kind("appServer"), do: "appServer"
+  def thread_source_kind("mcp"), do: "appServer"
   def thread_source_kind("sub_agent"), do: "subAgent"
   def thread_source_kind("subAgent"), do: "subAgent"
   def thread_source_kind("sub_agent_review"), do: "subAgentReview"

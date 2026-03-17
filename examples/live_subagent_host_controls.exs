@@ -8,6 +8,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
   @stream_wait_note """
   Waiting for streamed events. If the model stays quiet briefly, Codex is still working.
   """
+  @thread_list_opts [sort_key: :updated_at, limit: 100]
+  @discovery_attempts 10
+  @discovery_delay_ms 500
 
   @default_child_prompt """
   Spawn exactly one child agent for this task.
@@ -24,11 +27,12 @@ defmodule CodexExamples.LiveSubagentHostControls do
     prompt = parse_prompt(argv)
     cwd = File.cwd!()
     codex_path = fetch_codex_path!()
+    model = System.get_env("CODEX_MODEL") || Codex.Models.default_model()
     ensure_app_server_supported!(codex_path)
 
     IO.puts("""
     Starting live subagent host-controls example.
-      model: gpt-5.4-mini
+      model: #{model}
       reasoning_effort: low
       working_directory: #{cwd}
       codex_path: #{codex_path}
@@ -37,21 +41,15 @@ defmodule CodexExamples.LiveSubagentHostControls do
     {:ok, codex_opts} =
       Options.new(%{
         codex_path_override: codex_path,
-        model: "gpt-5.4-mini",
+        model: model,
         reasoning_effort: :low
       })
 
     IO.puts("Connecting to codex app-server with experimental API enabled...")
 
-    {:ok, conn} =
-      AppServer.connect(codex_opts,
-        experimental_api: true,
-        init_timeout_ms: 30_000
-      )
-
-    try do
+    with_app_server_connection!(codex_opts, fn conn ->
       IO.puts(
-        "Configuring multi-agent limits: features.multi_agent=true max_threads=2 max_depth=1"
+        "Enabling the current runtime's experimental multi-agent feature and setting max_threads=2 max_depth=1"
       )
 
       configure_multi_agent!(conn)
@@ -62,7 +60,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
         Codex.start_thread(codex_opts, %{
           transport: {:app_server, conn},
           working_directory: cwd,
-          model: "gpt-5.4-mini"
+          model: model
         })
 
       IO.puts("Running parent turn with a one-parent -> one-child prompt.")
@@ -72,89 +70,149 @@ defmodule CodexExamples.LiveSubagentHostControls do
       parent_state = consume_parent_stream(stream)
       parent_thread_id = extract_parent_thread_id(parent_state)
 
-      IO.puts("Parent turn finished. Discovering any spawned child threads...")
+      IO.puts(
+        "Parent turn finished. Opening a fresh host-controls connection for thread/list/read polling..."
+      )
 
-      {:ok, children} = Subagents.children(conn, parent_thread_id)
+      with_app_server_connection!(codex_opts, fn host_conn ->
+        list_opts = Keyword.put(@thread_list_opts, :cwd, cwd)
 
-      case children do
-        [%{"id" => child_thread_id} = child | _] ->
-          child_source = Subagents.source(child)
-
-          IO.puts("""
-          Child thread discovered.
-            parent_thread_id: #{parent_thread_id}
-            child_thread_id: #{child_thread_id}
-            source_kind: #{inspect(Codex.Protocol.SessionSource.source_kind(child_source))}
-            depth: #{inspect(child_depth(child_source))}
-            role: #{inspect(child_role(child_source))}
-            nickname: #{inspect(child_nickname(child_source))}
-          """)
-
-          IO.puts("Reading child thread state via thread/read(include_turns: true)...")
-          {:ok, child_read} = Subagents.read(conn, child_thread_id, include_turns: true)
-
-          IO.puts("Resuming the known child thread for a direct host-side follow-up...")
-
-          {:ok, child_thread} =
-            Codex.resume_thread(child_thread_id, codex_opts, %{
-              transport: {:app_server, conn},
-              working_directory: cwd
-            })
-
-          IO.puts(@stream_wait_note)
-
-          {:ok, child_stream} =
-            Thread.run_streamed(
-              child_thread,
-              "Reply with exactly one sentence that starts with 'child follow-up:'",
-              %{timeout_ms: 120_000}
-            )
-
-          child_state = consume_child_stream(child_stream)
-
-          IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
-
-          {:ok, child_status} =
-            Subagents.await(conn, child_thread_id, timeout: 30_000, interval: 250)
-
-          IO.inspect(%{
-            parent_thread_id: parent_thread_id,
-            child_thread_id: child_thread_id,
-            child_source_type: Codex.Protocol.SessionSource.source_kind(child_source),
-            child_depth: child_depth(child_source),
-            child_role: child_role(child_source),
-            child_nickname: child_nickname(child_source),
-            used_multi_agent?: true,
-            spawn_observed?: parent_state.spawn_observed?,
-            child_turn_count: count_turns(child_read),
-            child_status: child_status,
-            child_follow_up: child_state.final_response,
-            parent_summary: parent_state.parent_summary,
-            parent_usage: RunResultStreaming.usage(stream),
-            child_follow_up_usage: RunResultStreaming.usage(child_stream)
-          })
-
-        [] ->
-          IO.puts(
-            "No child thread was discovered. The parent likely took the documented solo fallback path."
+        all_subagents =
+          retry_ok!(
+            "thread/list for subagents",
+            fn -> Subagents.list(host_conn, list_opts) end
           )
 
-          IO.inspect(%{
-            parent_thread_id: parent_thread_id,
-            child_thread_id: nil,
-            child_source_type: nil,
-            child_depth: nil,
-            child_role: nil,
-            child_nickname: nil,
-            used_multi_agent?: false,
-            spawn_observed?: parent_state.spawn_observed?,
-            parent_summary: parent_state.parent_summary,
-            parent_usage: RunResultStreaming.usage(stream)
-          })
-      end
-    after
-      :ok = AppServer.disconnect(conn)
-    end
+        children =
+          if parent_state.spawn_observed? do
+            retry_until!(
+              "child thread discovery",
+              fn ->
+                with {:ok, child_threads} <-
+                       Subagents.children(host_conn, parent_thread_id, list_opts) do
+                  cond do
+                    child_threads == [] and is_binary(parent_state.child_thread_id) ->
+                      {:retry, {:missing_child, parent_state.child_thread_id}}
+
+                    child_threads == [] ->
+                      {:retry, :no_children_yet}
+
+                    true ->
+                      {:ok, child_threads}
+                  end
+                end
+              end
+            )
+          else
+            retry_ok!("thread/list for child discovery", fn ->
+              Subagents.children(host_conn, parent_thread_id, list_opts)
+            end)
+          end
+
+        case children do
+          [%{"id" => child_thread_id} = child | _] ->
+            child_source = Subagents.source(child)
+            child_parent_thread_id = Subagents.parent_thread_id(child_source)
+            child_thread? = Subagents.child_thread?(child)
+            listed_child_ids = Enum.map(all_subagents, & &1["id"])
+
+            IO.puts("""
+            Child thread discovered.
+              parent_thread_id: #{parent_thread_id}
+              child_thread_id: #{child_thread_id}
+              child_thread?: #{inspect(child_thread?)}
+              source_parent_thread_id: #{inspect(child_parent_thread_id)}
+              source_kind: #{inspect(Codex.Protocol.SessionSource.source_kind(child_source))}
+              depth: #{inspect(child_depth(child_source))}
+              role: #{inspect(child_role(child_source))}
+              nickname: #{inspect(child_nickname(child_source))}
+              listed_subagent_thread_ids: #{inspect(listed_child_ids)}
+            """)
+
+            IO.puts("Reading child thread state via thread/read(include_turns: true)...")
+
+            child_read =
+              retry_ok!(
+                "thread/read for child thread",
+                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
+              )
+
+            IO.puts("Opening a fresh child-turn connection for a direct host-side follow-up...")
+
+            child_state =
+              with_app_server_connection!(codex_opts, fn child_conn ->
+                IO.puts("Resuming the known child thread for a direct host-side follow-up...")
+
+                {:ok, child_thread} =
+                  Codex.resume_thread(child_thread_id, codex_opts, %{
+                    transport: {:app_server, child_conn},
+                    working_directory: cwd,
+                    model: model
+                  })
+
+                IO.puts(@stream_wait_note)
+
+                {:ok, child_stream} =
+                  Thread.run_streamed(
+                    child_thread,
+                    "Reply with exactly one sentence that starts with 'child follow-up:'",
+                    %{timeout_ms: 120_000}
+                  )
+
+                child_state = consume_child_stream(child_stream)
+                %{child_state | usage: RunResultStreaming.usage(child_stream)}
+              end)
+
+            IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
+
+            {:ok, child_status} =
+              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+
+            IO.inspect(%{
+              parent_thread_id: parent_thread_id,
+              child_thread_id: child_thread_id,
+              child_parent_thread_id: child_parent_thread_id,
+              child_source_type: Codex.Protocol.SessionSource.source_kind(child_source),
+              child_thread?: child_thread?,
+              child_depth: child_depth(child_source),
+              child_role: child_role(child_source),
+              child_nickname: child_nickname(child_source),
+              listed_subagent_thread_ids: listed_child_ids,
+              subagent_thread_count: length(all_subagents),
+              used_multi_agent?: true,
+              spawn_observed?: parent_state.spawn_observed?,
+              child_turn_count: count_turns(child_read),
+              child_status: child_status,
+              child_follow_up: child_state.final_response,
+              parent_summary: parent_state.parent_summary,
+              parent_usage: RunResultStreaming.usage(stream),
+              child_follow_up_usage: child_state.usage
+            })
+
+          [] ->
+            IO.puts(
+              "No child thread was discovered. The parent likely took the documented solo fallback path."
+            )
+
+            IO.inspect(%{
+              parent_thread_id: parent_thread_id,
+              child_thread_id: nil,
+              child_source_type: nil,
+              child_parent_thread_id: nil,
+              child_thread?: false,
+              child_depth: nil,
+              child_role: nil,
+              child_nickname: nil,
+              listed_subagent_thread_ids: Enum.map(all_subagents, & &1["id"]),
+              subagent_thread_count: length(all_subagents),
+              used_multi_agent?: false,
+              spawn_observed?: parent_state.spawn_observed?,
+              parent_summary: parent_state.parent_summary,
+              parent_usage: RunResultStreaming.usage(stream)
+            })
+        end
+      end)
+    end)
   end
 
   defp configure_multi_agent!(conn) do
@@ -170,7 +228,15 @@ defmodule CodexExamples.LiveSubagentHostControls do
     stream
     |> RunResultStreaming.raw_events()
     |> Enum.reduce(
-      %{parent_thread_id: nil, parent_summary: nil, spawn_observed?: false, text_open?: false},
+      %{
+        parent_thread_id: nil,
+        parent_summary: nil,
+        child_thread_id: nil,
+        spawn_observed?: false,
+        parent_thread_started?: false,
+        parent_turn_started?: false,
+        text_open?: false
+      },
       &handle_parent_event/2
     )
     |> close_text_block()
@@ -179,7 +245,10 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp consume_child_stream(stream) do
     stream
     |> RunResultStreaming.raw_events()
-    |> Enum.reduce(%{final_response: nil, text_open?: false}, &handle_child_event/2)
+    |> Enum.reduce(
+      %{final_response: nil, child_turn_started?: false, text_open?: false, usage: %{}},
+      &handle_child_event/2
+    )
     |> close_text_block()
   end
 
@@ -191,13 +260,21 @@ defmodule CodexExamples.LiveSubagentHostControls do
   end
 
   defp handle_parent_event(%Events.ThreadStarted{thread_id: thread_id}, state) do
-    IO.puts("Parent thread started: #{thread_id}")
-    %{state | parent_thread_id: thread_id}
+    if state.parent_thread_started? do
+      %{state | parent_thread_id: thread_id}
+    else
+      IO.puts("Parent thread started: #{thread_id}")
+      %{state | parent_thread_id: thread_id, parent_thread_started?: true}
+    end
   end
 
   defp handle_parent_event(%Events.TurnStarted{}, state) do
-    IO.puts("Parent turn started.")
-    state
+    if state.parent_turn_started? do
+      state
+    else
+      IO.puts("Parent turn started.")
+      %{state | parent_turn_started?: true}
+    end
   end
 
   defp handle_parent_event(%Events.CollabAgentSpawnBegin{prompt: prompt}, state) do
@@ -231,7 +308,11 @@ defmodule CodexExamples.LiveSubagentHostControls do
         reasoning_effort: #{inspect(reasoning_effort)}
       """)
 
-      %{next_state | spawn_observed?: true}
+      %{
+        next_state
+        | spawn_observed?: true,
+          child_thread_id: thread_id || next_state.child_thread_id
+      }
     end)
   end
 
@@ -329,8 +410,12 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp handle_parent_event(_event, state), do: state
 
   defp handle_child_event(%Events.TurnStarted{}, state) do
-    IO.puts("Child follow-up turn started.")
-    state
+    if state.child_turn_started? do
+      state
+    else
+      IO.puts("Child follow-up turn started.")
+      %{state | child_turn_started?: true}
+    end
   end
 
   defp handle_child_event(%Events.ItemAgentMessageDelta{item: %{"text" => delta}}, state)
@@ -404,6 +489,60 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp count_turns(%{"turns" => turns}) when is_list(turns), do: length(turns)
   defp count_turns(%{turns: turns}) when is_list(turns), do: length(turns)
   defp count_turns(_), do: 0
+
+  defp with_app_server_connection!(codex_opts, fun) when is_function(fun, 1) do
+    {:ok, conn} =
+      AppServer.connect(codex_opts,
+        experimental_api: true,
+        init_timeout_ms: 30_000
+      )
+
+    try do
+      fun.(conn)
+    after
+      :ok = AppServer.disconnect(conn)
+    end
+  end
+
+  defp retry_ok!(label, fun, attempts \\ @discovery_attempts, delay_ms \\ @discovery_delay_ms)
+       when is_binary(label) and is_function(fun, 0) and attempts >= 1 and delay_ms >= 0 do
+    case fun.() do
+      {:ok, value} ->
+        value
+
+      {:error, reason} when attempts > 1 ->
+        IO.puts("#{label} not ready yet: #{inspect(reason)}. Retrying...")
+        Process.sleep(delay_ms)
+        retry_ok!(label, fun, attempts - 1, delay_ms)
+
+      {:error, reason} ->
+        Mix.raise("#{label} failed: #{inspect(reason)}")
+    end
+  end
+
+  defp retry_until!(label, fun, attempts \\ @discovery_attempts, delay_ms \\ @discovery_delay_ms)
+       when is_binary(label) and is_function(fun, 0) and attempts >= 1 and delay_ms >= 0 do
+    case fun.() do
+      {:ok, value} ->
+        value
+
+      {:retry, reason} when attempts > 1 ->
+        IO.puts("#{label} not ready yet: #{inspect(reason)}. Retrying...")
+        Process.sleep(delay_ms)
+        retry_until!(label, fun, attempts - 1, delay_ms)
+
+      {:retry, reason} ->
+        Mix.raise("#{label} failed: #{inspect(reason)}")
+
+      {:error, reason} when attempts > 1 ->
+        IO.puts("#{label} errored: #{inspect(reason)}. Retrying...")
+        Process.sleep(delay_ms)
+        retry_until!(label, fun, attempts - 1, delay_ms)
+
+      {:error, reason} ->
+        Mix.raise("#{label} failed: #{inspect(reason)}")
+    end
+  end
 
   defp fetch_codex_path! do
     System.get_env("CODEX_PATH") ||

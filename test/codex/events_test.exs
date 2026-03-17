@@ -514,6 +514,33 @@ defmodule Codex.EventsTest do
     end
 
     test "events: preserves collab lifecycle metadata" do
+      spawn_begin =
+        Events.parse!(%{
+          "type" => "collab_agent_spawn_begin",
+          "call_id" => "spawn_1",
+          "sender_thread_id" => "thr_parent",
+          "prompt" => "inspect the repo",
+          "model" => "gpt-5.4-mini",
+          "reasoning_effort" => "high"
+        })
+
+      assert %Events.CollabAgentSpawnBegin{
+               call_id: "spawn_1",
+               sender_thread_id: "thr_parent",
+               prompt: "inspect the repo",
+               model: "gpt-5.4-mini",
+               reasoning_effort: :high
+             } = spawn_begin
+
+      assert %{
+               "type" => "collab_agent_spawn_begin",
+               "call_id" => "spawn_1",
+               "sender_thread_id" => "thr_parent",
+               "prompt" => "inspect the repo",
+               "model" => "gpt-5.4-mini",
+               "reasoning_effort" => :high
+             } = Events.to_map(spawn_begin)
+
       spawn_end =
         Events.parse!(%{
           "type" => "collab_agent_spawn_end",

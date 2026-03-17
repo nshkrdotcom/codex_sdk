@@ -52,11 +52,35 @@ defmodule Codex.Protocol.SessionSourceTest do
              SessionSource.from_map(%{"subAgent" => %{"other" => "custom"}})
   end
 
+  test "subagents: accepts legacy subagent key and agent_type alias" do
+    data = %{
+      "subagent" => %{
+        "threadSpawn" => %{
+          "parentThreadId" => "thr_parent",
+          "depth" => 1,
+          "agent_type" => "explorer"
+        }
+      }
+    }
+
+    assert %SessionSource{
+             kind: :sub_agent,
+             sub_agent: %SubAgentSource{
+               variant: :thread_spawn,
+               parent_thread_id: "thr_parent",
+               depth: 1,
+               agent_role: "explorer"
+             }
+           } = SessionSource.from_map(data)
+  end
+
   test "subagents: normalizes source kinds for list filters" do
     assert SessionSource.normalize_source_kind(:cli) == :cli
     assert SessionSource.normalize_source_kind("vscode") == :vscode
     assert SessionSource.normalize_source_kind("appServer") == :app_server
+    assert SessionSource.normalize_source_kind("mcp") == :app_server
     assert SessionSource.normalize_source_kind("subAgent") == :sub_agent
+    assert SessionSource.normalize_source_kind("subagent") == :sub_agent
     assert SessionSource.normalize_source_kind("subAgentReview") == :sub_agent_review
     assert SessionSource.normalize_source_kind("subAgentCompact") == :sub_agent_compact
     assert SessionSource.normalize_source_kind("subAgentThreadSpawn") == :sub_agent_thread_spawn

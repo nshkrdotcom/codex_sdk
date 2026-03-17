@@ -100,10 +100,9 @@ defmodule Codex.Subagents do
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
     timeout_ms = Keyword.get(opts, :timeout, 30_000)
     interval_ms = max(Keyword.get(opts, :interval, 250), 0)
-    include_turns = Keyword.get(opts, :include_turns, true)
     deadline_ms = System.monotonic_time(:millisecond) + timeout_ms
 
-    do_await(conn, thread_id, include_turns, interval_ms, deadline_ms)
+    do_await(conn, thread_id, true, interval_ms, deadline_ms)
   end
 
   defp do_await(conn, thread_id, include_turns, interval_ms, deadline_ms) do

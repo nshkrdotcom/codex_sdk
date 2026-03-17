@@ -103,6 +103,7 @@ defmodule Codex.Protocol.SessionSource do
   def normalize_source_kind("appServer"), do: :app_server
   def normalize_source_kind("app_server"), do: :app_server
   def normalize_source_kind("subAgent"), do: :sub_agent
+  def normalize_source_kind("subagent"), do: :sub_agent
   def normalize_source_kind("sub_agent"), do: :sub_agent
   def normalize_source_kind("subAgentReview"), do: :sub_agent_review
   def normalize_source_kind("sub_agent_review"), do: :sub_agent_review

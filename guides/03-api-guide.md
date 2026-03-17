@@ -147,7 +147,8 @@ plugin helpers:
 
 `Codex.Subagents` wraps the deterministic pieces of a subagent workflow that
 are available through app-server today. It does not expose prompt-shaping
-helpers such as spawn/delegate APIs.
+helpers such as spawn/delegate APIs. In the current vendored runtime, creating
+child threads still requires `features.multi_agent = true`.
 
 Key entry points:
 
