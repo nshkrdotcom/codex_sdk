@@ -1444,9 +1444,12 @@ the example never installs or enables that temporary plugin in the isolated home
 login or plugin install is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
 `request_permissions: true` for live permissions requests on an `experimental_api: true`
-connection, retries without experimental fields when the connected build rejects them, and falls
-back to printing the exact structured grant payload when live permissions events are unavailable.
-It also surfaces guardian review and `serverRequest/resolved` events. `live_app_server_mcp.exs` and
+connection, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the
+under-development approval feature flags only inside that isolated home, retries without
+experimental fields when the connected build rejects them, and falls back to printing the exact
+structured grant payload when live permissions events are unavailable. It also surfaces typed
+command/file approval request events, guardian review, and `serverRequest/resolved` events without
+writing inside this repository. `live_app_server_mcp.exs` and
 `live_mcp_and_sessions.exs` print original MCP tool names alongside sanitized qualified names.
 
 Minimal usage with existing thread APIs:

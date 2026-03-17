@@ -4,6 +4,7 @@ defmodule Codex.Transport.AppServer do
   @behaviour Codex.Transport
 
   alias Codex.AppServer
+  alias Codex.AppServer.ApprovalRequest
   alias Codex.AppServer.Approvals, as: AppServerApprovals
   alias Codex.AppServer.Connection
   alias Codex.AppServer.NotificationAdapter
@@ -11,7 +12,6 @@ defmodule Codex.Transport.AppServer do
   alias Codex.Events
   alias Codex.Models
   alias Codex.Options
-  alias Codex.Protocol.RequestPermissions
   alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
   alias Codex.Thread
   alias Codex.Transport.Support
@@ -368,6 +368,8 @@ defmodule Codex.Transport.AppServer do
 
   defp correlated_request_method?(method) do
     method in [
+      "item/commandExecution/requestApproval",
+      "item/fileChange/requestApproval",
       "item/tool/requestUserInput",
       "item/tool/request_user_input",
       "mcpServer/elicitation/request",
@@ -421,19 +423,53 @@ defmodule Codex.Transport.AppServer do
   end
 
   defp do_build_request_event(id, "item/permissions/requestApproval", %{} = params) do
-    permissions =
-      params
-      |> fetch_any(["permissions", :permissions])
-      |> RequestPermissions.RequestPermissionProfile.from_map()
+    fields = ApprovalRequest.permissions_fields(params)
 
     {:ok,
      %Events.PermissionsApprovalRequested{
        id: id,
-       thread_id: fetch_any(params, ["threadId", "thread_id"]) || "",
-       turn_id: fetch_any(params, ["turnId", "turn_id"]) || "",
-       item_id: fetch_any(params, ["itemId", "item_id"]) || "",
-       reason: fetch_any(params, ["reason", :reason]),
-       permissions: permissions
+       thread_id: fields.thread_id,
+       turn_id: fields.turn_id,
+       item_id: fields.item_id,
+       reason: fields.reason,
+       permissions: fields.permissions
+     }}
+  end
+
+  defp do_build_request_event(id, "item/commandExecution/requestApproval", %{} = params) do
+    fields = ApprovalRequest.command_fields(params)
+
+    {:ok,
+     %Events.CommandApprovalRequested{
+       id: id,
+       thread_id: fields.thread_id,
+       turn_id: fields.turn_id,
+       item_id: fields.item_id,
+       approval_id: fields.approval_id,
+       reason: fields.reason,
+       command: fields.command,
+       cwd: fields.cwd,
+       command_actions: fields.command_actions,
+       network_approval_context: fields.network_approval_context,
+       additional_permissions: fields.additional_permissions,
+       skill_metadata: fields.skill_metadata,
+       proposed_execpolicy_amendment: fields.proposed_execpolicy_amendment,
+       proposed_network_policy_amendments: fields.proposed_network_policy_amendments,
+       available_decisions: fields.available_decisions
+     }}
+  end
+
+  defp do_build_request_event(id, "item/fileChange/requestApproval", %{} = params) do
+    fields = ApprovalRequest.file_fields(params)
+
+    {:ok,
+     %Events.FileApprovalRequested{
+       id: id,
+       thread_id: fields.thread_id,
+       turn_id: fields.turn_id,
+       item_id: fields.item_id,
+       reason: fields.reason,
+       grant_root: fields.grant_root
      }}
   end
 
@@ -479,14 +515,7 @@ defmodule Codex.Transport.AppServer do
 
   defp normalize_request_user_input_question(other), do: deep_stringify_keys(other)
 
-  defp deep_stringify_keys(%{} = map) do
-    map
-    |> Enum.map(fn {key, value} -> {to_string(key), deep_stringify_keys(value)} end)
-    |> Map.new()
-  end
-
-  defp deep_stringify_keys(list) when is_list(list), do: Enum.map(list, &deep_stringify_keys/1)
-  defp deep_stringify_keys(other), do: other
+  defp deep_stringify_keys(value), do: ApprovalRequest.deep_stringify_keys(value)
 
   defp request_ids_match?(thread_id, turn_id, params) do
     request_thread_id =

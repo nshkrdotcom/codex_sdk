@@ -190,7 +190,10 @@ App-server-only APIs include:
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
 repo-local marketplace fixture plus an isolated temporary `CODEX_HOME`, rather than your real
-plugin config.
+plugin config. `examples/live_app_server_approvals.exs` uses the same child-process isolation
+pattern to enable the under-development approval features only inside a temporary `CODEX_HOME`,
+so it can exercise live command/file/permissions approval flows without mutating your real Codex
+settings or writing inside this repository.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
@@ -622,9 +625,15 @@ or `{:deny, reason}`. App-server streams now also surface `%Codex.Events.Guardia
 `%Codex.Events.GuardianApprovalReviewCompleted{}`, and `%Codex.Events.ServerRequestResolved{}` when
 the connected Codex build emits guardian review and request-resolution notifications. Use
 `approvals_reviewer: :user | :guardian_subagent` on thread options to control upstream review routing.
+The SDK also emits `%Codex.Events.CommandApprovalRequested{}` and
+`%Codex.Events.FileApprovalRequested{}` for app-server request approvals, preserving upstream
+fields such as `approval_id`, `command_actions`, `network_approval_context`,
+`additional_permissions`, `available_decisions`, and `grant_root` in normalized snake_case.
 These app-server approval fields are experimental upstream, so connect with
 `experimental_api: true` before using them. For live request-permissions flows,
-use a granular approval policy with `request_permissions: true`. The SDK accepts both
+use a granular approval policy with `request_permissions: true`, but note that upstream keeps
+`request_permissions_tool`, `exec_permission_approvals`, and `guardian_approval` disabled by
+default on stock CLI installs. The SDK accepts both
 the local inline shape (`%{type: :granular, request_permissions: true}`) and the
 upstream external-tagged shape (`%{granular: %{request_permissions: true}}`); malformed
 granular maps now fail fast instead of being silently dropped.
@@ -1051,6 +1060,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
+- **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
 - **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn, with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo

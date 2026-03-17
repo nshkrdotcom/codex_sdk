@@ -906,6 +906,70 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule CommandApprovalRequested do
+    @moduledoc """
+    Event emitted when the app-server requests approval for a command execution.
+    """
+
+    @enforce_keys [:id, :thread_id, :turn_id, :item_id]
+    defstruct id: nil,
+              thread_id: nil,
+              turn_id: nil,
+              item_id: nil,
+              approval_id: nil,
+              reason: nil,
+              command: nil,
+              cwd: nil,
+              command_actions: nil,
+              network_approval_context: nil,
+              additional_permissions: nil,
+              skill_metadata: nil,
+              proposed_execpolicy_amendment: nil,
+              proposed_network_policy_amendments: nil,
+              available_decisions: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            thread_id: String.t(),
+            turn_id: String.t(),
+            item_id: String.t(),
+            approval_id: String.t() | nil,
+            reason: String.t() | nil,
+            command: String.t() | nil,
+            cwd: String.t() | nil,
+            command_actions: [map()] | nil,
+            network_approval_context: map() | nil,
+            additional_permissions: RequestPermissions.RequestPermissionProfile.t() | map() | nil,
+            skill_metadata: map() | nil,
+            proposed_execpolicy_amendment: [String.t()] | nil,
+            proposed_network_policy_amendments: [map()] | nil,
+            available_decisions: [String.t() | map()] | nil
+          }
+  end
+
+  defmodule FileApprovalRequested do
+    @moduledoc """
+    Event emitted when the app-server requests approval for a file change.
+    """
+
+    @enforce_keys [:id, :thread_id, :turn_id, :item_id]
+    defstruct id: nil,
+              thread_id: nil,
+              turn_id: nil,
+              item_id: nil,
+              reason: nil,
+              grant_root: nil
+
+    @type t :: %__MODULE__{
+            id: String.t() | integer(),
+            thread_id: String.t(),
+            turn_id: String.t(),
+            item_id: String.t(),
+            reason: String.t() | nil,
+            grant_root: String.t() | nil
+          }
+  end
+
   defmodule GuardianApprovalReview do
     @moduledoc """
     Review payload emitted by guardian auto-approval review notifications.
@@ -1316,6 +1380,8 @@ defmodule Codex.Events do
     ThreadRolledBack,
     RequestUserInput,
     McpElicitationRequested,
+    CommandApprovalRequested,
+    FileApprovalRequested,
     PermissionsApprovalRequested,
     GuardianApprovalReviewStarted,
     GuardianApprovalReviewCompleted,
@@ -1397,6 +1463,8 @@ defmodule Codex.Events do
           | ThreadRolledBack.t()
           | RequestUserInput.t()
           | McpElicitationRequested.t()
+          | CommandApprovalRequested.t()
+          | FileApprovalRequested.t()
           | PermissionsApprovalRequested.t()
           | GuardianApprovalReviewStarted.t()
           | GuardianApprovalReviewCompleted.t()
@@ -1607,6 +1675,40 @@ defmodule Codex.Events do
         map
         |> Map.get("permissions")
         |> RequestPermissions.RequestPermissionProfile.from_map()
+    }
+  end
+
+  def parse!(%{"type" => "command_approval_requested"} = map) do
+    %CommandApprovalRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      item_id: Map.fetch!(map, "item_id"),
+      approval_id: Map.get(map, "approval_id"),
+      reason: Map.get(map, "reason"),
+      command: Map.get(map, "command"),
+      cwd: Map.get(map, "cwd"),
+      command_actions: Map.get(map, "command_actions"),
+      network_approval_context: Map.get(map, "network_approval_context"),
+      additional_permissions:
+        map
+        |> Map.get("additional_permissions")
+        |> RequestPermissions.RequestPermissionProfile.from_map(),
+      skill_metadata: Map.get(map, "skill_metadata"),
+      proposed_execpolicy_amendment: Map.get(map, "proposed_execpolicy_amendment"),
+      proposed_network_policy_amendments: Map.get(map, "proposed_network_policy_amendments"),
+      available_decisions: Map.get(map, "available_decisions")
+    }
+  end
+
+  def parse!(%{"type" => "file_approval_requested"} = map) do
+    %FileApprovalRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id"),
+      turn_id: Map.fetch!(map, "turn_id"),
+      item_id: Map.fetch!(map, "item_id"),
+      reason: Map.get(map, "reason"),
+      grant_root: Map.get(map, "grant_root")
     }
   end
 
@@ -2551,9 +2653,54 @@ defmodule Codex.Events do
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id,
       "item_id" => event.item_id,
-      "permissions" => RequestPermissions.RequestPermissionProfile.to_map(event.permissions)
+      "permissions" =>
+        event.permissions
+        |> RequestPermissions.RequestPermissionProfile.from_map()
+        |> RequestPermissions.RequestPermissionProfile.to_map()
     }
     |> put_optional("reason", event.reason)
+  end
+
+  def to_map(%CommandApprovalRequested{} = event) do
+    %{
+      "type" => "command_approval_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "item_id" => event.item_id
+    }
+    |> put_optional("approval_id", event.approval_id)
+    |> put_optional("reason", event.reason)
+    |> put_optional("command", event.command)
+    |> put_optional("cwd", event.cwd)
+    |> put_optional("command_actions", event.command_actions)
+    |> put_optional("network_approval_context", event.network_approval_context)
+    |> put_optional(
+      "additional_permissions",
+      event.additional_permissions &&
+        event.additional_permissions
+        |> RequestPermissions.RequestPermissionProfile.from_map()
+        |> RequestPermissions.RequestPermissionProfile.to_map()
+    )
+    |> put_optional("skill_metadata", event.skill_metadata)
+    |> put_optional("proposed_execpolicy_amendment", event.proposed_execpolicy_amendment)
+    |> put_optional(
+      "proposed_network_policy_amendments",
+      event.proposed_network_policy_amendments
+    )
+    |> put_optional("available_decisions", event.available_decisions)
+  end
+
+  def to_map(%FileApprovalRequested{} = event) do
+    %{
+      "type" => "file_approval_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "item_id" => event.item_id
+    }
+    |> put_optional("reason", event.reason)
+    |> put_optional("grant_root", event.grant_root)
   end
 
   def to_map(%GuardianApprovalReviewStarted{} = event) do

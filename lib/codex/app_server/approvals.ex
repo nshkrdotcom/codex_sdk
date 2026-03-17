@@ -5,6 +5,7 @@ defmodule Codex.AppServer.Approvals do
 
   alias Codex.Approvals.Hook
   alias Codex.AppServer.ApprovalDecision
+  alias Codex.AppServer.ApprovalRequest
   alias Codex.AppServer.Connection
   alias Codex.Config.Defaults
   alias Codex.Protocol.RequestPermissions
@@ -68,43 +69,20 @@ defmodule Codex.AppServer.Approvals do
 
   defp approval_event("item/commandExecution/requestApproval", %{} = params) do
     {:ok, :review_command,
-     %{
-       type: :command_execution_approval,
-       thread_id: Map.get(params, "threadId") || Map.get(params, "thread_id") || "",
-       turn_id: Map.get(params, "turnId") || Map.get(params, "turn_id") || "",
-       item_id: Map.get(params, "itemId") || Map.get(params, "item_id") || "",
-       reason: Map.get(params, "reason"),
-       proposed_execpolicy_amendment:
-         Map.get(params, "proposedExecpolicyAmendment") ||
-           Map.get(params, "proposed_execpolicy_amendment")
-     }}
+     ApprovalRequest.command_fields(params)
+     |> Map.put(:type, :command_execution_approval)}
   end
 
   defp approval_event("item/fileChange/requestApproval", %{} = params) do
     {:ok, :review_file,
-     %{
-       type: :file_change_approval,
-       thread_id: Map.get(params, "threadId") || Map.get(params, "thread_id") || "",
-       turn_id: Map.get(params, "turnId") || Map.get(params, "turn_id") || "",
-       item_id: Map.get(params, "itemId") || Map.get(params, "item_id") || "",
-       reason: Map.get(params, "reason"),
-       grant_root: Map.get(params, "grantRoot") || Map.get(params, "grant_root")
-     }}
+     ApprovalRequest.file_fields(params)
+     |> Map.put(:type, :file_change_approval)}
   end
 
   defp approval_event("item/permissions/requestApproval", %{} = params) do
     {:ok, :review_permissions,
-     %{
-       type: :permissions_approval,
-       thread_id: Map.get(params, "threadId") || Map.get(params, "thread_id") || "",
-       turn_id: Map.get(params, "turnId") || Map.get(params, "turn_id") || "",
-       item_id: Map.get(params, "itemId") || Map.get(params, "item_id") || "",
-       reason: Map.get(params, "reason"),
-       permissions:
-         params
-         |> Map.get("permissions", Map.get(params, :permissions))
-         |> RequestPermissions.RequestPermissionProfile.from_map()
-     }}
+     ApprovalRequest.permissions_fields(params)
+     |> Map.put(:type, :permissions_approval)}
   end
 
   defp approval_event(_method, _params), do: :ignore

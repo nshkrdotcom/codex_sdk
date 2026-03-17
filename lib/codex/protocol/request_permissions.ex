@@ -64,6 +64,116 @@ defmodule Codex.Protocol.RequestPermissions do
     end
   end
 
+  defmodule AdditionalMacOsPermissions do
+    @moduledoc "Additional macOS permissions requested for a turn or session."
+    use TypedStruct
+
+    typedstruct do
+      field(:preferences, String.t() | nil)
+      field(:automations, String.t() | map() | nil)
+      field(:launch_services, boolean() | nil)
+      field(:accessibility, boolean() | nil)
+      field(:calendar, boolean() | nil)
+      field(:reminders, boolean() | nil)
+      field(:contacts, String.t() | nil)
+    end
+
+    @spec from_map(map() | keyword() | t() | nil) :: t() | nil
+    def from_map(nil), do: nil
+    def from_map(%__MODULE__{} = permissions), do: permissions
+    def from_map(data) when is_list(data), do: data |> Map.new() |> from_map()
+
+    def from_map(data) when is_map(data) do
+      %__MODULE__{
+        preferences: RequestPermissions.fetch_any(data, ["preferences", :preferences]),
+        automations:
+          data
+          |> RequestPermissions.fetch_any(["automations", :automations])
+          |> RequestPermissions.normalize_union_value(),
+        launch_services:
+          RequestPermissions.fetch_any(data, [
+            "launchServices",
+            "launch_services",
+            :launchServices,
+            :launch_services
+          ]),
+        accessibility: RequestPermissions.fetch_any(data, ["accessibility", :accessibility]),
+        calendar: RequestPermissions.fetch_any(data, ["calendar", :calendar]),
+        reminders: RequestPermissions.fetch_any(data, ["reminders", :reminders]),
+        contacts: RequestPermissions.fetch_any(data, ["contacts", :contacts])
+      }
+    end
+
+    @spec to_map(t() | nil) :: map() | nil
+    def to_map(nil), do: nil
+
+    def to_map(%__MODULE__{} = permissions) do
+      %{}
+      |> RequestPermissions.put_optional("preferences", permissions.preferences)
+      |> RequestPermissions.put_optional("automations", permissions.automations)
+      |> RequestPermissions.put_optional("launchServices", permissions.launch_services)
+      |> RequestPermissions.put_optional("accessibility", permissions.accessibility)
+      |> RequestPermissions.put_optional("calendar", permissions.calendar)
+      |> RequestPermissions.put_optional("reminders", permissions.reminders)
+      |> RequestPermissions.put_optional("contacts", permissions.contacts)
+    end
+  end
+
+  defmodule GrantedMacOsPermissions do
+    @moduledoc "Additional macOS permissions granted for a turn or session."
+    use TypedStruct
+
+    typedstruct do
+      field(:preferences, String.t() | nil)
+      field(:automations, String.t() | map() | nil)
+      field(:launch_services, boolean() | nil)
+      field(:accessibility, boolean() | nil)
+      field(:calendar, boolean() | nil)
+      field(:reminders, boolean() | nil)
+      field(:contacts, String.t() | nil)
+    end
+
+    @spec from_map(map() | keyword() | t() | nil) :: t() | nil
+    def from_map(nil), do: nil
+    def from_map(%__MODULE__{} = permissions), do: permissions
+    def from_map(data) when is_list(data), do: data |> Map.new() |> from_map()
+
+    def from_map(data) when is_map(data) do
+      %__MODULE__{
+        preferences: RequestPermissions.fetch_any(data, ["preferences", :preferences]),
+        automations:
+          data
+          |> RequestPermissions.fetch_any(["automations", :automations])
+          |> RequestPermissions.normalize_union_value(),
+        launch_services:
+          RequestPermissions.fetch_any(data, [
+            "launchServices",
+            "launch_services",
+            :launchServices,
+            :launch_services
+          ]),
+        accessibility: RequestPermissions.fetch_any(data, ["accessibility", :accessibility]),
+        calendar: RequestPermissions.fetch_any(data, ["calendar", :calendar]),
+        reminders: RequestPermissions.fetch_any(data, ["reminders", :reminders]),
+        contacts: RequestPermissions.fetch_any(data, ["contacts", :contacts])
+      }
+    end
+
+    @spec to_map(t() | nil) :: map() | nil
+    def to_map(nil), do: nil
+
+    def to_map(%__MODULE__{} = permissions) do
+      %{}
+      |> RequestPermissions.put_optional("preferences", permissions.preferences)
+      |> RequestPermissions.put_optional("automations", permissions.automations)
+      |> RequestPermissions.put_optional("launchServices", permissions.launch_services)
+      |> RequestPermissions.put_optional("accessibility", permissions.accessibility)
+      |> RequestPermissions.put_optional("calendar", permissions.calendar)
+      |> RequestPermissions.put_optional("reminders", permissions.reminders)
+      |> RequestPermissions.put_optional("contacts", permissions.contacts)
+    end
+  end
+
   defmodule RequestPermissionProfile do
     @moduledoc "Permission profile included in request-permissions approval requests."
     use TypedStruct
@@ -71,6 +181,7 @@ defmodule Codex.Protocol.RequestPermissions do
     typedstruct do
       field(:network, AdditionalNetworkPermissions.t() | nil)
       field(:file_system, AdditionalFileSystemPermissions.t() | nil)
+      field(:macos, AdditionalMacOsPermissions.t() | nil)
     end
 
     @spec from_map(map() | keyword() | t() | nil) :: t()
@@ -92,7 +203,11 @@ defmodule Codex.Protocol.RequestPermissions do
             :fileSystem,
             :file_system
           ])
-          |> AdditionalFileSystemPermissions.from_map()
+          |> AdditionalFileSystemPermissions.from_map(),
+        macos:
+          data
+          |> RequestPermissions.fetch_any(["macos", :macos])
+          |> AdditionalMacOsPermissions.from_map()
       }
     end
 
@@ -106,6 +221,10 @@ defmodule Codex.Protocol.RequestPermissions do
       |> RequestPermissions.put_optional(
         "fileSystem",
         AdditionalFileSystemPermissions.to_map(profile.file_system)
+      )
+      |> RequestPermissions.put_optional(
+        "macos",
+        AdditionalMacOsPermissions.to_map(profile.macos)
       )
     end
   end
@@ -117,6 +236,7 @@ defmodule Codex.Protocol.RequestPermissions do
     typedstruct do
       field(:network, AdditionalNetworkPermissions.t() | nil)
       field(:file_system, AdditionalFileSystemPermissions.t() | nil)
+      field(:macos, GrantedMacOsPermissions.t() | nil)
     end
 
     @spec from_map(map() | keyword() | t() | nil) :: t()
@@ -138,7 +258,11 @@ defmodule Codex.Protocol.RequestPermissions do
             :fileSystem,
             :file_system
           ])
-          |> AdditionalFileSystemPermissions.from_map()
+          |> AdditionalFileSystemPermissions.from_map(),
+        macos:
+          data
+          |> RequestPermissions.fetch_any(["macos", :macos])
+          |> GrantedMacOsPermissions.from_map()
       }
     end
 
@@ -153,6 +277,7 @@ defmodule Codex.Protocol.RequestPermissions do
         "fileSystem",
         AdditionalFileSystemPermissions.to_map(profile.file_system)
       )
+      |> RequestPermissions.put_optional("macos", GrantedMacOsPermissions.to_map(profile.macos))
     end
   end
 
@@ -211,8 +336,12 @@ defmodule Codex.Protocol.RequestPermissions do
 
   @doc false
   def fetch_any(map, keys) when is_map(map) do
-    Enum.find_value(keys, fn key ->
-      if Map.has_key?(map, key), do: Map.get(map, key)
+    Enum.reduce_while(keys, nil, fn key, _acc ->
+      if Map.has_key?(map, key) do
+        {:halt, Map.get(map, key)}
+      else
+        {:cont, nil}
+      end
     end)
   end
 
@@ -224,6 +353,15 @@ defmodule Codex.Protocol.RequestPermissions do
       value -> List.wrap(value)
     end
   end
+
+  @doc false
+  def normalize_union_value(nil), do: nil
+  def normalize_union_value(%{} = value), do: value
+
+  def normalize_union_value(value) when is_list(value),
+    do: value |> Map.new() |> normalize_union_value()
+
+  def normalize_union_value(value), do: to_string(value)
 
   @doc false
   def put_optional(map, _key, nil), do: map

@@ -9,6 +9,15 @@ defmodule Codex.Protocol.RequestPermissionsTest do
       "fileSystem" => %{
         "read" => ["/tmp/read-only"],
         "write" => ["/tmp/read-write"]
+      },
+      "macos" => %{
+        "preferences" => "read_write",
+        "automations" => %{"bundle_ids" => ["com.apple.Finder"]},
+        "launchServices" => true,
+        "accessibility" => true,
+        "calendar" => false,
+        "reminders" => false,
+        "contacts" => "read_only"
       }
     }
 
@@ -17,6 +26,15 @@ defmodule Codex.Protocol.RequestPermissionsTest do
              file_system: %RequestPermissions.AdditionalFileSystemPermissions{
                read: ["/tmp/read-only"],
                write: ["/tmp/read-write"]
+             },
+             macos: %RequestPermissions.AdditionalMacOsPermissions{
+               preferences: "read_write",
+               automations: %{"bundle_ids" => ["com.apple.Finder"]},
+               launch_services: true,
+               accessibility: true,
+               calendar: false,
+               reminders: false,
+               contacts: "read_only"
              }
            } = RequestPermissions.RequestPermissionProfile.from_map(data)
 
@@ -29,7 +47,12 @@ defmodule Codex.Protocol.RequestPermissionsTest do
   test "granted permission profile accepts atom-key input and serializes with camelCase keys" do
     data = %{
       network: %{enabled: true},
-      file_system: %{read: ["/tmp/read-only"], write: ["/tmp/read-write"]}
+      file_system: %{read: ["/tmp/read-only"], write: ["/tmp/read-write"]},
+      macos: %{
+        preferences: "read_only",
+        automations: %{"bundle_ids" => ["com.apple.Finder"]},
+        accessibility: true
+      }
     }
 
     assert %RequestPermissions.GrantedPermissionProfile{
@@ -37,6 +60,11 @@ defmodule Codex.Protocol.RequestPermissionsTest do
              file_system: %RequestPermissions.AdditionalFileSystemPermissions{
                read: ["/tmp/read-only"],
                write: ["/tmp/read-write"]
+             },
+             macos: %RequestPermissions.GrantedMacOsPermissions{
+               preferences: "read_only",
+               automations: %{"bundle_ids" => ["com.apple.Finder"]},
+               accessibility: true
              }
            } = RequestPermissions.GrantedPermissionProfile.from_map(data)
 
@@ -45,6 +73,11 @@ defmodule Codex.Protocol.RequestPermissionsTest do
              "fileSystem" => %{
                "read" => ["/tmp/read-only"],
                "write" => ["/tmp/read-write"]
+             },
+             "macos" => %{
+               "preferences" => "read_only",
+               "automations" => %{"bundle_ids" => ["com.apple.Finder"]},
+               "accessibility" => true
              }
            } =
              data
@@ -63,7 +96,8 @@ defmodule Codex.Protocol.RequestPermissionsTest do
     data = %{
       "permissions" => %{
         "network" => %{"enabled" => true},
-        "fileSystem" => %{"write" => ["/tmp/project"]}
+        "fileSystem" => %{"write" => ["/tmp/project"]},
+        "macos" => %{"preferences" => "read_only", "accessibility" => true}
       },
       "scope" => "session"
     }
@@ -73,6 +107,10 @@ defmodule Codex.Protocol.RequestPermissionsTest do
                network: %RequestPermissions.AdditionalNetworkPermissions{enabled: true},
                file_system: %RequestPermissions.AdditionalFileSystemPermissions{
                  write: ["/tmp/project"]
+               },
+               macos: %RequestPermissions.GrantedMacOsPermissions{
+                 preferences: "read_only",
+                 accessibility: true
                }
              },
              scope: :session

@@ -108,6 +108,12 @@ defmodule Codex.Approvals.Hook do
   @doc """
   Review a command execution request (optional).
 
+  App-server command approval events include normalized snake_case fields such as
+  `:approval_id`, `:command`, `:cwd`, `:command_actions`,
+  `:network_approval_context`, `:additional_permissions`,
+  `:proposed_execpolicy_amendment`, `:proposed_network_policy_amendments`, and
+  `:available_decisions` when the connected Codex build sends them.
+
   If not implemented, commands are allowed by default.
   """
   @callback review_command(event(), context(), opts()) :: review_result()
@@ -115,12 +121,20 @@ defmodule Codex.Approvals.Hook do
   @doc """
   Review a file access request (optional).
 
+  App-server file approval events include normalized `:grant_root` when the
+  server suggests a session-scoped writable root.
+
   If not implemented, file operations are allowed by default.
   """
   @callback review_file(event(), context(), opts()) :: review_result()
 
   @doc """
   Review a request-permissions approval request (optional).
+
+  App-server permissions approval events expose a structured
+  `Codex.Protocol.RequestPermissions.RequestPermissionProfile`, including
+  network, filesystem, and macOS permission families when upstream provides
+  them.
 
   If not implemented, permissions requests are allowed by default.
   """

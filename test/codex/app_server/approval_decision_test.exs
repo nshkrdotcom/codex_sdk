@@ -67,6 +67,12 @@ defmodule Codex.AppServer.ApprovalDecisionTest do
           "fileSystem" => %{
             "read" => ["/tmp/read-only"],
             "write" => ["/tmp/project", "/tmp/other"]
+          },
+          "macos" => %{
+            "preferences" => "read_write",
+            "automations" => %{"bundle_ids" => ["com.apple.Finder", "com.apple.Safari"]},
+            "accessibility" => true,
+            "contacts" => "read_write"
           }
         })
 
@@ -74,7 +80,14 @@ defmodule Codex.AppServer.ApprovalDecisionTest do
         {:allow,
          permissions: %{
            network: %{enabled: true},
-           file_system: %{read: ["/tmp/read-only", "/tmp/outside"], write: ["/tmp/project"]}
+           file_system: %{read: ["/tmp/read-only", "/tmp/outside"], write: ["/tmp/project"]},
+           macos: %{
+             preferences: "read_only",
+             automations: %{"bundle_ids" => ["com.apple.Finder", "com.apple.Terminal"]},
+             accessibility: true,
+             contacts: "read_only",
+             reminders: true
+           }
          },
          scope: :session}
 
@@ -84,6 +97,12 @@ defmodule Codex.AppServer.ApprovalDecisionTest do
                  "fileSystem" => %{
                    "read" => ["/tmp/read-only"],
                    "write" => ["/tmp/project"]
+                 },
+                 "macos" => %{
+                   "preferences" => "read_only",
+                   "automations" => %{"bundle_ids" => ["com.apple.Finder"]},
+                   "accessibility" => true,
+                   "contacts" => "read_only"
                  }
                },
                "scope" => "session"

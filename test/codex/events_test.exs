@@ -124,6 +124,100 @@ defmodule Codex.EventsTest do
              } = Events.to_map(event)
     end
 
+    test "parses command and file approval request events" do
+      command_event =
+        Events.parse!(%{
+          "type" => "command_approval_requested",
+          "id" => 42,
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "item_id" => "item_1",
+          "approval_id" => "approval_1",
+          "reason" => "Need network access",
+          "command" => "curl https://example.com",
+          "cwd" => "/tmp/project",
+          "command_actions" => [%{"type" => "search", "command" => "curl", "path" => nil}],
+          "network_approval_context" => %{"host" => "example.com", "protocol" => "https"},
+          "additional_permissions" => %{
+            "network" => %{"enabled" => true},
+            "fileSystem" => %{"write" => ["/tmp/project"]},
+            "macos" => %{"accessibility" => true}
+          },
+          "skill_metadata" => %{"pathToSkillsMd" => "/tmp/project/SKILL.md"},
+          "proposed_execpolicy_amendment" => ["curl", "https://example.com"],
+          "proposed_network_policy_amendments" => [
+            %{"host" => "example.com", "action" => "allow"}
+          ],
+          "available_decisions" => ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+        })
+
+      assert %Events.CommandApprovalRequested{
+               id: 42,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "item_1",
+               approval_id: "approval_1",
+               reason: "Need network access",
+               command: "curl https://example.com",
+               cwd: "/tmp/project",
+               command_actions: [%{"type" => "search", "command" => "curl", "path" => nil}],
+               network_approval_context: %{"host" => "example.com", "protocol" => "https"},
+               additional_permissions:
+                 %Codex.Protocol.RequestPermissions.RequestPermissionProfile{
+                   network: %Codex.Protocol.RequestPermissions.AdditionalNetworkPermissions{
+                     enabled: true
+                   },
+                   file_system:
+                     %Codex.Protocol.RequestPermissions.AdditionalFileSystemPermissions{
+                       write: ["/tmp/project"]
+                     },
+                   macos: %Codex.Protocol.RequestPermissions.AdditionalMacOsPermissions{
+                     accessibility: true
+                   }
+                 },
+               skill_metadata: %{"pathToSkillsMd" => "/tmp/project/SKILL.md"},
+               proposed_execpolicy_amendment: ["curl", "https://example.com"],
+               proposed_network_policy_amendments: [
+                 %{"host" => "example.com", "action" => "allow"}
+               ],
+               available_decisions: ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+             } = command_event
+
+      file_event =
+        Events.parse!(%{
+          "type" => "file_approval_requested",
+          "id" => 43,
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "item_id" => "item_2",
+          "reason" => "Need extra write access",
+          "grant_root" => "/tmp/project"
+        })
+
+      assert %Events.FileApprovalRequested{
+               id: 43,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "item_2",
+               reason: "Need extra write access",
+               grant_root: "/tmp/project"
+             } = file_event
+
+      assert %{
+               "type" => "command_approval_requested",
+               "additional_permissions" => %{
+                 "network" => %{"enabled" => true},
+                 "fileSystem" => %{"write" => ["/tmp/project"]},
+                 "macos" => %{"accessibility" => true}
+               }
+             } = Events.to_map(command_event)
+
+      assert %{
+               "type" => "file_approval_requested",
+               "grant_root" => "/tmp/project"
+             } = Events.to_map(file_event)
+    end
+
     test "parses item.started and item.updated events into typed structs" do
       started =
         Events.parse!(%{

@@ -113,6 +113,19 @@ defmodule Codex.AppServerTransportTest do
     def review_command(_event, _context, _opts), do: {:deny, "no"}
   end
 
+  defmodule CaptureCommandApprovalHook do
+    @behaviour Codex.Approvals.Hook
+
+    @impl true
+    def review_tool(_event, _context, _opts), do: :allow
+
+    @impl true
+    def review_command(event, context, _opts) do
+      send(context.metadata.test_pid, {:captured_command_approval, event})
+      {:deny, "no"}
+    end
+  end
+
   defmodule TimeoutApprovalHook do
     @behaviour Codex.Approvals.Hook
 
@@ -416,6 +429,35 @@ defmodule Codex.AppServerTransportTest do
       }
     }
 
+    command_approval_request = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "cmd_1",
+      "approvalId" => "approval_1",
+      "reason" => "Need network access",
+      "command" => "curl https://example.com",
+      "cwd" => "/tmp/project",
+      "commandActions" => [%{"type" => "search", "command" => "curl", "path" => nil}],
+      "networkApprovalContext" => %{"host" => "example.com", "protocol" => "https"},
+      "additionalPermissions" => %{
+        "network" => %{"enabled" => true},
+        "fileSystem" => %{"write" => ["/tmp/project"]},
+        "macos" => %{"accessibility" => true}
+      },
+      "skillMetadata" => %{"pathToSkillsMd" => "/tmp/project/SKILL.md"},
+      "proposedExecpolicyAmendment" => ["curl", "https://example.com"],
+      "proposedNetworkPolicyAmendments" => [%{"host" => "example.com", "action" => "allow"}],
+      "availableDecisions" => ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+    }
+
+    file_approval_request = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "file_1",
+      "reason" => "Need extra write access",
+      "grantRoot" => "/tmp/project"
+    }
+
     auth_refresh_request = %{
       "reason" => "unauthorized",
       "previousAccountId" => "acct_1"
@@ -425,16 +467,22 @@ defmodule Codex.AppServerTransportTest do
       conn,
       {:stdout, os_pid,
        [
-         Protocol.encode_request(6, "item/tool/call", ignored_tool_call),
-         Protocol.encode_request(7, "item/tool/call", dynamic_tool_call),
-         Protocol.encode_request(8, "mcpServer/elicitation/request", elicitation_request),
          Protocol.encode_request(
-           9,
+           5,
+           "item/commandExecution/requestApproval",
+           command_approval_request
+         ),
+         Protocol.encode_request(6, "item/fileChange/requestApproval", file_approval_request),
+         Protocol.encode_request(7, "item/tool/call", ignored_tool_call),
+         Protocol.encode_request(8, "item/tool/call", dynamic_tool_call),
+         Protocol.encode_request(9, "mcpServer/elicitation/request", elicitation_request),
+         Protocol.encode_request(
+           10,
            "item/permissions/requestApproval",
            permissions_request
          ),
          Protocol.encode_request(
-           10,
+           11,
            "account/chatgptAuthTokens/refresh",
            auth_refresh_request
          )
@@ -457,8 +505,57 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, result} = Task.await(task, 500)
 
     assert Enum.any?(result.events, fn
+             %Codex.Events.CommandApprovalRequested{
+               id: 5,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "cmd_1",
+               approval_id: "approval_1",
+               reason: "Need network access",
+               command: "curl https://example.com",
+               cwd: "/tmp/project",
+               command_actions: [%{"type" => "search", "command" => "curl", "path" => nil}],
+               network_approval_context: %{"host" => "example.com", "protocol" => "https"},
+               additional_permissions: %RequestPermissions.RequestPermissionProfile{
+                 network: %RequestPermissions.AdditionalNetworkPermissions{enabled: true},
+                 file_system: %RequestPermissions.AdditionalFileSystemPermissions{
+                   write: ["/tmp/project"]
+                 },
+                 macos: %RequestPermissions.AdditionalMacOsPermissions{
+                   accessibility: true
+                 }
+               },
+               skill_metadata: %{"pathToSkillsMd" => "/tmp/project/SKILL.md"},
+               proposed_execpolicy_amendment: ["curl", "https://example.com"],
+               proposed_network_policy_amendments: [
+                 %{"host" => "example.com", "action" => "allow"}
+               ],
+               available_decisions: ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.FileApprovalRequested{
+               id: 6,
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               item_id: "file_1",
+               reason: "Need extra write access",
+               grant_root: "/tmp/project"
+             } ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(result.events, fn
              %Codex.Events.DynamicToolCallRequested{
-               id: 7,
+               id: 8,
                thread_id: "thr_1",
                turn_id: "turn_1",
                call_id: "call_1",
@@ -473,7 +570,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert Enum.any?(result.events, fn
              %Codex.Events.McpElicitationRequested{
-               id: 8,
+               id: 9,
                thread_id: "thr_1",
                turn_id: "turn_1",
                server_name: "filesystem",
@@ -488,7 +585,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert Enum.any?(result.events, fn
              %Codex.Events.PermissionsApprovalRequested{
-               id: 9,
+               id: 10,
                thread_id: "thr_1",
                turn_id: "turn_1",
                item_id: "perm_1",
@@ -509,7 +606,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert Enum.any?(result.events, fn
              %Codex.Events.ChatgptAuthTokensRefreshRequested{
-               id: 10,
+               id: 11,
                reason: "unauthorized",
                previous_account_id: "acct_1"
              } ->
@@ -1365,6 +1462,130 @@ defmodule Codex.AppServerTransportTest do
     ]
 
     send(conn, {:stdout, os_pid, notifications})
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  test "app-server command approval hooks receive additional permissions and network context" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        metadata: %{test_pid: self()},
+        approval_hook: CaptureCommandApprovalHook
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    approval_request_params = %{
+      "threadId" => "thr_1",
+      "turnId" => "turn_1",
+      "itemId" => "item_1",
+      "approvalId" => "approval_1",
+      "reason" => "needs approval",
+      "command" => "curl https://example.com",
+      "cwd" => "/tmp/project",
+      "commandActions" => [%{"type" => "search", "command" => "curl", "path" => nil}],
+      "networkApprovalContext" => %{"host" => "example.com", "protocol" => "https"},
+      "additionalPermissions" => %{
+        "network" => %{"enabled" => true},
+        "fileSystem" => %{"write" => ["/tmp/project"]},
+        "macos" => %{"accessibility" => true}
+      },
+      "skillMetadata" => %{"pathToSkillsMd" => "/tmp/project/SKILL.md"},
+      "proposedExecpolicyAmendment" => ["curl", "https://example.com"],
+      "proposedNetworkPolicyAmendments" => [%{"host" => "example.com", "action" => "allow"}],
+      "availableDecisions" => ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+    }
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_request(
+         12,
+         "item/commandExecution/requestApproval",
+         approval_request_params
+       )}
+    )
+
+    assert_receive {:captured_command_approval, event}, 200
+
+    assert event.additional_permissions ==
+             RequestPermissions.RequestPermissionProfile.from_map(
+               approval_request_params["additionalPermissions"]
+             )
+
+    assert event.network_approval_context == %{"host" => "example.com", "protocol" => "https"}
+    assert event.approval_id == "approval_1"
+    assert event.command == "curl https://example.com"
+    assert event.cwd == "/tmp/project"
+    assert event.command_actions == [%{"type" => "search", "command" => "curl", "path" => nil}]
+    assert event.skill_metadata == %{"pathToSkillsMd" => "/tmp/project/SKILL.md"}
+    assert event.proposed_execpolicy_amendment == ["curl", "https://example.com"]
+
+    assert event.proposed_network_policy_amendments == [
+             %{"host" => "example.com", "action" => "allow"}
+           ]
+
+    assert event.available_decisions == ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
+
+    assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
+
+    assert {:ok, %{"id" => 12, "result" => %{"decision" => "decline"}}} =
+             Jason.decode(approval_response_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
 
     assert {:ok, _result} = Task.await(task, 500)
   end
