@@ -1108,6 +1108,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_oauth_login.exs`** - Native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`; prints the browser URL before waiting, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth
 - **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
 - **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn that uses the server-advertised preset settings (falling back only when the server omits a field), with an explicit skip when the connected build rejects or omits `collaborationMode/list`
+- **`live_subagent_host_controls.exs`** - Live subagent workflow over app-server that enables `features.multi_agent`, exercises the full `Codex.Subagents` helper surface, and drives `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes

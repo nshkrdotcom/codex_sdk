@@ -226,6 +226,8 @@ Use it for:
 - discovering spawned children for a known parent with `Codex.Subagents.children/3`
 - reading a known child thread with `Codex.Subagents.read/3`
 - parsing typed source metadata with `Codex.Subagents.source/1`
+- extracting the parent id with `Codex.Subagents.parent_thread_id/1`
+- confirming whether a thread is a spawned child with `Codex.Subagents.child_thread?/1`
 - polling a known child thread to a terminal turn state with `Codex.Subagents.await/3`
 
 The typed source structs are:
@@ -236,6 +238,9 @@ The typed source structs are:
 This surface is intentionally limited to inspection and polling over existing
 threads. Decisions such as whether to delegate, how many children to create, or
 which role to use still belong in the parent prompt rather than helper APIs.
+
+For a runnable live flow that combines prompt-mediated delegation with the full
+host-side helper surface, see `examples/live_subagent_host_controls.exs`.
 
 ## Legacy v1 APIs
 

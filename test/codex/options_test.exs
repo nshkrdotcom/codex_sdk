@@ -77,6 +77,17 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
+    test "does not crash when CODEX_MODEL points at a cross-catalog model under api auth" do
+      auth_path = Path.join(System.get_env("CODEX_HOME"), "auth.json")
+      File.write!(auth_path, ~s({"OPENAI_API_KEY":"sk-test"}))
+      System.put_env("CODEX_MODEL", "gpt-5.4-mini")
+
+      assert {:ok, opts} = Options.new(%{})
+      assert opts.api_key == "sk-test"
+      assert opts.model == "gpt-5.4-mini"
+      assert opts.reasoning_effort == :medium
+    end
+
     test "coerces unsupported reasoning effort values" do
       {:ok, opts} =
         Options.new(%{

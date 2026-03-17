@@ -160,6 +160,11 @@ Key entry points:
 - `child_thread?/1` — check whether a source carries a structured parent-child spawn link
 - `await/3` — poll `thread/read(include_turns: true)` until the latest turn reaches a terminal state
 
+Prompt-mediated delegation still happens inside the Codex turn via the runtime
+tool surface (`spawn_agent`, `send_input`, `resume_agent`, `wait`,
+`close_agent`). `Codex.Subagents` stays on the deterministic host side of that
+boundary.
+
 Related protocol structs:
 
 - `Codex.Protocol.SessionSource`

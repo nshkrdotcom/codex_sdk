@@ -496,6 +496,26 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
+  test "thread_list/2 normalizes legacy source kind aliases", %{conn: conn, os_pid: os_pid} do
+    task =
+      Task.async(fn ->
+        AppServer.thread_list(conn,
+          source_kinds: [:mcp, "subagent", :sub_agent_thread_spawn]
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/list", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["sourceKinds"] == ["appServer", "subAgent", "subAgentThreadSpawn"]
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+
+    assert {:ok, %{"data" => []}} = Task.await(task, 200)
+  end
+
   test "thread_list/2 encodes sort key and archived", %{conn: conn, os_pid: os_pid} do
     task =
       Task.async(fn -> AppServer.thread_list(conn, sort_key: :updated_at, archived: true) end)

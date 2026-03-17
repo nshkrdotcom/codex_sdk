@@ -48,6 +48,9 @@ defmodule Codex.Protocol.SessionSourceTest do
     assert %SessionSource{sub_agent: %SubAgentSource{variant: :memory_consolidation}} =
              SessionSource.from_map(%{"subAgent" => "memory_consolidation"})
 
+    assert %SessionSource{sub_agent: %SubAgentSource{variant: :memory_consolidation}} =
+             SessionSource.from_map(%{"subAgent" => "memoryConsolidation"})
+
     assert %SessionSource{sub_agent: %SubAgentSource{variant: :other, other: "custom"}} =
              SessionSource.from_map(%{"subAgent" => %{"other" => "custom"}})
   end

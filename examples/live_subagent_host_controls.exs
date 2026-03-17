@@ -11,6 +11,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
   @thread_list_opts [sort_key: :updated_at, limit: 100]
   @discovery_attempts 10
   @discovery_delay_ms 500
+  @prompt_tool_kinds [:spawn_agent, :send_input, :resume_agent, :wait, :close_agent]
 
   @default_child_prompt """
   Spawn exactly one child agent for this task.
@@ -137,6 +138,42 @@ defmodule CodexExamples.LiveSubagentHostControls do
                 fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
               )
 
+            require_observed_tool_kinds!(
+              parent_state,
+              [:spawn_agent, :wait],
+              "initial parent turn"
+            )
+
+            IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
+
+            {:ok, child_status} =
+              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+
+            resumed_parent_state =
+              run_parent_turn!(
+                codex_opts,
+                parent_thread_id,
+                cwd,
+                model,
+                "Running a second parent turn that must resume or no-op the child before using send_input, wait, and close_agent...",
+                parent_resume_prompt(child_thread_id)
+              )
+
+            require_observed_tool_kinds!(
+              resumed_parent_state,
+              [:resume_agent, :send_input, :wait, :close_agent],
+              "second parent turn"
+            )
+
+            post_close_child_read =
+              retry_ok!(
+                "thread/read for child thread after close",
+                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
+              )
+
+            {:ok, post_close_child_status} =
+              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+
             IO.puts("Opening a fresh child-turn connection for a direct host-side follow-up...")
 
             child_state =
@@ -163,10 +200,17 @@ defmodule CodexExamples.LiveSubagentHostControls do
                 %{child_state | usage: RunResultStreaming.usage(child_stream)}
               end)
 
-            IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
+            resumed_child_read =
+              retry_ok!(
+                "thread/read for child thread after host-side follow-up",
+                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
+              )
 
-            {:ok, child_status} =
+            {:ok, resumed_child_status} =
               Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+
+            observed_tool_kinds =
+              merge_observed_tool_kinds([parent_state, resumed_parent_state])
 
             IO.inspect(%{
               parent_thread_id: parent_thread_id,
@@ -183,10 +227,19 @@ defmodule CodexExamples.LiveSubagentHostControls do
               spawn_observed?: parent_state.spawn_observed?,
               child_turn_count: count_turns(child_read),
               child_status: child_status,
+              child_turn_count_after_close: count_turns(post_close_child_read),
+              child_status_after_close: post_close_child_status,
+              child_turn_count_after_resume: count_turns(resumed_child_read),
+              child_status_after_resume: resumed_child_status,
               child_follow_up: child_state.final_response,
               parent_summary: parent_state.parent_summary,
               parent_usage: RunResultStreaming.usage(stream),
-              child_follow_up_usage: child_state.usage
+              child_follow_up_usage: child_state.usage,
+              parent_resume_summary: resumed_parent_state.parent_summary,
+              parent_resume_usage: resumed_parent_state.usage,
+              observed_prompt_tool_kinds: Enum.sort(MapSet.to_list(observed_tool_kinds)),
+              prompt_tool_surface_complete?:
+                MapSet.subset?(MapSet.new(@prompt_tool_kinds), observed_tool_kinds)
             })
 
           [] ->
@@ -224,6 +277,38 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp parse_prompt([]), do: @default_child_prompt
   defp parse_prompt(values), do: Enum.join(values, " ")
 
+  defp parent_resume_prompt(child_thread_id) do
+    """
+    Call resume_agent on the existing child agent with id #{child_thread_id} before any other collaboration tool.
+    Do not spawn a new agent.
+    Do not target any other agent.
+    After resuming it, send exactly one follow-up message asking it to reply with exactly one sentence that starts with "resumed child:" and names two host helpers exposed by Codex.Subagents.
+    Wait for that child to finish.
+    After the child finishes, close that same child agent again.
+    Then reply with exactly one sentence that confirms you used resume_agent, send_input, wait, and close_agent.
+    If resume, send_input, wait, or close_agent fails, say so explicitly and do not spawn a replacement.
+    """
+  end
+
+  defp run_parent_turn!(codex_opts, parent_thread_id, cwd, model, banner, prompt) do
+    with_app_server_connection!(codex_opts, fn parent_conn ->
+      IO.puts(banner)
+
+      {:ok, parent_thread} =
+        Codex.resume_thread(parent_thread_id, codex_opts, %{
+          transport: {:app_server, parent_conn},
+          working_directory: cwd,
+          model: model
+        })
+
+      IO.puts(@stream_wait_note)
+
+      {:ok, parent_stream} = Thread.run_streamed(parent_thread, prompt, %{timeout_ms: 180_000})
+      parent_state = consume_parent_stream(parent_stream)
+      %{parent_state | usage: RunResultStreaming.usage(parent_stream)}
+    end)
+  end
+
   defp consume_parent_stream(stream) do
     stream
     |> RunResultStreaming.raw_events()
@@ -233,9 +318,11 @@ defmodule CodexExamples.LiveSubagentHostControls do
         parent_summary: nil,
         child_thread_id: nil,
         spawn_observed?: false,
+        observed_tool_kinds: MapSet.new(),
         parent_thread_started?: false,
         parent_turn_started?: false,
-        text_open?: false
+        text_open?: false,
+        usage: %{}
       },
       &handle_parent_event/2
     )
@@ -282,7 +369,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
     |> close_text_block()
     |> then(fn next_state ->
       IO.puts("Subagent spawn started. Prompt preview: #{preview(prompt)}")
-      %{next_state | spawn_observed?: true}
+      mark_tool_kind(next_state, :spawn_agent)
     end)
   end
 
@@ -309,9 +396,8 @@ defmodule CodexExamples.LiveSubagentHostControls do
       """)
 
       %{
-        next_state
-        | spawn_observed?: true,
-          child_thread_id: thread_id || next_state.child_thread_id
+        mark_tool_kind(next_state, :spawn_agent)
+        | child_thread_id: thread_id || next_state.child_thread_id
       }
     end)
   end
@@ -321,7 +407,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
     |> close_text_block()
     |> then(fn next_state ->
       IO.puts("Parent is waiting on child threads: #{Enum.join(ids, ", ")}")
-      next_state
+      mark_tool_kind(next_state, :wait)
     end)
   end
 
@@ -336,7 +422,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
         end)
 
       IO.puts("Parent finished waiting on child threads: #{rendered}")
-      next_state
+      mark_tool_kind(next_state, :wait)
     end)
   end
 
@@ -345,7 +431,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
     |> close_text_block()
     |> then(fn next_state ->
       IO.puts("Parent resumed child thread #{inspect(thread_id)}.")
-      next_state
+      mark_tool_kind(next_state, :resume_agent)
     end)
   end
 
@@ -357,10 +443,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
         "Collab tool started: #{item.tool} kind=#{inspect(item.tool_kind)} receivers=#{inspect(item.receiver_thread_ids)}"
       )
 
-      %{
-        next_state
-        | spawn_observed?: next_state.spawn_observed? or item.tool_kind == :spawn_agent
-      }
+      mark_tool_kind(next_state, item.tool_kind)
     end)
   end
 
@@ -375,10 +458,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
         "Collab tool completed: #{item.tool} kind=#{inspect(item.tool_kind)} status=#{inspect(item.status)} receivers=#{inspect(item.receiver_thread_ids)}"
       )
 
-      %{
-        next_state
-        | spawn_observed?: next_state.spawn_observed? or item.tool_kind == :spawn_agent
-      }
+      mark_tool_kind(next_state, item.tool_kind)
     end)
   end
 
@@ -489,6 +569,34 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp count_turns(%{"turns" => turns}) when is_list(turns), do: length(turns)
   defp count_turns(%{turns: turns}) when is_list(turns), do: length(turns)
   defp count_turns(_), do: 0
+
+  defp require_observed_tool_kinds!(state, expected, label) when is_list(expected) do
+    expected_set = MapSet.new(expected)
+    observed = Map.get(state, :observed_tool_kinds, MapSet.new())
+    missing = MapSet.difference(expected_set, observed)
+
+    if MapSet.size(missing) > 0 do
+      Mix.raise(
+        "#{label} did not exercise the expected tool kinds. Missing=#{inspect(Enum.sort(MapSet.to_list(missing)))} observed=#{inspect(Enum.sort(MapSet.to_list(observed)))}"
+      )
+    end
+  end
+
+  defp merge_observed_tool_kinds(states) when is_list(states) do
+    Enum.reduce(states, MapSet.new(), fn state, acc ->
+      MapSet.union(acc, Map.get(state, :observed_tool_kinds, MapSet.new()))
+    end)
+  end
+
+  defp mark_tool_kind(state, :unknown), do: state
+
+  defp mark_tool_kind(%{observed_tool_kinds: observed} = state, tool_kind) do
+    %{
+      state
+      | observed_tool_kinds: MapSet.put(observed, tool_kind),
+        spawn_observed?: state.spawn_observed? or tool_kind == :spawn_agent
+    }
+  end
 
   defp with_app_server_connection!(codex_opts, fun) when is_function(fun, 1) do
     {:ok, conn} =

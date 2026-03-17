@@ -1411,6 +1411,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`; it prints the browser authorization URL, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth
 - `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration presets, and runs a turn with the server-advertised preset settings and built-in preset instructions when the connected build advertises `collaborationMode/list`
+- `examples/live_subagent_host_controls.exs` — enables `features.multi_agent`, runs a one-parent -> one-child workflow, exercises the full `Codex.Subagents` helper surface, and then drives `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent` across live parent turns
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and validation

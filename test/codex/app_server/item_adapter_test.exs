@@ -184,6 +184,56 @@ defmodule Codex.AppServer.ItemAdapterTest do
               }} = ItemAdapter.to_item(collab_item)
     end
 
+    test "maps legacy singular collab fields" do
+      legacy_spawn_item = %{
+        "type" => "collabAgentToolCall",
+        "id" => "collab_spawn_legacy",
+        "tool" => "spawnAgent",
+        "status" => "completed",
+        "senderThreadId" => "thread_parent",
+        "newThreadId" => "thread_child",
+        "prompt" => "delegate this",
+        "agentStatus" => %{"completed" => "done"}
+      }
+
+      assert {:ok,
+              %Items.CollabAgentToolCall{
+                id: "collab_spawn_legacy",
+                tool: "spawnAgent",
+                tool_kind: :spawn_agent,
+                status: :completed,
+                sender_thread_id: "thread_parent",
+                receiver_thread_ids: ["thread_child"],
+                prompt: "delegate this",
+                agents_states: %{
+                  "thread_child" => %CollabAgentState{status: :completed, message: "done"}
+                }
+              }} = ItemAdapter.to_item(legacy_spawn_item)
+
+      legacy_send_item = %{
+        "type" => "collabAgentToolCall",
+        "id" => "collab_send_legacy",
+        "tool" => "sendInput",
+        "status" => "completed",
+        "senderThreadId" => "thread_parent",
+        "receiverThreadId" => "thread_child",
+        "agentStatus" => "running"
+      }
+
+      assert {:ok,
+              %Items.CollabAgentToolCall{
+                id: "collab_send_legacy",
+                tool: "sendInput",
+                tool_kind: :send_input,
+                status: :completed,
+                sender_thread_id: "thread_parent",
+                receiver_thread_ids: ["thread_child"],
+                agents_states: %{
+                  "thread_child" => %CollabAgentState{status: :running, message: nil}
+                }
+              }} = ItemAdapter.to_item(legacy_send_item)
+    end
+
     test "maps web search and image generation extensions" do
       web_item = %{
         "type" => "webSearch",

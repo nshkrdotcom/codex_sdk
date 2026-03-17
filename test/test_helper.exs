@@ -8,5 +8,14 @@ Code.require_file("support/model_fixtures.ex", __DIR__)
 
 {:ok, _} = Application.ensure_all_started(:erlexec)
 
-ExUnit.configure(exclude: [:pending, :live], max_cases: 1, capture_log: false)
+ExUnit.configure(
+  exclude: [:pending, :live],
+  max_cases: 1,
+  capture_log: false,
+  # Many transport tests coordinate Task/GenServer/mock-subprocess hops before
+  # asserting on mailbox traffic. The default 100ms receive window is too tight
+  # on slower CI/dev boxes and causes suite-only flakiness.
+  assert_receive_timeout: 500
+)
+
 ExUnit.start()

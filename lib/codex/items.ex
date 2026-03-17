@@ -805,17 +805,29 @@ defmodule Codex.Items do
   defp parse_collab_agent_tool_call(map) do
     tool = normalize_collab_tool(get(map, :tool))
 
+    receiver_thread_ids =
+      normalize_collab_receiver_thread_ids(
+        get(map, :receiver_thread_ids),
+        get(map, :receiver_thread_id),
+        get(map, :new_thread_id)
+      )
+
     %CollabAgentToolCall{
       id: get(map, :id),
       tool: tool,
       tool_kind: normalize_collab_tool_kind(tool),
       status: parse_status(get(map, :status), @collab_tool_status_map, :in_progress),
       sender_thread_id: get(map, :sender_thread_id) || "",
-      receiver_thread_ids: get(map, :receiver_thread_ids) || [],
+      receiver_thread_ids: receiver_thread_ids,
       prompt: get(map, :prompt),
       model: get(map, :model),
       reasoning_effort: normalize_reasoning_effort(get(map, :reasoning_effort)),
-      agents_states: normalize_collab_agent_states(get(map, :agents_states))
+      agents_states:
+        normalize_collab_agent_states(
+          get(map, :agents_states),
+          receiver_thread_ids,
+          get(map, :agent_status)
+        )
     }
   end
 
@@ -973,7 +985,18 @@ defmodule Codex.Items do
     end
   end
 
-  defp normalize_collab_agent_states(%{} = states) do
+  defp normalize_collab_receiver_thread_ids(ids, _receiver_thread_id, _new_thread_id)
+       when is_list(ids) do
+    Enum.map(ids, &to_string/1)
+  end
+
+  defp normalize_collab_receiver_thread_ids(_ids, receiver_thread_id, new_thread_id) do
+    [receiver_thread_id, new_thread_id]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&to_string/1)
+  end
+
+  defp normalize_collab_agent_states(%{} = states, _receiver_thread_ids, _agent_status) do
     states
     |> Enum.map(fn {thread_id, state} ->
       {to_string(thread_id), CollabAgentState.from_map(state)}
@@ -981,7 +1004,23 @@ defmodule Codex.Items do
     |> Map.new()
   end
 
-  defp normalize_collab_agent_states(_), do: %{}
+  defp normalize_collab_agent_states(_states, receiver_thread_ids, agent_status)
+       when is_list(receiver_thread_ids) do
+    case {receiver_thread_ids, agent_status} do
+      {[], _} ->
+        %{}
+
+      {_ids, nil} ->
+        %{}
+
+      {ids, status} ->
+        normalized_status = CollabAgentState.from_map(status)
+
+        ids
+        |> Enum.map(fn thread_id -> {thread_id, normalized_status} end)
+        |> Map.new()
+    end
+  end
 
   defp encode_collab_agent_states(%{} = states) do
     states

@@ -144,6 +144,12 @@ experimental CSV batch tools:
 `Codex.Subagents` intentionally does not wrap those tools. It only gives host
 code deterministic visibility into the threads and metadata they create.
 
+The current app-server protocol uses plural fields such as
+`receiverThreadIds` and `agentsStates` for collaboration tool-call items.
+Some upstream summaries still mention older singular variants such as
+`receiverThreadId`, `newThreadId`, and `agentStatus`. The SDK normalizes both
+shapes when it parses app-server payloads.
+
 ## Built-In and Custom Agents
 
 Codex ships with three useful built-in agents:
@@ -183,6 +189,9 @@ sandbox_mode = "read-only"
 
 Keep custom agents narrow and opinionated. A good custom agent has one clear
 job and instructions that keep it from drifting into adjacent work.
+
+If a custom agent uses the same `name` as a built-in agent such as `explorer`,
+the custom definition takes precedence.
 
 If you use `nickname_candidates`, keep the list non-empty and unique, and stick
 to ASCII letters, digits, spaces, hyphens, and underscores. The runtime
@@ -260,9 +269,20 @@ The important pattern is simple:
   thread
 
 For a runnable end-to-end version of this flow, see
-`examples/live_subagent_host_controls.exs`. That example now exercises
-`list/2`, `children/3`, `source/1`, `parent_thread_id/1`, `child_thread?/1`,
-`read/3`, and `await/3`.
+`examples/live_subagent_host_controls.exs`. That example now exercises the
+full public `Codex.Subagents` helper surface:
+
+- `list/2`
+- `children/3`
+- `source/1`
+- `parent_thread_id/1`
+- `child_thread?/1`
+- `read/3`
+- `await/3`
+
+It also drives the current prompt-mediated multi-agent tool surface across
+successive parent turns so you can observe `spawn_agent`, `send_input`,
+`resume_agent`, `wait`, and `close_agent` in the live event stream.
 
 ## Streaming and Observability
 
@@ -398,8 +418,8 @@ Start simple.
 - use `gpt-5.4` for the parent and for agents handling harder reasoning or
   ambiguous work
 - use `gpt-5.4-mini` for faster, lower-cost day-to-day parent/child examples
-- use `gpt-5.3-codex-spark` for faster read-heavy or summarization-focused
-  agents
+- use `gpt-5.3-codex-spark` only when your account/runtime exposes it and you
+  want a faster read-heavy or summarization-focused agent
 - use `medium` reasoning effort as the default unless you have a clear reason
   to go lower or higher
 

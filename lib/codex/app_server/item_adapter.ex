@@ -96,6 +96,7 @@ defmodule Codex.AppServer.ItemAdapter do
 
   def to_item(%{"type" => "collabAgentToolCall"} = item) do
     tool = normalize_collab_tool(Map.get(item, "tool"))
+    receiver_thread_ids = normalize_collab_receiver_thread_ids(item)
 
     {:ok,
      %Items.CollabAgentToolCall{
@@ -104,11 +105,16 @@ defmodule Codex.AppServer.ItemAdapter do
        tool_kind: normalize_collab_tool_kind(tool),
        status: normalize_status(Map.get(item, "status")),
        sender_thread_id: Map.get(item, "senderThreadId") || "",
-       receiver_thread_ids: Map.get(item, "receiverThreadIds") || [],
+       receiver_thread_ids: receiver_thread_ids,
        prompt: Map.get(item, "prompt"),
        model: Map.get(item, "model"),
        reasoning_effort: normalize_reasoning_effort(Map.get(item, "reasoningEffort")),
-       agents_states: normalize_collab_agent_states(Map.get(item, "agentsStates"))
+       agents_states:
+         normalize_collab_agent_states(
+           Map.get(item, "agentsStates"),
+           receiver_thread_ids,
+           Map.get(item, "agentStatus")
+         )
      }}
   end
 
@@ -274,7 +280,22 @@ defmodule Codex.AppServer.ItemAdapter do
   defp normalize_collab_tool_kind("close_agent"), do: :close_agent
   defp normalize_collab_tool_kind(_tool), do: :unknown
 
-  defp normalize_collab_agent_states(%{} = states) do
+  @spec normalize_collab_receiver_thread_ids(map()) :: [String.t()]
+  defp normalize_collab_receiver_thread_ids(item) when is_map(item) do
+    case Map.get(item, "receiverThreadIds") do
+      ids when is_list(ids) ->
+        Enum.map(ids, &to_string/1)
+
+      _ ->
+        item
+        |> Map.take(["receiverThreadId", "newThreadId"])
+        |> Map.values()
+        |> Enum.reject(&is_nil/1)
+        |> Enum.map(&to_string/1)
+    end
+  end
+
+  defp normalize_collab_agent_states(%{} = states, _receiver_thread_ids, _agent_status) do
     states
     |> Enum.map(fn {thread_id, state} ->
       {to_string(thread_id), CollabAgentState.from_map(state)}
@@ -282,5 +303,21 @@ defmodule Codex.AppServer.ItemAdapter do
     |> Map.new()
   end
 
-  defp normalize_collab_agent_states(_), do: %{}
+  defp normalize_collab_agent_states(_states, receiver_thread_ids, agent_status)
+       when is_list(receiver_thread_ids) do
+    case {receiver_thread_ids, agent_status} do
+      {[], _} ->
+        %{}
+
+      {_ids, nil} ->
+        %{}
+
+      {ids, status} ->
+        normalized_status = CollabAgentState.from_map(status)
+
+        ids
+        |> Enum.map(fn thread_id -> {thread_id, normalized_status} end)
+        |> Map.new()
+    end
+  end
 end

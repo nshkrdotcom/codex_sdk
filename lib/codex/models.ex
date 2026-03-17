@@ -333,8 +333,14 @@ defmodule Codex.Models do
     model
     |> normalize_model()
     |> case do
-      nil -> nil
-      normalized -> find_model(normalized) |> Map.get(:default_reasoning_effort)
+      nil ->
+        nil
+
+      normalized ->
+        case find_model(normalized) do
+          %{default_reasoning_effort: effort} -> effort
+          _ -> :medium
+        end
     end
   end
 
@@ -570,14 +576,28 @@ defmodule Codex.Models do
   defp find_model(model_id) do
     normalized = normalize_model(model_id)
 
-    all_presets =
-      Auth.infer_auth_mode()
-      |> available_presets(default_cwd())
+    all_presets = all_available_presets()
 
     Enum.find(all_presets, fn preset ->
       preset.id == normalized || preset.model == normalized
     end)
   end
+
+  defp all_available_presets do
+    cwd = default_cwd()
+    auth_mode = Auth.infer_auth_mode()
+
+    [
+      available_presets(auth_mode, cwd),
+      available_presets(other_auth_mode(auth_mode), cwd),
+      @local_presets
+    ]
+    |> List.flatten()
+    |> Enum.uniq_by(fn preset -> {preset.id, preset.model} end)
+  end
+
+  defp other_auth_mode(:api), do: :chatgpt
+  defp other_auth_mode(:chatgpt), do: :api
 
   defp normalize_model(nil), do: nil
   defp normalize_model(model) when is_binary(model), do: model

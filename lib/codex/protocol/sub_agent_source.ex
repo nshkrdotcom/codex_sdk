@@ -37,6 +37,9 @@ defmodule Codex.Protocol.SubAgentSource do
       "memory_consolidation" ->
         %__MODULE__{variant: :memory_consolidation}
 
+      "memoryConsolidation" ->
+        %__MODULE__{variant: :memory_consolidation}
+
       other ->
         %__MODULE__{variant: :other, other: other}
     end
