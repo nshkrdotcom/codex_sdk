@@ -5,19 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-03-16
+## [0.13.0] - 2026-03-16
 
 ### Added
 
-- `Codex.Subagents` for deterministic host-side subagent discovery, typed source inspection, child-thread lookup, and `thread/read`-based await helpers.
-- `Codex.Protocol.SessionSource` and `Codex.Protocol.SubAgentSource` for typed parsing of app-server thread/session source metadata, including `thread_spawn` parent/depth/role/nickname fields.
-- `Codex.Protocol.CollabAgentState`, `Codex.Protocol.CollabAgentRef`, and `Codex.Protocol.CollabAgentStatusEntry` for typed collaboration lifecycle metadata shared across items and events.
-- `examples/live_subagent_host_controls.exs` demonstrating a one-parent -> one-child workflow with streamed spawn observation and direct child-thread follow-up.
+- `Codex.OAuth` for native ChatGPT OAuth login, refresh, status, and logout, including browser-code + PKCE loopback login, device-code fallback, upstream-compatible `auth.json` persistence, memory token stores, and app-server external-auth refresh handling.
+- App-server v2 coverage for filesystem and plugin APIs, isolated managed child-process launch controls (`cwd` / `process_env`), and OAuth-aware child bootstrapping against the effective child environment.
+- Approval-policy normalization and structured command, file, and permissions approval handling via internal approval-policy, request-permissions, approval-request, and approval-decision modules.
+- `Codex.Subagents`, `Codex.Protocol.SessionSource`, `Codex.Protocol.SubAgentSource`, `Codex.Protocol.CollabAgentState`, `Codex.Protocol.CollabAgentRef`, and `Codex.Protocol.CollabAgentStatusEntry` for deterministic host-side subagent discovery, typed source parsing, child-thread inspection, await helpers, and collaboration lifecycle metadata.
+- New runnable examples and guides for native OAuth, app-server filesystem/plugins/config overrides, and host-side subagent controls, including `guides/09-oauth-and-login.md`, `guides/10-subagents.md`, `examples/live_oauth_login.exs`, and `examples/live_subagent_host_controls.exs`.
 
 ### Changed
 
-- `Codex.Events`, `Codex.Items`, and app-server item adaptation now preserve collab resume lifecycle parity plus richer typed spawn/interaction/wait/close metadata needed for host-side subagent control.
-- Subagent and app-server guides now separate deterministic SDK controls from prompt strategy and document the new typed host-control surface.
+- Auth and config loading now respect child-process environment boundaries, layered `openai_base_url` / `[model_providers]` settings, and shared custom CA bundles (`CODEX_CA_CERTIFICATE`, then `SSL_CERT_FILE`) across CLI subprocesses, direct HTTP, MCP, OAuth, realtime, and voice requests.
+- App-server transport, events, items, and notification adapters were expanded for current upstream v2 / experimental approval parity, including guardian review lifecycle events, `serverRequest/resolved`, richer approval metadata, and typed collaboration/subagent item data.
+- Approval hooks and thread options now normalize both inline and upstream-tagged granular approval policies, support structured permission grants for app-server review flows, and fail fast on malformed approval configs instead of dropping them silently.
+- Model metadata and defaults were refreshed around the current bundled catalog, keeping `gpt-5.4` as the SDK default while collaboration-mode presets now prefer server-advertised settings when present.
+- MCP tool qualification now sanitizes OpenAI-facing tool names while preserving original server/tool identifiers for actual MCP calls, and the README/guides/examples were updated to document the new auth, approvals, config, and subagent behavior.
+
+### Fixed
+
+- OAuth browser login now defaults to the upstream-compatible loopback callback port `1455`.
+- Subprocess startup now ensures the shared erlexec worker is running before launching exec/app-server children, avoiding early transport failures.
+- App-server connection and shutdown paths now surface initialization/exit errors more reliably and use shared process-exit helpers for cleaner teardown.
+- Live approval flows now preserve command/file/request-permissions parity across exec and app-server transports, including `grant_root`, available decision metadata, and resolved-request notifications.
 
 ## [0.12.0] - 2026-03-12
 

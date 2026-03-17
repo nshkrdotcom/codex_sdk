@@ -5,6 +5,10 @@ alias Codex.{AppServer, Events, Items, Options, RunResultStreaming, Subagents, T
 defmodule CodexExamples.LiveSubagentHostControls do
   @moduledoc false
 
+  @stream_wait_note """
+  Waiting for streamed events. If the model stays quiet briefly, Codex is still working.
+  """
+
   @default_child_prompt """
   Spawn exactly one child agent for this task.
   Use the explorer agent.
@@ -22,12 +26,22 @@ defmodule CodexExamples.LiveSubagentHostControls do
     codex_path = fetch_codex_path!()
     ensure_app_server_supported!(codex_path)
 
+    IO.puts("""
+    Starting live subagent host-controls example.
+      model: gpt-5.4
+      reasoning_effort: low
+      working_directory: #{cwd}
+      codex_path: #{codex_path}
+    """)
+
     {:ok, codex_opts} =
       Options.new(%{
         codex_path_override: codex_path,
         model: "gpt-5.4",
-        reasoning_effort: :medium
+        reasoning_effort: :low
       })
+
+    IO.puts("Connecting to codex app-server with experimental API enabled...")
 
     {:ok, conn} =
       AppServer.connect(codex_opts,
@@ -36,7 +50,13 @@ defmodule CodexExamples.LiveSubagentHostControls do
       )
 
     try do
+      IO.puts(
+        "Configuring multi-agent limits: features.multi_agent=true max_threads=2 max_depth=1"
+      )
+
       configure_multi_agent!(conn)
+
+      IO.puts("Starting parent thread...")
 
       {:ok, parent} =
         Codex.start_thread(codex_opts, %{
@@ -45,17 +65,35 @@ defmodule CodexExamples.LiveSubagentHostControls do
           model: "gpt-5.4"
         })
 
+      IO.puts("Running parent turn with a one-parent -> one-child prompt.")
+      IO.puts(@stream_wait_note)
+
       {:ok, stream} = Thread.run_streamed(parent, prompt, %{timeout_ms: 180_000})
-      parent_events = RunResultStreaming.raw_events(stream) |> Enum.to_list()
-      parent_thread_id = extract_parent_thread_id(parent_events)
-      spawn_calls = collab_spawn_calls(parent_events)
+      parent_state = consume_parent_stream(stream)
+      parent_thread_id = extract_parent_thread_id(parent_state)
+
+      IO.puts("Parent turn finished. Discovering any spawned child threads...")
 
       {:ok, children} = Subagents.children(conn, parent_thread_id)
 
       case children do
         [%{"id" => child_thread_id} = child | _] ->
           child_source = Subagents.source(child)
+
+          IO.puts("""
+          Child thread discovered.
+            parent_thread_id: #{parent_thread_id}
+            child_thread_id: #{child_thread_id}
+            source_kind: #{inspect(Codex.Protocol.SessionSource.source_kind(child_source))}
+            depth: #{inspect(child_depth(child_source))}
+            role: #{inspect(child_role(child_source))}
+            nickname: #{inspect(child_nickname(child_source))}
+          """)
+
+          IO.puts("Reading child thread state via thread/read(include_turns: true)...")
           {:ok, child_read} = Subagents.read(conn, child_thread_id, include_turns: true)
+
+          IO.puts("Resuming the known child thread for a direct host-side follow-up...")
 
           {:ok, child_thread} =
             Codex.resume_thread(child_thread_id, codex_opts, %{
@@ -63,12 +101,18 @@ defmodule CodexExamples.LiveSubagentHostControls do
               working_directory: cwd
             })
 
-          {:ok, child_result} =
-            Thread.run(
+          IO.puts(@stream_wait_note)
+
+          {:ok, child_stream} =
+            Thread.run_streamed(
               child_thread,
               "Reply with exactly one sentence that starts with 'child follow-up:'",
               %{timeout_ms: 120_000}
             )
+
+          child_state = consume_child_stream(child_stream)
+
+          IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
 
           {:ok, child_status} =
             Subagents.await(conn, child_thread_id, timeout: 30_000, interval: 250)
@@ -81,14 +125,20 @@ defmodule CodexExamples.LiveSubagentHostControls do
             child_role: child_role(child_source),
             child_nickname: child_nickname(child_source),
             used_multi_agent?: true,
-            spawn_observed?: spawn_calls != [],
+            spawn_observed?: parent_state.spawn_observed?,
             child_turn_count: count_turns(child_read),
             child_status: child_status,
-            child_follow_up: extract_text(child_result.final_response),
-            parent_summary: extract_last_agent_text(parent_events)
+            child_follow_up: child_state.final_response,
+            parent_summary: parent_state.parent_summary,
+            parent_usage: RunResultStreaming.usage(stream),
+            child_follow_up_usage: RunResultStreaming.usage(child_stream)
           })
 
         [] ->
+          IO.puts(
+            "No child thread was discovered. The parent likely took the documented solo fallback path."
+          )
+
           IO.inspect(%{
             parent_thread_id: parent_thread_id,
             child_thread_id: nil,
@@ -97,8 +147,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
             child_role: nil,
             child_nickname: nil,
             used_multi_agent?: false,
-            spawn_observed?: spawn_calls != [],
-            parent_summary: extract_last_agent_text(parent_events)
+            spawn_observed?: parent_state.spawn_observed?,
+            parent_summary: parent_state.parent_summary,
+            parent_usage: RunResultStreaming.usage(stream)
           })
       end
     after
@@ -115,37 +166,229 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp parse_prompt([]), do: @default_child_prompt
   defp parse_prompt(values), do: Enum.join(values, " ")
 
-  defp collab_spawn_calls(events) do
-    Enum.filter(events, fn
-      %Events.ItemStarted{item: %Items.CollabAgentToolCall{tool_kind: :spawn_agent}} -> true
-      %Events.ItemCompleted{item: %Items.CollabAgentToolCall{tool_kind: :spawn_agent}} -> true
-      _ -> false
+  defp consume_parent_stream(stream) do
+    stream
+    |> RunResultStreaming.raw_events()
+    |> Enum.reduce(
+      %{parent_thread_id: nil, parent_summary: nil, spawn_observed?: false, text_open?: false},
+      &handle_parent_event/2
+    )
+    |> close_text_block()
+  end
+
+  defp consume_child_stream(stream) do
+    stream
+    |> RunResultStreaming.raw_events()
+    |> Enum.reduce(%{final_response: nil, text_open?: false}, &handle_child_event/2)
+    |> close_text_block()
+  end
+
+  defp extract_parent_thread_id(%{parent_thread_id: thread_id}) when is_binary(thread_id),
+    do: thread_id
+
+  defp extract_parent_thread_id(_state) do
+    raise "unable to determine parent thread id from streamed events"
+  end
+
+  defp handle_parent_event(%Events.ThreadStarted{thread_id: thread_id}, state) do
+    IO.puts("Parent thread started: #{thread_id}")
+    %{state | parent_thread_id: thread_id}
+  end
+
+  defp handle_parent_event(%Events.TurnStarted{}, state) do
+    IO.puts("Parent turn started.")
+    state
+  end
+
+  defp handle_parent_event(%Events.CollabAgentSpawnBegin{prompt: prompt}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("Subagent spawn started. Prompt preview: #{preview(prompt)}")
+      %{next_state | spawn_observed?: true}
     end)
   end
 
-  defp extract_parent_thread_id(events) do
-    Enum.find_value(events, fn
-      %Events.ThreadStarted{thread_id: thread_id} -> thread_id
-      _ -> nil
-    end) || raise "unable to determine parent thread id from streamed events"
-  end
+  defp handle_parent_event(
+         %Events.CollabAgentSpawnEnd{
+           new_thread_id: thread_id,
+           new_agent_role: role,
+           new_agent_nickname: nickname,
+           reasoning_effort: reasoning_effort,
+           model: model
+         },
+         state
+       ) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("""
+      Subagent spawn completed.
+        child_thread_id: #{inspect(thread_id)}
+        role: #{inspect(role)}
+        nickname: #{inspect(nickname)}
+        model: #{inspect(model)}
+        reasoning_effort: #{inspect(reasoning_effort)}
+      """)
 
-  defp extract_last_agent_text(events) do
-    events
-    |> Enum.reverse()
-    |> Enum.find_value(fn
-      %Events.ItemCompleted{item: %Items.AgentMessage{text: text}}
-      when is_binary(text) and text != "" ->
-        text
-
-      _ ->
-        nil
+      %{next_state | spawn_observed?: true}
     end)
   end
+
+  defp handle_parent_event(%Events.CollabWaitingBegin{receiver_thread_ids: ids}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("Parent is waiting on child threads: #{Enum.join(ids, ", ")}")
+      next_state
+    end)
+  end
+
+  defp handle_parent_event(%Events.CollabWaitingEnd{agent_statuses: statuses}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      rendered =
+        statuses
+        |> Enum.map_join(", ", fn status ->
+          "#{status.thread_id}=#{inspect(status.status.status)}"
+        end)
+
+      IO.puts("Parent finished waiting on child threads: #{rendered}")
+      next_state
+    end)
+  end
+
+  defp handle_parent_event(%Events.CollabResumeBegin{receiver_thread_id: thread_id}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("Parent resumed child thread #{inspect(thread_id)}.")
+      next_state
+    end)
+  end
+
+  defp handle_parent_event(%Events.ItemStarted{item: %Items.CollabAgentToolCall{} = item}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts(
+        "Collab tool started: #{item.tool} kind=#{inspect(item.tool_kind)} receivers=#{inspect(item.receiver_thread_ids)}"
+      )
+
+      %{
+        next_state
+        | spawn_observed?: next_state.spawn_observed? or item.tool_kind == :spawn_agent
+      }
+    end)
+  end
+
+  defp handle_parent_event(
+         %Events.ItemCompleted{item: %Items.CollabAgentToolCall{} = item},
+         state
+       ) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts(
+        "Collab tool completed: #{item.tool} kind=#{inspect(item.tool_kind)} status=#{inspect(item.status)} receivers=#{inspect(item.receiver_thread_ids)}"
+      )
+
+      %{
+        next_state
+        | spawn_observed?: next_state.spawn_observed? or item.tool_kind == :spawn_agent
+      }
+    end)
+  end
+
+  defp handle_parent_event(%Events.ItemAgentMessageDelta{item: %{"text" => delta}}, state)
+       when is_binary(delta) do
+    open_text_block(state, "parent")
+    IO.write(delta)
+    %{state | text_open?: true}
+  end
+
+  defp handle_parent_event(%Events.ItemCompleted{item: %Items.AgentMessage{text: text}}, state)
+       when is_binary(text) and text != "" do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      %{next_state | parent_summary: text}
+    end)
+  end
+
+  defp handle_parent_event(%Events.TurnCompleted{status: status, final_response: response}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("Parent turn completed with status=#{inspect(status)}.")
+      %{next_state | parent_summary: next_state.parent_summary || extract_text(response)}
+    end)
+  end
+
+  defp handle_parent_event(_event, state), do: state
+
+  defp handle_child_event(%Events.TurnStarted{}, state) do
+    IO.puts("Child follow-up turn started.")
+    state
+  end
+
+  defp handle_child_event(%Events.ItemAgentMessageDelta{item: %{"text" => delta}}, state)
+       when is_binary(delta) do
+    open_text_block(state, "child")
+    IO.write(delta)
+    %{state | text_open?: true}
+  end
+
+  defp handle_child_event(%Events.ItemCompleted{item: %Items.AgentMessage{text: text}}, state)
+       when is_binary(text) and text != "" do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      %{next_state | final_response: text}
+    end)
+  end
+
+  defp handle_child_event(%Events.TurnCompleted{status: status, final_response: response}, state) do
+    state
+    |> close_text_block()
+    |> then(fn next_state ->
+      IO.puts("Child follow-up turn completed with status=#{inspect(status)}.")
+      %{next_state | final_response: next_state.final_response || extract_text(response)}
+    end)
+  end
+
+  defp handle_child_event(_event, state), do: state
+
+  defp open_text_block(%{text_open?: true}, _label), do: :ok
+
+  defp open_text_block(%{text_open?: false}, label) do
+    IO.puts("")
+    IO.puts("[#{label} text]")
+  end
+
+  defp close_text_block(%{text_open?: true} = state) do
+    IO.puts("")
+    %{state | text_open?: false}
+  end
+
+  defp close_text_block(state), do: state
+
+  defp preview(nil), do: "<none>"
+
+  defp preview(text) when is_binary(text) do
+    text
+    |> String.replace(~r/\s+/, " ")
+    |> String.slice(0, 120)
+  end
+
+  defp preview(other), do: inspect(other)
 
   defp extract_text(%Items.AgentMessage{text: text}) when is_binary(text), do: text
-  defp extract_text(other) when is_binary(other), do: other
-  defp extract_text(other), do: inspect(other)
+  defp extract_text(%{"text" => text}) when is_binary(text), do: text
+  defp extract_text(%{text: text}) when is_binary(text), do: text
+  defp extract_text(text) when is_binary(text), do: text
+  defp extract_text(_other), do: nil
 
   defp child_depth(%Codex.Protocol.SessionSource{sub_agent: %{depth: depth}}), do: depth
   defp child_depth(_), do: nil

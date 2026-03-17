@@ -344,12 +344,14 @@ defmodule CodexExamples.LiveAppServerPlugins do
   defp cleanup_fixture(_fixture), do: :ok
 
   defp isolated_process_env(fixture) do
-    [
-      CODEX_HOME: fixture.codex_home,
-      HOME: fixture.home_root,
-      USERPROFILE: fixture.home_root
-    ]
+    %{}
+    |> maybe_put("CODEX_HOME", fixture.codex_home)
+    |> maybe_put("HOME", System.get_env("HOME") || System.user_home!())
+    |> maybe_put("USERPROFILE", System.get_env("USERPROFILE"))
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end
 
 CodexExamples.LiveAppServerPlugins.main(System.argv())

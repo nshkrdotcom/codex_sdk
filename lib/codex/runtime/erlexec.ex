@@ -3,7 +3,7 @@ defmodule Codex.Runtime.Erlexec do
   Unified erlexec startup shared across subprocess modules.
   """
 
-  @exec_wait_attempts 5
+  @exec_wait_attempts 20
   @exec_wait_delay_ms 50
 
   @spec ensure_started() :: :ok | {:error, term()}
@@ -28,13 +28,21 @@ defmodule Codex.Runtime.Erlexec do
         :ok
 
       :error ->
-        with :ok <- restart_application(),
-             :ok <- wait_for_exec_worker(@exec_wait_attempts) do
-          :ok
-        else
-          :error -> {:error, :exec_not_running}
-          {:error, _} = error -> error
-        end
+        recover_missing_exec_worker()
+    end
+  end
+
+  defp recover_missing_exec_worker do
+    if exec_app_alive?() do
+      {:error, :exec_not_running}
+    else
+      with :ok <- restart_application(),
+           :ok <- wait_for_exec_worker(@exec_wait_attempts) do
+        :ok
+      else
+        :error -> {:error, :exec_not_running}
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -62,6 +70,13 @@ defmodule Codex.Runtime.Erlexec do
 
   defp exec_worker_alive? do
     case Process.whereis(:exec) do
+      pid when is_pid(pid) -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  defp exec_app_alive? do
+    case Process.whereis(:exec_app) do
       pid when is_pid(pid) -> Process.alive?(pid)
       _ -> false
     end

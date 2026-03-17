@@ -36,7 +36,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.12.0"}
+    {:codex_sdk, "~> 0.13.0"}
   ]
 end
 ```
