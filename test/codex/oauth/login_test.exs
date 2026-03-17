@@ -7,6 +7,20 @@ defmodule Codex.OAuth.LoginTest do
   alias Codex.Auth.Store
   alias Codex.OAuth
 
+  setup do
+    original_port = Application.get_env(:codex_sdk, :oauth_browser_callback_port)
+
+    on_exit(fn ->
+      if is_nil(original_port) do
+        Application.delete_env(:codex_sdk, :oauth_browser_callback_port)
+      else
+        Application.put_env(:codex_sdk, :oauth_browser_callback_port, original_port)
+      end
+    end)
+
+    :ok
+  end
+
   defmodule MockOAuthIssuerPlug do
     import Plug.Conn
 
@@ -81,8 +95,12 @@ defmodule Codex.OAuth.LoginTest do
       storage: :memory
     ]
 
+    configured_port = reserve_port()
+    Application.put_env(:codex_sdk, :oauth_browser_callback_port, configured_port)
+
     assert {:ok, pending} = OAuth.begin_login(opts)
     assert String.starts_with?(pending.authorize_url, issuer <> "/oauth/authorize?")
+    assert pending.redirect_uri == "http://localhost:#{configured_port}/auth/callback"
 
     assert {:ok, %Req.Response{status: 200}} = Req.get(pending.authorize_url)
     assert {:ok, result} = OAuth.await_login(pending, timeout: 2_000)
@@ -204,5 +222,14 @@ defmodule Codex.OAuth.LoginTest do
       |> Base.url_encode64(padding: false)
 
     header <> "." <> payload <> ".sig"
+  end
+
+  defp reserve_port do
+    {:ok, socket} =
+      :gen_tcp.listen(0, [:binary, {:active, false}, {:reuseaddr, true}, {:ip, {127, 0, 0, 1}}])
+
+    {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(socket)
+    :ok = :gen_tcp.close(socket)
+    port
   end
 end

@@ -8,6 +8,20 @@ defmodule Codex.OAuth.BrowserCodeFlowTest do
   alias Codex.OAuth.Context
   alias Codex.OAuth.Flows.BrowserCode
 
+  setup do
+    original_port = Application.get_env(:codex_sdk, :oauth_browser_callback_port)
+
+    on_exit(fn ->
+      if is_nil(original_port) do
+        Application.delete_env(:codex_sdk, :oauth_browser_callback_port)
+      else
+        Application.put_env(:codex_sdk, :oauth_browser_callback_port, original_port)
+      end
+    end)
+
+    :ok
+  end
+
   defmodule MockIssuerPlug do
     import Plug.Conn
 
@@ -101,13 +115,16 @@ defmodule Codex.OAuth.BrowserCodeFlowTest do
         os: :macos
       )
 
+    configured_port = reserve_port()
+    Application.put_env(:codex_sdk, :oauth_browser_callback_port, configured_port)
+
     assert {:ok, pending} = BrowserCode.begin(context, storage: :file)
 
     params = pending.authorize_url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
     assert params["code_challenge_method"] == "S256"
     assert params["state"] == pending.state
-    assert String.starts_with?(params["redirect_uri"], "http://localhost:")
+    assert params["redirect_uri"] == "http://localhost:#{configured_port}/auth/callback"
 
     assert {:ok, %Req.Response{status: 200}} = Req.get(pending.authorize_url)
     assert {:ok, session} = BrowserCode.await(pending, timeout: 2_000)
@@ -124,6 +141,15 @@ defmodule Codex.OAuth.BrowserCodeFlowTest do
     assert stored.tokens.access_token == access_token
     assert stored.tokens.refresh_token == "refresh-token"
     assert stored.tokens.account_id == "acct_123"
+  end
+
+  defp reserve_port do
+    {:ok, socket} =
+      :gen_tcp.listen(0, [:binary, {:active, false}, {:reuseaddr, true}, {:ip, {127, 0, 0, 1}}])
+
+    {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(socket)
+    :ok = :gen_tcp.close(socket)
+    port
   end
 
   defp fake_jwt(payload) do

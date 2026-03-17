@@ -149,6 +149,10 @@ defmodule Codex.Config.DefaultsTest do
       assert Defaults.oauth_browser_callback_timeout_ms() == 120_000
     end
 
+    test "oauth_browser_callback_port/0 returns 1455 by default" do
+      assert Defaults.oauth_browser_callback_port() == 1_455
+    end
+
     test "oauth_device_code_timeout_ms/0 returns 900_000" do
       assert Defaults.oauth_device_code_timeout_ms() == 900_000
     end

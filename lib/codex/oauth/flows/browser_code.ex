@@ -26,7 +26,7 @@ defmodule Codex.OAuth.Flows.BrowserCode do
            LoopbackServer.start(
              callback_path: Keyword.get(opts, :callback_path, "/auth/callback"),
              expected_state: state,
-             port: Keyword.get(opts, :callback_port, 0)
+             port: Keyword.get(opts, :callback_port, Defaults.oauth_browser_callback_port())
            ) do
       redirect_uri = loopback_server.callback_url
       authorize_url = authorize_url(context.provider, redirect_uri, pkce, state, opts)

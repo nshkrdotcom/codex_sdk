@@ -71,7 +71,7 @@ The browser flow always uses:
 - an external browser
 - PKCE `S256`
 - a loopback listener bound to `127.0.0.1`, with an upstream-compatible browser redirect URI on `localhost`
-- a random callback port by default
+- the upstream-compatible localhost callback port `1455` by default, unless explicitly overridden
 
 ## App-server integration
 

@@ -143,6 +143,18 @@ defmodule Codex.Config.Defaults do
   @spec oauth_browser_callback_timeout_ms() :: pos_integer()
   def oauth_browser_callback_timeout_ms, do: 120_000
 
+  @doc """
+  Default localhost callback port for browser OAuth login (default: 1455).
+
+  Overridable at runtime:
+
+      config :codex_sdk, oauth_browser_callback_port: 1455
+  """
+  @spec oauth_browser_callback_port() :: non_neg_integer()
+  def oauth_browser_callback_port do
+    Application.get_env(:codex_sdk, :oauth_browser_callback_port, 1_455)
+  end
+
   @doc "Overall timeout for device code login completion (default: 900,000ms)."
   @spec oauth_device_code_timeout_ms() :: pos_integer()
   def oauth_device_code_timeout_ms, do: 900_000
