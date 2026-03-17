@@ -28,7 +28,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
 
     IO.puts("""
     Starting live subagent host-controls example.
-      model: gpt-5.4
+      model: gpt-5.4-mini
       reasoning_effort: low
       working_directory: #{cwd}
       codex_path: #{codex_path}
@@ -37,7 +37,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
     {:ok, codex_opts} =
       Options.new(%{
         codex_path_override: codex_path,
-        model: "gpt-5.4",
+        model: "gpt-5.4-mini",
         reasoning_effort: :low
       })
 
@@ -62,7 +62,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
         Codex.start_thread(codex_opts, %{
           transport: {:app_server, conn},
           working_directory: cwd,
-          model: "gpt-5.4"
+          model: "gpt-5.4-mini"
         })
 
       IO.puts("Running parent turn with a one-parent -> one-child prompt.")

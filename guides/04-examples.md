@@ -803,7 +803,7 @@ end
 
 Configure based on environment.
 
-The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.4`. The SDK always loads bundled upstream model metadata from `priv/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
+The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.4`. The SDK always loads bundled upstream model metadata from `priv/models.json`, which is synced from `codex/codex-rs/core/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
 For provider parity, layered config also honors `openai_base_url` and user-defined
 `[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and
@@ -1365,7 +1365,7 @@ Run it with:
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
 
-Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.4` by default for reproducible live runs. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string and explicitly prefer `reasoning_effort: :low`, so overriding `CODEX_MODEL` is usually enough if you want a different model.
+Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.4-mini` by default for faster reproducible live runs, while the bundled SDK default remains `gpt-5.4`. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string and explicitly prefer `reasoning_effort: :low`, so overriding `CODEX_MODEL` is usually enough if you want a different model.
 
 ## Live Exec Controls
 

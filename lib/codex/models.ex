@@ -289,12 +289,6 @@ defmodule Codex.Models do
                    |> Map.put_new(:default_reasoning_effort, :medium)
                  end)
 
-  # Shell types are derived from the preset list so tool enablement stays in
-  # sync with the visible picker catalog.
-  @local_shell_types @local_presets
-                     |> Enum.map(fn preset -> {preset.id, preset.shell_type} end)
-                     |> Map.new()
-
   @doc """
   Returns the list of supported models visible for the inferred auth mode.
   """
@@ -543,35 +537,30 @@ defmodule Codex.Models do
   end
 
   defp select_default_model_id(models, auth_mode) do
-    models
-    |> filter_visible_models(auth_mode)
-    |> case do
-      [] -> models
-      visible -> visible
-    end
-    |> List.first()
-    |> case do
-      %{id: id} -> id
-      %{model: model} -> model
-      _ -> nil
-    end
+    visible_models =
+      case filter_visible_models(models, auth_mode) do
+        [] -> models
+        visible -> visible
+      end
+
+    preferred_default_ids(auth_mode)
+    |> Enum.find_value(fn preferred_id ->
+      Enum.find_value(visible_models, fn model ->
+        if model.id == preferred_id || model.model == preferred_id do
+          preferred_id
+        end
+      end)
+    end) ||
+      case List.first(visible_models) do
+        %{id: id} -> id
+        %{model: model} -> model
+        _ -> nil
+      end
   end
 
-  defp merge_presets([], local_presets), do: local_presets
+  defp merge_presets([], _local_presets), do: []
 
-  defp merge_presets(remote_presets, local_presets) do
-    remote_slugs =
-      remote_presets
-      |> Enum.map(& &1.model)
-      |> MapSet.new()
-
-    missing_locals =
-      local_presets
-      |> Enum.reject(&MapSet.member?(remote_slugs, &1.model))
-      |> Enum.map(&%{&1 | is_default: false})
-
-    remote_presets ++ missing_locals
-  end
+  defp merge_presets(remote_presets, _local_presets), do: remote_presets
 
   defp find_model(model_id) do
     normalized = normalize_model(model_id)
@@ -608,7 +597,7 @@ defmodule Codex.Models do
 
     case remote do
       %{shell_type: shell_type} -> shell_type
-      _ -> Map.get(@local_shell_types, model_id)
+      _ -> nil
     end
   end
 
@@ -1060,6 +1049,9 @@ defmodule Codex.Models do
 
   defp fallback_default_model(:chatgpt), do: @default_chatgpt_model
   defp fallback_default_model(:api), do: @default_api_model
+
+  defp preferred_default_ids(:chatgpt), do: ["codex-auto-balanced", @default_chatgpt_model]
+  defp preferred_default_ids(:api), do: [@default_api_model]
 
   defp reasoning_effort_mapping_from_presets([]), do: nil
 

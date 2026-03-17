@@ -60,8 +60,8 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.4",
                "gpt-5.3-codex",
+               "gpt-5.4",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
@@ -77,13 +77,12 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.4",
                "gpt-5.3-codex",
+               "gpt-5.4",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
-               "gpt-5.1-codex-mini",
-               "gpt-5.3-codex-spark"
+               "gpt-5.1-codex-mini"
              ]
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))

@@ -36,7 +36,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.13.0"}
+    {:codex_sdk, "~> 0.14.0"}
   ]
 end
 ```
@@ -117,7 +117,7 @@ clients, remote model fetches, MCP HTTP/OAuth, realtime websockets, and voice HT
 
 Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.4` with the bundled catalog unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, `CODEX_MODEL_DEFAULT`, or a fresher ChatGPT `/models` cache overrides it.
 
-The SDK always loads the bundled upstream model catalog from `priv/models.json`. When ChatGPT auth tokens are available it can still refresh `/models` and cache the result, but the old `features.remote_models` flag is no longer required for current catalog/default behavior.
+The SDK always loads the bundled upstream model catalog from `priv/models.json`, which is synced from the vendored upstream catalog in `codex/codex-rs/core/models.json`. When ChatGPT auth tokens are available it can still refresh `/models` and cache the result, but the old `features.remote_models` flag is no longer required for current catalog/default behavior. See `guides/07-models-and-reasoning.md` for the current bundled snapshot and how to inspect the effective runtime list.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 

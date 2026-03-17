@@ -36,6 +36,9 @@ The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
 to `gpt-5.4` unless env overrides or a fresher ChatGPT `/models` cache win.
 
+The bundled offline catalog lives in `priv/models.json` and is synced from the
+vendored upstream file at `codex/codex-rs/core/models.json`.
+
 Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
 selection. Memory-only external app-server auth is connection-local and does not
 change the current BEAM process's default-model inference on its own.
@@ -60,8 +63,20 @@ current auth mode:
 
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-#=> ["gpt-5.4", ...]
+#=> [
+#=>   "gpt-5.3-codex",
+#=>   "gpt-5.4",
+#=>   "gpt-5.2-codex",
+#=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.2",
+#=>   "gpt-5.1-codex-mini"
+#=> ]
 ```
+
+That is the current bundled picker-visible snapshot shipped with this repo.
+ChatGPT-auth `/models` refreshes can expose additional runtime-visible models
+such as `gpt-5.4-mini`, so treat the bundled list as the offline baseline rather
+than the maximum possible menu.
 
 Each model preset includes:
 

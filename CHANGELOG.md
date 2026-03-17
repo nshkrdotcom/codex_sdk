@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-17
+
+### Changed
+
+- Bundled model metadata is now synced from the vendored upstream catalog in `codex/codex-rs/core/models.json`, and the Elixir model list no longer falls back to extra local-only picker presets when the catalog is present.
+- SDK default selection still prefers `gpt-5.4`, while ChatGPT-auth runtime catalogs continue to prefer `codex-auto-balanced` when that model is advertised remotely.
+- Example runners and example-specific docs now pin `gpt-5.4-mini` for faster live runs, while the library default remains `gpt-5.4`.
+- README and guides were refreshed to document the bundled model catalog source, the current bundled picker-visible snapshot, and the distinction between bundled defaults and example pins.
+
 ## [0.13.0] - 2026-03-16
 
 ### Added

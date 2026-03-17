@@ -17,7 +17,7 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL` to `gpt-5.4` for reproducibility; override it by exporting `CODEX_MODEL` before running. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model or live collaboration-mode preset requires a higher minimum.
+By default, `./examples/run_all.sh` pins `CODEX_MODEL` to `gpt-5.4-mini` for faster reproducible runs; override it by exporting `CODEX_MODEL` before running. The library default itself remains `gpt-5.4`. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model or live collaboration-mode preset requires a higher minimum.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 For TLS interception or private roots, set `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE`

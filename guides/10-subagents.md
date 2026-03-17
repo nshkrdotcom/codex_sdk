@@ -143,7 +143,7 @@ Review code like an owner.
 Prioritize correctness, security, behavior regressions, and missing test coverage.
 """
 nickname_candidates = ["Atlas", "Delta", "Echo"]
-model = "gpt-5.4"
+model = "gpt-5.4-mini"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 ```
@@ -175,7 +175,7 @@ Here is the shape of a simple one-parent -> one-child flow:
   Codex.start_thread(codex_opts, %{
     transport: {:app_server, conn},
     working_directory: File.cwd!(),
-    model: "gpt-5.4"
+    model: "gpt-5.4-mini"
   })
 
 prompt = """
@@ -341,6 +341,7 @@ Start simple.
 
 - use `gpt-5.4` for the parent and for agents handling harder reasoning or
   ambiguous work
+- use `gpt-5.4-mini` for faster, lower-cost day-to-day parent/child examples
 - use `gpt-5.3-codex-spark` for faster read-heavy or summarization-focused
   agents
 - use `medium` reasoning effort as the default unless you have a clear reason
@@ -356,7 +357,7 @@ If you are new to subagents, start with this exact pattern:
 
 1. Set `agents.max_threads = 2`.
 2. Set `agents.max_depth = 1`.
-3. Start one parent thread on `gpt-5.4`.
+3. Start one parent thread on `gpt-5.4-mini`.
 4. Ask the parent to spawn exactly one `explorer` child.
 5. Tell the parent to wait for the child.
 6. Use the SDK control surface to confirm the child exists, inspect its source,
