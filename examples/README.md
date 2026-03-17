@@ -8,7 +8,7 @@ This SDK contains two distinct subsystems with different authentication:
 
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via erlexec subprocess
-   - Uses `codex login` authentication (no separate API key needed)
+   - Uses `codex login`, native `Codex.OAuth`, or `CODEX_API_KEY`
    - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.4` from the bundled catalog unless env overrides or a fresher ChatGPT `/models` cache win)
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
@@ -32,6 +32,8 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 
 If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
 If credentials exist but direct API access is unavailable (for example `insufficient_quota` or missing realtime model access), direct API examples print `SKIPPED: <reason>`.
+The native OAuth example also self-skips in runner contexts unless you point it
+at an existing `CODEX_OAUTH_EXAMPLE_HOME` or opt into `--interactive`.
 
 ## Live ExUnit tests
 
@@ -54,6 +56,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
+- `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo using an isolated temporary `CODEX_HOME` by default; supports optional memory-mode app-server connect via `--app-server-memory`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
 - `examples/live_app_server_plugins.exs` — provisions a disposable local marketplace under the system temp directory, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises `plugin/list` + `plugin/read` without mutating `~/.codex` or requiring a preinstalled plugin; self-skips when the connected CLI build does not advertise `plugin/read`

@@ -139,6 +139,22 @@ defmodule Codex.Config.Defaults do
   @spec oauth_refresh_skew_ms() :: pos_integer()
   def oauth_refresh_skew_ms, do: 30_000
 
+  @doc "Overall timeout for browser login callback completion (default: 120,000ms)."
+  @spec oauth_browser_callback_timeout_ms() :: pos_integer()
+  def oauth_browser_callback_timeout_ms, do: 120_000
+
+  @doc "Overall timeout for device code login completion (default: 900,000ms)."
+  @spec oauth_device_code_timeout_ms() :: pos_integer()
+  def oauth_device_code_timeout_ms, do: 900_000
+
+  @doc "Maximum device code polling interval (default: 10,000ms)."
+  @spec oauth_device_code_max_poll_interval_ms() :: pos_integer()
+  def oauth_device_code_max_poll_interval_ms, do: 10_000
+
+  @doc "WSL grace window before browser flow falls back to device flow (default: 5,000ms)."
+  @spec oauth_wsl_device_fallback_grace_ms() :: pos_integer()
+  def oauth_wsl_device_fallback_grace_ms, do: 5_000
+
   @doc "HTTP timeout for remote model list fetches (default: 10,000ms)."
   @spec remote_models_http_timeout_ms() :: pos_integer()
   def remote_models_http_timeout_ms, do: 10_000

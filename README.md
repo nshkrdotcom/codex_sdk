@@ -18,6 +18,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
 - **Multi-Transport Support**: Default exec JSONL (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
 - **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly.
+- **Native OAuth**: `Codex.OAuth` provides SDK-managed browser/device login, refresh, status, and logout with upstream-compatible `auth.json` persistence or memory-only sessions.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
 - **File & Attachment Pipeline**: Secure temp file registry and change events.
@@ -68,11 +69,34 @@ codex
 # Select "Sign in with ChatGPT"
 ```
 
-Alternatively, set `CODEX_API_KEY` before starting your BEAM node. The SDK prefers `CODEX_API_KEY`,
-then `auth.json` `OPENAI_API_KEY`, and otherwise falls back to your CLI login tokens stored under
-`CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support). If neither an API
-key nor an authenticated CLI session is available, Codex executions will fail with upstream
-authentication errors—the SDK does not perform additional login flows.
+Alternatively, set `CODEX_API_KEY` before starting your BEAM node. For normal CLI-backed SDK
+execution, auth resolution is:
+
+1. `CODEX_API_KEY`
+2. `auth.json` `OPENAI_API_KEY`
+3. ChatGPT OAuth tokens stored under `CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support)
+
+The SDK now also exposes native OAuth login via `Codex.OAuth`:
+
+```elixir
+{:ok, result} =
+  Codex.OAuth.login(
+    storage: :file,
+    interactive?: true
+  )
+```
+
+Persistent `Codex.OAuth` login writes upstream-compatible `auth.json` and respects upstream
+`auth_mode`. Memory-only OAuth is also available for host-managed and app-server external auth
+flows. `openai_base_url` does not change the OAuth issuer; use `auth_issuer` only when you need
+to override the login authority itself.
+
+Environment-aware OAuth behavior matches current native-app guidance:
+
+- local desktop prefers browser auth with PKCE + loopback callback
+- WSL starts with the browser path, then falls back to device code when the callback is unreachable
+- SSH/headless/container environments prefer device code
+- CI and other non-interactive environments never auto-start login; existing credentials are used or the call fails clearly
 
 If `cli_auth_credentials_store = "keyring"` is set in config and keyring support is unavailable,
 the SDK logs a warning and skips file-based tokens (remote model fetch falls back to bundled models).
@@ -160,6 +184,27 @@ tmp_home = Path.join(System.tmp_dir!(), "codex-sdk-app-server-home")
 
 `cwd` and `process_env` apply to the app-server child process. Per-thread working
 directories still belong on `working_directory` / `cwd` thread params.
+
+`connect/2` also supports OAuth-aware child auth bootstrapping:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    process_env: %{"CODEX_HOME" => tmp_home},
+    oauth: [
+      mode: :auto,
+      storage: :memory,
+      auto_refresh: true
+    ]
+  )
+```
+
+For `oauth: [storage: :file | :auto]`, the SDK resolves auth against the effective child
+`CODEX_HOME` before launching the child. For `oauth: [storage: :memory]`, it starts the child,
+logs in with external `chatgptAuthTokens`, and attaches a connection-owned refresh responder.
+Set `auto_refresh: false` when you want to handle `account/chatgptAuthTokens/refresh` requests
+yourself.
 
 Multi-modal input is supported on app-server transport:
 
@@ -1060,6 +1105,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
+- **`live_oauth_login.exs`** - Native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`, plus an optional memory-mode app-server connect
 - **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
 - **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn that uses the server-advertised preset settings (falling back only when the server omits a field), with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)

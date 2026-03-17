@@ -16,6 +16,14 @@ Use app-server when you need upstream v2 APIs that are not exposed via exec JSON
   - `CODEX_API_KEY` (or `auth.json` `OPENAI_API_KEY`), or
   - a Codex CLI login under `CODEX_HOME` (default `~/.codex`).
 
+Native OAuth is also available when you want the SDK to manage ChatGPT login
+instead of relying on a pre-existing CLI login:
+
+- `oauth: [storage: :file | :auto]` ensures persistent auth exists under the
+  effective child `CODEX_HOME` before the child launches
+- `oauth: [storage: :memory]` performs external `chatgptAuthTokens` login after
+  initialization and optionally auto-answers refresh requests
+
 The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PATH` → `System.find_executable("codex")`.
 
 If you need the literal command surface instead of the managed JSON-RPC connection,
@@ -27,7 +35,7 @@ If you need the literal command surface instead of the managed JSON-RPC connecti
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
 If the application supervision tree is unavailable, `connect/2` returns `{:error, :supervisor_unavailable}`.
 Pass `experimental_api: true` when you need upstream experimental fields such as
-`approvals_reviewer` or granular approval policies.
+`approvals_reviewer`, granular approval policies, or memory-mode external OAuth auth.
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{api_key: System.get_env("CODEX_API_KEY")})
@@ -63,6 +71,38 @@ without mutating the caller's shell state. `process_env` is the preferred name;
 These launch options apply to the app-server child process. Per-thread working
 directories still belong on `thread/start`, `thread/resume`, or
 `Codex.Thread.Options`.
+
+### OAuth-aware connect
+
+Persistent child auth:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    process_env: %{"CODEX_HOME" => "/tmp/codex-home"},
+    oauth: [mode: :auto, storage: :file, interactive?: true]
+  )
+```
+
+Memory-only external auth:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    process_env: %{"CODEX_HOME" => "/tmp/codex-home"},
+    oauth: [mode: :auto, storage: :memory, auto_refresh: true]
+  )
+```
+
+Notes:
+
+- `storage: :file | :auto` resolves auth relative to the child `cwd` and
+  `process_env`, then launches the child with that same environment
+- `storage: :memory` keeps tokens in memory, calls `account/login/start` with
+  `chatgptAuthTokens`, and starts a connection-owned refresh responder
+- set `auto_refresh: false` when you want to handle
+  `account/chatgptAuthTokens/refresh` yourself via `subscribe/2`
 
 ### Client identity
 

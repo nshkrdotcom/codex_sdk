@@ -2,7 +2,11 @@
 
 This document provides comprehensive examples demonstrating common use cases and patterns for the Elixir Codex SDK. Runnable counterparts live under `/examples`; each script can be executed with `mix run examples/<name>.exs ...`.
 
-Auth defaults: all examples prefer `CODEX_API_KEY` (or `auth.json` `OPENAI_API_KEY`) when present; otherwise they fall back to your Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
+Auth defaults: CLI-backed examples prefer `CODEX_API_KEY` (or `auth.json`
+`OPENAI_API_KEY`) when present, and otherwise fall back to your CLI/ChatGPT auth
+stored under `CODEX_HOME` (default `~/.codex`). The dedicated OAuth example
+uses `Codex.OAuth` directly and defaults to an isolated temporary `CODEX_HOME`
+so it does not mutate your real login state unless you opt into that explicitly.
 
 ## Table of Contents
 
@@ -1405,6 +1409,7 @@ Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
+- `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`, plus an optional memory-mode app-server connect
 - `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration presets, and runs a turn with the server-advertised preset settings and built-in preset instructions when the connected build advertises `collaborationMode/list`
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)

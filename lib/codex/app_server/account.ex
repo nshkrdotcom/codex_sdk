@@ -5,34 +5,56 @@ defmodule Codex.AppServer.Account do
   alias Codex.AppServer.Params
   alias Codex.Auth
   alias Codex.Config.LayerStack
+  alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type connection :: pid()
 
   @spec login_start(connection(), :chatgpt | {:api_key, String.t()} | map()) ::
           {:ok, map()} | {:error, term()}
   def login_start(conn, :chatgpt) when is_pid(conn) do
-    with :ok <- enforce_login_constraints(:chatgpt, %{"type" => "chatgpt"}) do
-      Connection.request(conn, "account/login/start", %{"type" => "chatgpt"}, timeout_ms: 30_000)
-    end
+    login_start(conn, :chatgpt, [])
   end
 
   def login_start(conn, "chatgpt") when is_pid(conn) do
-    login_start(conn, :chatgpt)
+    login_start(conn, :chatgpt, [])
   end
 
   def login_start(conn, {:api_key, api_key}) when is_pid(conn) and is_binary(api_key) do
-    params = %{"type" => "apiKey", "apiKey" => api_key}
+    login_start(conn, {:api_key, api_key}, [])
+  end
 
-    with :ok <- enforce_login_constraints(:api_key, params) do
+  def login_start(conn, %{} = params) when is_pid(conn) do
+    login_start(conn, params, [])
+  end
+
+  @spec login_start(connection(), :chatgpt | {:api_key, String.t()} | map(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def login_start(conn, :chatgpt, opts) when is_pid(conn) and is_list(opts) do
+    params = %{"type" => "chatgpt"}
+
+    with :ok <- enforce_login_constraints(:chatgpt, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
     end
   end
 
-  def login_start(conn, %{} = params) when is_pid(conn) do
+  def login_start(conn, "chatgpt", opts) when is_pid(conn) and is_list(opts) do
+    login_start(conn, :chatgpt, opts)
+  end
+
+  def login_start(conn, {:api_key, api_key}, opts)
+      when is_pid(conn) and is_binary(api_key) and is_list(opts) do
+    params = %{"type" => "apiKey", "apiKey" => api_key}
+
+    with :ok <- enforce_login_constraints(:api_key, params, opts) do
+      Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
+    end
+  end
+
+  def login_start(conn, %{} = params, opts) when is_pid(conn) and is_list(opts) do
     normalized = Params.normalize_map(params)
 
     with {:ok, login_type} <- infer_login_type(normalized),
-         :ok <- enforce_login_constraints(login_type, normalized) do
+         :ok <- enforce_login_constraints(login_type, normalized, opts) do
       Connection.request(conn, "account/login/start", normalized, timeout_ms: 30_000)
     end
   end
@@ -58,9 +80,9 @@ defmodule Codex.AppServer.Account do
     Connection.request(conn, "account/rateLimits/read", nil, timeout_ms: 30_000)
   end
 
-  defp enforce_login_constraints(login_type, params) do
+  defp enforce_login_constraints(login_type, params, opts) do
     %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id} =
-      load_forced_login_config()
+      load_forced_login_config(opts)
 
     with :ok <- enforce_forced_login_method(forced_method, login_type) do
       enforce_forced_workspace_id(workspace_id, login_type, params)
@@ -104,27 +126,57 @@ defmodule Codex.AppServer.Account do
     end
   end
 
-  defp load_forced_login_config do
-    cwd =
-      case File.cwd() do
-        {:ok, value} -> value
-        _ -> nil
-      end
+  defp load_forced_login_config(opts) do
+    with {:ok, child_process_env} <- resolve_child_env(opts),
+         {:ok, cwd} <- resolve_cwd(opts),
+         codex_home <- resolve_codex_home(opts, child_process_env),
+         {:ok, layers} <- LayerStack.load(codex_home, cwd) do
+      config = LayerStack.effective_config(layers)
 
-    case LayerStack.load(Auth.codex_home(), cwd) do
-      {:ok, layers} ->
-        config = LayerStack.effective_config(layers)
-
-        %{
-          forced_login_method:
-            Map.get(config, "forced_login_method") || Map.get(config, :forced_login_method),
-          forced_chatgpt_workspace_id:
-            Map.get(config, "forced_chatgpt_workspace_id") ||
-              Map.get(config, :forced_chatgpt_workspace_id)
-        }
-
-      {:error, _} ->
+      %{
+        forced_login_method:
+          Map.get(config, "forced_login_method") || Map.get(config, :forced_login_method),
+        forced_chatgpt_workspace_id:
+          Map.get(config, "forced_chatgpt_workspace_id") ||
+            Map.get(config, :forced_chatgpt_workspace_id)
+      }
+    else
+      {:error, _reason} ->
         %{forced_login_method: nil, forced_chatgpt_workspace_id: nil}
+    end
+  end
+
+  defp resolve_child_env(opts) do
+    process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env))
+
+    with {:ok, overrides} <- RuntimeEnv.normalize_overrides(process_env) do
+      {:ok, Map.merge(System.get_env(), overrides)}
+    end
+  end
+
+  defp resolve_cwd(opts) do
+    case Keyword.get(opts, :cwd) do
+      nil ->
+        case File.cwd() do
+          {:ok, value} -> {:ok, value}
+          _ -> {:ok, nil}
+        end
+
+      cwd when is_binary(cwd) ->
+        if String.trim(cwd) == "", do: {:error, {:invalid_cwd, cwd}}, else: {:ok, cwd}
+
+      other ->
+        {:error, {:invalid_cwd, other}}
+    end
+  end
+
+  defp resolve_codex_home(opts, child_process_env) do
+    case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
+      value when is_binary(value) and value != "" ->
+        value
+
+      _ ->
+        Auth.codex_home()
     end
   end
 

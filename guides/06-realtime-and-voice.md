@@ -15,6 +15,10 @@ Realtime/Voice auth precedence:
 2. `auth.json` `OPENAI_API_KEY` (under `CODEX_HOME`)
 3. `OPENAI_API_KEY`
 
+`Codex.OAuth` does not replace this direct-API precedence. ChatGPT OAuth login
+helps CLI/app-server flows; realtime and voice still need an API key or an
+`OPENAI_API_KEY` persisted in `auth.json`.
+
 If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. Live examples print `SKIPPED` with the detected reason and exit cleanly.
 
 Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. Blank values are

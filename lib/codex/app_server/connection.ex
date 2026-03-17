@@ -99,6 +99,20 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
+  @spec respond_error(connection(), request_id(), integer(), String.t(), map() | nil) ::
+          :ok | {:error, term()}
+  def respond_error(conn, id, code, message, data \\ nil)
+      when is_pid(conn) and is_integer(code) and is_binary(message) do
+    case safe_connection_call(
+           conn,
+           {:respond_error, id, code, message, data},
+           @default_call_timeout_ms
+         ) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @impl true
   def init({%Options{} = codex_opts, opts}) do
     {transport_mod, transport_opts} = resolve_transport(opts)
@@ -243,6 +257,12 @@ defmodule Codex.AppServer.Connection do
 
   def handle_call({:respond, id, result}, _from, %State{} = state) do
     with :ok <- send_iolist(state, Protocol.encode_response(id, result)) do
+      {:reply, :ok, state}
+    end
+  end
+
+  def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
+    with :ok <- send_iolist(state, Protocol.encode_error(id, code, message, data)) do
       {:reply, :ok, state}
     end
   end

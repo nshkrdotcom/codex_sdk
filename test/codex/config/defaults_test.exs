@@ -145,6 +145,22 @@ defmodule Codex.Config.DefaultsTest do
       assert Defaults.oauth_refresh_skew_ms() == 30_000
     end
 
+    test "oauth_browser_callback_timeout_ms/0 returns 120_000" do
+      assert Defaults.oauth_browser_callback_timeout_ms() == 120_000
+    end
+
+    test "oauth_device_code_timeout_ms/0 returns 900_000" do
+      assert Defaults.oauth_device_code_timeout_ms() == 900_000
+    end
+
+    test "oauth_device_code_max_poll_interval_ms/0 returns 10_000" do
+      assert Defaults.oauth_device_code_max_poll_interval_ms() == 10_000
+    end
+
+    test "oauth_wsl_device_fallback_grace_ms/0 returns 5_000" do
+      assert Defaults.oauth_wsl_device_fallback_grace_ms() == 5_000
+    end
+
     test "remote_models_http_timeout_ms/0 returns 10_000" do
       assert Defaults.remote_models_http_timeout_ms() == 10_000
     end

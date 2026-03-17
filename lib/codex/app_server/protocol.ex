@@ -43,6 +43,22 @@ defmodule Codex.AppServer.Protocol do
     |> then(&[&1, "\n"])
   end
 
+  @spec encode_error(String.t() | integer(), integer(), String.t(), map() | nil) :: iolist()
+  def encode_error(id, code, message, data \\ nil)
+      when is_integer(code) and is_binary(message) do
+    %{
+      "id" => id,
+      "error" =>
+        %{
+          "code" => code,
+          "message" => message
+        }
+        |> put_optional("data", data)
+    }
+    |> Jason.encode_to_iodata!()
+    |> then(&[&1, "\n"])
+  end
+
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, _key, []), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)

@@ -34,6 +34,13 @@ Transport selection is per-thread via `Codex.Thread.Options.transport`:
 `Codex.AppServer.connect/2` can also isolate the managed child with `cwd:` and
 `process_env:` launch overrides when you need a temporary `CODEX_HOME`.
 
+Native OAuth is a separate subsystem centered on `Codex.OAuth`. Persistent
+OAuth writes upstream-compatible `auth.json` under the effective `CODEX_HOME`.
+Memory-mode OAuth is used for external app-server auth: `connect/2` performs
+`account/login/start` with `chatgptAuthTokens` and, when enabled, starts a
+connection-owned refresh responder for `account/chatgptAuthTokens/refresh`
+without pushing that ownership into the lower-level app-server transport layer.
+
 Across both transports, TLS configuration is centralized in `Codex.Net.CA`: subprocess
 environment injection, Req clients, `:httpc`, and realtime websocket SSL options all resolve
 `CODEX_CA_CERTIFICATE` first, then `SSL_CERT_FILE`.

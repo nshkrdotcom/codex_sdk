@@ -70,4 +70,25 @@ defmodule Codex.AppServer.AccountTest do
                "chatgptAccountId" => "workspace-2"
              })
   end
+
+  test "login_start/3 resolves forced login config against child process env", %{
+    codex_home: codex_home
+  } do
+    child_home = Path.join(Path.dirname(codex_home), "child_home")
+    File.mkdir_p!(child_home)
+
+    File.write!(Path.join(child_home, "config.toml"), """
+    forced_login_method = "chatgpt"
+    """)
+
+    assert {:error, {:forced_login_method, "chatgpt", :api_key}} =
+             Account.login_start(self(), {:api_key, "sk-test"},
+               cwd: child_home,
+               process_env: [
+                 CODEX_HOME: child_home,
+                 HOME: child_home,
+                 USERPROFILE: child_home
+               ]
+             )
+  end
 end

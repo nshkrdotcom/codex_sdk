@@ -49,6 +49,9 @@ defmodule CodexSdk.MixProject do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:req, "~> 0.4"},
+      {:oauth2, "~> 2.1"},
+      {:plug, "~> 1.16"},
+      {:bandit, "~> 1.5"},
       {:websockex, "~> 0.5.1"},
       {:toml, "~> 0.7"},
 
@@ -92,16 +95,22 @@ defmodule CodexSdk.MixProject do
         "guides/05-app-server-transport.md",
         "guides/06-realtime-and-voice.md",
         "guides/07-models-and-reasoning.md",
-        "guides/08-configuration-defaults.md"
+        "guides/08-configuration-defaults.md",
+        "guides/09-oauth-and-login.md",
+        "guides/10-subagents.md"
       ],
       groups_for_extras: [
         Introduction: ["README.md", "guides/01-getting-started.md"],
         Guides: [
           "guides/02-architecture.md",
           "guides/05-app-server-transport.md",
-          "guides/06-realtime-and-voice.md",
+          "guides/06-realtime-and-voice.md"
+        ],
+        Advanced: [
           "guides/07-models-and-reasoning.md",
-          "guides/08-configuration-defaults.md"
+          "guides/08-configuration-defaults.md",
+          "guides/09-oauth-and-login.md",
+          "guides/10-subagents.md"
         ],
         Reference: [
           "guides/03-api-guide.md",
@@ -113,8 +122,13 @@ defmodule CodexSdk.MixProject do
       groups_for_modules: [
         "Public API": [
           Codex,
+          Codex.AppServer,
+          Codex.AppServer.Account,
           Codex.CLI,
           Codex.CLI.Session,
+          Codex.OAuth,
+          Codex.OAuth.LoginResult,
+          Codex.OAuth.Status,
           Codex.Thread,
           Codex.Thread.Options,
           Codex.Options,

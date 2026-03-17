@@ -36,6 +36,10 @@ The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
 to `gpt-5.4` unless env overrides or a fresher ChatGPT `/models` cache win.
 
+Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
+selection. Memory-only external app-server auth is connection-local and does not
+change the current BEAM process's default-model inference on its own.
+
 ### Environment Overrides
 
 The SDK checks these environment variables (in order) before falling back to the

@@ -36,6 +36,7 @@ cli_examples=(
   "examples/concurrency_and_collaboration.exs"
   "examples/tool_bridging_auto_run.exs"
   "examples/sandbox_warnings_and_approval_bypass.exs"
+  "examples/live_oauth_login.exs"
   "examples/live_app_server_basic.exs"
   "examples/live_app_server_filesystem.exs"
   "examples/live_app_server_plugins.exs"

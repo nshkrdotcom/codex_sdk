@@ -8,6 +8,8 @@ config :codex_sdk,
   rate_limit_max_delay_ms: 300_000,
   rate_limit_multiplier: 2.0
 
+config :tesla, disable_deprecated_builder_warning: true
+
 # Keep `mix test` output focused on dots; failing tests still surface logs via ExUnit.
 if config_env() == :test do
   config :logger, :console, level: :warning

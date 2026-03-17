@@ -26,6 +26,18 @@ end
   - `auth.json` `OPENAI_API_KEY`
   - Codex CLI login stored under `CODEX_HOME` (default `~/.codex`).
 
+Native ChatGPT OAuth is also available from Elixir:
+
+```elixir
+{:ok, result} = Codex.OAuth.login(storage: :file, interactive?: true)
+IO.inspect(result)
+```
+
+That flow writes upstream-compatible `auth.json` in persistent mode, keeps tokens
+in memory when `storage: :memory`, prefers browser auth on local desktops,
+falls back to device code on WSL/headless systems, and refuses to auto-start in
+non-interactive environments such as CI.
+
 For custom trust roots, set `CODEX_CA_CERTIFICATE` to a PEM bundle. If it is unset, the SDK falls
 back to `SSL_CERT_FILE`. Blank values are ignored. This applies to Codex CLI subprocesses, direct
 HTTP clients, remote model fetches, realtime websockets, MCP HTTP/OAuth, and voice requests.
@@ -145,6 +157,18 @@ isolated `CODEX_HOME`, pass `cwd:` and `process_env:` to
 `Codex.AppServer.connect/2`. Thread working directories are still configured per
 thread.
 
+You can also let `connect/2` manage child auth relative to that isolated child
+environment:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    process_env: %{"CODEX_HOME" => "/tmp/codex-home"},
+    oauth: [mode: :auto, storage: :memory, auto_refresh: true]
+  )
+```
+
 See `guides/05-app-server-transport.md` for the app-server guide.
 
 ## Realtime and Voice
@@ -179,4 +203,5 @@ See `guides/06-realtime-and-voice.md` for the complete guide.
 - `guides/02-architecture.md` for system layout and transport flow.
 - `guides/03-api-guide.md` for module-level docs.
 - `guides/04-examples.md` for runnable patterns.
+- `guides/09-oauth-and-login.md` for native OAuth, persistent vs memory auth, and WSL/headless behavior.
 - `guides/06-realtime-and-voice.md` for voice interactions.

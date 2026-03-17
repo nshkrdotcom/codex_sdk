@@ -14,16 +14,25 @@ defmodule Codex.Net.CA do
   Returns the effective CA certificate bundle path, if any.
   """
   @spec certificate_file() :: String.t() | nil
-  def certificate_file do
-    normalize(System.get_env(@codex_ca_env)) || normalize(System.get_env(@ssl_cert_file_env))
+  def certificate_file, do: certificate_file(System.get_env())
+
+  @spec certificate_file(map()) :: String.t() | nil
+  def certificate_file(env) when is_map(env) do
+    normalize(Map.get(env, @codex_ca_env)) || normalize(Map.get(env, @ssl_cert_file_env))
   end
 
   @doc """
   Returns subprocess environment overrides for the resolved CA bundle.
   """
   @spec env_overrides() :: %{optional(String.t()) => String.t()}
-  def env_overrides do
-    case certificate_file() do
+  def env_overrides, do: env_overrides(System.get_env())
+
+  @doc """
+  Returns subprocess environment overrides for the resolved CA bundle.
+  """
+  @spec env_overrides(map()) :: %{optional(String.t()) => String.t()}
+  def env_overrides(env) when is_map(env) do
+    case certificate_file(env) do
       nil ->
         %{}
 
@@ -39,8 +48,11 @@ defmodule Codex.Net.CA do
   Returns Req `connect_options` for the resolved CA bundle.
   """
   @spec req_connect_options() :: keyword()
-  def req_connect_options do
-    case certificate_file() do
+  def req_connect_options, do: req_connect_options(System.get_env())
+
+  @spec req_connect_options(map()) :: keyword()
+  def req_connect_options(env) when is_map(env) do
+    case certificate_file(env) do
       nil -> []
       path -> [transport_opts: [cacertfile: path]]
     end
@@ -50,8 +62,9 @@ defmodule Codex.Net.CA do
   Merges CA-specific `connect_options` into an existing Req options keyword list.
   """
   @spec merge_req_options(keyword()) :: keyword()
-  def merge_req_options(opts \\ []) when is_list(opts) do
-    case req_connect_options() do
+  @spec merge_req_options(keyword(), map()) :: keyword()
+  def merge_req_options(opts, env) when is_list(opts) and is_map(env) do
+    case req_connect_options(env) do
       [] ->
         opts
 
@@ -62,12 +75,19 @@ defmodule Codex.Net.CA do
     end
   end
 
+  def merge_req_options(opts \\ []) when is_list(opts) do
+    merge_req_options(opts, System.get_env())
+  end
+
   @doc """
   Returns `:httpc` SSL options for the resolved CA bundle.
   """
   @spec httpc_ssl_options() :: keyword()
-  def httpc_ssl_options do
-    case certificate_file() do
+  def httpc_ssl_options, do: httpc_ssl_options(System.get_env())
+
+  @spec httpc_ssl_options(map()) :: keyword()
+  def httpc_ssl_options(env) when is_map(env) do
+    case certificate_file(env) do
       nil -> []
       path -> [cacertfile: path]
     end
@@ -77,8 +97,9 @@ defmodule Codex.Net.CA do
   Merges CA-specific SSL options into an `:httpc` options keyword list.
   """
   @spec merge_httpc_options(keyword()) :: keyword()
-  def merge_httpc_options(opts \\ []) when is_list(opts) do
-    case httpc_ssl_options() do
+  @spec merge_httpc_options(keyword(), map()) :: keyword()
+  def merge_httpc_options(opts, env) when is_list(opts) and is_map(env) do
+    case httpc_ssl_options(env) do
       [] ->
         opts
 
@@ -89,12 +110,19 @@ defmodule Codex.Net.CA do
     end
   end
 
+  def merge_httpc_options(opts \\ []) when is_list(opts) do
+    merge_httpc_options(opts, System.get_env())
+  end
+
   @doc """
   Returns websocket SSL options for the resolved CA bundle.
   """
   @spec websocket_ssl_options() :: keyword()
-  def websocket_ssl_options do
-    case certificate_file() do
+  def websocket_ssl_options, do: websocket_ssl_options(System.get_env())
+
+  @spec websocket_ssl_options(map()) :: keyword()
+  def websocket_ssl_options(env) when is_map(env) do
+    case certificate_file(env) do
       nil -> []
       path -> [cacertfile: path]
     end

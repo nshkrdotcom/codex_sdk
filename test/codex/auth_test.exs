@@ -1,57 +1,10 @@
 defmodule Codex.AuthTest do
   use ExUnit.Case, async: false
+  use Codex.TestSupport.AuthEnv
 
   import ExUnit.CaptureLog
 
   alias Codex.Auth
-
-  setup do
-    tmp_root =
-      Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
-
-    codex_home = Path.join(tmp_root, "home")
-    system_path = Path.join(tmp_root, "system_config.toml")
-
-    File.mkdir_p!(codex_home)
-
-    original_home = System.get_env("CODEX_HOME")
-    original_api_key = System.get_env("CODEX_API_KEY")
-    original_openai_api_key = System.get_env("OPENAI_API_KEY")
-    original_system_path = Application.get_env(:codex_sdk, :system_config_path)
-
-    System.put_env("CODEX_HOME", codex_home)
-    System.delete_env("CODEX_API_KEY")
-    System.delete_env("OPENAI_API_KEY")
-    Application.put_env(:codex_sdk, :system_config_path, system_path)
-
-    :persistent_term.erase({Codex.Auth, :keyring_warning_emitted})
-
-    on_exit(fn ->
-      case original_home do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
-      end
-
-      case original_api_key do
-        nil -> System.delete_env("CODEX_API_KEY")
-        value -> System.put_env("CODEX_API_KEY", value)
-      end
-
-      case original_openai_api_key do
-        nil -> System.delete_env("OPENAI_API_KEY")
-        value -> System.put_env("OPENAI_API_KEY", value)
-      end
-
-      case original_system_path do
-        nil -> Application.delete_env(:codex_sdk, :system_config_path)
-        value -> Application.put_env(:codex_sdk, :system_config_path, value)
-      end
-
-      File.rm_rf(tmp_root)
-    end)
-
-    {:ok, codex_home: codex_home}
-  end
 
   test "warns and ignores api key files when keyring is configured", %{codex_home: codex_home} do
     File.write!(Path.join(codex_home, "config.toml"), """
@@ -98,5 +51,22 @@ defmodule Codex.AuthTest do
 
     assert Auth.api_key() == "sk-codex-priority"
     assert Auth.direct_api_key() == "sk-codex-priority"
+  end
+
+  test "chatgpt auth_mode prevents stale auth file api keys from overriding chatgpt mode", %{
+    codex_home: codex_home
+  } do
+    File.write!(
+      Path.join(codex_home, "auth.json"),
+      Jason.encode!(%{
+        "auth_mode" => "chatgpt",
+        "OPENAI_API_KEY" => "sk-stale",
+        "tokens" => %{"access_token" => "chatgpt-token"}
+      })
+    )
+
+    assert Auth.infer_auth_mode() == :chatgpt
+    assert Auth.api_key() == nil
+    assert Auth.chatgpt_access_token() == "chatgpt-token"
   end
 end

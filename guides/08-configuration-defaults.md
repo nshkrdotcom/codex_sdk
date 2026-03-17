@@ -55,6 +55,10 @@ settings live in layered `config.toml` files instead:
 Custom trust roots are also environment-driven rather than `Defaults`-driven: `CODEX_CA_CERTIFICATE`
 is preferred over `SSL_CERT_FILE`, with blank values treated as unset.
 
+OAuth issuer resolution is also separate from `openai_base_url`: overriding the
+OpenAI API base URL does not change the ChatGPT OAuth authority. Use
+`Codex.OAuth` `auth_issuer:` options (or layered `auth_issuer`) for that.
+
 ## Defaults Reference
 
 ### Transport Timeouts
@@ -107,6 +111,10 @@ is preferred over `SSL_CERT_FILE`, with blank values treated as unset.
 |----------|---------|-------------|
 | `oauth_http_timeout_ms/0` | 10,000 | OAuth token request timeout |
 | `oauth_refresh_skew_ms/0` | 30,000 | Refresh before expiry threshold |
+| `oauth_browser_callback_timeout_ms/0` | 120,000 | Browser callback wait timeout |
+| `oauth_device_code_timeout_ms/0` | 900,000 | Device-code login timeout |
+| `oauth_device_code_max_poll_interval_ms/0` | 10,000 | Max device-code backoff interval |
+| `oauth_wsl_device_fallback_grace_ms/0` | 5,000 | WSL browser-to-device fallback grace period |
 | `remote_models_http_timeout_ms/0` | 10,000 | Model list HTTP timeout |
 | `sessions_apply_timeout_ms/0` | 60,000 | Session apply timeout |
 

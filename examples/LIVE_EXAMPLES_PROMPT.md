@@ -4,6 +4,7 @@ You will add a **small, focused set of live examples** under `examples/` that ru
 
 ## Non-Negotiable Constraints
 - **Live Codex CLI only**: No mocks/stubs. Use the installed `codex` binary, resolved like existing `live_*.exs` scripts (`codex_path_override`/`CODEX_PATH`/`System.find_executable("codex")`), and rely on the user’s CLI login (do not add API-key setup).
+  The dedicated `examples/live_oauth_login.exs` script is the exception: it exercises `Codex.OAuth` directly and defaults to an isolated temporary `CODEX_HOME`.
 - **`mix run` entrypoints**: Each example must be runnable via `mix run examples/<file>.exs "optional prompt"`.
 - **Keep it short**: Minimal output, readable in a terminal. Avoid complex setup or extra deps.
 - **Update plumbing**: Add new files to `examples/run_all.sh` (sequential `mix run` calls) and list them in `examples/README.md`. Do not forget shebang + executable bit for `run_all.sh` if touched.

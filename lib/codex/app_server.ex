@@ -7,6 +7,7 @@ defmodule Codex.AppServer do
   alias Codex.AppServer.Params
   alias Codex.AppServer.Supervisor, as: ConnectionSupervisor
   alias Codex.Config.Defaults
+  alias Codex.OAuth.AppServerAuth
   alias Codex.Options
 
   @type connection :: pid()
@@ -25,7 +26,8 @@ defmodule Codex.AppServer do
           experimental_api: boolean(),
           cwd: String.t(),
           process_env: map() | keyword(),
-          env: map() | keyword()
+          env: map() | keyword(),
+          oauth: keyword()
         ]
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
@@ -41,8 +43,10 @@ defmodule Codex.AppServer do
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
 
     with {:ok, _pid} <- ensure_connection_supervisor(),
-         {:ok, conn} <- start_connection(codex_opts, opts) do
-      await_connection_ready(conn, init_timeout_ms)
+         :ok <- AppServerAuth.ensure_before_connect(opts),
+         {:ok, conn} <- start_connection(codex_opts, opts),
+         {:ok, ^conn} <- await_connection_ready(conn, init_timeout_ms) do
+      authenticate_connection(conn, opts)
     end
   end
 
@@ -97,6 +101,19 @@ defmodule Codex.AppServer do
     :exit, :normal -> :ok
     :exit, {:normal, _} -> :ok
     :exit, _ -> :ok
+  end
+
+  defp maybe_terminate_connection(conn), do: safe_terminate_child(conn)
+
+  defp authenticate_connection(conn, opts) do
+    case AppServerAuth.authenticate_connection(conn, opts) do
+      :ok ->
+        {:ok, conn}
+
+      {:error, _reason} = error ->
+        maybe_terminate_connection(conn)
+        error
+    end
   end
 
   @spec alive?(connection()) :: boolean()

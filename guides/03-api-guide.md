@@ -11,6 +11,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Transport` | Transport behaviour for turn execution |
 | `Codex.AppServer` | Stateful app-server JSON-RPC connection + v2 request APIs |
 | `Codex.AppServer.V1` | Legacy app-server compatibility helpers for v1 conversation APIs |
+| `Codex.OAuth` | Native OAuth login, refresh, status, logout, and host-managed login helpers |
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
 | `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
@@ -116,6 +117,20 @@ When the managed app-server child itself needs an isolated working directory or
 temporary `CODEX_HOME`, pass `cwd:` and `process_env:` to `connect/2`. Those
 launch options affect the child process; per-thread cwd still belongs on thread
 params.
+
+`connect/2` also accepts `oauth:` for child-auth-aware startup:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    oauth: [mode: :auto, storage: :memory, auto_refresh: true]
+  )
+```
+
+Use `storage: :file` / `:auto` when the child should consume persistent auth
+under its effective `CODEX_HOME`, and `storage: :memory` when the app-server
+should use external `chatgptAuthTokens` plus an SDK-owned refresh responder.
 
 For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
 conversation APIs.
