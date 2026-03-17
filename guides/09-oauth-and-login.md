@@ -70,7 +70,7 @@ The browser flow always uses:
 
 - an external browser
 - PKCE `S256`
-- a loopback IP literal callback (`127.0.0.1`), not `localhost`
+- a loopback listener bound to `127.0.0.1`, with an upstream-compatible browser redirect URI on `localhost`
 - a random callback port by default
 
 ## App-server integration
@@ -131,10 +131,13 @@ Run the live OAuth example:
 ```bash
 mix run examples/live_oauth_login.exs
 mix run examples/live_oauth_login.exs --interactive
+mix run examples/live_oauth_login.exs --interactive --browser --no-browser
+mix run examples/live_oauth_login.exs --interactive --device
 mix run examples/live_oauth_login.exs --interactive --app-server-memory
 ```
 
 By default it uses an isolated temporary `CODEX_HOME`, prints `status`, runs
-`login` only when interactive login is explicitly allowed, demonstrates
+`login` only when interactive login is explicitly allowed, prints the browser
+authorization URL before waiting, lets you force browser or device flow, demonstrates
 `refresh` when a ChatGPT OAuth session exists, and can optionally show the
 memory-mode app-server path.

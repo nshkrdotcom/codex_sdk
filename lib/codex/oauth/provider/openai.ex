@@ -3,7 +3,7 @@ defmodule Codex.OAuth.Provider.OpenAI do
 
   @default_client_id "app_EMoamEEZ73f0CkXaXp7hrann"
   @default_scope "openid profile email offline_access api.connectors.read api.connectors.invoke"
-  @default_originator "codex_sdk_elixir"
+  @default_originator "codex_cli_rs"
 
   @enforce_keys [
     :issuer,

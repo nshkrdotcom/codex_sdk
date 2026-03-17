@@ -107,7 +107,7 @@ defmodule Codex.OAuth.BrowserCodeFlowTest do
 
     assert params["code_challenge_method"] == "S256"
     assert params["state"] == pending.state
-    assert String.starts_with?(params["redirect_uri"], "http://127.0.0.1:")
+    assert String.starts_with?(params["redirect_uri"], "http://localhost:")
 
     assert {:ok, %Req.Response{status: 200}} = Req.get(pending.authorize_url)
     assert {:ok, session} = BrowserCode.await(pending, timeout: 2_000)

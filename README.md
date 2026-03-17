@@ -1105,7 +1105,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_demo.exs`** - Live CLI walkthrough (uses CLI auth)
 - **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
-- **`live_oauth_login.exs`** - Native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`, plus an optional memory-mode app-server connect
+- **`live_oauth_login.exs`** - Native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`; prints the browser URL before waiting, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth
 - **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
 - **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn that uses the server-advertised preset settings (falling back only when the server omits a field), with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)

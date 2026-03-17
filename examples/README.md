@@ -56,7 +56,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
-- `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo using an isolated temporary `CODEX_HOME` by default; supports optional memory-mode app-server connect via `--app-server-memory`
+- `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo using an isolated temporary `CODEX_HOME` by default; prints the browser URL before waiting, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth via `--app-server-memory`
 - `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
 - `examples/live_app_server_plugins.exs` — provisions a disposable local marketplace under the system temp directory, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises `plugin/list` + `plugin/read` without mutating `~/.codex` or requiring a preinstalled plugin; self-skips when the connected CLI build does not advertise `plugin/read`

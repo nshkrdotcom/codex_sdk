@@ -1,361 +1,320 @@
-# Subagents and Multi-Agent Workflows
+# Subagents
 
-This guide explains how upstream Codex subagents work in the vendored
-`./codex/codex-rs` tree and maps that behavior onto the current Elixir SDK.
+Subagents let Codex break a task into child agent threads and then bring the
+results back to the parent. They are useful when the work can be split into
+clean, bounded pieces such as codebase exploration, focused review passes, log
+analysis, or a simple one-parent -> one-child investigation.
 
-It is based on the vendored `codex-rs` snapshot in this repository, not on a
-separate external release stream.
+In this SDK, a good subagent workflow has two parts:
 
-It is intentionally explicit about the gap:
+- the SDK control surface for structured operations such as configuration,
+  discovery, inspection, streaming, and waiting on known child threads
+- prompt instructions that tell Codex whether to delegate, how many children to
+  spawn, which agent to use, whether to wait, and what summary to return
 
-- upstream Codex has an experimental multi-agent system
-- `codex_sdk` does not yet provide first-class Elixir APIs for it
-- the SDK currently exposes only partial, transport-level observability
+For broader background, setup details, and product-level guidance, see the
+official Codex docs:
 
-## Status at a Glance
+- [Subagents](https://developers.openai.com/codex/subagents)
+- [Subagent concepts](https://developers.openai.com/codex/concepts/subagents)
 
-| Area | Upstream `codex-rs` | `codex_sdk` today |
+## When Subagents Help
+
+Subagents are a good fit when the work can be divided into independent pieces.
+
+Typical examples:
+
+- read-heavy codebase exploration
+- multiple review passes with different goals
+- tracing separate code paths in parallel
+- log analysis or incident triage
+- one child doing bounded research while the parent keeps the main thread clean
+
+Be more careful with write-heavy workflows. Multiple agents editing the same
+area at once can create conflicts and extra coordination work.
+
+## Availability and Behavior
+
+Current Codex releases enable subagent workflows by default. Codex only uses
+subagents when you explicitly ask for them, and each child agent adds token
+cost because it does its own model and tool work.
+
+Subagents inherit the parent session's sandbox and approval posture unless a
+custom agent overrides those settings. That makes the child behave like a real
+continuation of the parent workflow rather than an unrelated fresh session.
+
+## The Two Parts of Using Subagents From Elixir
+
+The clean mental model is:
+
+- use the SDK control surface for deterministic, structured operations
+- use prompts for delegation behavior
+
+| Concern | Use the SDK control surface | Use prompt instructions |
 | --- | --- | --- |
-| Feature flag | `features.multi_agent` enables the collaboration tool surface | No SDK helper; this is controlled by the underlying Codex runtime |
-| Agent orchestration tools | `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent` | Not exposed as Elixir APIs |
-| Agent roles | Built-in roles plus user-defined roles in `config.toml` | No Elixir role-management API |
-| Limits and depth | `agents.max_threads`, `agents.max_depth`, `agents.job_max_runtime_seconds` | No Elixir abstraction over these settings |
-| Thread metadata | Subagent thread sources plus `agentNickname` and `agentRole` | Available through app-server thread APIs |
-| Streaming visibility | Collab tool-call items and lifecycle events | Partially normalized in `Codex.Items` and `Codex.Events` |
+| Enable or tune subagent settings | Yes | No |
+| Set `agents.max_threads` and `agents.max_depth` | Yes | No |
+| Discover child threads for a parent | Yes | No |
+| Inspect child metadata such as parent id, depth, role, or nickname | Yes | No |
+| Observe collaboration events and tool-call items | Yes | No |
+| Read or continue a known child thread | Yes | No |
+| Decide whether to delegate | No | Yes |
+| Decide how many children to spawn | No | Yes |
+| Choose `explorer`, `worker`, or a custom agent | No | Yes |
+| Tell the parent to wait, summarize, or keep working | No | Yes |
 
-## What "Subagents" Means Upstream
+This split matters. The SDK should own the structured parts. Your prompt should
+own the delegation strategy.
 
-In upstream Codex, "subagents" are child agent threads spawned by an active
-agent during a turn. The parent agent delegates a bounded task, keeps working,
-and later waits for or reuses the child.
+## Configure Subagents
 
-Upstream naming is slightly inconsistent, so it helps to treat these as aliases:
-
-- `features.multi_agent`: config flag name
-- "Multi-agents": TUI / experimental-feature label
-- "subagent": runtime concept
-- `subAgentThreadSpawn`: app-server thread source kind for spawned child threads
-
-This is different from two other concepts already present in this SDK:
-
-- `collaboration_mode`: a single-agent prompt preset such as `:plan` or
-  `:pair_programming`
-- `approvals_reviewer: :guardian_subagent`: approval-routing behavior for
-  escalated reviews, not general subagent orchestration
-- manual concurrency: you starting multiple `Codex` threads from Elixir and
-  coordinating them yourself
-
-Those are useful, but they are not upstream subagent orchestration.
-
-## How Upstream Subagents Work
-
-### 1. The feature is gated
-
-Upstream ships subagents behind the experimental `multi_agent` feature flag.
-The TUI exposes it as "Multi-agents" and prompts the user to enable it through
-`/experimental`, with the change taking effect on the next session.
-
-Example upstream config:
+Global subagent settings live under `[agents]` in `.codex/config.toml`.
 
 ```toml
-[features]
-multi_agent = true
-```
-
-### 2. The parent agent gets a collaboration tool surface
-
-When the feature is enabled, upstream can expose these tools to the active
-agent:
-
-| Tool | Purpose |
-| --- | --- |
-| `spawn_agent` | Create a child agent thread for a scoped task |
-| `send_input` | Send follow-up input to an existing child |
-| `resume_agent` | Reopen a previously closed child thread |
-| `wait` | Wait for one or more child agents to reach a final state |
-| `close_agent` | Shut down a child agent when it is no longer needed |
-
-Related but separate: upstream also has `spawn_agents_on_csv` for fanout job
-execution. That is adjacent to subagents, but it is not the core subagent
-feature.
-
-### 3. Spawned agents are real threads
-
-The returned `agent_id` is effectively a thread id. A spawned child becomes its
-own thread with subagent-specific metadata, status, and history.
-
-Upstream records the child session source as a subagent source. For spawned
-threads that means:
-
-- parent thread id
-- nesting depth
-- optional agent nickname
-- optional agent role
-
-Upstream also uses subagent source tags for non-spawn cases such as review,
-compaction, and memory consolidation.
-
-### 4. Children inherit the live runtime state
-
-This is one of the most important design details.
-
-Upstream does not spawn children from a cold default config. A child starts
-from the parent turn's effective runtime state, including:
-
-- model and provider
-- reasoning effort
-- developer instructions
-- working directory
-- sandbox policy
-- approval policy
-- shell environment policy
-
-After inheritance, upstream may apply:
-
-- an agent role layer
-- explicit `model` / `reasoning_effort` overrides from `spawn_agent`
-- depth-based feature restrictions
-
-This matters because it keeps the child aligned with the parent's real
-execution environment instead of silently drifting to unrelated defaults.
-
-### 5. Roles are config layers
-
-Upstream supports built-in and user-defined agent roles.
-
-Built-in roles:
-
-- `default`
-- `explorer`
-- `worker`
-
-User-defined roles live under `[agents.<role_name>]` and can declare:
-
-- `description`
-- `config_file`
-- `nickname_candidates`
-
-Relative `config_file` paths are resolved relative to the `config.toml` that
-declares the role.
-
-Example upstream config:
-
-```toml
-[features]
-multi_agent = true
-
 [agents]
-max_threads = 6
+max_threads = 2
 max_depth = 1
-
-[agents.researcher]
-description = "Read-heavy repo exploration"
-config_file = "/absolute/path/to/researcher.toml"
-nickname_candidates = ["Atlas", "Juniper"]
 ```
 
-Role config files are merged as high-precedence config layers. A role may pin a
-model or reasoning effort, in which case upstream treats those settings as
-locked for that role.
-
-### 6. Depth and thread limits are enforced
-
-Upstream defaults matter here:
+Useful defaults from the Codex docs:
 
 - `agents.max_threads` defaults to `6`
 - `agents.max_depth` defaults to `1`
-- root sessions start at depth `0`
 
-With the default depth of `1`, a root agent may spawn children, but those
-children cannot keep spawning deeper generations. Upstream allows the child at
-the maximum depth to exist, then disables further collaboration/fanout tools in
-that child.
+For a simple one-parent -> one-child workflow, `max_depth = 1` is usually what
+you want. It allows the parent to spawn a child but prevents the child from
+building a deeper tree.
 
-### 7. Waiting is intentionally coarse-grained
-
-The upstream `wait` tool is designed to avoid hot polling:
-
-- default timeout: `30_000` ms
-- minimum timeout: `10_000` ms
-- maximum timeout: `3_600_000` ms
-- when multiple ids are passed, it waits for the first one to reach a final
-  status
-
-That behavior is deliberate. Upstream is trying to keep the orchestrator from
-burning CPU in tight wait loops.
-
-## Protocol and Transport Surfaces
-
-Subagents are not only a prompt-level behavior. They show up in transport and
-API surfaces too.
-
-### App-server thread metadata
-
-Upstream app-server threads can carry:
-
-- subagent source kinds such as `subAgentThreadSpawn`
-- `agentNickname`
-- `agentRole`
-
-Relevant source kinds include:
-
-- `subAgent`
-- `subAgentReview`
-- `subAgentCompact`
-- `subAgentThreadSpawn`
-- `subAgentOther`
-
-### App-server items
-
-Upstream app-server exposes `collabToolCall` items for collaboration activity.
-Those items describe actions such as:
-
-- `spawn_agent`
-- `send_input`
-- `resume_agent`
-- `wait`
-- `close_agent`
-
-### Additional lifecycle events
-
-The vendored upstream runtime also emits dedicated collaboration lifecycle
-events such as spawn, interaction, waiting, close, and resume begin/end events.
-
-### Responses API header tagging
-
-When upstream makes Responses API requests from a subagent context, it adds an
-`x-openai-subagent` header. The vendored code maps sources to values such as:
-
-- `review`
-- `compact`
-- `memory_consolidation`
-- `collab_spawn`
-- a custom label for `Other(...)`
-
-That header is an implementation detail, but it is part of how upstream keeps
-subagent traffic distinguishable end to end.
-
-## What the Elixir SDK Supports Today
-
-This SDK currently has passive support, not active orchestration support.
-
-### What exists
-
-- `Codex.AppServer.thread_list/2` can filter by subagent-related `source_kinds`
-- `Codex.AppServer.thread_read/3` can read stored subagent threads
-- app-server item normalization includes `Codex.Items.CollabAgentToolCall`
-- event normalization includes collab lifecycle event structs such as:
-  `Codex.Events.CollabAgentSpawnBegin`,
-  `Codex.Events.CollabAgentSpawnEnd`,
-  `Codex.Events.CollabAgentInteractionBegin`,
-  `Codex.Events.CollabAgentInteractionEnd`,
-  `Codex.Events.CollabWaitingBegin`,
-  `Codex.Events.CollabWaitingEnd`,
-  `Codex.Events.CollabCloseBegin`,
-  `Codex.Events.CollabCloseEnd`
-- `Codex.Protocol.CollaborationMode` exists, but that is a separate feature
-
-### What does not exist
-
-- no `Codex.Subagents` module
-- no Elixir wrappers for `spawn_agent`, `send_input`, `resume_agent`, `wait`,
-  or `close_agent`
-- no typed Elixir API for agent ids, nicknames, roles, or parent/child routing
-- no first-class config helpers for `features.multi_agent` or `[agents.*]`
-- no complete parity guarantee for the full upstream collaboration event surface
-- no high-level examples showing true upstream subagent orchestration from
-  Elixir
-
-That is why this guide should be read as:
-
-- a product and architecture guide for the feature
-- a gap map for this repository
-- not a claim that subagents are already supported end to end in Elixir
-
-## What You Can Do Right Now from Elixir
-
-### Observe upstream subagent threads
-
-If you are connected to `codex app-server`, you can inspect stored or active
-subagent threads:
+You can also set these values through the SDK when you are connected to Codex:
 
 ```elixir
-{:ok, %{"data" => threads}} =
-  Codex.AppServer.thread_list(conn,
-    source_kinds: [:sub_agent_thread_spawn, :sub_agent_review]
+{:ok, _} = Codex.AppServer.config_write(conn, "agents.max_threads", 2)
+{:ok, _} = Codex.AppServer.config_write(conn, "agents.max_depth", 1)
+```
+
+## Built-In and Custom Agents
+
+Codex ships with three useful built-in agents:
+
+- `default` for general-purpose fallback work
+- `worker` for implementation and fixes
+- `explorer` for read-heavy exploration
+
+When you need a narrower role, define a custom agent in one standalone TOML
+file under `.codex/agents/` for project-scoped agents or `~/.codex/agents/`
+for personal agents.
+
+Every custom agent file should define:
+
+- `name`
+- `description`
+- `developer_instructions`
+
+Optional fields such as `nickname_candidates`, `model`,
+`model_reasoning_effort`, and `sandbox_mode` inherit from the parent when you
+omit them.
+
+Example:
+
+```toml
+name = "reviewer"
+description = "PR reviewer focused on correctness, security, and missing tests."
+developer_instructions = """
+Review code like an owner.
+Prioritize correctness, security, behavior regressions, and missing test coverage.
+"""
+nickname_candidates = ["Atlas", "Delta", "Echo"]
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+```
+
+Keep custom agents narrow and opinionated. A good custom agent has one clear
+job and instructions that keep it from drifting into adjacent work.
+
+## Basic SDK Workflow
+
+The normal Elixir flow is:
+
+1. Configure subagent limits.
+2. Start a parent thread.
+3. Prompt the parent to spawn exactly the children you want.
+4. Observe the workflow in streamed events.
+5. Discover the child thread or threads from the SDK control surface.
+6. Inspect the child metadata.
+7. Read, follow up on, or await the child thread as needed.
+
+Here is the shape of a simple one-parent -> one-child flow:
+
+```elixir
+{:ok, _} = Codex.AppServer.config_write(conn, "agents.max_threads", 2)
+{:ok, _} = Codex.AppServer.config_write(conn, "agents.max_depth", 1)
+
+{:ok, parent} =
+  Codex.Thread.start(conn,
+    model: "gpt-5.4",
+    model_reasoning_effort: :medium
   )
 
-Enum.each(threads, fn thread ->
-  IO.inspect(%{
-    id: thread["id"],
-    source: thread["source"],
-    nickname: thread["agentNickname"],
-    role: thread["agentRole"]
-  })
-end)
+prompt = """
+Spawn exactly one child agent for this task.
+Use the explorer agent.
+Do not spawn any additional agents.
+Inspect lib/my_app/payments.ex and summarize the payment lifecycle.
+Wait for the child before answering.
+If subagents are unavailable, continue solo and say so explicitly.
+"""
+
+{:ok, _result} = Codex.Thread.run(parent, prompt)
+
+{:ok, [child]} = Codex.Subagents.children(conn, parent.id)
+source = Codex.Subagents.source(child)
+
+IO.inspect(%{
+  child_thread_id: child.id,
+  parent_thread_id: Codex.Subagents.parent_thread_id(source),
+  depth: source.depth,
+  agent_role: source.agent_role,
+  agent_nickname: source.agent_nickname
+})
+
+{:ok, child_thread} = Codex.Subagents.read(conn, child.id)
+{:ok, :completed} = Codex.Subagents.await(conn, child.id, timeout: 30_000)
 ```
 
-### Observe collaboration activity in streamed events
+The important pattern is simple:
 
-When the upstream runtime emits collaboration items or lifecycle events, this
-SDK can surface them in streamed turn output.
+- the prompt tells Codex how to delegate
+- the SDK gives you structured visibility and control over the resulting child
+  thread
 
-```elixir
-{:ok, stream} = Codex.Thread.run_streamed(thread, "Work on this task")
+## Streaming and Observability
 
-for event <- stream do
-  case event do
-    %Codex.Events.ItemCompleted{
-      item: %Codex.Items.CollabAgentToolCall{} = item
-    } ->
-      IO.inspect({:collab_item, item.tool, item.status, item.receiver_thread_ids})
+Subagent workflows are much easier to debug when you stream events instead of
+waiting for only the final answer.
 
-    %Codex.Events.CollabAgentSpawnBegin{} = item ->
-      IO.inspect({:spawn_begin, item.call_id, item.prompt})
+The SDK should let you observe collaboration activity such as:
 
-    %Codex.Events.CollabWaitingEnd{} = item ->
-      IO.inspect({:wait_end, item.call_id, item.statuses})
+- child spawn begin and end
+- follow-up interaction begin and end
+- waiting begin and end
+- close begin and end
+- typed collaboration tool-call items in the item stream
 
-    _ ->
-      :ok
-  end
-end
+That gives you a reliable way to answer questions such as:
+
+- did the parent actually spawn a child?
+- how many child threads were created?
+- which child thread ids were used?
+- did the parent wait for the child or continue immediately?
+
+## Prompting Strategy
+
+Codex does not spawn subagents automatically. If you want subagents, say so
+clearly.
+
+Good subagent prompts usually specify:
+
+- whether to delegate at all
+- the exact number of children to create
+- which built-in or custom agent to use
+- whether children may spawn additional children
+- whether the parent should wait or keep working
+- what final answer shape to return
+
+### A Reliable One-Child Prompt
+
+```text
+Spawn exactly one child agent for this task.
+Use the explorer agent.
+Do not spawn any additional agents.
+Inspect lib/my_app/payments.ex and explain the payment lifecycle.
+Wait for the child to finish before answering.
+Return a concise summary with file references.
+If subagents are unavailable, continue solo and say so explicitly.
 ```
 
-### Build manual multi-thread workflows
+This is a good default pattern because it keeps the workflow bounded and easy to
+inspect from Elixir.
 
-If you want concurrent work today, the supported Elixir approach is still manual
-orchestration:
+### A Good Parallel Review Prompt
 
-1. start multiple `Codex` threads yourself
-2. run work in parallel under your own supervision
-3. merge or synthesize results in Elixir
+```text
+Review this branch with parallel subagents.
+Spawn one child for security risks, one for test gaps, and one for maintainability.
+Wait for all children, then summarize the findings by category with file references.
+Do not create any additional agents beyond those three.
+```
 
-That is useful, but it should not be described as upstream subagent support.
+### Prompting Tips
 
-## Recommended Documentation Position for This Repo
+- ask for an exact number of children, not "some" or "a few"
+- name the agent you want when you care about behavior
+- say whether the parent should wait
+- say what the final answer should look like
+- add an explicit fallback so the run still succeeds without subagents
 
-For this repository, the most accurate positioning is:
+## Working With Child Threads
 
-- upstream Codex supports subagents
-- this SDK can observe parts of that behavior
-- this SDK does not yet expose first-class subagent control
+Once a child exists, treat it as a first-class thread.
 
-In other words, subagents are a documented upstream feature and a known SDK gap.
+The SDK control surface should let you:
 
-## What First-Class Elixir Support Would Need
+- list the children for a parent
+- inspect the child's source metadata
+- confirm the parent/child relationship
+- read the child thread
+- stream or run direct follow-up work on the child
+- wait for the child to reach a final state
 
-A real Elixir integration would need more than event parsing. At minimum it
-would need:
+That is the part Elixir should own. It is structured, deterministic, and
+useful for application code.
 
-- public wrappers for `spawn_agent`, `send_input`, `resume_agent`, `wait`, and
-  `close_agent`
-- a typed agent reference model instead of raw thread-id strings
-- full event and item parity, including the remaining collaboration lifecycle
-  surfaces
-- config helpers for `features.multi_agent` and `[agents.*]`
-- end-to-end tests against app-server behavior
-- examples that distinguish true subagents from manual thread concurrency
+## Approvals and Sandbox Controls
 
-Until that exists, this guide is the correct place to explain the feature in
-full without overstating current SDK support.
+Subagents inherit the parent session's sandbox and approval posture unless you
+override them in a custom agent.
+
+That means:
+
+- a read-only parent usually leads to read-only children unless you opt out
+- a stricter custom agent can be safer for review or exploration tasks
+- approval failures in a child flow back into the broader workflow instead of
+  silently disappearing
+
+For review, exploration, and documentation tasks, a read-only child is often
+the right default.
+
+## Choosing Agents and Models
+
+Start simple.
+
+- use `gpt-5.4` for the parent and for agents handling harder reasoning or
+  ambiguous work
+- use `gpt-5.3-codex-spark` for faster read-heavy or summarization-focused
+  agents
+- use `medium` reasoning effort as the default unless you have a clear reason
+  to go lower or higher
+
+If you create custom agents, pin model or reasoning settings only when the role
+truly benefits from it. Otherwise, let the child inherit the parent session's
+defaults.
+
+## Recommended Starting Point
+
+If you are new to subagents, start with this exact pattern:
+
+1. Set `agents.max_threads = 2`.
+2. Set `agents.max_depth = 1`.
+3. Start one parent thread on `gpt-5.4`.
+4. Ask the parent to spawn exactly one `explorer` child.
+5. Tell the parent to wait for the child.
+6. Use the SDK control surface to confirm the child exists, inspect its source,
+   and await completion.
+
+That keeps the workflow small, easy to reason about, and easy to test.
+
+## Further Reading
+
+- [Subagents](https://developers.openai.com/codex/subagents)
+- [Subagent concepts](https://developers.openai.com/codex/concepts/subagents)

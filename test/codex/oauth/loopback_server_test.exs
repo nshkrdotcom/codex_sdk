@@ -7,7 +7,7 @@ defmodule Codex.OAuth.LoopbackServerTest do
     {:ok, server} =
       LoopbackServer.start(callback_path: "/auth/callback", expected_state: "state-123")
 
-    assert server.callback_url =~ "http://127.0.0.1:"
+    assert server.callback_url =~ "http://localhost:"
     assert server.callback_url =~ "/auth/callback"
 
     wrong_path_url = String.replace(server.callback_url, "/auth/callback", "/wrong")
@@ -37,5 +37,21 @@ defmodule Codex.OAuth.LoopbackServerTest do
 
     assert :ok = LoopbackServer.cancel(server)
     assert {:error, :cancelled} = LoopbackServer.await_result(server, 1_000)
+  end
+
+  test "returns an error when the callback port is already in use" do
+    {:ok, socket} =
+      :gen_tcp.listen(0, [:binary, {:active, false}, {:reuseaddr, true}, {:ip, {127, 0, 0, 1}}])
+
+    on_exit(fn -> :gen_tcp.close(socket) end)
+
+    {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(socket)
+
+    assert {:error, _reason} =
+             LoopbackServer.start(
+               callback_path: "/auth/callback",
+               expected_state: "state-123",
+               port: port
+             )
   end
 end

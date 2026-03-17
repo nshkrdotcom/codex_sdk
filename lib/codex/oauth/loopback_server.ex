@@ -35,7 +35,7 @@ defmodule Codex.OAuth.LoopbackServer do
 
   @spec start(keyword()) :: {:ok, t()} | {:error, term()}
   def start(opts \\ []) when is_list(opts) do
-    with {:ok, pid} <- GenServer.start_link(__MODULE__, opts),
+    with {:ok, pid} <- GenServer.start(__MODULE__, opts),
          {:ok, info} <- GenServer.call(pid, :info) do
       {:ok,
        %__MODULE__{
@@ -75,6 +75,7 @@ defmodule Codex.OAuth.LoopbackServer do
   @impl true
   def init(opts) do
     callback_path = Keyword.get(opts, :callback_path, "/auth/callback")
+    callback_host = Keyword.get(opts, :callback_host, "localhost")
     expected_state = Keyword.fetch!(opts, :expected_state)
     port = Keyword.get(opts, :port, 0)
 
@@ -88,7 +89,7 @@ defmodule Codex.OAuth.LoopbackServer do
       {:ok,
        %State{
          bandit_pid: bandit_pid,
-         callback_url: "http://127.0.0.1:#{actual_port}#{callback_path}",
+         callback_url: "http://#{callback_host}:#{actual_port}#{callback_path}",
          callback_path: callback_path,
          expected_state: expected_state,
          port: actual_port

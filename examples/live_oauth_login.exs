@@ -3,6 +3,8 @@ Mix.Task.run("app.start")
 defmodule CodexExamples.LiveOAuthLogin do
   @moduledoc false
 
+  alias Codex.OAuth.Session.{PendingDeviceLogin, PendingLogin}
+
   def main(argv) do
     config = parse_args(argv)
     {codex_home, cleanup?} = resolve_codex_home(config)
@@ -17,7 +19,7 @@ defmodule CodexExamples.LiveOAuthLogin do
           IO.puts("SKIPPED: #{reason}")
 
         {:error, reason} ->
-          Mix.raise("OAuth example failed: #{inspect(reason)}")
+          Mix.raise("OAuth example failed: #{format_error(reason)}")
       end
     after
       if cleanup? do
@@ -44,7 +46,7 @@ defmodule CodexExamples.LiveOAuthLogin do
           maybe_run_memory_app_server(config, process_env)
 
         config.interactive? ->
-          with {:ok, result} <- Codex.OAuth.login(oauth_opts) do
+          with {:ok, result} <- interactive_login(config, oauth_opts) do
             print_login(result)
             :ok = maybe_refresh(oauth_opts, result)
             maybe_run_memory_app_server(config, process_env)
@@ -55,6 +57,87 @@ defmodule CodexExamples.LiveOAuthLogin do
            "no OAuth session found in the isolated CODEX_HOME; rerun with --interactive or point CODEX_OAUTH_EXAMPLE_HOME at an existing session"}
       end
     end
+  end
+
+  defp interactive_login(config, oauth_opts) do
+    login_opts = oauth_opts ++ login_flow_opts(config)
+
+    case Codex.OAuth.begin_login(login_opts) do
+      {:ok, %PendingLogin{} = pending} ->
+        print_warnings(pending.warnings)
+        print_browser_login(pending, config)
+        :ok = maybe_open_browser(pending, config)
+        handle_browser_await(Codex.OAuth.await_login(pending), pending, config)
+
+      {:ok, %PendingDeviceLogin{} = pending} ->
+        print_warnings(pending.warnings)
+        print_device_login(pending)
+        Codex.OAuth.await_login(pending)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp handle_browser_await({:ok, result}, _pending, _config), do: {:ok, result}
+
+  defp handle_browser_await({:error, :timeout}, %PendingLogin{} = pending, %{flow: :auto}) do
+    {:error,
+     {:browser_login_timeout,
+      "browser login timed out; open the printed URL manually or rerun with --device",
+      pending.authorize_url}}
+  end
+
+  defp handle_browser_await({:error, :timeout}, %PendingLogin{} = pending, _config) do
+    {:error,
+     {:browser_login_timeout, "browser login timed out; open the printed URL manually",
+      pending.authorize_url}}
+  end
+
+  defp handle_browser_await({:error, _} = error, _pending, _config), do: error
+
+  defp maybe_open_browser(_pending, %{open_browser?: false}) do
+    IO.puts("browser auto-open: disabled (--no-browser)")
+    :ok
+  end
+
+  defp maybe_open_browser(%PendingLogin{} = pending, _config) do
+    case Codex.OAuth.open_in_browser(pending) do
+      :ok ->
+        IO.puts("browser auto-open: launched")
+        :ok
+
+      {:error, reason} ->
+        IO.puts("browser auto-open failed: #{inspect(reason)}")
+        IO.puts("Continue by opening the printed authorization URL manually.")
+        :ok
+    end
+  end
+
+  defp print_browser_login(%PendingLogin{} = pending, config) do
+    IO.puts("""
+    login flow:
+      selected: browser_code
+      authorize_url: #{pending.authorize_url}
+      callback_url: #{pending.redirect_uri}
+      opener: #{if(config.open_browser?, do: "auto", else: "manual")}
+    """)
+  end
+
+  defp print_device_login(%PendingDeviceLogin{} = pending) do
+    IO.puts("""
+    login flow:
+      selected: device_code
+      verification_url: #{pending.verification_url}
+      user_code: #{pending.user_code}
+      expires_at: #{inspect(pending.expires_at)}
+    """)
+  end
+
+  defp print_warnings(nil), do: :ok
+
+  defp print_warnings(warnings) when is_list(warnings) do
+    Enum.each(warnings, &IO.puts("warning: #{&1}"))
   end
 
   defp maybe_refresh(oauth_opts, %{auth_mode: auth_mode})
@@ -186,19 +269,77 @@ defmodule CodexExamples.LiveOAuthLogin do
     }
   end
 
+  defp login_flow_opts(config) do
+    []
+    |> maybe_put_flow(config.flow)
+    |> maybe_put(:callback_port, config.callback_port)
+  end
+
   defp parse_args(argv) do
     Enum.reduce(
       argv,
-      %{interactive?: false, app_server_memory?: false, keep_home?: false, use_real_home?: false},
+      %{
+        interactive?: false,
+        app_server_memory?: false,
+        keep_home?: false,
+        use_real_home?: false,
+        flow: :auto,
+        open_browser?: true,
+        callback_port: nil
+      },
       fn
-        "--interactive", acc -> %{acc | interactive?: true}
-        "--app-server-memory", acc -> %{acc | app_server_memory?: true}
-        "--keep-home", acc -> %{acc | keep_home?: true}
-        "--use-real-home", acc -> %{acc | use_real_home?: true}
-        _other, acc -> acc
+        "--interactive", acc ->
+          %{acc | interactive?: true}
+
+        "--app-server-memory", acc ->
+          %{acc | app_server_memory?: true}
+
+        "--keep-home", acc ->
+          %{acc | keep_home?: true}
+
+        "--use-real-home", acc ->
+          %{acc | use_real_home?: true}
+
+        "--browser", acc ->
+          %{acc | flow: :browser}
+
+        "--device", acc ->
+          %{acc | flow: :device}
+
+        "--no-browser", acc ->
+          %{acc | open_browser?: false}
+
+        arg, acc when is_binary(arg) ->
+          parse_option_arg(arg, acc)
+
+        _other, acc ->
+          acc
       end
     )
   end
+
+  defp format_error({:browser_login_timeout, message, authorize_url}) do
+    "#{message}\nAuthorization URL: #{authorize_url}"
+  end
+
+  defp format_error(reason) when is_binary(reason), do: reason
+  defp format_error(reason), do: inspect(reason)
+
+  defp parse_option_arg("--callback-port=" <> value, acc) do
+    case Integer.parse(value) do
+      {port, ""} when port >= 0 and port <= 65_535 -> %{acc | callback_port: port}
+      _ -> Mix.raise("invalid --callback-port value: #{inspect(value)}")
+    end
+  end
+
+  defp parse_option_arg(_arg, acc), do: acc
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp maybe_put_flow(opts, :auto), do: opts
+  defp maybe_put_flow(opts, :browser), do: Keyword.put(opts, :flow, :browser)
+  defp maybe_put_flow(opts, :device), do: Keyword.put(opts, :flow, :device)
 end
 
 CodexExamples.LiveOAuthLogin.main(System.argv())
