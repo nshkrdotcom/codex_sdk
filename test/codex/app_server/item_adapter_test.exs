@@ -3,6 +3,7 @@ defmodule Codex.AppServer.ItemAdapterTest do
 
   alias Codex.AppServer.ItemAdapter
   alias Codex.Items
+  alias Codex.Protocol.CollabAgentState
 
   describe "to_item/1" do
     test "maps agentMessage into Items.AgentMessage" do
@@ -118,13 +119,43 @@ defmodule Codex.AppServer.ItemAdapterTest do
               %Items.CollabAgentToolCall{
                 id: "collab_1",
                 tool: "spawn",
+                tool_kind: :spawn_agent,
                 status: :in_progress,
                 sender_thread_id: "thread_sender",
                 receiver_thread_ids: ["thread_receiver"],
                 prompt: "delegate this",
                 model: "gpt-5.4",
-                reasoning_effort: "high",
-                agents_states: %{"thread_receiver" => %{"status" => "running"}}
+                reasoning_effort: :high,
+                agents_states: %{
+                  "thread_receiver" => %CollabAgentState{status: :running, message: nil}
+                }
+              }} = ItemAdapter.to_item(collab_item)
+    end
+
+    test "maps resumeAgent tool calls with typed agent states" do
+      collab_item = %{
+        "type" => "collabAgentToolCall",
+        "id" => "collab_resume_1",
+        "tool" => %{"type" => "resumeAgent"},
+        "status" => "completed",
+        "senderThreadId" => "thread_parent",
+        "receiverThreadIds" => ["thread_child"],
+        "agentsStates" => %{
+          "thread_child" => %{"status" => "completed", "message" => "ready"}
+        }
+      }
+
+      assert {:ok,
+              %Items.CollabAgentToolCall{
+                id: "collab_resume_1",
+                tool: "resumeAgent",
+                tool_kind: :resume_agent,
+                status: :completed,
+                sender_thread_id: "thread_parent",
+                receiver_thread_ids: ["thread_child"],
+                agents_states: %{
+                  "thread_child" => %CollabAgentState{status: :completed, message: "ready"}
+                }
               }} = ItemAdapter.to_item(collab_item)
     end
 

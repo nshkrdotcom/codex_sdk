@@ -129,6 +129,7 @@ defmodule CodexSdk.MixProject do
           Codex.OAuth,
           Codex.OAuth.LoginResult,
           Codex.OAuth.Status,
+          Codex.Subagents,
           Codex.Thread,
           Codex.Thread.Options,
           Codex.Options,
@@ -145,6 +146,11 @@ defmodule CodexSdk.MixProject do
           Codex.Exec,
           Codex.Events,
           Codex.Items,
+          Codex.Protocol.CollabAgentRef,
+          Codex.Protocol.CollabAgentState,
+          Codex.Protocol.CollabAgentStatusEntry,
+          Codex.Protocol.SessionSource,
+          Codex.Protocol.SubAgentSource,
           Codex.Telemetry
         ],
         Files: [

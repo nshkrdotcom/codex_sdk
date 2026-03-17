@@ -2,6 +2,7 @@ defmodule Codex.EventsTest do
   use ExUnit.Case, async: true
 
   alias Codex.{Events, Items}
+  alias Codex.Protocol.{CollabAgentRef, CollabAgentState, CollabAgentStatusEntry}
   alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
   describe "parse!/1" do
@@ -451,6 +452,179 @@ defmodule Codex.EventsTest do
 
       assert %Events.ItemCompleted{item: %Items.ContextCompaction{id: "compact_1"}} =
                compaction_event
+    end
+
+    test "events: parses collab resume lifecycle" do
+      begin_event =
+        Events.parse!(%{
+          "type" => "collab_resume_begin",
+          "call_id" => "resume_1",
+          "sender_thread_id" => "thr_parent",
+          "receiver_thread_id" => "thr_child",
+          "receiver_agent_nickname" => "Atlas",
+          "receiver_agent_role" => "explorer"
+        })
+
+      assert %Events.CollabResumeBegin{
+               call_id: "resume_1",
+               sender_thread_id: "thr_parent",
+               receiver_thread_id: "thr_child",
+               receiver_agent_nickname: "Atlas",
+               receiver_agent_role: "explorer"
+             } = begin_event
+
+      assert %{
+               "type" => "collab_resume_begin",
+               "call_id" => "resume_1",
+               "sender_thread_id" => "thr_parent",
+               "receiver_thread_id" => "thr_child",
+               "receiver_agent_nickname" => "Atlas",
+               "receiver_agent_role" => "explorer"
+             } = Events.to_map(begin_event)
+
+      end_event =
+        Events.parse!(%{
+          "type" => "collab_resume_end",
+          "call_id" => "resume_1",
+          "sender_thread_id" => "thr_parent",
+          "receiver_thread_id" => "thr_child",
+          "receiver_agent_nickname" => "Atlas",
+          "receiver_agent_role" => "explorer",
+          "status" => %{"completed" => "done"}
+        })
+
+      assert %Events.CollabResumeEnd{
+               call_id: "resume_1",
+               sender_thread_id: "thr_parent",
+               receiver_thread_id: "thr_child",
+               receiver_agent_nickname: "Atlas",
+               receiver_agent_role: "explorer",
+               status: %CollabAgentState{status: :completed, message: "done"}
+             } = end_event
+
+      assert %{
+               "type" => "collab_resume_end",
+               "call_id" => "resume_1",
+               "sender_thread_id" => "thr_parent",
+               "receiver_thread_id" => "thr_child",
+               "receiver_agent_nickname" => "Atlas",
+               "receiver_agent_role" => "explorer",
+               "status" => %{"completed" => "done"}
+             } = Events.to_map(end_event)
+    end
+
+    test "events: preserves collab lifecycle metadata" do
+      spawn_end =
+        Events.parse!(%{
+          "type" => "collab_agent_spawn_end",
+          "call_id" => "spawn_1",
+          "sender_thread_id" => "thr_parent",
+          "new_thread_id" => "thr_child",
+          "new_agent_nickname" => "Atlas",
+          "new_agent_role" => "explorer",
+          "prompt" => "inspect the repo",
+          "model" => "gpt-5.4",
+          "reasoning_effort" => "medium",
+          "status" => "running"
+        })
+
+      assert %Events.CollabAgentSpawnEnd{
+               new_agent_nickname: "Atlas",
+               new_agent_role: "explorer",
+               model: "gpt-5.4",
+               reasoning_effort: :medium,
+               status: %CollabAgentState{status: :running}
+             } = spawn_end
+
+      interaction_end =
+        Events.parse!(%{
+          "type" => "collab_agent_interaction_end",
+          "call_id" => "send_1",
+          "sender_thread_id" => "thr_parent",
+          "receiver_thread_id" => "thr_child",
+          "receiver_agent_nickname" => "Atlas",
+          "receiver_agent_role" => "explorer",
+          "prompt" => "continue",
+          "status" => %{"errored" => "boom"}
+        })
+
+      assert %Events.CollabAgentInteractionEnd{
+               receiver_agent_nickname: "Atlas",
+               receiver_agent_role: "explorer",
+               status: %CollabAgentState{status: :errored, message: "boom"}
+             } = interaction_end
+
+      waiting_begin =
+        Events.parse!(%{
+          "type" => "collab_waiting_begin",
+          "sender_thread_id" => "thr_parent",
+          "receiver_thread_ids" => ["thr_child"],
+          "receiver_agents" => [
+            %{
+              "thread_id" => "thr_child",
+              "agent_nickname" => "Atlas",
+              "agent_role" => "explorer"
+            }
+          ],
+          "call_id" => "wait_1"
+        })
+
+      assert %Events.CollabWaitingBegin{
+               receiver_agents: [
+                 %CollabAgentRef{
+                   thread_id: "thr_child",
+                   agent_nickname: "Atlas",
+                   agent_role: "explorer"
+                 }
+               ]
+             } = waiting_begin
+
+      waiting_end =
+        Events.parse!(%{
+          "type" => "collab_waiting_end",
+          "sender_thread_id" => "thr_parent",
+          "call_id" => "wait_1",
+          "agent_statuses" => [
+            %{
+              "thread_id" => "thr_child",
+              "agent_nickname" => "Atlas",
+              "agent_role" => "explorer",
+              "status" => "completed"
+            }
+          ],
+          "statuses" => %{"thr_child" => %{"completed" => "done"}}
+        })
+
+      assert %Events.CollabWaitingEnd{
+               agent_statuses: [
+                 %CollabAgentStatusEntry{
+                   thread_id: "thr_child",
+                   agent_nickname: "Atlas",
+                   agent_role: "explorer",
+                   status: %CollabAgentState{status: :completed}
+                 }
+               ],
+               statuses: %{
+                 "thr_child" => %CollabAgentState{status: :completed, message: "done"}
+               }
+             } = waiting_end
+
+      close_end =
+        Events.parse!(%{
+          "type" => "collab_close_end",
+          "call_id" => "close_1",
+          "sender_thread_id" => "thr_parent",
+          "receiver_thread_id" => "thr_child",
+          "receiver_agent_nickname" => "Atlas",
+          "receiver_agent_role" => "explorer",
+          "status" => "shutdown"
+        })
+
+      assert %Events.CollabCloseEnd{
+               receiver_agent_nickname: "Atlas",
+               receiver_agent_role: "explorer",
+               status: %CollabAgentState{status: :shutdown}
+             } = close_end
     end
 
     test "parses token usage and diff updates" do

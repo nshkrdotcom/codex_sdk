@@ -11,6 +11,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Transport` | Transport behaviour for turn execution |
 | `Codex.AppServer` | Stateful app-server JSON-RPC connection + v2 request APIs |
 | `Codex.AppServer.V1` | Legacy app-server compatibility helpers for v1 conversation APIs |
+| `Codex.Subagents` | Deterministic host-side discovery, inspection, and await helpers for subagent threads |
 | `Codex.OAuth` | Native OAuth login, refresh, status, logout, and host-managed login helpers |
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
@@ -22,7 +23,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Events` | Event type definitions |
 | `Codex.Items` | Thread item type definitions |
 | `Codex.Options` | Configuration structs |
-| `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, request_user_input, request_permissions, rate limits) |
+| `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, session/subagent sources, collab agent metadata, request_user_input, request_permissions, rate limits) |
 | `Codex.Config.Overrides` | Config override serialization, nested map flattening, and TOML value validation |
 | `Codex.Runtime.Erlexec` | Unified erlexec startup shared across subprocess modules |
 | `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding, CA env forwarding) |
@@ -141,6 +142,30 @@ plugin helpers:
 - `fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`,
   `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
 - `plugin_list/2`, `plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
+
+## Codex.Subagents
+
+`Codex.Subagents` wraps the deterministic pieces of a subagent workflow that
+are available through app-server today. It does not expose prompt-shaping
+helpers such as spawn/delegate APIs.
+
+Key entry points:
+
+- `list/2` — list subagent threads (`thread/list`) with subagent filtering enabled by default
+- `children/3` — list `thread_spawn` children for a known parent thread id
+- `read/3` — read a known child thread via `thread/read`
+- `source/1` — parse `%Codex.Protocol.SessionSource{}` from a thread map or raw source payload
+- `parent_thread_id/1` — extract the parent id from a `thread_spawn` child source
+- `child_thread?/1` — check whether a source carries a structured parent-child spawn link
+- `await/3` — poll `thread/read(include_turns: true)` until the latest turn reaches a terminal state
+
+Related protocol structs:
+
+- `Codex.Protocol.SessionSource`
+- `Codex.Protocol.SubAgentSource`
+- `Codex.Protocol.CollabAgentState`
+- `Codex.Protocol.CollabAgentRef`
+- `Codex.Protocol.CollabAgentStatusEntry`
 
 ## Codex
 

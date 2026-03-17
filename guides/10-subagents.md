@@ -50,6 +50,18 @@ The clean mental model is:
 - use the SDK control surface for deterministic, structured operations
 - use prompts for delegation behavior
 
+The direct SDK surface for this guide is:
+
+- `Codex.Subagents.list/2`
+- `Codex.Subagents.children/3`
+- `Codex.Subagents.read/3`
+- `Codex.Subagents.source/1`
+- `Codex.Subagents.parent_thread_id/1`
+- `Codex.Subagents.child_thread?/1`
+- `Codex.Subagents.await/3`
+- `Codex.Protocol.SessionSource`
+- `Codex.Protocol.SubAgentSource`
+
 | Concern | Use the SDK control surface | Use prompt instructions |
 | --- | --- | --- |
 | Enable or tune subagent settings | Yes | No |
@@ -65,6 +77,11 @@ The clean mental model is:
 
 This split matters. The SDK should own the structured parts. Your prompt should
 own the delegation strategy.
+
+Just as important, the SDK does not expose prompt-template helper APIs for this
+workflow. Prompt snippets in this guide are documented practice, not helper
+functions. There is no host-side `spawn_agent/3`, `delegate/2`, or
+`wait_and_summarize/2` surface because those choices are still model-mediated.
 
 ## Configure Subagents
 
@@ -88,6 +105,8 @@ building a deeper tree.
 You can also set these values through the SDK when you are connected to Codex:
 
 ```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts, experimental_api: true)
+{:ok, _} = Codex.AppServer.config_write(conn, "features.multi_agent", true)
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_threads", 2)
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_depth", 1)
 ```
@@ -147,39 +166,54 @@ The normal Elixir flow is:
 Here is the shape of a simple one-parent -> one-child flow:
 
 ```elixir
+{:ok, conn} = Codex.AppServer.connect(codex_opts, experimental_api: true)
+{:ok, _} = Codex.AppServer.config_write(conn, "features.multi_agent", true)
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_threads", 2)
 {:ok, _} = Codex.AppServer.config_write(conn, "agents.max_depth", 1)
 
 {:ok, parent} =
-  Codex.Thread.start(conn,
-    model: "gpt-5.4",
-    model_reasoning_effort: :medium
-  )
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: File.cwd!(),
+    model: "gpt-5.4"
+  })
 
 prompt = """
 Spawn exactly one child agent for this task.
 Use the explorer agent.
 Do not spawn any additional agents.
-Inspect lib/my_app/payments.ex and summarize the payment lifecycle.
+The child must not spawn more agents.
+Inspect lib/codex/subagents.ex and summarize what host-side controls it exposes.
 Wait for the child before answering.
 If subagents are unavailable, continue solo and say so explicitly.
 """
 
-{:ok, _result} = Codex.Thread.run(parent, prompt)
+{:ok, parent_result} = Codex.Thread.run(parent, prompt, %{timeout_ms: 120_000})
 
-{:ok, [child]} = Codex.Subagents.children(conn, parent.id)
+{:ok, [child]} = Codex.Subagents.children(conn, parent_result.thread.thread_id)
 source = Codex.Subagents.source(child)
 
 IO.inspect(%{
-  child_thread_id: child.id,
+  child_thread_id: child["id"],
   parent_thread_id: Codex.Subagents.parent_thread_id(source),
-  depth: source.depth,
-  agent_role: source.agent_role,
-  agent_nickname: source.agent_nickname
+  source_kind: Codex.Protocol.SessionSource.source_kind(source),
+  depth: source.sub_agent.depth,
+  agent_role: source.sub_agent.agent_role,
+  agent_nickname: source.sub_agent.agent_nickname
 })
 
-{:ok, child_thread} = Codex.Subagents.read(conn, child.id)
-{:ok, :completed} = Codex.Subagents.await(conn, child.id, timeout: 30_000)
+{:ok, _child_snapshot} = Codex.Subagents.read(conn, child["id"], include_turns: true)
+
+{:ok, child_thread} =
+  Codex.resume_thread(child["id"], codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: File.cwd!()
+  })
+
+{:ok, _child_result} =
+  Codex.Thread.run(child_thread, "Reply with one sentence that starts with 'child follow-up:'")
+
+{:ok, :completed} = Codex.Subagents.await(conn, child["id"], timeout: 30_000)
 ```
 
 The important pattern is simple:
@@ -187,6 +221,9 @@ The important pattern is simple:
 - the prompt tells Codex how to delegate
 - the SDK gives you structured visibility and control over the resulting child
   thread
+
+For a runnable end-to-end version of this flow, see
+`examples/live_subagent_host_controls.exs`.
 
 ## Streaming and Observability
 
@@ -221,6 +258,9 @@ Good subagent prompts usually specify:
 - whether children may spawn additional children
 - whether the parent should wait or keep working
 - what final answer shape to return
+
+These prompt patterns are documentation only. They are not wrapped in helper
+APIs because delegation remains a model decision inside the turn.
 
 ### A Reliable One-Child Prompt
 
@@ -269,6 +309,16 @@ The SDK control surface should let you:
 
 That is the part Elixir should own. It is structured, deterministic, and
 useful for application code.
+
+In practice, `Codex.Subagents.source/1` returns a `%Codex.Protocol.SessionSource{}`
+and subagent threads use `%Codex.Protocol.SubAgentSource{}` for variant-specific
+metadata. `thread_spawn` children expose the structured fields host code usually
+needs most:
+
+- `parent_thread_id`
+- `depth`
+- `agent_nickname`
+- `agent_role`
 
 ## Approvals and Sandbox Controls
 

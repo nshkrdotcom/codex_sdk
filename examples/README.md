@@ -64,6 +64,7 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi`, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the under-development approval feature flags only inside that isolated home, and prints a structured-grant fallback plus guardian/request-resolution events when live permissions requests still do not appear
 - `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
 - `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration mode presets, and runs a turn with the server-advertised preset settings plus built-in preset instructions (or skips when the connected CLI build rejects that capability or omits `collaborationMode/list`)
+- `examples/live_subagent_host_controls.exs` — one parent -> one child subagent workflow with `features.multi_agent`, explicit thread/depth limits, streamed spawn observation, typed child source inspection, a direct child follow-up turn, and deterministic `Codex.Subagents.await/3`
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
 - `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
 - `examples/live_web_search_modes.exs` — demonstrates `web_search_mode` toggles, validates disabled/live behavior, and reports cached-mode search events when available

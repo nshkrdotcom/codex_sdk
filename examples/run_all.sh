@@ -44,6 +44,7 @@ cli_examples=(
   "examples/live_app_server_approvals.exs"
   "examples/live_app_server_mcp.exs"
   "examples/live_collaboration_modes.exs"
+  "examples/live_subagent_host_controls.exs"
   "examples/live_personality.exs"
   "examples/live_thread_management.exs"
   "examples/live_web_search_modes.exs"

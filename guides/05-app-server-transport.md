@@ -211,6 +211,28 @@ Common thread-history operations are exposed via:
 - `Codex.AppServer.thread_loaded_list/2`
 - `Codex.AppServer.thread_resume/3` accepts optional `history` and `path` overrides
 
+## Subagent host controls
+
+When a parent turn spawns child threads, the deterministic host-side control
+surface lives in `Codex.Subagents`.
+
+Use it for:
+
+- listing subagent threads with `Codex.Subagents.list/2`
+- discovering spawned children for a known parent with `Codex.Subagents.children/3`
+- reading a known child thread with `Codex.Subagents.read/3`
+- parsing typed source metadata with `Codex.Subagents.source/1`
+- polling a known child thread to a terminal turn state with `Codex.Subagents.await/3`
+
+The typed source structs are:
+
+- `Codex.Protocol.SessionSource`
+- `Codex.Protocol.SubAgentSource`
+
+This surface is intentionally limited to inspection and polling over existing
+threads. Decisions such as whether to delegate, how many children to create, or
+which role to use still belong in the parent prompt rather than helper APIs.
+
 ## Legacy v1 APIs
 
 Older app-server builds only implement the v1 conversation endpoints. Use

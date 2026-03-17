@@ -2,6 +2,7 @@ defmodule Codex.AppServer.ItemAdapter do
   @moduledoc false
 
   alias Codex.Items
+  alias Codex.Protocol.CollabAgentState
 
   @spec to_item(map()) :: {:ok, Items.t()} | {:raw, map()}
   def to_item(%{"type" => "userMessage"} = item) do
@@ -94,17 +95,20 @@ defmodule Codex.AppServer.ItemAdapter do
   end
 
   def to_item(%{"type" => "collabAgentToolCall"} = item) do
+    tool = normalize_collab_tool(Map.get(item, "tool"))
+
     {:ok,
      %Items.CollabAgentToolCall{
        id: Map.get(item, "id"),
-       tool: normalize_collab_tool(Map.get(item, "tool")),
+       tool: tool,
+       tool_kind: normalize_collab_tool_kind(tool),
        status: normalize_status(Map.get(item, "status")),
        sender_thread_id: Map.get(item, "senderThreadId") || "",
        receiver_thread_ids: Map.get(item, "receiverThreadIds") || [],
        prompt: Map.get(item, "prompt"),
        model: Map.get(item, "model"),
-       reasoning_effort: Map.get(item, "reasoningEffort"),
-       agents_states: Map.get(item, "agentsStates") || %{}
+       reasoning_effort: normalize_reasoning_effort(Map.get(item, "reasoningEffort")),
+       agents_states: normalize_collab_agent_states(Map.get(item, "agentsStates"))
      }}
   end
 
@@ -220,6 +224,16 @@ defmodule Codex.AppServer.ItemAdapter do
   defp normalize_reasoning_part(value) when is_binary(value), do: [value]
   defp normalize_reasoning_part(value), do: [to_string(value)]
 
+  defp normalize_reasoning_effort(nil), do: nil
+
+  defp normalize_reasoning_effort(value) do
+    case Codex.Models.normalize_reasoning_effort(value) do
+      {:ok, nil} -> nil
+      {:ok, effort} -> effort
+      _ -> value
+    end
+  end
+
   defp join_reasoning_text(summary, content) do
     parts =
       []
@@ -245,4 +259,26 @@ defmodule Codex.AppServer.ItemAdapter do
   defp normalize_collab_tool(tool) when is_binary(tool), do: tool
   defp normalize_collab_tool(tool) when is_atom(tool), do: Atom.to_string(tool)
   defp normalize_collab_tool(_tool), do: ""
+
+  defp normalize_collab_tool_kind("spawn"), do: :spawn_agent
+  defp normalize_collab_tool_kind("spawnAgent"), do: :spawn_agent
+  defp normalize_collab_tool_kind("spawn_agent"), do: :spawn_agent
+  defp normalize_collab_tool_kind("sendInput"), do: :send_input
+  defp normalize_collab_tool_kind("send_input"), do: :send_input
+  defp normalize_collab_tool_kind("resumeAgent"), do: :resume_agent
+  defp normalize_collab_tool_kind("resume_agent"), do: :resume_agent
+  defp normalize_collab_tool_kind("wait"), do: :wait
+  defp normalize_collab_tool_kind("closeAgent"), do: :close_agent
+  defp normalize_collab_tool_kind("close_agent"), do: :close_agent
+  defp normalize_collab_tool_kind(_tool), do: :unknown
+
+  defp normalize_collab_agent_states(%{} = states) do
+    states
+    |> Enum.map(fn {thread_id, state} ->
+      {to_string(thread_id), CollabAgentState.from_map(state)}
+    end)
+    |> Map.new()
+  end
+
+  defp normalize_collab_agent_states(_), do: %{}
 end

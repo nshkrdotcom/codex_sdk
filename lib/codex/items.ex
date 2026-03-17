@@ -28,6 +28,8 @@ defmodule Codex.Items do
     WebSearch
   }
 
+  alias Codex.Protocol.CollabAgentState
+
   @type t ::
           AgentMessage.t()
           | Plan.t()
@@ -232,6 +234,7 @@ defmodule Codex.Items do
     defstruct id: nil,
               type: :collab_agent_tool_call,
               tool: nil,
+              tool_kind: :unknown,
               status: :in_progress,
               sender_thread_id: nil,
               receiver_thread_ids: [],
@@ -246,13 +249,15 @@ defmodule Codex.Items do
             id: String.t() | nil,
             type: :collab_agent_tool_call,
             tool: String.t(),
+            tool_kind:
+              :spawn_agent | :send_input | :resume_agent | :wait | :close_agent | :unknown,
             status: status(),
             sender_thread_id: String.t(),
             receiver_thread_ids: [String.t()],
             prompt: String.t() | nil,
             model: String.t() | nil,
             reasoning_effort: String.t() | atom() | nil,
-            agents_states: map()
+            agents_states: %{optional(String.t()) => CollabAgentState.t()}
           }
   end
 
@@ -605,7 +610,7 @@ defmodule Codex.Items do
     |> maybe_put("prompt", item.prompt)
     |> maybe_put("model", item.model)
     |> maybe_put("reasoning_effort", item.reasoning_effort)
-    |> maybe_put("agents_states", item.agents_states)
+    |> maybe_put("agents_states", encode_collab_agent_states(item.agents_states))
   end
 
   def to_map(%WebSearch{} = item) do
@@ -798,16 +803,19 @@ defmodule Codex.Items do
   end
 
   defp parse_collab_agent_tool_call(map) do
+    tool = normalize_collab_tool(get(map, :tool))
+
     %CollabAgentToolCall{
       id: get(map, :id),
-      tool: normalize_collab_tool(get(map, :tool)),
+      tool: tool,
+      tool_kind: normalize_collab_tool_kind(tool),
       status: parse_status(get(map, :status), @collab_tool_status_map, :in_progress),
       sender_thread_id: get(map, :sender_thread_id) || "",
       receiver_thread_ids: get(map, :receiver_thread_ids) || [],
       prompt: get(map, :prompt),
       model: get(map, :model),
-      reasoning_effort: get(map, :reasoning_effort),
-      agents_states: get(map, :agents_states) || %{}
+      reasoning_effort: normalize_reasoning_effort(get(map, :reasoning_effort)),
+      agents_states: normalize_collab_agent_states(get(map, :agents_states))
     }
   end
 
@@ -954,6 +962,51 @@ defmodule Codex.Items do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_reasoning_effort(nil), do: nil
+
+  defp normalize_reasoning_effort(value) do
+    case Codex.Models.normalize_reasoning_effort(value) do
+      {:ok, nil} -> nil
+      {:ok, effort} -> effort
+      _ -> value
+    end
+  end
+
+  defp normalize_collab_agent_states(%{} = states) do
+    states
+    |> Enum.map(fn {thread_id, state} ->
+      {to_string(thread_id), CollabAgentState.from_map(state)}
+    end)
+    |> Map.new()
+  end
+
+  defp normalize_collab_agent_states(_), do: %{}
+
+  defp encode_collab_agent_states(%{} = states) do
+    states
+    |> Enum.map(fn {thread_id, state} ->
+      {to_string(thread_id), encode_collab_agent_state(state)}
+    end)
+    |> Map.new()
+  end
+
+  defp encode_collab_agent_states(_), do: %{}
+
+  defp encode_collab_agent_state(%CollabAgentState{} = state), do: CollabAgentState.to_map(state)
+  defp encode_collab_agent_state(state), do: state
+
+  defp normalize_collab_tool_kind("spawn"), do: :spawn_agent
+  defp normalize_collab_tool_kind("spawnAgent"), do: :spawn_agent
+  defp normalize_collab_tool_kind("spawn_agent"), do: :spawn_agent
+  defp normalize_collab_tool_kind("sendInput"), do: :send_input
+  defp normalize_collab_tool_kind("send_input"), do: :send_input
+  defp normalize_collab_tool_kind("resumeAgent"), do: :resume_agent
+  defp normalize_collab_tool_kind("resume_agent"), do: :resume_agent
+  defp normalize_collab_tool_kind("wait"), do: :wait
+  defp normalize_collab_tool_kind("closeAgent"), do: :close_agent
+  defp normalize_collab_tool_kind("close_agent"), do: :close_agent
+  defp normalize_collab_tool_kind(_), do: :unknown
 
   defp normalize_collab_tool(%{} = tool) do
     get(tool, :type) || get(tool, :name) || inspect(tool)

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-03-16
+
+### Added
+
+- `Codex.Subagents` for deterministic host-side subagent discovery, typed source inspection, child-thread lookup, and `thread/read`-based await helpers.
+- `Codex.Protocol.SessionSource` and `Codex.Protocol.SubAgentSource` for typed parsing of app-server thread/session source metadata, including `thread_spawn` parent/depth/role/nickname fields.
+- `Codex.Protocol.CollabAgentState`, `Codex.Protocol.CollabAgentRef`, and `Codex.Protocol.CollabAgentStatusEntry` for typed collaboration lifecycle metadata shared across items and events.
+- `examples/live_subagent_host_controls.exs` demonstrating a one-parent -> one-child workflow with streamed spawn observation and direct child-thread follow-up.
+
+### Changed
+
+- `Codex.Events`, `Codex.Items`, and app-server item adaptation now preserve collab resume lifecycle parity plus richer typed spawn/interaction/wait/close metadata needed for host-side subagent control.
+- Subagent and app-server guides now separate deterministic SDK controls from prompt strategy and document the new typed host-control surface.
+
 ## [0.12.0] - 2026-03-12
 
 ### Added

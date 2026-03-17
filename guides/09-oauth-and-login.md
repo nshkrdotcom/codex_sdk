@@ -136,8 +136,27 @@ mix run examples/live_oauth_login.exs --interactive --device
 mix run examples/live_oauth_login.exs --interactive --app-server-memory
 ```
 
-By default it uses an isolated temporary `CODEX_HOME`, prints `status`, runs
-`login` only when interactive login is explicitly allowed, prints the browser
-authorization URL before waiting, lets you force browser or device flow, demonstrates
-`refresh` when a ChatGPT OAuth session exists, and can optionally show the
-memory-mode app-server path.
+By default the example uses an isolated temporary `CODEX_HOME`, so it does not
+change the login stored in your normal Codex home. It always prints the current
+OAuth `status` first. In non-interactive mode it never starts a login on its
+own: if no saved session is available, it prints `SKIPPED` and exits cleanly.
+
+Useful switches:
+
+- `--interactive` allows the example to start a real login when needed.
+- `--browser` forces browser login. `--device` forces device-code login.
+- `--no-browser` prints the authorization URL and leaves it to you to open it
+  manually.
+- `--app-server-memory` continues into the memory-mode app-server flow after
+  login so you can see SDK-managed external auth in action.
+- `--keep-home` keeps the generated temporary `CODEX_HOME` instead of deleting
+  it when the example exits.
+- `CODEX_OAUTH_EXAMPLE_HOME=/path` reuses a specific `CODEX_HOME` so you can
+  return to the same saved session on later runs.
+- `--use-real-home` makes the example operate on your normal Codex home
+  intentionally instead of an isolated temporary one.
+
+For browser login, the example uses the upstream-compatible callback
+`http://localhost:1455/auth/callback` by default. If that port is already in
+use on your machine, pass `--callback-port=<port>` and open the printed URL in
+your browser.

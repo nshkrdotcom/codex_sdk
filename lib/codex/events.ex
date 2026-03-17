@@ -7,6 +7,9 @@ defmodule Codex.Events do
   """
 
   alias Codex.Items
+  alias Codex.Protocol.CollabAgentRef
+  alias Codex.Protocol.CollabAgentState
+  alias Codex.Protocol.CollabAgentStatusEntry
   alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
   alias Codex.Protocol.RequestPermissions
   alias Codex.Protocol.RequestUserInput.Question, as: RequestUserInputQuestion
@@ -1222,14 +1225,26 @@ defmodule Codex.Events do
     Collab event emitted when an agent spawn completes.
     """
 
-    defstruct call_id: nil, sender_thread_id: nil, new_thread_id: nil, prompt: nil, status: nil
+    defstruct call_id: nil,
+              sender_thread_id: nil,
+              new_thread_id: nil,
+              new_agent_nickname: nil,
+              new_agent_role: nil,
+              prompt: nil,
+              model: nil,
+              reasoning_effort: nil,
+              status: nil
 
     @type t :: %__MODULE__{
             call_id: String.t() | nil,
             sender_thread_id: String.t() | nil,
             new_thread_id: String.t() | nil,
+            new_agent_nickname: String.t() | nil,
+            new_agent_role: String.t() | nil,
             prompt: String.t() | nil,
-            status: map() | String.t() | atom() | nil
+            model: String.t() | nil,
+            reasoning_effort: String.t() | atom() | nil,
+            status: CollabAgentState.t() | nil
           }
   end
 
@@ -1256,6 +1271,8 @@ defmodule Codex.Events do
     defstruct call_id: nil,
               sender_thread_id: nil,
               receiver_thread_id: nil,
+              receiver_agent_nickname: nil,
+              receiver_agent_role: nil,
               prompt: nil,
               status: nil
 
@@ -1263,8 +1280,10 @@ defmodule Codex.Events do
             call_id: String.t() | nil,
             sender_thread_id: String.t() | nil,
             receiver_thread_id: String.t() | nil,
+            receiver_agent_nickname: String.t() | nil,
+            receiver_agent_role: String.t() | nil,
             prompt: String.t() | nil,
-            status: map() | String.t() | atom() | nil
+            status: CollabAgentState.t() | nil
           }
   end
 
@@ -1273,11 +1292,12 @@ defmodule Codex.Events do
     Collab event emitted when an agent begins waiting.
     """
 
-    defstruct sender_thread_id: nil, receiver_thread_ids: [], call_id: nil
+    defstruct sender_thread_id: nil, receiver_thread_ids: [], receiver_agents: [], call_id: nil
 
     @type t :: %__MODULE__{
             sender_thread_id: String.t() | nil,
             receiver_thread_ids: [String.t()],
+            receiver_agents: [CollabAgentRef.t()],
             call_id: String.t() | nil
           }
   end
@@ -1287,12 +1307,13 @@ defmodule Codex.Events do
     Collab event emitted when an agent stops waiting.
     """
 
-    defstruct sender_thread_id: nil, call_id: nil, statuses: nil
+    defstruct sender_thread_id: nil, call_id: nil, agent_statuses: [], statuses: nil
 
     @type t :: %__MODULE__{
             sender_thread_id: String.t() | nil,
             call_id: String.t() | nil,
-            statuses: map() | nil
+            agent_statuses: [CollabAgentStatusEntry.t()],
+            statuses: %{optional(String.t()) => CollabAgentState.t()} | nil
           }
   end
 
@@ -1315,13 +1336,62 @@ defmodule Codex.Events do
     Collab event emitted when a collab session closes.
     """
 
-    defstruct call_id: nil, sender_thread_id: nil, receiver_thread_id: nil, status: nil
+    defstruct call_id: nil,
+              sender_thread_id: nil,
+              receiver_thread_id: nil,
+              receiver_agent_nickname: nil,
+              receiver_agent_role: nil,
+              status: nil
 
     @type t :: %__MODULE__{
             call_id: String.t() | nil,
             sender_thread_id: String.t() | nil,
             receiver_thread_id: String.t() | nil,
-            status: map() | String.t() | atom() | nil
+            receiver_agent_nickname: String.t() | nil,
+            receiver_agent_role: String.t() | nil,
+            status: CollabAgentState.t() | nil
+          }
+  end
+
+  defmodule CollabResumeBegin do
+    @moduledoc """
+    Collab event emitted when an agent resume begins.
+    """
+
+    defstruct call_id: nil,
+              sender_thread_id: nil,
+              receiver_thread_id: nil,
+              receiver_agent_nickname: nil,
+              receiver_agent_role: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil,
+            receiver_agent_nickname: String.t() | nil,
+            receiver_agent_role: String.t() | nil
+          }
+  end
+
+  defmodule CollabResumeEnd do
+    @moduledoc """
+    Collab event emitted when an agent resume completes.
+    """
+
+    defstruct call_id: nil,
+              sender_thread_id: nil,
+              receiver_thread_id: nil,
+              receiver_agent_nickname: nil,
+              receiver_agent_role: nil,
+              status: nil
+
+    @type t :: %__MODULE__{
+            call_id: String.t() | nil,
+            sender_thread_id: String.t() | nil,
+            receiver_thread_id: String.t() | nil,
+            receiver_agent_nickname: String.t() | nil,
+            receiver_agent_role: String.t() | nil,
+            status: CollabAgentState.t() | nil
           }
   end
 
@@ -1405,7 +1475,9 @@ defmodule Codex.Events do
     CollabWaitingBegin,
     CollabWaitingEnd,
     CollabCloseBegin,
-    CollabCloseEnd
+    CollabCloseEnd,
+    CollabResumeBegin,
+    CollabResumeEnd
   }
 
   @type t ::
@@ -1489,6 +1561,8 @@ defmodule Codex.Events do
           | CollabWaitingEnd.t()
           | CollabCloseBegin.t()
           | CollabCloseEnd.t()
+          | CollabResumeBegin.t()
+          | CollabResumeEnd.t()
 
   @compaction_stage_map %{
     "started" => :started,
@@ -1862,8 +1936,15 @@ defmodule Codex.Events do
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
       sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
       new_thread_id: Map.get(map, "new_thread_id") || Map.get(map, "newThreadId"),
+      new_agent_nickname: Map.get(map, "new_agent_nickname") || Map.get(map, "newAgentNickname"),
+      new_agent_role: Map.get(map, "new_agent_role") || Map.get(map, "newAgentRole"),
       prompt: Map.get(map, "prompt"),
-      status: Map.get(map, "status")
+      model: Map.get(map, "model"),
+      reasoning_effort:
+        normalize_reasoning_effort(
+          Map.get(map, "reasoning_effort") || Map.get(map, "reasoningEffort")
+        ),
+      status: normalize_collab_agent_state(Map.get(map, "status"))
     }
   end
 
@@ -1881,8 +1962,12 @@ defmodule Codex.Events do
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
       sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
       receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      receiver_agent_nickname:
+        Map.get(map, "receiver_agent_nickname") || Map.get(map, "receiverAgentNickname"),
+      receiver_agent_role:
+        Map.get(map, "receiver_agent_role") || Map.get(map, "receiverAgentRole"),
       prompt: Map.get(map, "prompt"),
-      status: Map.get(map, "status")
+      status: normalize_collab_agent_state(Map.get(map, "status"))
     }
   end
 
@@ -1893,6 +1978,10 @@ defmodule Codex.Events do
         Map.get(map, "receiver_thread_ids") ||
           Map.get(map, "receiverThreadIds") ||
           [],
+      receiver_agents:
+        map
+        |> Map.get("receiver_agents", Map.get(map, "receiverAgents", []))
+        |> normalize_collab_agent_refs(),
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id")
     }
   end
@@ -1901,7 +1990,11 @@ defmodule Codex.Events do
     %CollabWaitingEnd{
       sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
-      statuses: Map.get(map, "statuses")
+      agent_statuses:
+        map
+        |> Map.get("agent_statuses", Map.get(map, "agentStatuses", []))
+        |> normalize_collab_agent_status_entries(),
+      statuses: normalize_collab_agent_states_map(Map.get(map, "statuses"))
     }
   end
 
@@ -1918,7 +2011,36 @@ defmodule Codex.Events do
       call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
       sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
       receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
-      status: Map.get(map, "status")
+      receiver_agent_nickname:
+        Map.get(map, "receiver_agent_nickname") || Map.get(map, "receiverAgentNickname"),
+      receiver_agent_role:
+        Map.get(map, "receiver_agent_role") || Map.get(map, "receiverAgentRole"),
+      status: normalize_collab_agent_state(Map.get(map, "status"))
+    }
+  end
+
+  def parse!(%{"type" => "collab_resume_begin"} = map) do
+    %CollabResumeBegin{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      receiver_agent_nickname:
+        Map.get(map, "receiver_agent_nickname") || Map.get(map, "receiverAgentNickname"),
+      receiver_agent_role:
+        Map.get(map, "receiver_agent_role") || Map.get(map, "receiverAgentRole")
+    }
+  end
+
+  def parse!(%{"type" => "collab_resume_end"} = map) do
+    %CollabResumeEnd{
+      call_id: Map.get(map, "call_id") || Map.get(map, "callId") || Map.get(map, "id"),
+      sender_thread_id: Map.get(map, "sender_thread_id") || Map.get(map, "senderThreadId"),
+      receiver_thread_id: Map.get(map, "receiver_thread_id") || Map.get(map, "receiverThreadId"),
+      receiver_agent_nickname:
+        Map.get(map, "receiver_agent_nickname") || Map.get(map, "receiverAgentNickname"),
+      receiver_agent_role:
+        Map.get(map, "receiver_agent_role") || Map.get(map, "receiverAgentRole"),
+      status: normalize_collab_agent_state(Map.get(map, "status"))
     }
   end
 
@@ -2845,8 +2967,12 @@ defmodule Codex.Events do
       "sender_thread_id" => event.sender_thread_id
     }
     |> put_optional("new_thread_id", event.new_thread_id)
+    |> put_optional("new_agent_nickname", event.new_agent_nickname)
+    |> put_optional("new_agent_role", event.new_agent_role)
     |> put_optional("prompt", event.prompt)
-    |> put_optional("status", event.status)
+    |> put_optional("model", event.model)
+    |> put_optional("reasoning_effort", event.reasoning_effort)
+    |> put_optional("status", collab_agent_state_to_event_value(event.status))
   end
 
   def to_map(%CollabAgentInteractionBegin{} = event) do
@@ -2866,8 +2992,10 @@ defmodule Codex.Events do
       "sender_thread_id" => event.sender_thread_id,
       "receiver_thread_id" => event.receiver_thread_id
     }
+    |> put_optional("receiver_agent_nickname", event.receiver_agent_nickname)
+    |> put_optional("receiver_agent_role", event.receiver_agent_role)
     |> put_optional("prompt", event.prompt)
-    |> put_optional("status", event.status)
+    |> put_optional("status", collab_agent_state_to_event_value(event.status))
   end
 
   def to_map(%CollabWaitingBegin{} = event) do
@@ -2877,6 +3005,7 @@ defmodule Codex.Events do
       "receiver_thread_ids" => event.receiver_thread_ids,
       "call_id" => event.call_id
     }
+    |> put_optional("receiver_agents", encode_collab_agent_refs(event.receiver_agents))
   end
 
   def to_map(%CollabWaitingEnd{} = event) do
@@ -2885,7 +3014,8 @@ defmodule Codex.Events do
       "sender_thread_id" => event.sender_thread_id,
       "call_id" => event.call_id
     }
-    |> put_optional("statuses", event.statuses)
+    |> put_optional("agent_statuses", encode_collab_agent_status_entries(event.agent_statuses))
+    |> put_optional("statuses", encode_collab_agent_states_map(event.statuses))
   end
 
   def to_map(%CollabCloseBegin{} = event) do
@@ -2904,7 +3034,32 @@ defmodule Codex.Events do
       "sender_thread_id" => event.sender_thread_id,
       "receiver_thread_id" => event.receiver_thread_id
     }
-    |> put_optional("status", event.status)
+    |> put_optional("receiver_agent_nickname", event.receiver_agent_nickname)
+    |> put_optional("receiver_agent_role", event.receiver_agent_role)
+    |> put_optional("status", collab_agent_state_to_event_value(event.status))
+  end
+
+  def to_map(%CollabResumeBegin{} = event) do
+    %{
+      "type" => "collab_resume_begin",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+    |> put_optional("receiver_agent_nickname", event.receiver_agent_nickname)
+    |> put_optional("receiver_agent_role", event.receiver_agent_role)
+  end
+
+  def to_map(%CollabResumeEnd{} = event) do
+    %{
+      "type" => "collab_resume_end",
+      "call_id" => event.call_id,
+      "sender_thread_id" => event.sender_thread_id,
+      "receiver_thread_id" => event.receiver_thread_id
+    }
+    |> put_optional("receiver_agent_nickname", event.receiver_agent_nickname)
+    |> put_optional("receiver_agent_role", event.receiver_agent_role)
+    |> put_optional("status", collab_agent_state_to_event_value(event.status))
   end
 
   defp parse_compaction(map) do
@@ -3029,6 +3184,74 @@ defmodule Codex.Events do
   end
 
   defp encode_request_user_input_questions(other), do: other
+
+  defp normalize_reasoning_effort(nil), do: nil
+
+  defp normalize_reasoning_effort(value) do
+    case Codex.Models.normalize_reasoning_effort(value) do
+      {:ok, nil} -> nil
+      {:ok, effort} -> effort
+      _ -> value
+    end
+  end
+
+  defp normalize_collab_agent_state(nil), do: nil
+  defp normalize_collab_agent_state(state), do: CollabAgentState.from_map(state)
+
+  defp normalize_collab_agent_refs(list) when is_list(list),
+    do: Enum.map(list, &CollabAgentRef.from_map/1)
+
+  defp normalize_collab_agent_refs(_), do: []
+
+  defp normalize_collab_agent_status_entries(list) when is_list(list),
+    do: Enum.map(list, &CollabAgentStatusEntry.from_map/1)
+
+  defp normalize_collab_agent_status_entries(_), do: []
+
+  defp normalize_collab_agent_states_map(%{} = states) do
+    states
+    |> Enum.map(fn {thread_id, state} ->
+      {to_string(thread_id), CollabAgentState.from_map(state)}
+    end)
+    |> Map.new()
+  end
+
+  defp normalize_collab_agent_states_map(_), do: nil
+
+  defp encode_collab_agent_refs(list) when is_list(list) do
+    Enum.map(list, fn
+      %CollabAgentRef{} = ref -> CollabAgentRef.to_map(ref)
+      ref -> ref
+    end)
+  end
+
+  defp encode_collab_agent_refs(_), do: []
+
+  defp encode_collab_agent_status_entries(list) when is_list(list) do
+    Enum.map(list, fn
+      %CollabAgentStatusEntry{} = entry -> CollabAgentStatusEntry.to_map(entry)
+      entry -> entry
+    end)
+  end
+
+  defp encode_collab_agent_status_entries(_), do: []
+
+  defp encode_collab_agent_states_map(%{} = states) do
+    states
+    |> Enum.map(fn {thread_id, state} ->
+      {to_string(thread_id), collab_agent_state_to_event_value(state)}
+    end)
+    |> Map.new()
+  end
+
+  defp encode_collab_agent_states_map(_), do: nil
+
+  defp collab_agent_state_to_event_value(nil), do: nil
+
+  defp collab_agent_state_to_event_value(%CollabAgentState{} = state),
+    do: CollabAgentState.to_event_value(state)
+
+  defp collab_agent_state_to_event_value(state), do: state
 
   defp parse_guardian_review(%{} = review) do
     %GuardianApprovalReview{
