@@ -37,6 +37,25 @@ defmodule Codex.Protocol.CollaborationModeTest do
            } = CollaborationMode.from_map(data)
   end
 
+  test "from_map/1 preserves explicit nested null developer instructions" do
+    data = %{
+      "mode" => "plan",
+      "developer_instructions" => "legacy flat instructions",
+      "settings" => %{
+        "model" => "gpt-5.1-codex",
+        "reasoning_effort" => "high",
+        "developer_instructions" => nil
+      }
+    }
+
+    assert %CollaborationMode{
+             mode: :plan,
+             model: "gpt-5.1-codex",
+             reasoning_effort: :high,
+             developer_instructions: nil
+           } = CollaborationMode.from_map(data)
+  end
+
   test "to_map/1 encodes collaboration modes" do
     mode = %CollaborationMode{
       mode: :pair_programming,

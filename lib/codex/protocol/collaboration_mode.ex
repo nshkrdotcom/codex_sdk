@@ -32,14 +32,12 @@ defmodule Codex.Protocol.CollaborationMode do
 
     %__MODULE__{
       mode: normalized |> Map.get("mode") |> decode_mode(),
-      model: Map.get(settings, "model") || Map.get(normalized, "model", ""),
+      model: fetch_setting(settings, normalized, "model") || "",
       reasoning_effort:
         settings
-        |> Map.get("reasoning_effort", Map.get(normalized, "reasoning_effort"))
+        |> fetch_setting(normalized, "reasoning_effort")
         |> decode_effort(),
-      developer_instructions:
-        Map.get(settings, "developer_instructions") ||
-          Map.get(normalized, "developer_instructions")
+      developer_instructions: fetch_setting(settings, normalized, "developer_instructions")
     }
   end
 
@@ -91,6 +89,14 @@ defmodule Codex.Protocol.CollaborationMode do
 
   defp normalize_settings(%{} = settings), do: normalize_keys(settings)
   defp normalize_settings(_), do: %{}
+
+  defp fetch_setting(%{} = settings, %{} = normalized, key) when is_binary(key) do
+    if Map.has_key?(settings, key) do
+      Map.get(settings, key)
+    else
+      Map.get(normalized, key)
+    end
+  end
 
   defp normalize_keys(%{} = data) do
     data

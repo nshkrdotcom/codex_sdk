@@ -1061,7 +1061,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_passthrough.exs`** - Direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` commands
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
-- **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn, with an explicit skip when the connected build rejects or omits `collaborationMode/list`
+- **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn that uses the server-advertised preset settings (falling back only when the server omits a field), with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes

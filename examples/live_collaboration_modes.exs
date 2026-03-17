@@ -6,7 +6,10 @@ alias Codex.Protocol.CollaborationMode
 defmodule LiveCollaborationModes do
   @moduledoc false
 
-  @default_prompt "Give a 3-step plan to add coverage for the core modules."
+  @default_prompt """
+  Give a 3-step plan for testing a CSV parser.
+  Do not run commands, inspect files, or modify anything.
+  """
   @preferred_modes [:plan, :pair_programming, :code, :default, :execute, :custom]
 
   def main(argv) do
@@ -74,15 +77,23 @@ defmodule LiveCollaborationModes do
   end
 
   defp run_turn(codex_opts, conn, prompt, selected_mode) do
-    model = selected_mode.model || Models.default_model()
-    effort = selected_mode.reasoning_effort || Models.coerce_reasoning_effort(model, :low)
+    {model, model_note} = resolve_selected_model(selected_mode)
+    {effort, effort_note} = resolve_selected_effort(selected_mode, model)
 
     mode = %CollaborationMode{
       mode: selected_mode.mode,
       model: model,
       reasoning_effort: effort,
-      developer_instructions: "Keep output brief and practical."
+      developer_instructions: nil
     }
+
+    IO.puts("""
+    Using server-advertised collaboration preset:
+      mode: #{mode.mode}
+      model: #{mode.model}#{model_note}
+      reasoning_effort: #{mode.reasoning_effort || "none"}#{effort_note}
+      developer_instructions: built-in preset instructions (`settings.developer_instructions = null`)
+    """)
 
     with {:ok, thread} <-
            Codex.start_thread(codex_opts, %{
@@ -95,7 +106,8 @@ defmodule LiveCollaborationModes do
       Turn completed with collaboration_mode=#{mode.mode}.
         model: #{mode.model}
         reasoning_effort: #{mode.reasoning_effort || "none"}
-        final_response: #{extract_text(result.final_response)}
+        developer_instructions: built-in preset instructions
+        final_response: #{format_final_response(result.final_response)}
       """)
 
       :ok
@@ -223,6 +235,42 @@ defmodule LiveCollaborationModes do
 
   defp normalize_effort_value(_), do: nil
 
+  defp resolve_selected_model(selected_mode) do
+    case selected_mode.model do
+      model when is_binary(model) and model != "" ->
+        {model, " (advertised by the server preset)"}
+
+      _ ->
+        {Models.default_model(), " (server omitted model; using the SDK default)"}
+    end
+  end
+
+  defp resolve_selected_effort(selected_mode, model) do
+    case selected_mode.reasoning_effort do
+      effort when not is_nil(effort) ->
+        note =
+          if effort == :low do
+            " (advertised by the server preset)"
+          else
+            " (advertised by the server preset; this intentionally overrides the global :low default)"
+          end
+
+        {effort, note}
+
+      _ ->
+        effort = Models.coerce_reasoning_effort(model, :low)
+
+        note =
+          if effort == :low do
+            " (server omitted effort; using the global default)"
+          else
+            " (server omitted effort; using the model-coerced form of the global :low default)"
+          end
+
+        {effort, note}
+    end
+  end
+
   defp unsupported_capability?(message) do
     lowered = String.downcase(message)
 
@@ -309,6 +357,9 @@ defmodule LiveCollaborationModes do
   defp extract_text(%{type: "text", text: text}) when is_binary(text), do: text
   defp extract_text(other) when is_binary(other), do: other
   defp extract_text(other), do: inspect(other)
+
+  defp format_final_response(nil), do: "(no final assistant message returned)"
+  defp format_final_response(response), do: extract_text(response)
 end
 
 LiveCollaborationModes.main(System.argv())

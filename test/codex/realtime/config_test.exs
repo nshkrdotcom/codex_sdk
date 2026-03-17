@@ -1,5 +1,6 @@
 defmodule Codex.Realtime.ConfigTest do
   use ExUnit.Case, async: true
+  use Codex.TestSupport.AuthEnv
 
   alias Codex.Realtime.Config
 
@@ -315,65 +316,32 @@ defmodule Codex.Realtime.ConfigTest do
     end
 
     test "falls back to Codex auth precedence when api_key is nil" do
-      original_codex_key = System.get_env("CODEX_API_KEY")
-      original_openai_key = System.get_env("OPENAI_API_KEY")
-
       System.put_env("CODEX_API_KEY", "sk-codex-priority")
       System.put_env("OPENAI_API_KEY", "sk-openai-secondary")
-
-      on_exit(fn ->
-        restore_env("CODEX_API_KEY", original_codex_key)
-        restore_env("OPENAI_API_KEY", original_openai_key)
-      end)
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-codex-priority"
     end
 
-    test "loads auth.json OPENAI_API_KEY fallback when env vars are absent" do
-      original_codex_home = System.get_env("CODEX_HOME")
-      original_codex_key = System.get_env("CODEX_API_KEY")
-      original_openai_key = System.get_env("OPENAI_API_KEY")
-
-      codex_home =
-        Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
-
-      File.mkdir_p!(codex_home)
+    test "loads auth.json OPENAI_API_KEY fallback when env vars are absent", %{
+      codex_home: codex_home
+    } do
       File.write!(Path.join(codex_home, "auth.json"), ~s({"OPENAI_API_KEY":"sk-auth-file"}))
 
-      System.put_env("CODEX_HOME", codex_home)
       System.delete_env("CODEX_API_KEY")
       System.delete_env("OPENAI_API_KEY")
-
-      on_exit(fn ->
-        restore_env("CODEX_HOME", original_codex_home)
-        restore_env("CODEX_API_KEY", original_codex_key)
-        restore_env("OPENAI_API_KEY", original_openai_key)
-      end)
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-auth-file"
     end
 
-    test "falls back to OPENAI_API_KEY when Codex key sources are absent" do
-      original_codex_home = System.get_env("CODEX_HOME")
-      original_codex_key = System.get_env("CODEX_API_KEY")
-      original_openai_key = System.get_env("OPENAI_API_KEY")
+    test "falls back to OPENAI_API_KEY when Codex key sources are absent", %{
+      codex_home: codex_home
+    } do
+      refute File.exists?(Path.join(codex_home, "auth.json"))
 
-      codex_home =
-        Path.join(System.tmp_dir!(), "codex_auth_#{System.unique_integer([:positive])}")
-
-      File.mkdir_p!(codex_home)
-      System.put_env("CODEX_HOME", codex_home)
       System.delete_env("CODEX_API_KEY")
       System.put_env("OPENAI_API_KEY", "sk-openai-env")
-
-      on_exit(fn ->
-        restore_env("CODEX_HOME", original_codex_home)
-        restore_env("CODEX_API_KEY", original_codex_key)
-        restore_env("OPENAI_API_KEY", original_openai_key)
-        File.rm_rf(codex_home)
-      end)
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-openai-env"
@@ -486,7 +454,4 @@ defmodule Codex.Realtime.ConfigTest do
       assert settings.turn_detection.interrupt_response == true
     end
   end
-
-  defp restore_env(key, nil), do: System.delete_env(key)
-  defp restore_env(key, value), do: System.put_env(key, value)
 end
