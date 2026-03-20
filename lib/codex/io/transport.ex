@@ -2,6 +2,10 @@ defmodule Codex.IO.Transport do
   @moduledoc """
   Behaviour for subprocess I/O transport implementations.
 
+  The core-backed implementation preserves the historical event tag but now
+  surfaces normalized `%CliSubprocessCore.ProcessExit{}` and
+  `%CliSubprocessCore.Transport.Error{}` values for exit and error payloads.
+
   Event model:
 
   Legacy dispatch:

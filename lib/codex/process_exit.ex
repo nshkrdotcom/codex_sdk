@@ -1,10 +1,22 @@
 defmodule Codex.ProcessExit do
   @moduledoc false
 
+  alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
+
   @spec exit_status(term()) :: {:ok, integer()} | :unknown
   def exit_status(reason)
 
   def exit_status(:normal), do: {:ok, 0}
+  def exit_status(%CoreProcessExit{status: :success}), do: {:ok, 0}
+
+  def exit_status(%CoreProcessExit{status: :exit, code: status}) when is_integer(status),
+    do: {:ok, status}
+
+  def exit_status(%CoreProcessExit{status: :signal, signal: signal}) do
+    {:ok, 128 + signal_to_int(signal)}
+  end
+
+  def exit_status(%CoreProcessExit{reason: reason}), do: exit_status(reason)
   def exit_status({:exit_code, status}) when is_integer(status), do: {:ok, status}
 
   def exit_status({:exit_status, status}) when is_integer(status) do
@@ -58,6 +70,7 @@ defmodule Codex.ProcessExit do
   end
 
   defp wrapped_exit_reason?(:normal), do: true
+  defp wrapped_exit_reason?(%CoreProcessExit{}), do: true
   defp wrapped_exit_reason?({:exit_code, status}) when is_integer(status), do: true
   defp wrapped_exit_reason?({:exit_status, status}) when is_integer(status), do: true
   defp wrapped_exit_reason?({:signal, _signal, _core?}), do: true

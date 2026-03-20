@@ -1021,12 +1021,13 @@ The SDK follows a layered architecture built on OTP principles:
 
 - **`Codex`**: Main entry point for starting and resuming threads
 - **`Codex.Thread`**: Manages individual conversation threads and turn execution
-- **`Codex.Exec`**: GenServer that manages the `codex-rs` OS process via Port
+- **`Codex.Exec`**: Public exec JSONL API that runs on a session-oriented runtime kit
+- **`Codex.Runtime.Exec`**: Session-oriented runtime kit that starts core CLI sessions and projects core events back into `%Codex.Events{}`
 - **`Codex.Events`**: Comprehensive event type definitions
 - **`Codex.Items`**: Thread item structs (messages, commands, file changes, etc.)
 - **`Codex.Options`**: Configuration structs for all levels
 - **`Codex.Config.Overrides`**: Config override serialization, nested map flattening, and TOML value validation
-- **`Codex.Runtime.Erlexec`**: Unified erlexec startup shared across subprocess modules
+- **`CliSubprocessCore.Session`**: Shared common CLI session engine used by the exec JSONL lane
 - **`Codex.Runtime.Env`**: Subprocess environment construction (sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE`)
 - **`Codex.Config.BaseURL`**: Base URL resolution with option → env → default precedence
 - **`Codex.Config.OptionNormalizers`**: Shared reasoning summary, verbosity, and history validation
@@ -1048,13 +1049,19 @@ The SDK follows a layered architecture built on OTP principles:
          │
          ▼
 ┌──────────────────┐
-│  Codex.Exec      │  (GenServer - manages codex-rs process)
+│  Codex.Exec      │  (public exec API)
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐
-│   Port (stdin/   │  (IPC with codex-rs via JSONL)
-│    stdout)       │
+│ Codex.Runtime.   │  (runtime kit over core session API)
+│ Exec             │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ CliSubprocess    │  (shared session + raw transport core)
+│ Core.Session     │
 └────────┬─────────┘
          │
          ▼

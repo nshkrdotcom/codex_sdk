@@ -129,7 +129,7 @@ environment injection, Req clients, `:httpc`, and realtime websocket SSL options
 **Responsibilities**:
 - Execute turns (blocking and streaming modes)
 - Maintain thread ID and options
-- Coordinate with Exec GenServer
+- Coordinate with the exec runtime kit
 - Handle structured output schemas and rate limit snapshots
 
 **State**: Encapsulated in `%Codex.Thread{}` struct (includes transport metadata)
@@ -156,72 +156,57 @@ App-server transport accepts `UserInput` block lists (`text`/`image`/`localImage
 
 **Execution Flow** (Blocking Mode):
 1. Create output schema file if needed
-2. Start `Codex.Exec` GenServer with options
-3. Wait for events, accumulating items
+2. Start `Codex.Exec`, which boots `Codex.Runtime.Exec` on `CliSubprocessCore.Session`
+3. Project core session events into `%Codex.Events{}` values and accumulate items
 4. Extract final response from last `AgentMessage`
-5. Return `TurnResult` when `TurnCompleted` received
-6. Clean up schema file and Exec process
+5. Return `TurnResult` when the core-backed session completes
+6. Clean up schema file and the ephemeral session process
 
 **Execution Flow** (Streaming Mode):
 1. Create output schema file if needed
-2. Start `Codex.Exec` GenServer with options
-3. Return Stream that yields events as they arrive
-4. Clean up when stream completes or is halted
+2. Start `Codex.Exec`, which boots `Codex.Runtime.Exec` on `CliSubprocessCore.Session`
+3. Return Stream that yields projected `%Codex.Events{}` values as they arrive
+4. Clean up when the underlying session completes or the stream is halted
 
 ---
 
-### 3. Codex.Exec GenServer
+### 3. Codex.Exec And Runtime Kit
 
-**Purpose**: Manages the lifecycle of a single `codex-rs` process execution.
+**Purpose**: Preserve the public exec JSONL API while delegating common CLI
+process ownership and parsing to `cli_subprocess_core`.
 
 **Responsibilities**:
-- Spawn codex-rs process via Port
-- Send input prompt via stdin
-- Receive and parse JSONL events from stdout
-- Monitor process health and exit status
-- Clean up resources on completion or crash
+- Translate SDK thread/turn options into the common CLI session invocation
+- Start a `CliSubprocessCore.Session` through `Codex.Runtime.Exec`
+- Project core runtime events back into typed `%Codex.Events{}` structs
+- Track stderr tails, timeouts, cancellation tokens, and non-zero exits
+- Clean up the ephemeral session process on completion or crash
 
 **State**:
 ```elixir
 defstruct [
-  :port,               # Port.t()
-  :caller,             # pid() of requesting process
-  :ref,                # reference() for synchronization
-  :buffer,             # String.t() for incomplete lines
-  :exit_status,        # integer() | nil
-  :stderr_buffer       # String.t() for error messages
+  :session,            # pid() for CliSubprocessCore.Session
+  :session_ref,        # reference() for subscriber mailbox routing
+  :projection_state,   # runtime-kit projection state
+  :stderr,             # bounded stderr tail
+  :timeout_ms,         # blocking idle timeout
+  :idle_timeout_ms     # streaming idle timeout
 ]
 ```
 
 **Lifecycle**:
 
-1. **init/1**:
-   - Build command args from options
-   - Set environment variables
-   - Spawn Port with codex-rs process
-   - Send telemetry event (turn started)
-
-2. **Message Handling**:
-   - `{port, {:data, data}}`: Parse JSONL lines, send events to caller
-   - `{port, {:exit_status, status}}`: Handle process exit
-   - `{:EXIT, port, reason}`: Handle unexpected crashes
-
-3. **terminate/2**:
-   - Close port if still open
-   - Send telemetry event (turn completed/failed)
-   - Clean up any remaining resources
+1. Build session options and start `Codex.Runtime.Exec`
+2. Subscribe to `CliSubprocessCore.Session` events with a tagged mailbox ref
+3. Project core events into `%Codex.Events{}` values as they arrive
+4. Convert terminal core exit events into `Codex.TransportError` when needed
+5. Stop the session and flush any remaining tagged mailbox messages
 
 **Error Scenarios**:
 - **Spawn failure**: Return error immediately
-- **JSON parse error**: Emit error event, continue processing
-- **Non-zero exit**: Emit `TurnFailed` with stderr contents
-- **Process crash**: Emit `TurnFailed` with crash reason
-
-**GenServer API**:
-```elixir
-@spec start_link(keyword()) :: GenServer.on_start()
-@spec run_turn(pid(), String.t(), map()) :: {:ok, reference()}
-```
+- **Parse failure**: Log and continue; the core remains the only JSONL parser
+- **Non-zero exit**: Surface `Codex.TransportError` with bounded stderr
+- **Unexpected session shutdown**: Treat as an exec transport failure
 
 ---
 
@@ -336,51 +321,43 @@ Manages temporary JSON schema files.
 ### Blocking Turn Execution
 
 ```
-Client                  Thread              Exec GenServer         Port/Process
+Client                  Thread              Exec Runtime         Core Session
   |                       |                       |                     |
   |-- run(input) -------->|                       |                     |
-  |                       |-- start_link() ------>|                     |
-  |                       |                       |-- spawn() --------->|
+  |                       |-- run_turn ---------->|                     |
+  |                       |                       |-- start ----------->|
   |                       |                       |                     |-- codex-rs starts
-  |                       |-- call: run_turn ---->|                     |
-  |                       |                       |-- write stdin ----->|
-  |                       |                       |                     |
-  |                       |<------- event --------|<-- stdout line -----|
-  |                       |<------- event --------|<-- stdout line -----|
-  |                       |<------- event --------|<-- stdout line -----|
-  |                       |                       |                     |
-  |                       |<-- TurnCompleted -----|<-- stdout line -----|
+  |                       |                       |<------ event -------|
+  |                       |<------- event --------|                     |
+  |                       |                       |<------ event -------|
+  |                       |<------- event --------|                     |
   |                       |                       |                     |-- codex-rs exits
-  |                       |                       |<-- exit_status -----|
-  |                       |-- stop() ------------>|                     |
-  |                       |                       |-- cleanup --------->|
+  |                       |                       |<------ exit --------|
   |<-- {:ok, result} -----|                       |                     |
 ```
 
 ### Streaming Turn Execution
 
 ```
-Client                  Thread              Exec GenServer         Port/Process
+Client                  Thread              Exec Runtime         Core Session
   |                       |                       |                     |
   |-- run_streamed() ---->|                       |                     |
-  |                       |-- start_link() ------>|                     |
-  |                       |                       |-- spawn() --------->|
+  |                       |-- run_turn ---------->|                     |
+  |                       |                       |-- start ----------->|
   |<-- {:ok, stream} -----|                       |                     |
   |                       |                       |                     |-- codex-rs starts
-  |                       |-- call: run_turn ---->|                     |
-  |                       |                       |-- write stdin ----->|
   |                       |                       |                     |
   |-- next event -------->|-- fetch event ------->|                     |
-  |<-- ItemStarted -------|<----------------------|<-- stdout line -----|
+  |<-- ItemStarted -------|<----------------------|<------ event -------|
   |                       |                       |                     |
   |-- next event -------->|-- fetch event ------->|                     |
-  |<-- ItemCompleted -----|<----------------------|<-- stdout line -----|
+  |<-- ItemCompleted -----|<----------------------|<------ event -------|
   |                       |                       |                     |
   |-- next event -------->|-- fetch event ------->|                     |
-  |<-- TurnCompleted -----|<----------------------|<-- stdout line -----|
+  |<-- TurnCompleted -----|<----------------------|<------ event -------|
   |                       |                       |                     |-- codex-rs exits
-  |-- stream done ------->|-- stop() ------------>|                     |
-  |                       |                       |-- cleanup --------->|
+  |                       |                       |<------ exit --------|
+  |-- stream done ------->|                       |                     |
 ```
 
 ## Process Model
@@ -392,18 +369,18 @@ Application Supervisor
     │
     └─── Client Process (caller)
             │
-            └─── Codex.Exec GenServer (per turn)
+            └─── CliSubprocessCore.Session (per turn)
                     │
-                    └─── Port (OS process)
+                    └─── CliSubprocessCore.Transport
                             │
                             └─── codex-rs
 ```
 
 **Key Points**:
-- Exec GenServer is ephemeral (one per turn)
+- The core session process is ephemeral (one per turn)
 - No persistent supervision tree needed
-- Client monitors Exec GenServer
-- Exec GenServer monitors Port
+- Client monitors the session process through `Codex.Exec`
+- `Codex.Runtime.Exec` preserves the public event surface by projection
 - Clean shutdown cascades down hierarchy
 
 ### Message Passing
@@ -464,13 +441,11 @@ Application Supervisor
 ```
 codex-rs exit code ≠ 0
     ↓
-Port sends {:exit_status, code}
+CliSubprocessCore.Session emits terminal error event
     ↓
-Exec GenServer receives exit
+Codex.Runtime.Exec captures stderr + exit details
     ↓
-Exec parses stderr buffer
-    ↓
-Exec sends {:error, ref, {:turn_failed, details}}
+Codex.Exec returns/raises Codex.TransportError
     ↓
 Thread receives error
     ↓
@@ -479,16 +454,16 @@ Client gets {:error, {:turn_failed, details}}
 
 ### Cleanup Guarantees
 
-All cleanup happens in GenServer `terminate/2`:
-- Close Port
-- Kill OS process if still running
+All cleanup happens when the ephemeral session process stops:
+- Close the core session
+- Let the shared transport close the subprocess
 - Remove temporary schema file
 - Send telemetry event
 
 Cleanup is guaranteed even on:
 - Normal completion
 - Client crash
-- GenServer crash
+- Runtime/session crash
 - VM shutdown
 
 ## Streaming Implementation
@@ -500,27 +475,16 @@ def run_streamed(thread, input, opts) do
   {schema_path, cleanup_fn} = OutputSchemaFile.create(opts.output_schema)
 
   stream = Stream.resource(
-    # Start function
     fn ->
-      {:ok, pid} = Exec.start_link(...)
-      ref = Exec.run_turn(pid, input, ...)
-      {pid, ref, cleanup_fn}
+      {:ok, stream} = Codex.Exec.run_stream(input, ...)
+      {stream, cleanup_fn}
     end,
 
-    # Next function
-    fn {pid, ref, cleanup_fn} = acc ->
-      receive do
-        {:event, ^ref, event} -> {[event], acc}
-        {:done, ^ref} -> {:halt, acc}
-        {:error, ^ref, error} -> raise error
-      after
-        30_000 -> raise TimeoutError
-      end
+    fn {stream, cleanup_fn} = acc ->
+      next_stream_chunk_from_runtime(stream, acc)
     end,
 
-    # After function
-    fn {pid, _ref, cleanup_fn} ->
-      GenServer.stop(pid)
+    fn {_stream, cleanup_fn} ->
       cleanup_fn.()
     end
   )
@@ -533,14 +497,13 @@ end
 - Lazy evaluation (events fetched on demand)
 - Backpressure support (caller controls rate)
 - Automatic cleanup (even if stream halted early)
-- Timeout protection (30s default)
+- Timeout protection via the exec runtime kit
 
 ### Event Buffering
 
-**In Exec GenServer**:
-- Small buffer (100 events) to handle bursts
-- Blocks Port reading if buffer full (backpressure)
-- Flush buffer on process exit
+**In `CliSubprocessCore.Session`**:
+- Shared parser + transport sequencing
+- Tagged subscriber delivery into `Codex.Exec`
 
 **In Thread/Client**:
 - No buffering (events consumed immediately)

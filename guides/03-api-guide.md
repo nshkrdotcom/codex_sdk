@@ -508,7 +508,9 @@ end
 
 ## Codex.Exec
 
-GenServer that manages the `codex-rs` process lifecycle. This module is typically used internally by `Codex.Thread`, but can be used directly for advanced use cases.
+Public exec JSONL API. `Codex.Exec` now runs on `Codex.Runtime.Exec`, a
+session-oriented runtime kit built on `CliSubprocessCore.Session`, while
+preserving the existing `%Codex.Events{}` surface returned by the SDK.
 
 Additional exec helpers:
 
@@ -516,6 +518,9 @@ Additional exec helpers:
 - Thread/turn options like `profile`, `oss`, `local_provider`, `full_auto`, `dangerously_bypass_approvals_and_sandbox`, `output_last_message`, and `color` are forwarded as CLI flags.
 - `config_overrides` maps to `-c key=value` overrides (TOML parsing on the codex side), with runtime validation for TOML-compatible values.
 - `Codex.resume_thread(:last)` maps to `codex exec resume --last`.
+- Common CLI process ownership and JSONL parsing are delegated to
+  `cli_subprocess_core`; `Codex.Exec` projects those core events back into the
+  SDK-native event structs.
 
 Example:
 
@@ -846,87 +851,6 @@ Helper module for emitting telemetry and wiring default logging.
 - `Codex.Error` — normalized error struct for exec and turn failures (returned as `{:exec_failed, %Codex.Error{}}` or `{:turn_failed, %Codex.Error{}}`).
 - `Codex.TransportError` — low-level exec errors from `Codex.Exec` streams; includes `exit_status` and optional `stderr`.
 - `Codex.ApprovalError` — returned when an approval policy denies a tool invocation, exposing `tool` and `reason` fields.
-
-### Functions
-
-#### `start_link/1`
-
-Starts an Exec GenServer and spawns the codex-rs process.
-
-**Signature**:
-```elixir
-@spec start_link(keyword()) :: GenServer.on_start()
-```
-
-**Options**:
-- `:input` (required): Input prompt for the turn
-- `:codex_path` (optional): Path to codex binary
-- `:thread_id` (optional): Existing thread ID to resume
-- `:base_url` (optional): OpenAI API base URL
-- `:api_key` (optional): OpenAI API key
-- `:model` (optional): Model name
-- `:sandbox_mode` (optional): Sandbox mode (`:read_only`, `:workspace_write`, `:danger_full_access`)
-- `:working_directory` (optional): Working directory for agent
-- `:skip_git_repo_check` (optional): Skip Git repository check
-- `:output_schema_file` (optional): Path to JSON schema file
-
-**Returns**:
-- `{:ok, pid}`: GenServer process ID
-- `{:error, reason}`: Spawn or configuration error
-
-**Examples**:
-```elixir
-# Basic usage
-{:ok, pid} = Codex.Exec.start_link(
-  input: "Hello, Codex",
-  codex_path: "/usr/local/bin/codex"
-)
-
-# With all options
-{:ok, pid} = Codex.Exec.start_link(
-  input: "Analyze code",
-  codex_path: "/usr/local/bin/codex",
-  thread_id: "thread_abc123",
-  api_key: "sk-...",
-  model: "o1",
-  sandbox_mode: :read_only,
-  working_directory: "/path/to/project",
-  output_schema_file: "/tmp/schema.json"
-)
-```
-
----
-
-#### `run_turn/2`
-
-Starts turn execution and returns a reference for event tracking.
-
-**Signature**:
-```elixir
-@spec run_turn(pid()) :: reference()
-```
-
-**Parameters**:
-- `pid`: Exec GenServer process ID
-
-**Returns**:
-- `reference()`: Unique reference for this turn
-
-**Usage**:
-```elixir
-{:ok, pid} = Codex.Exec.start_link(input: "example input")
-ref = Codex.Exec.run_turn(pid)
-
-# Receive events
-receive do
-  {:event, ^ref, event} ->
-    IO.inspect(event)
-  {:done, ^ref} ->
-    IO.puts("Turn complete")
-  {:error, ^ref, error} ->
-    IO.puts("Error: #{inspect(error)}")
-end
-```
 
 ---
 

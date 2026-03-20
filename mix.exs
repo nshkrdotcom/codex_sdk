@@ -41,6 +41,8 @@ defmodule CodexSdk.MixProject do
 
   defp deps do
     [
+      {:cli_subprocess_core, path: "../cli_subprocess_core"},
+
       # Core dependencies
       {:jason, "~> 1.4"},
       {:typed_struct, "~> 0.3.0"},

@@ -1,6 +1,8 @@
 defmodule Codex.IO.Transport.ErlexecTest do
   use ExUnit.Case, async: true
 
+  alias CliSubprocessCore.ProcessExit
+  alias CliSubprocessCore.Transport.Error
   alias Codex.IO.Transport.Erlexec, as: ErlexecTransport
 
   defp create_test_script(body) do
@@ -47,7 +49,8 @@ defmodule Codex.IO.Transport.ErlexecTest do
           subscriber: {self(), ref}
         )
 
-      assert_receive {:codex_io_transport, ^ref, {:exit, {:exit_code, 9}}}, 2_000
+      assert_receive {:codex_io_transport, ^ref, {:exit, %ProcessExit{status: :exit, code: 9}}},
+                     2_000
     end
   end
 
@@ -64,7 +67,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
       assert_receive {:transport_message, "hello"}, 2_000
       assert_receive {:transport_message, "world"}, 2_000
-      assert_receive {:transport_exit, _}, 2_000
+      assert_receive {:transport_exit, %ProcessExit{status: :success, code: 0}}, 2_000
     end
   end
 
@@ -105,7 +108,11 @@ defmodule Codex.IO.Transport.ErlexecTest do
           max_buffer_size: 1024
         )
 
-      assert_receive {:codex_io_transport, ^ref, {:error, _overflow}}, 5_000
+      assert_receive {:codex_io_transport, ^ref,
+                      {:error, %Error{reason: {:buffer_overflow, actual_size, 1024}}}},
+                     5_000
+
+      assert actual_size > 1024
       assert_receive {:codex_io_transport, ^ref, {:message, "after"}}, 5_000
     end
 
@@ -216,7 +223,8 @@ defmodule Codex.IO.Transport.ErlexecTest do
         ErlexecTransport.start_link(
           command: script,
           args: [],
-          subscriber: {subscriber, ref}
+          subscriber: {subscriber, ref},
+          headless_timeout_ms: 100
         )
 
       transport_monitor = Process.monitor(transport)
