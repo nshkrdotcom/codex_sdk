@@ -5,6 +5,7 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
+  alias CliSubprocessCore.Command
   alias Codex.AppServer.Protocol
   alias Codex.Config.Defaults
   alias Codex.IO.Buffer
@@ -597,7 +598,7 @@ defmodule Codex.AppServer.Connection do
 
   defp build_command(%Options{} = opts) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
-      command = Enum.map([binary_path, "app-server"], &to_charlist/1)
+      command = Command.new(binary_path, ["app-server"])
       {:ok, command}
     end
   end

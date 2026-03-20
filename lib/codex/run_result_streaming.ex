@@ -30,8 +30,24 @@ defmodule Codex.RunResultStreaming do
   """
   @spec events(t()) :: Enumerable.t()
   def events(%__MODULE__{} = result) do
-    ensure_started(result)
-    StreamQueue.stream(result.queue)
+    Stream.resource(
+      fn ->
+        ensure_started(result)
+        result
+      end,
+      fn %__MODULE__{queue: queue} = res ->
+        case StreamQueue.pop(queue, :infinity) do
+          {:ok, value} -> {[value], res}
+          :done -> {:halt, res}
+          {:error, reason} when is_exception(reason) -> raise reason
+          {:error, reason} -> raise RuntimeError, "stream closed with error: #{inspect(reason)}"
+        end
+      end,
+      fn res ->
+        cancel(res, :immediate)
+        :ok
+      end
+    )
   end
 
   @doc """

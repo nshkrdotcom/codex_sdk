@@ -1,6 +1,5 @@
 defmodule Codex.ThreadStreamTest do
   use ExUnit.Case, async: true
-  use ExUnitProperties
 
   alias Codex.{Options, RunResultStreaming, Thread}
   alias Codex.TestSupport.FixtureScripts
@@ -39,7 +38,7 @@ defmodule Codex.ThreadStreamTest do
     end
   end
 
-  property "partial enumeration yields deterministic sequences", %{thread_opts: thread_opts} do
+  test "partial enumeration yields deterministic sequences", %{thread_opts: thread_opts} do
     script_path =
       FixtureScripts.cat_fixture("thread_basic.jsonl")
       |> tap(&on_exit(fn -> File.rm_rf(&1) end))
@@ -50,7 +49,7 @@ defmodule Codex.ThreadStreamTest do
         codex_path_override: script_path
       })
 
-    check all(take_count <- StreamData.integer(0..5)) do
+    Enum.each(0..5, fn take_count ->
       thread = Thread.build(codex_opts, thread_opts)
 
       {:ok, full_stream} = Thread.run_streamed(thread, "Deterministic test")
@@ -60,6 +59,6 @@ defmodule Codex.ThreadStreamTest do
 
       assert Enum.take(all_events, take_count) ==
                partial_stream |> RunResultStreaming.raw_events() |> Enum.take(take_count)
-    end
+    end)
   end
 end
