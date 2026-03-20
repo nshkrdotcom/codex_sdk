@@ -401,6 +401,20 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                })
     end
 
+    test "maps MCP startup status notifications" do
+      assert {:ok,
+              %Events.McpServerStartupStatusUpdated{
+                name: "filesystem",
+                status: :failed,
+                error: "boom"
+              }} =
+               NotificationAdapter.to_event("mcpServer/startupStatus/updated", %{
+                 "name" => "filesystem",
+                 "status" => "failed",
+                 "error" => "boom"
+               })
+    end
+
     test "maps raw response item completion events" do
       params = %{
         "threadId" => "thr_1",

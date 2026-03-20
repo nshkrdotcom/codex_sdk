@@ -50,7 +50,7 @@ defmodule CodexExamples.LiveSessionWalkthrough do
             IO.puts("Latest session metadata: #{inspect(latest.metadata)}")
 
           {:ok, []} ->
-            IO.puts("No session files found under ~/.codex/sessions.")
+            IO.puts("No session files found under #{Codex.Config.Defaults.sessions_dir()}.")
 
           {:error, reason} ->
             IO.puts("Failed to list sessions: #{inspect(reason)}")

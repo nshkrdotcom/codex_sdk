@@ -17,6 +17,7 @@ defmodule Codex.Thread.Options do
             labels: %{},
             auto_run: false,
             transport: :exec,
+            ephemeral: nil,
             approval_policy: nil,
             approval_hook: nil,
             approval_timeout_ms: Defaults.approval_timeout_ms(),
@@ -54,6 +55,8 @@ defmodule Codex.Thread.Options do
             history_max_bytes: nil,
             model: nil,
             model_provider: nil,
+            service_name: nil,
+            service_tier: nil,
             model_reasoning_summary: nil,
             model_verbosity: nil,
             model_context_window: nil,
@@ -109,6 +112,7 @@ defmodule Codex.Thread.Options do
   @type personality :: Codex.Protocol.ConfigTypes.personality()
   @type approvals_reviewer :: :user | :guardian_subagent
   @type collaboration_mode :: Codex.Protocol.CollaborationMode.t()
+  @type service_tier :: :auto | :default | :flex | :priority | String.t()
   @type granular_approval_policy :: %{
           required(:type) => :granular,
           optional(:sandbox_approval) => boolean(),
@@ -141,6 +145,7 @@ defmodule Codex.Thread.Options do
           labels: map(),
           auto_run: boolean(),
           transport: transport(),
+          ephemeral: boolean() | nil,
           approval_policy: module() | nil,
           approval_hook: module() | nil,
           approval_timeout_ms: pos_integer(),
@@ -178,6 +183,8 @@ defmodule Codex.Thread.Options do
           history_max_bytes: non_neg_integer() | nil,
           model: String.t() | nil,
           model_provider: String.t() | nil,
+          service_name: String.t() | nil,
+          service_tier: service_tier() | nil,
           model_reasoning_summary: reasoning_summary() | nil,
           model_verbosity: model_verbosity() | nil,
           model_context_window: pos_integer() | nil,
@@ -208,6 +215,7 @@ defmodule Codex.Thread.Options do
     labels = Map.get(attrs, :labels, Map.get(attrs, "labels", %{}))
     auto_run = Map.get(attrs, :auto_run, Map.get(attrs, "auto_run", false))
     transport = Map.get(attrs, :transport, Map.get(attrs, "transport"))
+    ephemeral = Map.get(attrs, :ephemeral, Map.get(attrs, "ephemeral"))
     approval_policy = Map.get(attrs, :approval_policy, Map.get(attrs, "approval_policy"))
     approval_hook = Map.get(attrs, :approval_hook, Map.get(attrs, "approval_hook"))
 
@@ -376,6 +384,28 @@ defmodule Codex.Thread.Options do
     model_provider =
       Map.get(attrs, :model_provider, Map.get(attrs, "model_provider", Map.get(attrs, :provider)))
 
+    service_name =
+      Map.get(
+        attrs,
+        :service_name,
+        Map.get(
+          attrs,
+          "service_name",
+          Map.get(attrs, :serviceName, Map.get(attrs, "serviceName"))
+        )
+      )
+
+    service_tier =
+      Map.get(
+        attrs,
+        :service_tier,
+        Map.get(
+          attrs,
+          "service_tier",
+          Map.get(attrs, :serviceTier, Map.get(attrs, "serviceTier"))
+        )
+      )
+
     model_reasoning_summary =
       Map.get(attrs, :model_reasoning_summary, Map.get(attrs, "model_reasoning_summary"))
 
@@ -427,6 +457,7 @@ defmodule Codex.Thread.Options do
          {:ok, sandbox} <- normalize_sandbox(sandbox),
          {:ok, sandbox_policy} <- normalize_sandbox_policy(sandbox_policy),
          :ok <- validate_boolean(auto_run, :auto_run),
+         {:ok, ephemeral} <- validate_optional_boolean(ephemeral, :ephemeral),
          :ok <- validate_optional_string(working_directory, :working_directory),
          {:ok, additional_directories} <-
            normalize_string_list(additional_directories, :additional_directories),
@@ -467,6 +498,8 @@ defmodule Codex.Thread.Options do
          :ok <- validate_auto_flags(full_auto, dangerously_bypass_approvals_and_sandbox),
          :ok <- validate_optional_string(model, :model),
          :ok <- validate_optional_string(model_provider, :model_provider),
+         :ok <- validate_optional_string(service_name, :service_name),
+         {:ok, service_tier} <- normalize_service_tier(service_tier),
          {:ok, model_reasoning_summary} <- normalize_reasoning_summary(model_reasoning_summary),
          {:ok, model_verbosity} <- normalize_model_verbosity(model_verbosity),
          :ok <- validate_optional_positive_integer(model_context_window, :model_context_window),
@@ -518,6 +551,7 @@ defmodule Codex.Thread.Options do
          labels: labels,
          auto_run: auto_run,
          transport: transport,
+         ephemeral: ephemeral,
          approval_policy: approval_policy,
          approval_hook: approval_hook,
          approval_timeout_ms: approval_timeout_ms,
@@ -555,6 +589,8 @@ defmodule Codex.Thread.Options do
          history_max_bytes: history_max_bytes,
          model: model,
          model_provider: model_provider,
+         service_name: service_name,
+         service_tier: service_tier,
          model_reasoning_summary: model_reasoning_summary,
          model_verbosity: model_verbosity,
          model_context_window: model_context_window,
@@ -848,6 +884,12 @@ defmodule Codex.Thread.Options do
   end
 
   defp normalize_collaboration_mode(other), do: {:error, {:invalid_collaboration_mode, other}}
+
+  defp normalize_service_tier(nil), do: {:ok, nil}
+  defp normalize_service_tier(""), do: {:ok, nil}
+  defp normalize_service_tier(value) when is_atom(value), do: {:ok, Atom.to_string(value)}
+  defp normalize_service_tier(value) when is_binary(value), do: {:ok, value}
+  defp normalize_service_tier(other), do: {:error, {:invalid_service_tier, other}}
 
   defp normalize_collaboration_key(key) when is_atom(key),
     do: key |> Atom.to_string() |> normalize_collaboration_key()

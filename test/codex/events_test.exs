@@ -972,6 +972,28 @@ defmodule Codex.EventsTest do
                event
     end
 
+    test "parses MCP server startup status updates" do
+      event =
+        Events.parse!(%{
+          "type" => "mcpServer/startupStatus/updated",
+          "name" => "filesystem",
+          "status" => "ready",
+          "error" => nil
+        })
+
+      assert %Events.McpServerStartupStatusUpdated{
+               name: "filesystem",
+               status: :ready,
+               error: nil
+             } = event
+
+      assert %{
+               "type" => "mcpServer/startupStatus/updated",
+               "name" => "filesystem",
+               "status" => "ready"
+             } = Events.to_map(event)
+    end
+
     test "parses deprecation notice events" do
       event =
         Events.parse!(%{

@@ -128,6 +128,9 @@ To keep your existing `Codex.Thread.*` usage but switch the underlying transport
   Codex.start_thread(codex_opts, %{
     transport: {:app_server, conn},
     working_directory: "/path/to/project",
+    ephemeral: true,
+    service_name: "my_app",
+    service_tier: :flex,
     ask_for_approval: %{
       type: :granular,
       sandbox_approval: true,
@@ -144,7 +147,12 @@ To keep your existing `Codex.Thread.*` usage but switch the underlying transport
 Streaming works the same way:
 
 ```elixir
-{:ok, stream} = Codex.Thread.run_streamed(thread, "List the top-level files and summarize them")
+{:ok, stream} =
+  Codex.Thread.run_streamed(
+    thread,
+    "List the top-level files and summarize them",
+    service_tier: :priority
+  )
 Enum.each(stream, &IO.inspect/1)
 ```
 
@@ -176,15 +184,27 @@ encoded = Base.encode64("hello from app-server")
 IO.puts(Base.decode64!(encoded_back))
 
 {:ok, %{"marketplaces" => marketplaces}} = Codex.AppServer.plugin_list(conn, cwds: [File.cwd!()])
+{:ok, _} = Codex.AppServer.thread_shell_command(conn, "thr_123", "git status --short")
 ```
 
 Additional v2 APIs include:
 
-- `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
+- `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_shell_command/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `Codex.AppServer.plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
+- `Codex.AppServer.plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
 - `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
+
+Current upstream routing and sync controls are also covered:
+
+- `ephemeral`, `service_name`, and `service_tier` flow through thread lifecycle calls
+- per-turn `service_tier` can be passed through `Codex.Thread.run/3`
+- `plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`
+- raw plugin maps preserve newer auth metadata such as `needsAuth`
+
+`thread_shell_command/3` is a thin wrapper over the app-server's thread-bound
+`!` workflow, so treat it with the same care you would give shell access in the
+interactive CLI.
 
 When `include_layers: true`, `config_read/2` returns a `layers` list. Recent Codex versions encode each layer's `name` as a tagged union (`ConfigLayerSource`), for example:
 
@@ -209,7 +229,7 @@ Common thread-history operations are exposed via:
 - `Codex.AppServer.thread_read/3` (with optional `include_turns`)
 - `Codex.AppServer.thread_fork/3` and `Codex.AppServer.thread_rollback/3`
 - `Codex.AppServer.thread_loaded_list/2`
-- `Codex.AppServer.thread_resume/3` accepts optional `history` and `path` overrides
+- `Codex.AppServer.thread_resume/3` accepts optional `history`, `path`, and `service_tier` overrides
 
 ## Subagent host controls
 
@@ -297,6 +317,10 @@ ghost snapshots and compaction payloads. Deprecation warnings are surfaced as
 
 Config warnings are surfaced as `%Codex.Events.ConfigWarning{}` from
 `configWarning` notifications.
+
+Current upstream builds also emit `mcpServer/startupStatus/updated`. The SDK
+maps that notification to `%Codex.Events.McpServerStartupStatusUpdated{}`,
+normalizing the startup `status` and any optional error payload.
 
 ### Request user input
 
@@ -422,7 +446,8 @@ Codex binaries do not advertise the older parity methods. The plugin example
 creates a disposable repo-local marketplace fixture under the system temp
 directory, launches the child process with an isolated temporary `CODEX_HOME`,
 and therefore does not need an existing plugin install, does not require a
-prior Codex login, and does not mutate your real `$CODEX_HOME`.
+prior Codex login, does not mutate your real `$CODEX_HOME`, and prints
+`needsAuth` whenever the connected runtime includes that field.
 `examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live
 permissions approvals with granular `request_permissions: true`, launches the
 child inside a disposable temp workspace plus temporary `CODEX_HOME`, enables

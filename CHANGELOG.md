@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-03-19
+
+### Added
+
+- App-server parity for `thread/shellCommand` plus typed event adaptation for `mcpServer/startupStatus/updated`.
+- Thread/app-server option coverage for current upstream service controls: `ephemeral`, `service_name`, `service_tier`, and plugin install/uninstall `force_remote_sync`.
+- A 2026-03-19 upstream parity implementation doc at `~/b/projects/codex_sdk/20260319/upstream-rust-python-parity-impl.md`.
+
+### Changed
+
+- Session discovery now resolves the default sessions directory from the effective `CODEX_HOME`, so listing/resume docs and examples no longer assume a fixed `~/.codex/sessions` path.
+- App-server docs, guides, and examples now document the current upstream routing/sync/auth metadata surface, including `needsAuth`, `service_tier`, and the thread-bound shell-command flow.
+- The release version is now `0.15.0`.
+
+### Fixed
+
+- `Codex.Sessions.list_sessions/1` no longer freezes the default sessions directory at compile time.
+- High-level app-server transport now forwards the latest upstream thread/turn lifecycle params instead of dropping them on the floor.
+
 ## [0.14.0] - 2026-03-17
 
 ### Changed
@@ -780,6 +799,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
+[0.15.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.11.0...v0.12.0

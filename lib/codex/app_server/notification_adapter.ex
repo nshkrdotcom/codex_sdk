@@ -388,6 +388,15 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("mcpServer/startupStatus/updated", %{} = params) do
+    {:ok,
+     %Events.McpServerStartupStatusUpdated{
+       name: Map.get(params, "name") || "",
+       status: normalize_mcp_server_startup_status(Map.get(params, "status")),
+       error: Map.get(params, "error")
+     }}
+  end
+
   def to_event("model/rerouted", %{} = params) do
     {:ok,
      %Events.ModelRerouted{
@@ -662,6 +671,14 @@ defmodule Codex.AppServer.NotificationAdapter do
 
   defp normalize_model_reroute_reason("highRiskCyberActivity"), do: :high_risk_cyber_activity
   defp normalize_model_reroute_reason(value), do: value
+
+  defp normalize_mcp_server_startup_status("starting"), do: :starting
+  defp normalize_mcp_server_startup_status("ready"), do: :ready
+  defp normalize_mcp_server_startup_status("failed"), do: :failed
+  defp normalize_mcp_server_startup_status("cancelled"), do: :cancelled
+  defp normalize_mcp_server_startup_status(value) when is_atom(value), do: value
+  defp normalize_mcp_server_startup_status(value) when is_binary(value), do: value
+  defp normalize_mcp_server_startup_status(_), do: nil
 
   defp normalize_audio_chunk(nil), do: %{}
 

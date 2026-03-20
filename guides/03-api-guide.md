@@ -136,12 +136,19 @@ should use external `chatgptAuthTokens` plus an SDK-owned refresh responder.
 For legacy v1 app-server deployments, use `Codex.AppServer.V1` request helpers for
 conversation APIs.
 
-The direct `Codex.AppServer` surface also includes upstream v2 filesystem and
-plugin helpers:
+The direct `Codex.AppServer` surface also includes upstream v2 filesystem,
+plugin, and thread-shell helpers:
 
 - `fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`,
   `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `plugin_list/2`, `plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
+- `plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- `thread_shell_command/3`
+
+Current app-server lifecycle fields are also forwarded through the high-level
+transport: `ephemeral`, `service_name`, and `service_tier` on thread options,
+plus per-turn `service_tier` on `Codex.Thread.run/3` / `run_streamed/3`.
+`plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`,
+and raw plugin maps preserve newer upstream fields such as `needsAuth`.
 
 ## Codex.Subagents
 
@@ -227,7 +234,7 @@ Resumes an existing conversation thread from its persisted session.
 ```
 
 **Parameters**:
-- `thread_id`: ID of the thread to resume (from `~/.codex/sessions`) or `:last` for the most recent session
+- `thread_id`: ID of the thread to resume (from `$CODEX_HOME/sessions`, default `~/.codex/sessions`) or `:last` for the most recent session
 - `codex_opts` (optional): Global Codex options
 - `thread_opts` (optional): Thread-specific options
 
@@ -249,7 +256,7 @@ codex_opts = %Codex.Options{base_url: "https://custom.api"}
 ```
 
 **Notes**:
-- Threads are persisted in `~/.codex/sessions` by codex-rs
+- Threads are persisted in `$CODEX_HOME/sessions` by codex-rs (default `~/.codex/sessions`)
 - Thread history and context are automatically restored
 - The thread_id is available after the first turn completes
 
@@ -528,8 +535,9 @@ Utilities for inspecting CLI session files and replaying Codex diffs locally.
 
 ### `list_sessions/1`
 
-Lists session entries from `~/.codex/sessions` (or a custom `:sessions_dir`). Each entry includes
-`metadata` for unrecognized fields so new upstream metadata is preserved.
+Lists session entries from `$CODEX_HOME/sessions` by default (or a custom
+`:sessions_dir`). Each entry includes `metadata` for unrecognized fields so new
+upstream metadata is preserved.
 
 ```elixir
 {:ok, sessions} = Codex.Sessions.list_sessions()
@@ -1494,6 +1502,7 @@ Thread-specific configuration.
   labels: map(),
   auto_run: boolean(),
   transport: :exec | {:app_server, pid()},
+  ephemeral: boolean() | nil,
   approval_policy: module() | nil,
   approval_hook: module() | nil,
   approval_timeout_ms: pos_integer(),
@@ -1553,6 +1562,8 @@ Thread-specific configuration.
   history_max_bytes: non_neg_integer() | nil,
   model: String.t() | nil,
   model_provider: String.t() | nil,
+  service_name: String.t() | nil,
+  service_tier: :auto | :default | :flex | :priority | String.t() | nil,
   model_reasoning_summary: String.t() | nil,
   model_verbosity: String.t() | nil,
   model_context_window: pos_integer() | nil,
@@ -1579,6 +1590,7 @@ Thread-specific configuration.
 - `transport`: `:exec` or `{:app_server, pid()}` for JSON-RPC transport
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
 - `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
+- `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
 - `working_directory`: Working directory passed to codex (`--cd` / `cwd`)
@@ -1608,6 +1620,7 @@ Thread-specific configuration.
 - `config_overrides` value validation: only TOML-compatible values are accepted (`nil` and unsupported terms error early)
 - `history_persistence` / `history_max_bytes`: History persistence configuration forwarded via config overrides
 - `model` / `model_provider`: App-server thread model overrides
+- `service_name` / `service_tier`: App-server service-routing hints forwarded on `thread/start`, `thread/resume`, `thread/fork`, and `turn/start`; per-turn `service_tier` opts override the thread default
 - `model_reasoning_summary` / `model_verbosity`: Reasoning summary + verbosity settings forwarded via config overrides
 - `model_context_window`: Context window override (tokens)
 - `model_supports_reasoning_summaries`: Force reasoning summary support for non-default models

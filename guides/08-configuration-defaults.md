@@ -138,7 +138,7 @@ OpenAI API base URL does not change the ChatGPT OAuth authority. Use
 |----------|---------|
 | `openai_api_base_url/0` | `"https://api.openai.com/v1"` |
 | `openai_realtime_ws_url/0` | `"wss://api.openai.com/v1/realtime"` |
-| `sessions_dir/0` | `~/.codex/sessions` |
+| `sessions_dir/0` | `$CODEX_HOME/sessions` (default `~/.codex/sessions`) |
 
 ### Model Defaults
 

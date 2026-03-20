@@ -1285,6 +1285,83 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, _result} = Task.await(task, 500)
   end
 
+  test "app-server transport forwards ephemeral and service tier controls" do
+    bash = System.find_executable("bash") || "/bin/bash"
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        subprocess: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        ephemeral: true,
+        service_name: "codex-elixir-tests",
+        service_tier: :flex
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello", service_tier: :priority) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start", "params" => params}} =
+             Jason.decode(thread_start_line)
+
+    assert params["ephemeral"] == true
+    assert params["serviceName"] == "codex-elixir-tests"
+    assert params["serviceTier"] == "flex"
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok,
+            %{
+              "id" => turn_start_id,
+              "method" => "turn/start",
+              "params" => turn_params
+            }} = Jason.decode(turn_start_line)
+
+    assert turn_params["serviceTier"] == "priority"
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(turn_start_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       [
+         Protocol.encode_notification("turn/completed", %{
+           "threadId" => "thr_1",
+           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+         })
+       ]}
+    )
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
   test "app-server transport applies codex defaults for model and reasoning effort" do
     bash = System.find_executable("bash") || "/bin/bash"
 

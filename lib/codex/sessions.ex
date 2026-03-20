@@ -8,7 +8,6 @@ defmodule Codex.Sessions do
   alias Codex.ProcessExit
   alias Codex.Runtime.Erlexec
 
-  @default_sessions_dir Defaults.sessions_dir()
   @default_apply_timeout_ms Defaults.sessions_apply_timeout_ms()
 
   @type session_entry :: %{
@@ -38,7 +37,7 @@ defmodule Codex.Sessions do
   """
   @spec list_sessions(keyword()) :: {:ok, [session_entry()]} | {:error, term()}
   def list_sessions(opts \\ []) do
-    sessions_dir = Keyword.get(opts, :sessions_dir, @default_sessions_dir)
+    sessions_dir = Keyword.get(opts, :sessions_dir, Defaults.sessions_dir())
 
     case File.stat(sessions_dir) do
       {:ok, %File.Stat{type: :directory}} -> {:ok, collect_entries(sessions_dir)}

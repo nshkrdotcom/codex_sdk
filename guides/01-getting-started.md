@@ -13,7 +13,7 @@ Add the dependency in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.14.0"}
+    {:codex_sdk, "~> 0.15.0"}
   ]
 end
 ```
@@ -135,8 +135,8 @@ IO.puts(session_result.stdout)
 
 ## Sessions
 
-Threads are persisted by the Codex CLI under `~/.codex/sessions`. You can list
-and resume them:
+Threads are persisted by the Codex CLI under `$CODEX_HOME/sessions` (default
+`~/.codex/sessions`). You can list and resume them:
 
 ```elixir
 {:ok, sessions} = Codex.list_sessions()
@@ -149,8 +149,11 @@ and resume them:
 - **App-server JSON-RPC (optional):** `codex app-server` for v2 APIs and server-driven
   approvals.
 
-App-server is also where upstream `fs/*`, `plugin/read`, structured permissions approvals,
-guardian review notifications, and `serverRequest/resolved` events are exposed.
+App-server is also where upstream `fs/*`, `plugin/read`, `thread/shellCommand`, structured
+permissions approvals, `mcpServer/startupStatus/updated`, guardian review notifications, and
+`serverRequest/resolved` events are exposed. Thread options such as `ephemeral`,
+`service_name`, and `service_tier` are forwarded on app-server transport, and
+per-turn `service_tier` can be passed to `Codex.Thread.run/3`.
 
 When you need the managed app-server child to run against a temporary repo or
 isolated `CODEX_HOME`, pass `cwd:` and `process_env:` to

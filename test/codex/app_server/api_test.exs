@@ -272,6 +272,62 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
+  test "thread start, resume, and fork encode service controls", %{conn: conn, os_pid: os_pid} do
+    start_task =
+      Task.async(fn ->
+        AppServer.thread_start(conn,
+          ephemeral: true,
+          service_name: "codex-elixir-tests",
+          service_tier: :flex
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["ephemeral"] == true
+    assert start_params["serviceName"] == "codex-elixir-tests"
+    assert start_params["serviceTier"] == "flex"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
+
+    resume_task =
+      Task.async(fn ->
+        AppServer.thread_resume(conn, "thr_1", service_tier: "priority")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert resume_params["threadId"] == "thr_1"
+    assert resume_params["serviceTier"] == "priority"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(resume_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
+
+    fork_task =
+      Task.async(fn ->
+        AppServer.thread_fork(conn, "thr_1", ephemeral: true, service_tier: :auto)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, fork_line}
+
+    assert {:ok, %{"id" => fork_id, "method" => "thread/fork", "params" => fork_params}} =
+             Jason.decode(fork_line)
+
+    assert fork_params["threadId"] == "thr_1"
+    assert fork_params["ephemeral"] == true
+    assert fork_params["serviceTier"] == "auto"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(fork_id, %{"thread" => %{}})})
+    assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
+  end
+
   test "thread_rollback/3 encodes numTurns", %{conn: conn, os_pid: os_pid} do
     task = Task.async(fn -> AppServer.thread_rollback(conn, "thr_1", 2) end)
 
@@ -681,6 +737,28 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "turn_start/4 encodes service tier", %{conn: conn, os_pid: os_pid} do
+    task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", service_tier: :flex) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["threadId"] == "thr_1"
+    assert params["serviceTier"] == "flex"
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+       })}
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
   test "skills_list/2 encodes force_reload", %{conn: conn, os_pid: os_pid} do
     task = Task.async(fn -> AppServer.skills_list(conn, cwds: ["/tmp"], force_reload: true) end)
 
@@ -813,6 +891,44 @@ defmodule Codex.AppServer.ApiTest do
     send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
     assert {:ok, %{}} = Task.await(uninstall_task, 200)
 
+    install_sync_task =
+      Task.async(fn ->
+        AppServer.plugin_install(conn, "/tmp/market", "demo-plugin", force_remote_sync: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, install_sync_line}
+
+    assert {:ok,
+            %{
+              "id" => install_sync_id,
+              "method" => "plugin/install",
+              "params" => %{
+                "marketplacePath" => "/tmp/market",
+                "pluginName" => "demo-plugin",
+                "forceRemoteSync" => true
+              }
+            }} = Jason.decode(install_sync_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(install_sync_id, %{})})
+    assert {:ok, %{}} = Task.await(install_sync_task, 200)
+
+    uninstall_sync_task =
+      Task.async(fn ->
+        AppServer.plugin_uninstall(conn, "plugin_1", force_remote_sync: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, uninstall_sync_line}
+
+    assert {:ok,
+            %{
+              "id" => uninstall_sync_id,
+              "method" => "plugin/uninstall",
+              "params" => %{"pluginId" => "plugin_1", "forceRemoteSync" => true}
+            }} = Jason.decode(uninstall_sync_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_sync_id, %{})})
+    assert {:ok, %{}} = Task.await(uninstall_sync_task, 200)
+
     plugin_read_task =
       Task.async(fn -> AppServer.plugin_read(conn, "/tmp/marketplace.json", "demo-plugin") end)
 
@@ -845,6 +961,25 @@ defmodule Codex.AppServer.ApiTest do
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(experimental_id, %{"data" => []})})
     assert {:ok, %{"data" => []}} = Task.await(experimental_task, 200)
+  end
+
+  test "thread_shell_command/3 encodes request", %{conn: conn, os_pid: os_pid} do
+    task =
+      Task.async(fn ->
+        AppServer.thread_shell_command(conn, "thr_1", "git status --short")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "thread/shellCommand",
+              "params" => %{"threadId" => "thr_1", "command" => "git status --short"}
+            }} = Jason.decode(request_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{})})
+    assert {:ok, %{}} = Task.await(task, 200)
   end
 
   test "fuzzy_file_search/3 encodes query roots and cancellation token", %{

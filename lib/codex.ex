@@ -86,7 +86,7 @@ defmodule Codex do
   @doc """
   Lists session files persisted by the Codex CLI.
 
-  Returns entries parsed from `~/.codex/sessions` by default.
+  Returns entries parsed from `$CODEX_HOME/sessions` by default.
   """
   @spec list_sessions(keyword()) ::
           {:ok, [Codex.Sessions.session_entry()]} | {:error, term()}

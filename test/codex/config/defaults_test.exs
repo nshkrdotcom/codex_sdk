@@ -237,8 +237,20 @@ defmodule Codex.Config.DefaultsTest do
       assert Defaults.openai_realtime_ws_url() == "wss://api.openai.com/v1/realtime"
     end
 
-    test "sessions_dir/0 returns ~/.codex/sessions" do
-      assert Defaults.sessions_dir() == Path.expand("~/.codex/sessions")
+    test "sessions_dir/0 resolves against effective CODEX_HOME" do
+      original_home = System.get_env("CODEX_HOME")
+      tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
+
+      System.put_env("CODEX_HOME", tmp_home)
+
+      on_exit(fn ->
+        case original_home do
+          nil -> System.delete_env("CODEX_HOME")
+          value -> System.put_env("CODEX_HOME", value)
+        end
+      end)
+
+      assert Defaults.sessions_dir() == Path.join(tmp_home, "sessions")
     end
   end
 

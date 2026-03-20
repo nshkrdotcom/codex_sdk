@@ -186,6 +186,17 @@ defmodule Codex.AppServer do
           |> fetch_any([:personality, "personality"])
           |> Params.personality()
         )
+        |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
+        |> Params.put_optional(
+          "serviceName",
+          fetch_any(params, [:service_name, "service_name", :serviceName, "serviceName"])
+        )
+        |> Params.put_optional(
+          "serviceTier",
+          params
+          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
+          |> Params.service_tier()
+        )
         |> Params.put_optional(
           "experimentalRawEvents",
           fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
@@ -249,6 +260,12 @@ defmodule Codex.AppServer do
           params
           |> fetch_any([:personality, "personality"])
           |> Params.personality()
+        )
+        |> Params.put_optional(
+          "serviceTier",
+          params
+          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
+          |> Params.service_tier()
         )
         |> Params.put_optional(
           "experimentalRawEvents",
@@ -341,6 +358,13 @@ defmodule Codex.AppServer do
         |> Params.put_optional(
           "developerInstructions",
           fetch_any(params, [:developer_instructions, "developer_instructions"])
+        )
+        |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
+        |> Params.put_optional(
+          "serviceTier",
+          params
+          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
+          |> Params.service_tier()
         )
 
       Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
@@ -513,6 +537,10 @@ defmodule Codex.AppServer do
         |> Params.put_optional(
           "collaborationMode",
           opts |> Keyword.get(:collaboration_mode) |> Params.collaboration_mode()
+        )
+        |> Params.put_optional(
+          "serviceTier",
+          opts |> Keyword.get(:service_tier) |> Params.service_tier()
         )
 
       Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
@@ -789,13 +817,19 @@ defmodule Codex.AppServer do
     Connection.request(conn, "plugin/list", params, timeout_ms: 30_000)
   end
 
-  @spec plugin_install(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
-  def plugin_install(conn, marketplace_path, plugin_name)
-      when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) do
+  @spec plugin_install(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def plugin_install(conn, marketplace_path, plugin_name, opts \\ [])
+      when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) and
+             is_list(opts) do
     Connection.request(
       conn,
       "plugin/install",
-      %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name},
+      %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name}
+      |> Params.put_optional(
+        "forceRemoteSync",
+        normalize_true(Keyword.get(opts, :force_remote_sync))
+      ),
       timeout_ms: 30_000
     )
   end
@@ -814,9 +848,34 @@ defmodule Codex.AppServer do
     )
   end
 
-  @spec plugin_uninstall(connection(), String.t()) :: {:ok, map()} | {:error, term()}
-  def plugin_uninstall(conn, plugin_id) when is_pid(conn) and is_binary(plugin_id) do
-    Connection.request(conn, "plugin/uninstall", %{"pluginId" => plugin_id}, timeout_ms: 30_000)
+  @spec plugin_uninstall(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def plugin_uninstall(conn, plugin_id, opts \\ [])
+      when is_pid(conn) and is_binary(plugin_id) and is_list(opts) do
+    Connection.request(
+      conn,
+      "plugin/uninstall",
+      %{"pluginId" => plugin_id}
+      |> Params.put_optional(
+        "forceRemoteSync",
+        normalize_true(Keyword.get(opts, :force_remote_sync))
+      ),
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Runs a thread-bound shell command via the app-server `!` workflow.
+  """
+  @spec thread_shell_command(connection(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_shell_command(conn, thread_id, command)
+      when is_pid(conn) and is_binary(thread_id) and is_binary(command) do
+    Connection.request(
+      conn,
+      "thread/shellCommand",
+      %{"threadId" => thread_id, "command" => command},
+      timeout_ms: 30_000
+    )
   end
 
   @spec experimental_feature_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}

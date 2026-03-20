@@ -25,6 +25,8 @@ defmodule Codex.Config.Defaults do
   See the *Configuration Defaults* guide for the full table of tunables.
   """
 
+  alias Codex.Auth
+
   # ── Transport timeouts ──────────────────────────────────────────────────
 
   @doc "Overall exec process timeout in milliseconds (default: 3,600,000 — 1 hour)."
@@ -257,9 +259,9 @@ defmodule Codex.Config.Defaults do
   @spec openai_realtime_ws_url() :: String.t()
   def openai_realtime_ws_url, do: "wss://api.openai.com/v1/realtime"
 
-  @doc "Default sessions storage directory."
+  @doc "Default sessions storage directory under the effective `CODEX_HOME`."
   @spec sessions_dir() :: String.t()
-  def sessions_dir, do: Path.expand("~/.codex/sessions")
+  def sessions_dir, do: Path.join(Auth.codex_home(), "sessions")
 
   # ── Model defaults ─────────────────────────────────────────────────────
 

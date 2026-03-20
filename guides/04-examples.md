@@ -1446,8 +1446,9 @@ temp directory, launches `codex app-server` with an isolated child `cwd` plus a
 temporary `CODEX_HOME`, then demonstrates `plugin/list` discovery followed by
 `plugin/read` detail loading without mutating your real Codex config. Because
 the example never installs or enables that temporary plugin in the isolated home,
-`installed` and `enabled` are expected to remain `false`, and no prior Codex
-login or plugin install is required.
+`installed` and `enabled` are expected to remain `false`, `needsAuth` is printed
+when the connected build includes it, and no prior Codex login or plugin install
+is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
 `request_permissions: true` for live permissions requests on an `experimental_api: true`
 connection, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the

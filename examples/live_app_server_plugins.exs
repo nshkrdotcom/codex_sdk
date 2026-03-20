@@ -260,6 +260,12 @@ defmodule CodexExamples.LiveAppServerPlugins do
     apps = Map.get(plugin, "apps") || []
     mcp_servers = Map.get(plugin, "mcpServers") || Map.get(plugin, "mcp_servers") || []
 
+    needs_auth =
+      Map.get(summary, "needsAuth") ||
+        Map.get(summary, "needs_auth") ||
+        Map.get(plugin, "needsAuth") ||
+        Map.get(plugin, "needs_auth")
+
     IO.puts("""
     App-server plugin/read demo completed.
       fixture_root: #{fixture.temp_root}
@@ -274,13 +280,15 @@ defmodule CodexExamples.LiveAppServerPlugins do
       enabled: #{inspect(Map.get(summary, "enabled"))}
       install_policy: #{inspect(Map.get(summary, "installPolicy"))}
       auth_policy: #{inspect(Map.get(summary, "authPolicy"))}
+      needs_auth: #{inspect(needs_auth)}
     """)
 
     IO.puts("""
     Note: this example launches `codex app-server` with an isolated child `cwd` and
     temporary `CODEX_HOME`, so it never touches your real Codex config. Because it only
     exercises `plugin/list` + `plugin/read` and does not install the plugin, `installed`
-    and `enabled` should usually remain false.
+    and `enabled` should usually remain false. When upstream includes `needsAuth`, that
+    field is surfaced verbatim so you can see whether an install would require auth.
     """)
 
     if description = Map.get(plugin, "description") do

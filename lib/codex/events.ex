@@ -331,6 +331,23 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule McpServerStartupStatusUpdated do
+    @moduledoc """
+    Event emitted when app-server observes an MCP server startup state transition.
+    """
+
+    @enforce_keys [:name, :status]
+    defstruct name: nil, status: nil, error: nil
+
+    @type startup_status :: :starting | :ready | :failed | :cancelled | String.t()
+
+    @type t :: %__MODULE__{
+            name: String.t(),
+            status: startup_status(),
+            error: String.t() | nil
+          }
+  end
+
   defmodule HookStarted do
     @moduledoc """
     Event emitted when an app-server hook run starts.
@@ -1427,6 +1444,7 @@ defmodule Codex.Events do
     AppServerNotification,
     McpToolCallProgress,
     McpServerOauthLoginCompleted,
+    McpServerStartupStatusUpdated,
     HookStarted,
     HookCompleted,
     AccountUpdated,
@@ -1510,6 +1528,7 @@ defmodule Codex.Events do
           | AppServerNotification.t()
           | McpToolCallProgress.t()
           | McpServerOauthLoginCompleted.t()
+          | McpServerStartupStatusUpdated.t()
           | HookStarted.t()
           | HookCompleted.t()
           | AccountUpdated.t()
@@ -1831,6 +1850,22 @@ defmodule Codex.Events do
       id: Map.fetch!(map, "id"),
       reason: Map.fetch!(map, "reason"),
       previous_account_id: Map.get(map, "previous_account_id")
+    }
+  end
+
+  def parse!(%{"type" => type} = map)
+      when type in [
+             "mcpServer/startupStatus/updated",
+             "mcp_server_startup_status_updated",
+             "mcpServerStartupStatusUpdated"
+           ] do
+    %McpServerStartupStatusUpdated{
+      name: Map.fetch!(map, "name"),
+      status:
+        map
+        |> Map.get("status")
+        |> normalize_mcp_server_startup_status(),
+      error: Map.get(map, "error")
     }
   end
 
@@ -2892,6 +2927,15 @@ defmodule Codex.Events do
     |> put_optional("message", event.message)
   end
 
+  def to_map(%McpServerStartupStatusUpdated{} = event) do
+    %{
+      "type" => "mcpServer/startupStatus/updated",
+      "name" => event.name,
+      "status" => encode_mcp_server_startup_status(event.status)
+    }
+    |> put_optional("error", event.error)
+  end
+
   def to_map(%McpStartupComplete{} = event) do
     %{"type" => "mcp_startup_complete"}
     |> Map.merge(encode_mcp_startup_complete(event.servers))
@@ -3338,6 +3382,23 @@ defmodule Codex.Events do
 
   defp normalize_mcp_startup_status(value) when is_binary(value), do: {value, nil}
   defp normalize_mcp_startup_status(_), do: {nil, nil}
+
+  defp normalize_mcp_server_startup_status(nil), do: nil
+  defp normalize_mcp_server_startup_status("starting"), do: :starting
+  defp normalize_mcp_server_startup_status("ready"), do: :ready
+  defp normalize_mcp_server_startup_status("failed"), do: :failed
+  defp normalize_mcp_server_startup_status("cancelled"), do: :cancelled
+  defp normalize_mcp_server_startup_status(value) when is_atom(value), do: value
+  defp normalize_mcp_server_startup_status(value) when is_binary(value), do: value
+  defp normalize_mcp_server_startup_status(_), do: nil
+
+  defp encode_mcp_server_startup_status(:starting), do: "starting"
+  defp encode_mcp_server_startup_status(:ready), do: "ready"
+  defp encode_mcp_server_startup_status(:failed), do: "failed"
+  defp encode_mcp_server_startup_status(:cancelled), do: "cancelled"
+  defp encode_mcp_server_startup_status(value) when is_binary(value), do: value
+  defp encode_mcp_server_startup_status(value) when is_atom(value), do: Atom.to_string(value)
+  defp encode_mcp_server_startup_status(_), do: nil
 
   defp normalize_mcp_startup_complete(%{} = map) do
     servers = Map.get(map, "servers") || Map.get(map, :servers)

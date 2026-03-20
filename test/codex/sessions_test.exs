@@ -54,6 +54,30 @@ defmodule Codex.SessionsTest do
     assert entry.started_at == nil
   end
 
+  test "list_sessions/1 defaults to effective CODEX_HOME sessions dir" do
+    original_home = System.get_env("CODEX_HOME")
+    codex_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
+    sessions_dir = Path.join(codex_home, "sessions")
+    session_path = Path.join(sessions_dir, "session.jsonl")
+
+    File.mkdir_p!(sessions_dir)
+    File.write!(session_path, Jason.encode!(%{"id" => "thread_codex_home"}) <> "\n")
+    System.put_env("CODEX_HOME", codex_home)
+
+    on_exit(fn ->
+      File.rm_rf(codex_home)
+
+      case original_home do
+        nil -> System.delete_env("CODEX_HOME")
+        value -> System.put_env("CODEX_HOME", value)
+      end
+    end)
+
+    assert {:ok, [entry]} = Sessions.list_sessions()
+    assert entry.id == "thread_codex_home"
+    assert entry.path == session_path
+  end
+
   test "apply/2 applies unified diffs" do
     {repo_path, file_path} = init_repo_with_file("one\n")
 

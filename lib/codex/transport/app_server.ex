@@ -179,6 +179,9 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
     |> maybe_put(:personality, thread.thread_opts.personality)
     |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
+    |> maybe_put_for_mode(:ephemeral, thread.thread_opts.ephemeral, mode, [:start])
+    |> maybe_put_for_mode(:service_name, thread.thread_opts.service_name, mode, [:start])
+    |> maybe_put_for_mode(:service_tier, thread.thread_opts.service_tier, mode, [:start, :resume])
   end
 
   defp start_turn(conn, %Thread{} = thread, thread_id, input, turn_opts) do
@@ -224,6 +227,10 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put_kw(
       :collaboration_mode,
       select_turn_opt(turn_opts, :collaboration_mode, thread.thread_opts.collaboration_mode)
+    )
+    |> maybe_put_kw(
+      :service_tier,
+      select_turn_opt(turn_opts, :service_tier, thread.thread_opts.service_tier)
     )
   end
 
@@ -554,6 +561,14 @@ defmodule Codex.Transport.AppServer do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_put_for_mode(map, key, value, mode, allowed_modes) do
+    if mode in allowed_modes do
+      maybe_put(map, key, value)
+    else
+      map
+    end
+  end
 
   defp maybe_put_kw(list, _key, nil), do: list
   defp maybe_put_kw(list, _key, ""), do: list

@@ -21,8 +21,8 @@ and the root interactive client.
 - **App-server JSON-RPC (optional)**: maintains a stateful `codex app-server` subprocess and speaks newline-delimited JSON-RPC over stdio
 
 The app-server path is the parity transport for upstream v2 features such as `fs/*`, `plugin/read`,
-structured `item/permissions/requestApproval` responses, guardian review notifications, and
-`serverRequest/resolved`.
+`thread/shellCommand`, structured `item/permissions/requestApproval` responses,
+`mcpServer/startupStatus/updated`, guardian review notifications, and `serverRequest/resolved`.
 
 Transport selection is per-thread via `Codex.Thread.Options.transport`:
 

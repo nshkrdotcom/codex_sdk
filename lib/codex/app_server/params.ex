@@ -71,6 +71,13 @@ defmodule Codex.AppServer.Params do
   def reasoning_effort(value) when is_binary(value), do: value
   def reasoning_effort(_), do: nil
 
+  @spec service_tier(atom() | String.t() | nil) :: String.t() | nil
+  def service_tier(nil), do: nil
+  def service_tier(value) when is_atom(value), do: Atom.to_string(value)
+  def service_tier(""), do: nil
+  def service_tier(value) when is_binary(value), do: value
+  def service_tier(_), do: nil
+
   @spec personality(atom() | String.t() | nil) :: String.t() | nil
   def personality(nil), do: nil
   def personality(:friendly), do: "friendly"

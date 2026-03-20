@@ -83,6 +83,19 @@ defmodule Codex.ThreadTest do
       assert opts.approvals_reviewer == :user
     end
 
+    test "accepts app-server ephemeral and service controls" do
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          ephemeral: true,
+          service_name: "codex-elixir-tests",
+          service_tier: :flex
+        })
+
+      assert opts.ephemeral == true
+      assert opts.service_name == "codex-elixir-tests"
+      assert opts.service_tier == "flex"
+    end
+
     test "accepts granular ask_for_approval maps for app-server parity" do
       {:ok, opts} =
         ThreadOptions.new(%{

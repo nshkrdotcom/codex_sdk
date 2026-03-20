@@ -36,7 +36,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.14.0"}
+    {:codex_sdk, "~> 0.15.0"}
   ]
 end
 ```
@@ -224,21 +224,29 @@ App-server-only APIs include:
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/3`, `plugin_uninstall/2`
+- `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
 - `Codex.AppServer.turn_interrupt/3`
+- `Codex.AppServer.thread_shell_command/3` (thread-bound `!` workflow)
 - `Codex.AppServer.fuzzy_file_search/3` (legacy v1 helper used by `@` file search)
 - `Codex.AppServer.command_write_stdin/4` (interactive command stdin)
 - `Codex.AppServer.Account.*` and `Codex.AppServer.Mcp.*` endpoints (including MCP reload)
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
+On app-server transport, thread options now forward current upstream routing fields such as
+`ephemeral`, `service_name`, and `service_tier`; turn options can override `service_tier`
+per `Codex.Thread.run/3`. Plugin response maps also preserve newer upstream auth metadata such
+as `needsAuth`, and subscriptions adapt `mcpServer/startupStatus/updated` into typed
+`Codex.Events` structs.
+
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
 repo-local marketplace fixture plus an isolated temporary `CODEX_HOME`, rather than your real
-plugin config. `examples/live_app_server_approvals.exs` uses the same child-process isolation
-pattern to enable the under-development approval features only inside a temporary `CODEX_HOME`,
-so it can exercise live command/file/permissions approval flows without mutating your real Codex
-settings or writing inside this repository.
+plugin config; that example now also prints `needsAuth` when the connected build includes it.
+`examples/live_app_server_approvals.exs` uses the same child-process isolation pattern to enable
+the under-development approval features only inside a temporary `CODEX_HOME`, so it can exercise
+live command/file/permissions approval flows without mutating your real Codex settings or writing
+inside this repository.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
@@ -482,7 +490,8 @@ See `examples/realtime_*.exs` and `examples/voice_*.exs` for comprehensive demos
 
 ### Resuming Threads
 
-Threads are persisted in `~/.codex/sessions`. Resume previous conversations:
+Threads are persisted under `$CODEX_HOME/sessions` (default `~/.codex/sessions`). Resume previous
+conversations:
 
 ```elixir
 thread_id = "thread_abc123"
@@ -500,8 +509,8 @@ Resume the most recent session (equivalent to `codex exec resume --last`):
 
 ### Session Helpers
 
-The CLI writes session logs under `~/.codex/sessions`. The SDK can list them and
-apply or undo diffs locally:
+The CLI writes session logs under `$CODEX_HOME/sessions` (default `~/.codex/sessions`). The SDK
+can list them and apply or undo diffs locally:
 
 ```elixir
 {:ok, sessions} = Codex.Sessions.list_sessions()
@@ -536,6 +545,9 @@ apply or undo diffs locally:
     auto_run: true,
     sandbox: :strict,
     approval_timeout_ms: 45_000,
+    ephemeral: true,          # app-server thread/fork lifecycle hint
+    service_name: "my_app",   # app-server routing hint
+    service_tier: :flex,      # :auto | :default | :flex | :priority
     web_search_mode: :cached,  # :disabled | :cached | :live (explicit :disabled forces disable override)
     personality: :pragmatic,   # :friendly | :pragmatic | :none (works consistently on exec/app-server)
     collaboration_mode: :plan  # :plan | :pair_programming | :code | :default | :execute | :custom (app-server)
@@ -555,7 +567,7 @@ IO.inspect(result.last_response_id)
 # Note: last_response_id remains nil until codex exec emits response_id fields.
 
 # Turn-level options
-turn_options = %{output_schema: my_json_schema, personality: :friendly}
+turn_options = %{output_schema: my_json_schema, personality: :friendly, service_tier: :priority}
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 
