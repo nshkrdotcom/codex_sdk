@@ -44,6 +44,18 @@ defmodule Codex.Realtime.OpenAIWebSocket do
           config: ModelConfig.t()
         }
 
+  @type outbound_frame ::
+          :ping
+          | :pong
+          | {:ping | :pong, nil | binary()}
+          | {:text | :binary, binary()}
+
+  @type send_frame_error ::
+          %WebSockex.ConnError{}
+          | %WebSockex.FrameEncodeError{}
+          | %WebSockex.InvalidFrameError{}
+          | %WebSockex.NotConnectedError{}
+
   @user_agent "CodexSDK/Elixir"
 
   # Client API
@@ -100,14 +112,33 @@ defmodule Codex.Realtime.OpenAIWebSocket do
         %{"type" => "input_audio_buffer.commit"}
       ])
   """
-  @spec send_message(pid(), map() | [map()]) :: :ok
+  @spec send_message(pid(), map() | [map()]) :: :ok | {:error, send_frame_error()}
   def send_message(pid, messages) when is_list(messages) do
     Enum.each(messages, &send_message(pid, &1))
   end
 
   def send_message(pid, message) when is_map(message) do
     json = Jason.encode!(message)
-    WebSockex.send_frame(pid, {:text, json})
+    send_frame(pid, {:text, json})
+  end
+
+  @doc """
+  Send a raw websocket frame through the underlying WebSockex client.
+  """
+  @spec send_frame(pid(), outbound_frame()) :: :ok | {:error, send_frame_error()}
+  def send_frame(pid, frame) when is_pid(pid) do
+    WebSockex.send_frame(pid, frame)
+  end
+
+  @doc """
+  Gracefully close the websocket connection.
+
+  WebSockex does not support sending close frames via `send_frame/2`; the
+  websocket process has to initiate shutdown from its own callback context.
+  """
+  @spec close(pid()) :: :ok
+  def close(pid) when is_pid(pid) do
+    WebSockex.cast(pid, :close)
   end
 
   @doc """
@@ -160,6 +191,10 @@ defmodule Codex.Realtime.OpenAIWebSocket do
     else
       {:ok, %{state | listeners: [pid | state.listeners]}}
     end
+  end
+
+  def handle_cast(:close, state) do
+    {:close, state}
   end
 
   def handle_cast({:remove_listener, pid}, state) do

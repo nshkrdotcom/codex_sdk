@@ -9,8 +9,8 @@ defmodule Codex.Runtime.Exec do
 
   alias CliSubprocessCore.Event, as: CoreEvent
   alias CliSubprocessCore.Payload
-  alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
+  alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.Session
   alias Codex.ApprovalPolicy
   alias Codex.Auth
@@ -83,7 +83,7 @@ defmodule Codex.Runtime.Exec do
 
   def project_event(_event, state), do: {[], state}
 
-  @spec session_error(%CoreEvent{}, binary(), boolean()) :: {:error, term()} | nil
+  @spec session_error(CoreEvent.t(), binary(), boolean()) :: {:error, term()} | nil
   def session_error(
         %CoreEvent{kind: :error, raw: %{exit: %CoreProcessExit{} = exit}},
         stderr,

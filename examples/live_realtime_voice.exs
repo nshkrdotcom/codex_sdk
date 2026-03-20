@@ -29,9 +29,11 @@ defmodule LiveRealtimeVoiceDemo do
   alias Codex.Realtime.Config.RunConfig
   alias Codex.Realtime.Config.SessionModelSettings
   alias Codex.Realtime.Config.TurnDetectionConfig
+  alias Codex.Realtime.Diagnostics
   alias Codex.Realtime.Events
 
   @output_audio_path "/tmp/codex_realtime_response.pcm"
+  @probe_timeout_ms 8_000
 
   def main do
     case run() do
@@ -53,7 +55,8 @@ defmodule LiveRealtimeVoiceDemo do
     unless fetch_api_key() do
       {:error, "no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"}
     else
-      with {:ok, audio_pcm_data} <- load_fixture_audio(),
+      with :ok <- ensure_realtime_api_available(),
+           {:ok, audio_pcm_data} <- load_fixture_audio(),
            :ok <- initialize_output_file(),
            {:ok, session} <- start_session() do
         Realtime.subscribe(session, self())
@@ -75,8 +78,31 @@ defmodule LiveRealtimeVoiceDemo do
             other
         end
       else
+        {:skip, _reason} = skip -> skip
         {:error, reason} -> maybe_skip_quota(reason)
       end
+    end
+  end
+
+  defp ensure_realtime_api_available do
+    case Diagnostics.probe_text_turn(timeout_ms: @probe_timeout_ms) do
+      {:ok, _proof} ->
+        :ok
+
+      {:error, {:upstream_server_error, proof}} ->
+        {:skip, Diagnostics.format_probe_failure(proof)}
+
+      {:error, {:realtime_probe_failed, %{error: error}}} ->
+        case Diagnostics.skip_reason_for_error(error) do
+          nil -> {:error, {:realtime_probe_failed, error}}
+          skip_reason -> {:skip, skip_reason}
+        end
+
+      {:error, reason} ->
+        case Diagnostics.skip_reason_for_error(reason) do
+          nil -> {:error, reason}
+          skip_reason -> {:skip, skip_reason}
+        end
     end
   end
 
@@ -345,30 +371,13 @@ defmodule LiveRealtimeVoiceDemo do
   end
 
   defp maybe_skip_quota(reason) do
-    case skip_reason_for_error(reason) do
+    case Diagnostics.skip_reason_for_error(reason) do
       nil -> {:error, reason}
       skip_reason -> {:skip, skip_reason}
     end
   end
 
-  defp skip_reason_for_error(error) do
-    normalized =
-      error
-      |> inspect(limit: :infinity)
-      |> String.downcase()
-
-    cond do
-      String.contains?(normalized, "insufficient_quota") ->
-        "insufficient_quota"
-
-      String.contains?(normalized, "model_not_found") or
-          String.contains?(normalized, "do not have access") ->
-        "realtime_model_unavailable"
-
-      true ->
-        nil
-    end
-  end
+  defp skip_reason_for_error(error), do: Diagnostics.skip_reason_for_error(error)
 
   defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end

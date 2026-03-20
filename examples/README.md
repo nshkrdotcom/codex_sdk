@@ -31,7 +31,7 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 ```
 
 If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
-If credentials exist but direct API access is unavailable (for example `insufficient_quota` or missing realtime model access), direct API examples print `SKIPPED: <reason>`.
+If credentials exist but direct API access is unavailable (for example `insufficient_quota`, missing realtime model access, or an upstream Realtime `server_error`), direct API examples print `SKIPPED: <reason>`. Realtime demos now run a minimal raw-WebSocket health probe first and include the upstream `session_id` in the skip reason when OpenAI fails before any example-specific logic.
 The native OAuth example also self-skips in runner contexts unless you point it
 at an existing `CODEX_OAUTH_EXAMPLE_HOME` or opt into `--interactive`.
 

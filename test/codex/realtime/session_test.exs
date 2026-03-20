@@ -501,6 +501,21 @@ defmodule Codex.Realtime.SessionTest do
   end
 
   describe "terminate cleanup" do
+    test "close/1 closes the websocket transport", %{agent: agent} do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      assert Process.alive?(mock_ws)
+      Session.close(session)
+      refute wait_until_alive(mock_ws, 300)
+    end
+
     test "close/1 terminates pending tool tasks", %{agent: _agent} do
       parent = self()
 

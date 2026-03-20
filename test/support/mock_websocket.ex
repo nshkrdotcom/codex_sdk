@@ -77,9 +77,7 @@ defmodule Codex.Test.MockWebSocket do
   # Mock WebSockex interface - used by Session to send frames
 
   @doc """
-  Simulate WebSockex.send_frame/2.
-
-  This is called by the Session when it wants to send data to the WebSocket.
+  Simulate `send_frame/2` for the session transport contract.
   """
   @spec send_frame(GenServer.server(), {:text, String.t()}) :: :ok
   def send_frame(pid, {:text, json}) do
@@ -87,7 +85,11 @@ defmodule Codex.Test.MockWebSocket do
     :ok
   end
 
-  def send_frame(pid, :close) do
+  @doc """
+  Simulate graceful websocket shutdown for the session transport contract.
+  """
+  @spec close(GenServer.server()) :: :ok
+  def close(pid) do
     GenServer.cast(pid, :close)
     :ok
   end

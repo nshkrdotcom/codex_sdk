@@ -22,7 +22,10 @@ defmodule RealtimeToolsExample do
   """
 
   alias Codex.Realtime
+  alias Codex.Realtime.Diagnostics
   alias Codex.Realtime.Events
+
+  @probe_timeout_ms 8_000
 
   def main do
     case run() do
@@ -45,48 +48,72 @@ defmodule RealtimeToolsExample do
     unless fetch_api_key() do
       {:error, "no API key found (CODEX_API_KEY, auth.json OPENAI_API_KEY, or OPENAI_API_KEY)"}
     else
-      # Create agent without custom tools for now.
-      # The realtime API has specific requirements for tool definitions.
-      agent =
-        Realtime.agent(
-          name: "AssistantWithTools",
-          instructions: """
-          You are a helpful assistant. You can help users with various tasks.
-          When asked about weather or time, explain that you would normally use
-          tools to get that information, but for this demo we're showing the
-          basic realtime interaction.
-          """
-        )
+      with :ok <- ensure_realtime_api_available() do
+        # Create agent without custom tools for now.
+        # The realtime API has specific requirements for tool definitions.
+        agent =
+          Realtime.agent(
+            name: "AssistantWithTools",
+            instructions: """
+            You are a helpful assistant. You can help users with various tasks.
+            When asked about weather or time, explain that you would normally use
+            tools to get that information, but for this demo we're showing the
+            basic realtime interaction.
+            """
+          )
 
-      IO.puts("Agent created: #{agent.name}")
-      IO.puts("Note: Custom function tools require specific format for realtime API")
-      IO.puts("\nStarting realtime session...")
+        IO.puts("Agent created: #{agent.name}")
+        IO.puts("Note: Custom function tools require specific format for realtime API")
+        IO.puts("\nStarting realtime session...")
 
-      realtime_result =
-        case Realtime.run(agent) do
-          {:ok, session} ->
-            IO.puts("Session started!")
-            Realtime.subscribe(session, self())
+        realtime_result =
+          case Realtime.run(agent) do
+            {:ok, session} ->
+              IO.puts("Session started!")
+              Realtime.subscribe(session, self())
 
-            IO.puts("\nSending message: What's the weather like?")
-            Realtime.send_message(session, "What's the weather like?")
+              IO.puts("\nSending message: What's the weather like?")
+              Realtime.send_message(session, "What's the weather like?")
 
-            stats = handle_events(15_000, %{skip_reason: nil})
+              stats = handle_events(15_000, %{skip_reason: nil})
 
-            IO.puts("\nClosing session...")
-            Realtime.close(session)
+              IO.puts("\nClosing session...")
+              Realtime.close(session)
 
-            case stats.skip_reason do
-              reason when is_binary(reason) -> {:skip, reason}
-              _ -> :ok
-            end
+              case stats.skip_reason do
+                reason when is_binary(reason) -> {:skip, reason}
+                _ -> :ok
+              end
 
-          {:error, reason} ->
-            maybe_skip_quota(reason)
+            {:error, reason} ->
+              maybe_skip_quota(reason)
+          end
+
+        print_tool_definition()
+        realtime_result
+      end
+    end
+  end
+
+  defp ensure_realtime_api_available do
+    case Diagnostics.probe_text_turn(timeout_ms: @probe_timeout_ms) do
+      {:ok, _proof} ->
+        :ok
+
+      {:error, {:upstream_server_error, proof}} ->
+        {:skip, Diagnostics.format_probe_failure(proof)}
+
+      {:error, {:realtime_probe_failed, %{error: error}}} ->
+        case Diagnostics.skip_reason_for_error(error) do
+          nil -> {:error, {:realtime_probe_failed, error}}
+          skip_reason -> {:skip, skip_reason}
         end
 
-      print_tool_definition()
-      realtime_result
+      {:error, reason} ->
+        case Diagnostics.skip_reason_for_error(reason) do
+          nil -> {:error, reason}
+          skip_reason -> {:skip, skip_reason}
+        end
     end
   end
 
@@ -180,30 +207,13 @@ defmodule RealtimeToolsExample do
   end
 
   defp maybe_skip_quota(reason) do
-    case skip_reason_for_error(reason) do
+    case Diagnostics.skip_reason_for_error(reason) do
       nil -> {:error, reason}
       skip_reason -> {:skip, skip_reason}
     end
   end
 
-  defp skip_reason_for_error(error) do
-    normalized =
-      error
-      |> inspect(limit: :infinity)
-      |> String.downcase()
-
-    cond do
-      String.contains?(normalized, "insufficient_quota") ->
-        "insufficient_quota"
-
-      String.contains?(normalized, "model_not_found") or
-          String.contains?(normalized, "do not have access") ->
-        "realtime_model_unavailable"
-
-      true ->
-        nil
-    end
-  end
+  defp skip_reason_for_error(error), do: Diagnostics.skip_reason_for_error(error)
 
   defp fetch_api_key, do: Codex.Auth.direct_api_key()
 end

@@ -19,7 +19,7 @@ Realtime/Voice auth precedence:
 helps CLI/app-server flows; realtime and voice still need an API key or an
 `OPENAI_API_KEY` persisted in `auth.json`.
 
-If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. Live examples print `SKIPPED` with the detected reason and exit cleanly.
+If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. When the upstream Realtime service itself returns a generic `server_error`, the realtime examples now run a minimal raw-WebSocket probe first and print `SKIPPED` with the detected `session_id` so you can report the exact upstream failure cleanly.
 
 Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. Blank values are
 ignored. The same PEM bundle is applied to HTTPS requests and secure realtime websockets.
@@ -148,6 +148,22 @@ If output audio is empty:
 3. Log `%Events.ErrorEvent{}` and count `%Events.AudioEvent{}` deltas.
 4. Check for quota/auth errors (`insufficient_quota`, unauthorized API key, etc.). Realtime `response.done` failures are surfaced as `%Events.ErrorEvent{}`.
 
+If you see a generic Realtime `server_error`, try a raw health check first:
+
+```elixir
+case Codex.Realtime.Diagnostics.probe_text_turn(timeout_ms: 8_000) do
+  {:ok, _proof} ->
+    IO.puts("Realtime API responded to a minimal probe.")
+
+  {:error, {:upstream_server_error, proof}} ->
+    IO.puts(Codex.Realtime.Diagnostics.format_probe_failure(proof))
+end
+```
+
+That probe bypasses `Codex.Realtime.Session` and the example logic entirely, so
+it is useful for proving whether the failure is already present in the upstream
+Realtime service.
+
 ### Session lifecycle helpers
 
 `Codex.Realtime.Session` behavior exposed through `Codex.Realtime`:
@@ -222,3 +238,4 @@ mix run examples/voice_with_agent.exs
 - `CODEX_CA_CERTIFICATE` takes precedence over `SSL_CERT_FILE` for HTTPS/WSS trust roots.
 - Keep examples deterministic by setting voice and explicit audio turn boundaries.
 - For CI or no-credit environments, treat `insufficient_quota` as a known skip condition for direct API demos.
+- Realtime demos now also treat proven upstream `server_error` responses as a skip condition when the raw-WebSocket probe fails first.

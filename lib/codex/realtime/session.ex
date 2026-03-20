@@ -81,7 +81,7 @@ defmodule Codex.Realtime.Session do
   @type t :: %__MODULE__{
           agent: term(),
           websocket_pid: pid() | nil,
-          websocket_module: module() | nil,
+          websocket_module: module(),
           config: ModelConfig.t(),
           run_config: Config.RunConfig.t(),
           context: map(),
@@ -106,7 +106,9 @@ defmodule Codex.Realtime.Session do
     * `:run_config` - Optional runtime configuration.
     * `:context` - Optional context map passed to tools and events.
     * `:websocket_pid` - Optional. For testing with a mock WebSocket.
-    * `:websocket_module` - Optional. Override the WebSocket module (default: WebSockex).
+    * `:websocket_module` - Optional. Override the WebSocket transport module
+      (default: `Codex.Realtime.OpenAIWebSocket`). Custom modules must provide
+      `send_frame/2` and `close/1`.
 
   ## Returns
 
@@ -257,7 +259,7 @@ defmodule Codex.Realtime.Session do
 
     # Support for testing with mock WebSocket
     websocket_pid = Keyword.get(opts, :websocket_pid)
-    websocket_module = Keyword.get(opts, :websocket_module)
+    websocket_module = Keyword.get(opts, :websocket_module) || OpenAIWebSocket
 
     state = %__MODULE__{
       agent: agent,
@@ -429,18 +431,7 @@ defmodule Codex.Realtime.Session do
   @impl true
   def terminate(_reason, state) do
     _ = drain_pending_tool_calls(state)
-
-    if state.websocket_pid do
-      ws_module = state.websocket_module || WebSockex
-
-      try do
-        ws_module.send_frame(state.websocket_pid, :close)
-      rescue
-        _ -> :ok
-      catch
-        :exit, _ -> :ok
-      end
-    end
+    close_websocket(state.websocket_module, state.websocket_pid)
 
     :ok
   end
@@ -463,8 +454,7 @@ defmodule Codex.Realtime.Session do
   defp send_to_websocket(state, input) do
     if state.websocket_pid do
       json = ModelInputs.to_json(input)
-      ws_module = state.websocket_module || WebSockex
-      do_send_to_websocket(ws_module, state.websocket_pid, json)
+      do_send_to_websocket(state.websocket_module, state.websocket_pid, json)
     else
       {:error, :not_connected}
     end
@@ -492,6 +482,14 @@ defmodule Codex.Realtime.Session do
     end
   catch
     :exit, _ -> {:error, :not_connected}
+  end
+
+  defp close_websocket(_ws_module, nil), do: :ok
+
+  defp close_websocket(ws_module, pid) do
+    ws_module.close(pid)
+  catch
+    :exit, _ -> :ok
   end
 
   defp maybe_emit_response_done_error(

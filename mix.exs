@@ -186,6 +186,7 @@ defmodule CodexSdk.MixProject do
         Realtime: [
           Codex.Realtime,
           Codex.Realtime.Agent,
+          Codex.Realtime.Diagnostics,
           Codex.Realtime.Audio,
           Codex.Realtime.Config,
           Codex.Realtime.Config.GuardrailsSettings,
