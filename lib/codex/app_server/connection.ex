@@ -1,6 +1,3 @@
-# Provider-local runtime: `codex app-server` speaks a native control protocol,
-# so this connection stays SDK-local above the shared subprocess core instead
-# of using the one-shot command lane.
 defmodule Codex.AppServer.Connection do
   @moduledoc false
 
@@ -8,7 +5,7 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
-  alias CliSubprocessCore.{Command, Transport}
+  alias CliSubprocessCore.{Command, RawSession, Transport}
   alias Codex.AppServer.Protocol
   alias Codex.Config.Defaults
   alias Codex.IO.Buffer
@@ -17,7 +14,6 @@ defmodule Codex.AppServer.Connection do
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
   @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
-  @max_stderr_buffer_size Defaults.transport_max_stderr_buffer_size()
   @default_call_timeout_ms 5_000
 
   defmodule State do
@@ -25,12 +21,9 @@ defmodule Codex.AppServer.Connection do
 
     defstruct [
       :codex_opts,
-      :transport_mod,
-      :transport,
-      :transport_ref,
+      :raw_session,
       :phase,
       :next_id,
-      :stderr,
       :pending,
       :ready_waiters,
       :subscribers,
@@ -128,29 +121,22 @@ defmodule Codex.AppServer.Connection do
     init_params =
       initialize_params(client_name, client_version, client_title, experimental_api)
 
-    transport_ref = make_ref()
-
-    with {:ok, command} <- build_command(codex_opts),
+    with {:ok, binary_path} <- build_command(codex_opts),
          {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
-         {:ok, transport} <-
-           transport_mod.start_link(
+         invocation <- Command.new(binary_path, ["app-server"], cwd: cwd, env: env),
+         {:ok, raw_session} <-
+           RawSession.start_link(
+             invocation,
              [
-               command: command,
-               cwd: cwd,
-               env: env,
-               subscriber: {self(), transport_ref},
-               event_tag: :codex_io_transport
+               receiver: self(),
+               event_tag: :codex_io_transport,
+               transport_module: transport_mod,
+               stdout_mode: :line,
+               stdin_mode: :raw
              ] ++ transport_opts
            ) do
-      initialize_transport(
-        transport_mod,
-        transport,
-        transport_ref,
-        codex_opts,
-        init_timeout_ms,
-        init_params
-      )
+      initialize_transport(raw_session, codex_opts, init_timeout_ms, init_params)
     else
       {:error, _} = error ->
         error
@@ -160,16 +146,9 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp initialize_transport(
-         transport_mod,
-         transport,
-         transport_ref,
-         codex_opts,
-         init_timeout_ms,
-         init_params
-       ) do
-    case transport_mod.send(
-           transport,
+  defp initialize_transport(raw_session, codex_opts, init_timeout_ms, init_params) do
+    case RawSession.send_input(
+           raw_session,
            Protocol.encode_request(
              0,
              "initialize",
@@ -182,12 +161,9 @@ defmodule Codex.AppServer.Connection do
         {:ok,
          %State{
            codex_opts: codex_opts,
-           transport_mod: transport_mod,
-           transport: transport,
-           transport_ref: transport_ref,
+           raw_session: raw_session,
            phase: :initializing,
            next_id: 1,
-           stderr: "",
            pending: %{
              0 => %{
                from: :init,
@@ -202,7 +178,7 @@ defmodule Codex.AppServer.Connection do
          }}
 
       {:error, _} = error ->
-        _ = transport_mod.force_close(transport)
+        _ = RawSession.force_close(raw_session)
         error
     end
   end
@@ -299,7 +275,7 @@ defmodule Codex.AppServer.Connection do
   @impl true
   def handle_info(
         {:codex_io_transport, ref, {:message, line}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
     case Buffer.decode_line(line) do
       {:ok, msg} ->
@@ -313,21 +289,24 @@ defmodule Codex.AppServer.Connection do
 
   def handle_info(
         {:codex_io_transport, ref, {:stderr, data}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
-    stderr = append_stderr(state.stderr, data)
-    {:noreply, %State{state | stderr: stderr}}
+    Logger.debug("codex app-server stderr: #{String.trim(IO.iodata_to_binary(data))}")
+    {:noreply, state}
   end
 
   def handle_info(
         {:codex_io_transport, ref, {:error, reason}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
     Logger.debug("Transport error from codex app-server: #{inspect(reason)}")
     {:noreply, state}
   end
 
-  def handle_info({:codex_io_transport, ref, {:exit, reason}}, %State{transport_ref: ref} = state) do
+  def handle_info(
+        {:codex_io_transport, ref, {:exit, reason}},
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
+      ) do
     failure = app_server_down_failure(state, reason)
     Logger.warning("codex app-server exited: #{inspect(failure)}")
     state = fail_transport_waiters(state, failure)
@@ -335,7 +314,10 @@ defmodule Codex.AppServer.Connection do
   end
 
   # Backward-compatibility for tests that still send legacy subprocess-shaped messages.
-  def handle_info({:stdout, ref, chunk}, %State{transport_ref: ref} = state) do
+  def handle_info(
+        {:stdout, ref, chunk},
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
+      ) do
     {messages, _buffer, non_json} = Protocol.decode_lines("", chunk)
 
     Enum.each(non_json, fn raw ->
@@ -362,16 +344,12 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  def handle_info({:stderr, ref, data}, %State{transport_ref: ref} = state) do
-    stderr = append_stderr(state.stderr, data)
-    {:noreply, %State{state | stderr: stderr}}
-  end
-
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %State{transport_ref: ref} = state) do
-    failure = app_server_down_failure(state, reason)
-    Logger.warning("codex app-server exited: #{inspect(failure)}")
-    state = fail_transport_waiters(state, failure)
-    {:stop, {:shutdown, failure}, state}
+  def handle_info(
+        {:stderr, ref, data},
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
+      ) do
+    Logger.debug("codex app-server stderr: #{String.trim(IO.iodata_to_binary(data))}")
+    {:noreply, state}
   end
 
   def handle_info({:DOWN, ref, :process, pid, _reason}, %State{} = state) do
@@ -502,21 +480,6 @@ defmodule Codex.AppServer.Connection do
   defp handle_incoming_result({:ok, %State{} = state}), do: {:noreply, state}
   defp handle_incoming_result({:stop, reason, %State{} = state}), do: {:stop, reason, state}
 
-  defp append_stderr(existing, data) do
-    combined = existing <> IO.iodata_to_binary(data)
-    combined_size = byte_size(combined)
-
-    if combined_size <= @max_stderr_buffer_size do
-      combined
-    else
-      :binary.part(
-        combined,
-        combined_size - @max_stderr_buffer_size,
-        @max_stderr_buffer_size
-      )
-    end
-  end
-
   defp broadcast_notification(%State{} = state, method, params) do
     Enum.each(state.subscribers, fn {pid, filters} ->
       if subscriber_match?(filters, method, params) do
@@ -599,8 +562,7 @@ defmodule Codex.AppServer.Connection do
 
   defp build_command(%Options{} = opts) do
     with {:ok, binary_path} <- Options.codex_path(opts) do
-      command = Command.new(binary_path, ["app-server"])
-      {:ok, command}
+      {:ok, binary_path}
     end
   end
 
@@ -651,8 +613,8 @@ defmodule Codex.AppServer.Connection do
 
   defp app_server_down_failure(%State{} = state, reason) do
     details =
-      %{reason: reason}
-      |> maybe_put_detail(:stderr, state.stderr)
+      %{reason: failure_reason(reason)}
+      |> maybe_put_detail(:stderr, failure_stderr(state, reason))
 
     {:app_server_down, details}
   end
@@ -660,16 +622,16 @@ defmodule Codex.AppServer.Connection do
   defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
   defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)
 
-  defp send_iolist(%State{transport_mod: transport_mod, transport: transport}, data)
-       when is_atom(transport_mod) and is_pid(transport) do
-    transport_mod.send(transport, data)
+  defp send_iolist(%State{raw_session: %RawSession{} = raw_session}, data) do
+    RawSession.send_input(raw_session, data)
   end
 
   defp send_iolist(%State{}, _data), do: {:error, {:transport, :not_connected}}
 
-  defp stop_subprocess(%State{transport_mod: transport_mod, transport: transport})
-       when is_atom(transport_mod) and is_pid(transport) do
-    transport_mod.force_close(transport)
+  defp stop_subprocess(%State{raw_session: %RawSession{} = raw_session}) do
+    RawSession.force_close(raw_session)
+  catch
+    :exit, _reason -> :ok
   end
 
   defp stop_subprocess(%State{}), do: :ok
@@ -681,10 +643,27 @@ defmodule Codex.AppServer.Connection do
       codex_opts.api_key
       |> RuntimeEnv.base_overrides(codex_opts.base_url)
       |> Map.merge(custom_env, fn _key, _base, custom -> custom end)
-      |> RuntimeEnv.to_charlist_env()
       |> then(&{:ok, &1})
     end
   end
+
+  defp transport_stderr(%State{raw_session: %RawSession{} = raw_session}) do
+    RawSession.stderr(raw_session)
+  catch
+    :exit, _reason -> ""
+  end
+
+  defp transport_stderr(%State{}), do: ""
+
+  defp failure_reason(%CliSubprocessCore.ProcessExit{reason: reason}), do: reason
+  defp failure_reason(reason), do: reason
+
+  defp failure_stderr(_state, %CliSubprocessCore.ProcessExit{stderr: stderr})
+       when stderr not in [nil, ""] do
+    stderr
+  end
+
+  defp failure_stderr(state, _reason), do: transport_stderr(state)
 
   defp default_client_version, do: Defaults.client_version()
 

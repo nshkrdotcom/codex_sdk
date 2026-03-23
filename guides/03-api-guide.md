@@ -82,9 +82,9 @@ The caller process receives raw subprocess messages:
 Use `send_input/2`, `close_input/1`, `interrupt/1`, `stop/1`, and `collect/2`
 to drive the session.
 
-This module intentionally remains SDK-local for interactive PTY flows and
-long-lived control surfaces such as `codex app-server` and `codex mcp-server`,
-but its subprocess lifecycle now runs through `CliSubprocessCore.RawSession`.
+This is the public Codex session surface for interactive PTY flows and other
+long-lived CLI commands, while the subprocess session itself runs through
+`CliSubprocessCore.RawSession`.
 
 ```elixir
 {:ok, session} =

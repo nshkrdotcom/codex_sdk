@@ -1,13 +1,15 @@
 defmodule Codex.TestSupport.AppServerSubprocess do
   @moduledoc false
 
+  alias CliSubprocessCore.Transport.Info
+
   import Kernel, except: [send: 2]
 
   @behaviour Codex.IO.Transport
 
   use GenServer
 
-  defstruct [:owner, :subscriber, :send_result, :notify_stop]
+  defstruct [:owner, :subscriber, :send_result, :notify_stop, :stderr, :opts]
 
   @impl true
   def start(opts), do: GenServer.start(__MODULE__, opts)
@@ -59,7 +61,13 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   def end_input(_pid), do: :ok
 
   @impl true
-  def stderr(_pid), do: ""
+  def stderr(pid) when is_pid(pid) do
+    GenServer.call(pid, :stderr)
+  end
+
+  def info(pid) when is_pid(pid) do
+    GenServer.call(pid, :info)
+  end
 
   @impl true
   def init(opts) do
@@ -67,6 +75,7 @@ defmodule Codex.TestSupport.AppServerSubprocess do
     subscriber = Keyword.fetch!(opts, :subscriber)
     send_result = Keyword.get(opts, :send_result, :ok)
     notify_stop = Keyword.get(opts, :notify_stop, false)
+    stderr = Keyword.get(opts, :stderr, "")
 
     {subscriber_pid, tag} =
       case subscriber do
@@ -82,7 +91,9 @@ defmodule Codex.TestSupport.AppServerSubprocess do
        owner: owner,
        subscriber: {subscriber_pid, tag},
        send_result: send_result,
-       notify_stop: notify_stop
+       notify_stop: notify_stop,
+       stderr: stderr,
+       opts: opts
      }}
   end
 
@@ -102,6 +113,14 @@ defmodule Codex.TestSupport.AppServerSubprocess do
     {:reply, :ok, %{state | subscriber: {pid, tag}}}
   end
 
+  def handle_call(:stderr, _from, state) do
+    {:reply, state.stderr, state}
+  end
+
+  def handle_call(:info, _from, state) do
+    {:reply, transport_info(state), state}
+  end
+
   @impl true
   def terminate(_reason, state) do
     if state.notify_stop do
@@ -110,5 +129,19 @@ defmodule Codex.TestSupport.AppServerSubprocess do
     end
 
     :ok
+  end
+
+  defp transport_info(state) do
+    %Info{
+      invocation: Keyword.get(state.opts, :command),
+      pid: self(),
+      os_pid: System.unique_integer([:positive]),
+      status: :connected,
+      stdout_mode: Keyword.get(state.opts, :stdout_mode, :line),
+      stdin_mode: Keyword.get(state.opts, :stdin_mode, :line),
+      pty?: Keyword.get(state.opts, :pty?, false),
+      interrupt_mode: Keyword.get(state.opts, :interrupt_mode, :signal),
+      stderr: state.stderr
+    }
   end
 end

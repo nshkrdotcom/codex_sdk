@@ -55,10 +55,10 @@ Shared core ownership:
 - `Codex.CLI.run/2` and the synchronous CLI wrappers on `CliSubprocessCore.Command`
 - `Codex.CLI.Session` on `CliSubprocessCore.RawSession`
 - the subprocess lifecycle behind `Codex.AppServer.connect/2` and
-  `Codex.MCP.Transport.Stdio` on `CliSubprocessCore.Transport`
+  `Codex.MCP.Transport.Stdio` on `CliSubprocessCore.RawSession`
 - one-shot hosted shell execution and `Codex.Sessions.apply/2` on the shared command lane
 
-Intentional SDK-local ownership above the core:
+Codex-owned semantics above the core:
 
 - `Codex.CLI.Session` as the public Codex session API for PTY and long-lived CLI sessions
 - the app-server connection process used by `Codex.AppServer.connect/2` for the provider-native `codex app-server` control protocol

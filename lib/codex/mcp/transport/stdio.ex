@@ -2,16 +2,15 @@ defmodule Codex.MCP.Transport.Stdio do
   @moduledoc """
   Runs MCP servers over stdio using a managed subprocess.
 
-  This transport stays SDK-local because MCP stdio is a provider-native control
-  protocol rather than the shared one-shot command lane. Subprocess lifecycle
-  is owned by `cli_subprocess_core`.
+  MCP JSON-RPC semantics stay in `codex_sdk`, while the managed subprocess
+  session is backed by `CliSubprocessCore.RawSession`.
   """
 
   use GenServer
 
   require Logger
 
-  alias CliSubprocessCore.Transport
+  alias CliSubprocessCore.{Command, RawSession, Transport}
   alias Codex.IO.Buffer
   alias Codex.MCP.Protocol
 
@@ -19,9 +18,7 @@ defmodule Codex.MCP.Transport.Stdio do
     @moduledoc false
 
     defstruct [
-      :transport_mod,
-      :transport,
-      :transport_ref,
+      :raw_session,
       :messages,
       :waiters
     ]
@@ -50,24 +47,22 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def init(opts) do
     {transport_mod, transport_opts} = resolve_transport(opts)
-    transport_ref = make_ref()
 
-    with {:ok, command} <- build_command(opts),
-         {:ok, transport} <-
-           transport_mod.start_link(
+    with {:ok, invocation} <- build_command(opts),
+         {:ok, raw_session} <-
+           RawSession.start_link(
+             invocation,
              [
-               command: command,
-               cwd: Keyword.get(opts, :cwd),
-               env: build_env(opts),
-               subscriber: {self(), transport_ref},
-               event_tag: :codex_io_transport
+               receiver: self(),
+               event_tag: :codex_io_transport,
+               transport_module: transport_mod,
+               stdout_mode: :line,
+               stdin_mode: :raw
              ] ++ transport_opts
            ) do
       {:ok,
        %State{
-         transport_mod: transport_mod,
-         transport: transport,
-         transport_ref: transport_ref,
+         raw_session: raw_session,
          messages: :queue.new(),
          waiters: []
        }}
@@ -81,7 +76,7 @@ defmodule Codex.MCP.Transport.Stdio do
   def handle_call({:send, message}, _from, %State{} = state) do
     encoded = Protocol.encode_message(message)
 
-    case state.transport_mod.send(state.transport, encoded) do
+    case RawSession.send_input(state.raw_session, encoded) do
       :ok -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -101,7 +96,7 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def handle_info(
         {:codex_io_transport, ref, {:message, line}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
     state =
       case Buffer.decode_line(line) do
@@ -120,7 +115,7 @@ defmodule Codex.MCP.Transport.Stdio do
 
   def handle_info(
         {:codex_io_transport, ref, {:stderr, chunk}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
     text = IO.iodata_to_binary(chunk)
     Logger.debug("MCP stderr: #{String.trim(text)}")
@@ -129,13 +124,16 @@ defmodule Codex.MCP.Transport.Stdio do
 
   def handle_info(
         {:codex_io_transport, ref, {:error, reason}},
-        %State{transport_ref: ref} = state
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
     Logger.debug("MCP transport error: #{inspect(reason)}")
     {:noreply, state}
   end
 
-  def handle_info({:codex_io_transport, ref, {:exit, reason}}, %State{transport_ref: ref} = state) do
+  def handle_info(
+        {:codex_io_transport, ref, {:exit, reason}},
+        %State{raw_session: %RawSession{transport_ref: ref}} = state
+      ) do
     Logger.debug("MCP subprocess exited: #{inspect(reason)}")
 
     state =
@@ -162,7 +160,7 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def terminate(_reason, %State{} = state) do
     _ = drain_waiters(state, {:error, :closed})
-    _ = state.transport_mod.force_close(state.transport)
+    _ = force_close_session(state)
     :ok
   end
 
@@ -224,11 +222,21 @@ defmodule Codex.MCP.Transport.Stdio do
 
       command when is_binary(command) ->
         args = Keyword.get(opts, :args, [])
-        argv = [command | List.wrap(args)]
-        {:ok, Enum.map(argv, &to_charlist/1)}
+
+        {:ok,
+         Command.new(command, Enum.map(List.wrap(args), &to_string/1),
+           cwd: Keyword.get(opts, :cwd),
+           env: build_env(opts)
+         )}
 
       argv when is_list(argv) ->
-        {:ok, Enum.map(argv, &to_charlist/1)}
+        case Enum.map(argv, &to_string/1) do
+          [command | args] ->
+            {:ok, Command.new(command, args, cwd: Keyword.get(opts, :cwd), env: build_env(opts))}
+
+          [] ->
+            {:error, :missing_command}
+        end
     end
   end
 
@@ -289,8 +297,15 @@ defmodule Codex.MCP.Transport.Stdio do
     default_env
     |> Map.merge(from_env_vars)
     |> Map.merge(extra_env)
-    |> Enum.map(fn {key, value} -> {key, value} end)
   end
+
+  defp force_close_session(%State{raw_session: %RawSession{} = raw_session}) do
+    RawSession.force_close(raw_session)
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp force_close_session(%State{}), do: :ok
 
   defp default_env_vars do
     case :os.type() do

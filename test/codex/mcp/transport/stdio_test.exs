@@ -1,6 +1,8 @@
 defmodule Codex.MCP.Transport.StdioTest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.RawSession
+  alias CliSubprocessCore.Transport.Info
   alias Codex.MCP.Transport.Stdio
 
   defmodule FakeTransport do
@@ -53,7 +55,9 @@ defmodule Codex.MCP.Transport.StdioTest do
     def end_input(_pid), do: :ok
 
     @impl true
-    def stderr(_pid), do: ""
+    def stderr(pid) when is_pid(pid), do: GenServer.call(pid, :stderr)
+
+    def info(pid) when is_pid(pid), do: GenServer.call(pid, :info)
 
     def emit_exit(pid, reason) when is_pid(pid), do: GenServer.cast(pid, {:emit_exit, reason})
 
@@ -62,12 +66,31 @@ defmodule Codex.MCP.Transport.StdioTest do
       owner = Keyword.fetch!(opts, :owner)
       subscriber = Keyword.fetch!(opts, :subscriber)
       Kernel.send(owner, {:stdio_fake_started, self(), subscriber})
-      {:ok, %{opts: opts, subscriber: subscriber}}
+      {:ok, %{opts: opts, stderr: Keyword.get(opts, :stderr, ""), subscriber: subscriber}}
     end
 
     @impl true
     def handle_call({:subscribe, pid, tag}, _from, state) do
       {:reply, :ok, %{state | subscriber: {pid, tag}}}
+    end
+
+    def handle_call(:stderr, _from, state) do
+      {:reply, state.stderr, state}
+    end
+
+    def handle_call(:info, _from, state) do
+      {:reply,
+       %Info{
+         invocation: Keyword.get(state.opts, :command),
+         pid: self(),
+         os_pid: System.unique_integer([:positive]),
+         status: :connected,
+         stdout_mode: Keyword.get(state.opts, :stdout_mode, :line),
+         stdin_mode: Keyword.get(state.opts, :stdin_mode, :line),
+         pty?: Keyword.get(state.opts, :pty?, false),
+         interrupt_mode: Keyword.get(state.opts, :interrupt_mode, :signal),
+         stderr: state.stderr
+       }, state}
     end
 
     @impl true
@@ -116,6 +139,26 @@ defmodule Codex.MCP.Transport.StdioTest do
 
     assert %{opts: start_opts} = :sys.get_state(fake_transport)
     assert start_opts[:event_tag] == :codex_io_transport
+  end
+
+  test "runtime is backed by a raw session with line stdout and raw stdin" do
+    {:ok, transport} =
+      Stdio.start_link(
+        command: "mock",
+        transport: {FakeTransport, owner: self()}
+      )
+
+    assert_receive {:stdio_fake_started, fake_transport, {^transport, _ref}}
+                   when is_pid(fake_transport)
+
+    assert %{opts: start_opts} = :sys.get_state(fake_transport)
+    assert start_opts[:stdout_mode] == :line
+    assert start_opts[:stdin_mode] == :raw
+
+    assert %{raw_session: %RawSession{} = raw_session} = :sys.get_state(transport)
+    assert raw_session.event_tag == :codex_io_transport
+    assert raw_session.stdout_mode == :line
+    assert raw_session.stdin_mode == :raw
   end
 
   defp wait_for_waiter(transport) do

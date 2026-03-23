@@ -259,8 +259,7 @@ Under the hood, `Codex.CLI.run/2` and the synchronous wrapper functions ride
 the shared `CliSubprocessCore.Command` lane. `Codex.CLI.Session`,
 `Codex.AppServer`, and `Codex.MCP.Transport.Stdio` preserve their public Codex
 entrypoints while mapping raw PTY, stdio transport, stdin, stderr, interrupt,
-and exit lifecycle onto `CliSubprocessCore.RawSession` and
-`CliSubprocessCore.Transport`.
+and exit lifecycle onto `CliSubprocessCore.RawSession`.
 
 The ownership line is now:
 
