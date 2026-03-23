@@ -2,6 +2,8 @@ defmodule Codex.OAuth.BrowserCodeFlowTest do
   use ExUnit.Case, async: false
   use Codex.TestSupport.AuthEnv
 
+  @moduletag :requires_loopback
+
   import Plug.Conn
 
   alias Codex.Auth.Store

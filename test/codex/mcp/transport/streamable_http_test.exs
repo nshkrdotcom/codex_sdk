@@ -107,6 +107,7 @@ defmodule Codex.MCP.Transport.StreamableHTTPTest do
     refute Process.alive?(worker)
   end
 
+  @tag :requires_loopback
   test "fallback worker crash does not crash the transport process" do
     {:ok, listener} =
       :gen_tcp.listen(0, [

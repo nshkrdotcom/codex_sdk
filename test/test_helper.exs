@@ -8,8 +8,25 @@ Code.require_file("support/model_fixtures.ex", __DIR__)
 
 {:ok, _} = Application.ensure_all_started(:erlexec)
 
+loopback_available? =
+  case :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}]) do
+    {:ok, socket} ->
+      :ok = :gen_tcp.close(socket)
+      true
+
+    {:error, _reason} ->
+      false
+  end
+
+exclude =
+  if loopback_available? do
+    [:pending, :live]
+  else
+    [:pending, :live, :requires_loopback]
+  end
+
 ExUnit.configure(
-  exclude: [:pending, :live],
+  exclude: exclude,
   max_cases: 1,
   capture_log: false,
   # Many transport tests coordinate Task/GenServer/mock-subprocess hops before

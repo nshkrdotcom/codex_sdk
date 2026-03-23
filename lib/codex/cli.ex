@@ -17,8 +17,8 @@ defmodule Codex.CLI do
   alias Codex.CLI.Session
   alias Codex.Config.Defaults
   alias Codex.Config.Overrides
-  alias Codex.ProcessExit
   alias Codex.Options
+  alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type result :: Session.result()

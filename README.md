@@ -261,6 +261,15 @@ reserved for `Codex.CLI.Session`, `codex app-server`, `codex mcp-server`, and
 other PTY or provider-native control surfaces that are not part of the common
 non-PTY lane.
 
+After the Phase 2A ownership cut, the intentionally SDK-local Codex runtime
+families are explicit:
+
+- `Codex.CLI.Session` and the root interactive PTY client
+- `Codex.AppServer` and the `codex app-server` control protocol
+- `Codex.MCP.Transport.*` and `codex mcp-server`
+- realtime and voice clients, which use OpenAI APIs directly instead of the CLI
+  runtime
+
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
 

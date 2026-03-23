@@ -58,8 +58,8 @@ Shared core ownership:
 Intentional SDK-local ownership:
 
 - `Codex.CLI.Session` for raw PTY and long-lived CLI sessions
-- `Codex.AppServer.Connection` for the provider-native `codex app-server` control protocol
-- `Codex.MCP.Transport.Stdio` for MCP JSON-RPC over stdio
+- the app-server connection process used by `Codex.AppServer.connect/2` for the provider-native `codex app-server` control protocol
+- the MCP stdio transport used by `codex mcp-server`
 - realtime and voice clients, which call OpenAI APIs directly instead of using the CLI runtime
 
 ## Component Architecture

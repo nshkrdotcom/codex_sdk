@@ -1,6 +1,8 @@
 defmodule Codex.OAuth.LoopbackServerTest do
   use ExUnit.Case, async: false
 
+  @moduletag :requires_loopback
+
   alias Codex.OAuth.LoopbackServer
 
   test "binds loopback only with a random port and accepts the exact callback path" do

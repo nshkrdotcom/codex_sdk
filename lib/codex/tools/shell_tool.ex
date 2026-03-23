@@ -314,8 +314,6 @@ defmodule Codex.Tools.ShellTool do
   defp normalize_executor_error(%CliSubprocessCore.Command.Error{} = error),
     do: {:error, {:exec_start_failed, error}}
 
-  defp normalize_executor_error(other), do: {:error, {:exec_start_failed, other}}
-
   defp exit_code(exit) do
     case ProcessExit.exit_status(exit) do
       {:ok, status} -> status

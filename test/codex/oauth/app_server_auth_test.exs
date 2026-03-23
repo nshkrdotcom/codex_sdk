@@ -88,6 +88,7 @@ defmodule Codex.OAuth.AppServerAuthTest do
     refute_receive {:app_server_subprocess_started, _, _}
   end
 
+  @tag :requires_loopback
   test "AppServer.connect with oauth memory mode performs external login and auto-refresh without rewriting auth.json",
        %{
          tmp_root: tmp_root,
@@ -197,6 +198,7 @@ defmodule Codex.OAuth.AppServerAuthTest do
     Agent.stop(state)
   end
 
+  @tag :requires_loopback
   test "auto refresh rejects previousAccountId mismatches", %{
     tmp_root: tmp_root,
     codex_opts: codex_opts

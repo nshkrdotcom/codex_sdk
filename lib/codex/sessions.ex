@@ -419,25 +419,20 @@ defmodule Codex.Sessions do
     end
   end
 
-  defp run_exec_command(args, input, cwd, timeout_ms) do
-    case args do
-      [command | command_args] ->
-        invocation = Command.new(command, command_args, cwd: normalize_run_cwd(cwd))
+  defp run_exec_command([command | command_args], input, cwd, timeout_ms)
+       when is_binary(command) do
+    invocation = Command.new(command, command_args, cwd: normalize_run_cwd(cwd))
 
-        case Command.run(invocation,
-               stdin: input,
-               timeout: timeout_ms,
-               stderr: :separate
-             ) do
-          {:ok, result} ->
-            {:ok, result.stdout, result.stderr, exit_code(result.exit)}
+    case Command.run(invocation,
+           stdin: input,
+           timeout: timeout_ms,
+           stderr: :separate
+         ) do
+      {:ok, result} ->
+        {:ok, result.stdout, result.stderr, exit_code(result.exit)}
 
-          {:error, error} ->
-            normalize_run_error(error)
-        end
-
-      [] ->
-        {:error, {:exec_start_failed, :missing_command}}
+      {:error, error} ->
+        normalize_run_error(error)
     end
   end
 
@@ -452,8 +447,6 @@ defmodule Codex.Sessions do
 
   defp normalize_run_error(%CliSubprocessCore.Command.Error{} = error),
     do: {:error, {:exec_start_failed, error}}
-
-  defp normalize_run_error(other), do: {:error, {:exec_start_failed, other}}
 
   defp exit_code(exit) do
     case Codex.ProcessExit.exit_status(exit) do
