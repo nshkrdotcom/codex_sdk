@@ -11,7 +11,9 @@ The Elixir Codex SDK is a layered architecture that wraps the `codex-rs` CLI exe
 Separate from thread/turn execution, the SDK also exposes a thin command-surface
 passthrough layer (`Codex.CLI` and `Codex.CLI.Session`) for CLI-only workflows
 such as `codex completion`, `codex cloud`, `codex features`, `codex mcp-server`,
-and the root interactive client.
+and the root interactive client. One-shot non-PTY passthrough goes through the
+shared `CliSubprocessCore.Command` lane, while `Codex.CLI.Session` remains the
+raw local path for PTY and long-lived control surfaces.
 
 ## Transports
 
@@ -44,6 +46,21 @@ without pushing that ownership into the lower-level app-server transport layer.
 Across both transports, TLS configuration is centralized in `Codex.Net.CA`: subprocess
 environment injection, Req clients, `:httpc`, and realtime websocket SSL options all resolve
 `CODEX_CA_CERTIFICATE` first, then `SSL_CERT_FILE`.
+
+## Runtime Ownership Boundary
+
+Shared core ownership:
+
+- `Codex.Exec` on `CliSubprocessCore.Session`
+- `Codex.CLI.run/2` and the synchronous CLI wrappers on `CliSubprocessCore.Command`
+- one-shot hosted shell execution and `Codex.Sessions.apply/2` on the shared command lane
+
+Intentional SDK-local ownership:
+
+- `Codex.CLI.Session` for raw PTY and long-lived CLI sessions
+- `Codex.AppServer.Connection` for the provider-native `codex app-server` control protocol
+- `Codex.MCP.Transport.Stdio` for MCP JSON-RPC over stdio
+- realtime and voice clients, which call OpenAI APIs directly instead of using the CLI runtime
 
 ## Component Architecture
 

@@ -6,13 +6,18 @@ defmodule Codex.CLI do
   including commands that do not fit the SDK's structured `Codex.Exec` or
   `Codex.AppServer` APIs.
 
-  For long-running or interactive commands, use `start/2` or the helpers that
-  return `%Codex.CLI.Session{}`.
+  One-shot non-PTY commands run through `CliSubprocessCore.Command`, while
+  `start/2` and the helpers that return `%Codex.CLI.Session{}` remain the raw
+  local path for interactive PTY sessions and long-lived provider-native
+  control surfaces such as `codex app-server` and `codex mcp-server`.
   """
 
+  alias CliSubprocessCore.Command
+  alias CliSubprocessCore.Transport.RunResult
   alias Codex.CLI.Session
   alias Codex.Config.Defaults
   alias Codex.Config.Overrides
+  alias Codex.ProcessExit
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
 
@@ -25,24 +30,23 @@ defmodule Codex.CLI do
   def run(args, opts \\ []) when is_list(args) and is_list(opts) do
     input = Keyword.get(opts, :stdin)
     timeout_ms = Keyword.get(opts, :timeout_ms, Defaults.exec_timeout_ms())
+    cwd = resolve_cwd(opts)
 
-    session_opts =
-      opts
-      |> Keyword.delete(:stdin)
-      |> Keyword.put(:stdin, true)
-
-    with {:ok, session} <- start(args, session_opts),
-         :ok <- maybe_send_input(session, input),
-         :ok <- close_for_sync(session),
-         {:ok, result} <- Session.collect(session, timeout_ms) do
-      {:ok, result}
-    else
-      {:error, {:timeout, session}} = error ->
-        _ = Session.stop(session)
-        error
-
-      {:error, _} = error ->
-        error
+    with {:ok, codex_opts} <- normalize_codex_opts(opts),
+         {:ok, binary_path} <- Options.codex_path(codex_opts),
+         {:ok, env_spec} <- build_env_spec(codex_opts, opts),
+         {:ok, result} <-
+           Command.run(
+             Command.new(binary_path, normalize_args(args),
+               cwd: cwd,
+               env: env_spec.env,
+               clear_env?: env_spec.clear_env?
+             ),
+             stdin: input,
+             timeout: timeout_ms,
+             stderr: :separate
+           ) do
+      {:ok, format_run_result(result)}
     end
   end
 
@@ -55,13 +59,13 @@ defmodule Codex.CLI do
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
          {:ok, binary_path} <- Options.codex_path(codex_opts),
-         {:ok, env} <- build_env(codex_opts, opts) do
+         {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
       session_opts = [
         receiver: Keyword.get(opts, :receiver, self()),
         stdin: Keyword.get(opts, :stdin, false),
         pty: Keyword.get(opts, :pty, false),
         cwd: cwd,
-        env: env
+        env: build_session_env(env_spec)
       ]
 
       Session.start(binary_path, normalize_args(args), session_opts)
@@ -478,8 +482,9 @@ defmodule Codex.CLI do
     end
   end
 
-  defp build_env(%Options{} = codex_opts, opts) do
+  defp build_env_spec(%Options{} = codex_opts, opts) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
+    clear_env? = Keyword.get(opts, :clear_env?, false)
 
     with {:ok, custom_env} <- RuntimeEnv.normalize_overrides(process_env) do
       base_env =
@@ -489,25 +494,27 @@ defmodule Codex.CLI do
         base_env
         |> Map.merge(custom_env, fn _key, _base, custom -> custom end)
 
-      env =
-        if Keyword.get(opts, :clear_env?, false) do
-          [:clear | preserved_env() ++ Map.to_list(merged)]
-        else
-          preserved_env() ++ Map.to_list(merged)
-        end
-
-      {:ok, env}
+      {:ok,
+       %{
+         env: Map.merge(preserved_env(), merged, fn _key, _preserved, override -> override end),
+         clear_env?: clear_env?
+       }}
     end
   end
 
   defp preserved_env do
     Defaults.preserved_env_keys()
-    |> Enum.reduce([], fn key, acc ->
+    |> Enum.reduce(%{}, fn key, acc ->
       case System.get_env(key) do
         nil -> acc
-        value -> acc ++ [{key, value}]
+        value -> Map.put(acc, key, value)
       end
     end)
+  end
+
+  defp build_session_env(%{env: env, clear_env?: clear_env?}) when is_map(env) do
+    env = Map.to_list(env)
+    if clear_env?, do: [:clear | env], else: env
   end
 
   defp global_args(opts) do
@@ -555,21 +562,24 @@ defmodule Codex.CLI do
     end
   end
 
-  defp maybe_send_input(_session, nil), do: :ok
-
-  defp maybe_send_input(session, data) do
-    Session.send_input(session, data)
-  end
-
-  defp close_for_sync(session) do
-    case Session.close_input(session) do
-      :ok -> :ok
-      {:error, :stdin_unavailable} -> :ok
-      {:error, _} = error -> error
-    end
-  end
-
   defp resolve_cwd(opts), do: Keyword.get(opts, :cwd)
+
+  defp format_run_result(%RunResult{} = result) do
+    exit_code =
+      case ProcessExit.exit_status(result.exit) do
+        {:ok, status} -> status
+        :unknown -> -1
+      end
+
+    %{
+      command: Command.argv(result.invocation),
+      args: result.invocation.args,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exit_code: exit_code,
+      success: exit_code == 0
+    }
+  end
 
   defp normalize_args(args), do: Enum.map(args, &to_string/1)
 

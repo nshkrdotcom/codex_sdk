@@ -255,6 +255,12 @@ Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 
 Use `Codex.CLI.run/2` when you want literal command-surface parity with the upstream terminal client, and `Codex.CLI.interactive/2` or `Codex.CLI.start/2` when you need a long-running or PTY-backed session.
 
+Under the hood, `Codex.CLI.run/2` and the synchronous wrapper functions ride
+the shared `CliSubprocessCore.Command` lane. The SDK-local raw runtime is
+reserved for `Codex.CLI.Session`, `codex app-server`, `codex mcp-server`, and
+other PTY or provider-native control surfaces that are not part of the common
+non-PTY lane.
+
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
 

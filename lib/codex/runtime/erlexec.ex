@@ -1,6 +1,11 @@
 defmodule Codex.Runtime.Erlexec do
   @moduledoc """
-  Unified erlexec startup shared across subprocess modules.
+  Unified erlexec startup for the SDK-local subprocess families that still own
+  raw process lifecycle directly.
+
+  The shared non-PTY command and common session lanes live in
+  `cli_subprocess_core`. This helper remains for raw PTY and provider-native
+  control surfaces such as `Codex.CLI.Session`, app-server, and MCP stdio.
   """
 
   @exec_wait_attempts 20

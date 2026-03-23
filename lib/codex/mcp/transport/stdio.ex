@@ -1,6 +1,9 @@
 defmodule Codex.MCP.Transport.Stdio do
   @moduledoc """
   Runs MCP servers over stdio using a managed subprocess.
+
+  This transport stays SDK-local because MCP stdio is a provider-native control
+  protocol rather than the shared one-shot command lane.
   """
 
   use GenServer

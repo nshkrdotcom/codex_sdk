@@ -63,9 +63,9 @@ defmodule Codex.Tools.ShellTool do
 
   @behaviour Codex.Tool
 
+  alias CliSubprocessCore.Command
   alias Codex.Config.Defaults
   alias Codex.ProcessExit
-  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
   alias Codex.Tools.Hosted
 
   @default_timeout_ms Defaults.shell_timeout_ms()
@@ -235,41 +235,30 @@ defmodule Codex.Tools.ShellTool do
 
   @doc false
   def default_executor(command, cwd, timeout_ms) do
-    case ensure_erlexec_started() do
-      :ok ->
-        opts =
-          [:stdout, :stderr, :monitor]
-          |> maybe_add_cd(cwd)
+    command
+    |> build_command_invocation(cwd)
+    |> Command.run(timeout: timeout_ms, stderr: :stdout)
+    |> case do
+      {:ok, result} ->
+        {:ok, result.output, exit_code(result.exit)}
 
-        exec_command = build_exec_command(command)
-
-        case :exec.run(exec_command, opts) do
-          {:ok, pid, os_pid} ->
-            collect_output(os_pid, pid, timeout_ms)
-
-          {:error, reason} ->
-            {:error, {:exec_start_failed, reason}}
-        end
-
-      {:error, reason} ->
-        {:error, {:exec_start_failed, reason}}
+      {:error, error} ->
+        normalize_executor_error(error)
     end
   end
 
-  defp build_exec_command(command) when is_list(command) do
+  defp build_command_invocation(command, cwd) when is_list(command) do
     [exe | rest] = Enum.map(command, &to_string/1)
-    resolved = resolve_executable_path(exe)
-
-    Enum.map([resolved | rest], &to_charlist/1)
+    Command.new(exe, rest, cwd: normalize_cwd(cwd))
   end
 
-  defp build_exec_command(command) when is_binary(command) do
-    # Escape single quotes in command for shell
-    escaped = String.replace(command, "'", "'\\''")
-    ~c"sh -c '#{escaped}'"
+  defp build_command_invocation(command, cwd) when is_binary(command) do
+    shell = System.find_executable("sh") || "/bin/sh"
+    Command.new(shell, ["-c", command], cwd: normalize_cwd(cwd))
   end
 
-  defp build_exec_command(command), do: build_exec_command(to_string(command))
+  defp build_command_invocation(command, cwd),
+    do: build_command_invocation(to_string(command), cwd)
 
   defp normalize_command(command) when is_list(command) do
     normalized =
@@ -296,50 +285,6 @@ defmodule Codex.Tools.ShellTool do
 
   defp format_command_for_approval(command), do: command
 
-  defp maybe_add_cd(opts, nil), do: opts
-  defp maybe_add_cd(opts, ""), do: opts
-  defp maybe_add_cd(opts, cwd), do: [{:cd, to_charlist(cwd)} | opts]
-
-  defp ensure_erlexec_started do
-    RuntimeErlexec.ensure_started()
-  end
-
-  defp collect_output(os_pid, pid, timeout_ms) do
-    do_collect_output(os_pid, pid, timeout_ms, [], [])
-  end
-
-  defp do_collect_output(os_pid, pid, timeout_ms, stdout_acc, stderr_acc) do
-    receive do
-      {:stdout, ^os_pid, data} ->
-        do_collect_output(os_pid, pid, timeout_ms, [data | stdout_acc], stderr_acc)
-
-      {:stderr, ^os_pid, data} ->
-        do_collect_output(os_pid, pid, timeout_ms, stdout_acc, [data | stderr_acc])
-
-      {:DOWN, ^os_pid, :process, _proc, :normal} ->
-        output = combine_output(stdout_acc, stderr_acc)
-        {:ok, output, 0}
-
-      {:DOWN, ^os_pid, :process, _proc, {:exit_status, status}} ->
-        output = combine_output(stdout_acc, stderr_acc)
-        {:ok, output, ProcessExit.normalize_wait_status(status)}
-    after
-      timeout_ms ->
-        safe_stop(pid)
-        {:error, :timeout}
-    end
-  end
-
-  defp safe_stop(pid) do
-    if Process.alive?(pid) do
-      try do
-        :exec.stop(pid)
-      rescue
-        _ -> :ok
-      end
-    end
-  end
-
   defp format_result(output, exit_code, max_bytes) do
     truncated = maybe_truncate(output, max_bytes)
 
@@ -357,32 +302,24 @@ defmodule Codex.Tools.ShellTool do
     String.slice(output, 0, max_bytes) <> "\n... (truncated)"
   end
 
-  defp resolve_executable_path(executable) do
-    cond do
-      executable == "" ->
-        executable
+  defp normalize_cwd(nil), do: nil
+  defp normalize_cwd(""), do: nil
+  defp normalize_cwd(cwd), do: cwd
 
-      String.contains?(executable, "/") ->
-        executable
+  defp normalize_executor_error(%CliSubprocessCore.Command.Error{
+         reason: {:transport, %CliSubprocessCore.Transport.Error{reason: :timeout}}
+       }),
+       do: {:error, :timeout}
 
-      true ->
-        System.find_executable(executable) || executable
-    end
-  end
+  defp normalize_executor_error(%CliSubprocessCore.Command.Error{} = error),
+    do: {:error, {:exec_start_failed, error}}
 
-  defp combine_output(stdout_acc, stderr_acc) do
-    stdout = stdout_acc |> Enum.reverse() |> IO.iodata_to_binary()
-    stderr = stderr_acc |> Enum.reverse() |> IO.iodata_to_binary()
+  defp normalize_executor_error(other), do: {:error, {:exec_start_failed, other}}
 
-    cond do
-      String.trim(stderr) != "" and String.trim(stdout) != "" ->
-        stdout <> "\n" <> stderr
-
-      String.trim(stderr) != "" ->
-        stderr
-
-      true ->
-        stdout
+  defp exit_code(exit) do
+    case ProcessExit.exit_status(exit) do
+      {:ok, status} -> status
+      :unknown -> 1
     end
   end
 end

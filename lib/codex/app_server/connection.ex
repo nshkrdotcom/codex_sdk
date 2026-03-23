@@ -1,3 +1,5 @@
+# Provider-local runtime: `codex app-server` speaks a native control protocol,
+# so this connection stays SDK-local instead of using the shared command lane.
 defmodule Codex.AppServer.Connection do
   @moduledoc false
 

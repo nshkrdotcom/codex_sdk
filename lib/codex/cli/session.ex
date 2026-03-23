@@ -2,6 +2,11 @@ defmodule Codex.CLI.Session do
   @moduledoc """
   Raw `codex` CLI subprocess session.
 
+  This module intentionally remains SDK-local for interactive PTY flows and
+  long-lived provider-native control surfaces. One-shot non-PTY command
+  wrappers should use `Codex.CLI.run/2`, which executes through the shared
+  `CliSubprocessCore.Command` lane.
+
   Sessions are useful for interactive or long-running commands such as:
 
   - `codex`

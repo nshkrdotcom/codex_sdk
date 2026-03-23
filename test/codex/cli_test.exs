@@ -29,6 +29,31 @@ defmodule Codex.CLITest do
     assert File.read!(stdin_path) == "sk-test\n"
   end
 
+  test "run/2 preserves clear_env? on the shared command lane" do
+    args_path = tmp_path("argv_clear_env")
+    env_key = "CODEX_CLI_PHASE2A_ENV"
+    previous = System.get_env(env_key)
+    System.put_env(env_key, "present")
+
+    on_exit(fn ->
+      case previous do
+        nil -> System.delete_env(env_key)
+        value -> System.put_env(env_key, value)
+      end
+    end)
+
+    script_path = env_probe_script(args_path, env_key)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, %{stdout: "missing", success: true}} =
+             CLI.run(["features", "list"],
+               codex_opts: codex_opts,
+               clear_env?: true
+             )
+
+    assert argv(args_path) == ["features", "list"]
+  end
+
   test "simple wrappers build expected argv" do
     cases = [
       {"completion", fn opts -> CLI.completion("zsh", codex_opts: opts) end,
@@ -258,6 +283,30 @@ defmodule Codex.CLITest do
     """
 
     path = tmp_path("probe")
+    File.write!(path, body)
+    File.chmod!(path, 0o755)
+    on_exit(fn -> File.rm_rf(path) end)
+    path
+  end
+
+  defp env_probe_script(args_path, env_key) do
+    body = """
+    #!/usr/bin/env python3
+    import json
+    import os
+    import sys
+
+    ARGS_PATH = #{inspect(args_path)}
+    ENV_KEY = #{inspect(env_key)}
+
+    with open(ARGS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(sys.argv[1:], handle)
+
+    sys.stdout.write(os.environ.get(ENV_KEY, "missing"))
+    sys.stdout.flush()
+    """
+
+    path = tmp_path("env_probe")
     File.write!(path, body)
     File.chmod!(path, 0o755)
     on_exit(fn -> File.rm_rf(path) end)

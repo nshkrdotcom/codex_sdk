@@ -267,6 +267,20 @@ defmodule Codex.Tools.ShellToolTest do
       assert {:ok, result} = ShellTool.invoke(args, context)
       assert String.ends_with?(result["output"], "... (truncated)")
     end
+
+    test "uses the shared command lane for the built-in executor" do
+      args_path = tmp_path("shell_shared_command")
+      script_path = probe_script(args_path, stdout: "shell-ok\n")
+
+      {:ok, _} = Tools.register(ShellTool)
+
+      assert {:ok, result} =
+               Tools.invoke("shell", %{"command" => [script_path, "--flag"]}, %{})
+
+      assert result["output"] == "shell-ok\n"
+      assert result["exit_code"] == 0
+      assert argv(args_path) == ["--flag"]
+    end
   end
 
   describe "default executor (live)" do
@@ -385,5 +399,40 @@ defmodule Codex.Tools.ShellToolTest do
       assert metrics["shell"].failure == 1
       assert metrics["shell"].last_error == :failed
     end
+  end
+
+  defp argv(path) do
+    path
+    |> File.read!()
+    |> Jason.decode!()
+  end
+
+  defp probe_script(args_path, opts) do
+    stdout = Keyword.get(opts, :stdout, "")
+
+    body = """
+    #!/usr/bin/env python3
+    import json
+    import sys
+
+    ARGS_PATH = #{inspect(args_path)}
+    STDOUT = #{inspect(stdout)}
+
+    with open(ARGS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(sys.argv[1:], handle)
+
+    sys.stdout.write(STDOUT)
+    sys.stdout.flush()
+    """
+
+    path = tmp_path("shell_probe")
+    File.write!(path, body)
+    File.chmod!(path, 0o755)
+    on_exit(fn -> File.rm_rf(path) end)
+    path
+  end
+
+  defp tmp_path(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
 end

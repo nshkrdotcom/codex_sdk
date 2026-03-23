@@ -50,6 +50,9 @@ Key entry points:
 - `interactive/2` — launches the root `codex` client (prompt mode or full interactive mode)
 - wrappers for `app`, `app_server`, `apply`, `cloud`, `cloud_list`, `cloud_exec`, `completion`, `debug_app_server_send_message_v2`, `execpolicy_check`, `features_*`, `login`, `logout`, `mcp_*`, `mcp_server`, `resume`, `fork`, and `sandbox`
 
+`run/2` and the synchronous wrappers execute through the shared
+`CliSubprocessCore.Command` lane.
+
 Example:
 
 ```elixir
@@ -78,6 +81,9 @@ The caller process receives raw subprocess messages:
 
 Use `send_input/2`, `close_input/1`, `interrupt/1`, `stop/1`, and `collect/2`
 to drive the session.
+
+This module intentionally remains SDK-local for interactive PTY flows and
+long-lived control surfaces such as `codex app-server` and `codex mcp-server`.
 
 ```elixir
 {:ok, session} =

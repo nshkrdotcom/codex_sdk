@@ -1,12 +1,14 @@
 defmodule Codex.Sessions do
   @moduledoc """
   Helpers for inspecting Codex CLI session files and replaying recorded changes.
+
+  Patch application uses the shared non-PTY command lane. Only raw interactive
+  or provider-native control families remain on local subprocess ownership.
   """
 
+  alias CliSubprocessCore.Command
   alias Codex.Config.Defaults
   alias Codex.Items
-  alias Codex.ProcessExit
-  alias Codex.Runtime.Erlexec
 
   @default_apply_timeout_ms Defaults.sessions_apply_timeout_ms()
 
@@ -418,77 +420,46 @@ defmodule Codex.Sessions do
   end
 
   defp run_exec_command(args, input, cwd, timeout_ms) do
-    case ensure_erlexec_started() do
-      :ok -> run_exec_command_inner(args, input, cwd, timeout_ms)
-      {:error, reason} -> {:error, {:exec_start_failed, reason}}
+    case args do
+      [command | command_args] ->
+        invocation = Command.new(command, command_args, cwd: normalize_run_cwd(cwd))
+
+        case Command.run(invocation,
+               stdin: input,
+               timeout: timeout_ms,
+               stderr: :separate
+             ) do
+          {:ok, result} ->
+            {:ok, result.stdout, result.stderr, exit_code(result.exit)}
+
+          {:error, error} ->
+            normalize_run_error(error)
+        end
+
+      [] ->
+        {:error, {:exec_start_failed, :missing_command}}
     end
   end
 
-  defp run_exec_command_inner(args, input, cwd, timeout_ms) do
-    command = Enum.map(args, &to_charlist/1)
+  defp normalize_run_cwd(nil), do: nil
+  defp normalize_run_cwd(""), do: nil
+  defp normalize_run_cwd(cwd), do: cwd
 
-    opts =
-      [:stdin, :stdout, :stderr, :monitor]
-      |> maybe_add_cd(cwd)
+  defp normalize_run_error(%CliSubprocessCore.Command.Error{
+         reason: {:transport, %CliSubprocessCore.Transport.Error{reason: :timeout}}
+       }),
+       do: {:error, :timeout}
 
-    case :exec.run(command, opts) do
-      {:ok, pid, os_pid} ->
-        :ok = :exec.send(pid, input)
-        :ok = :exec.send(pid, :eof)
-        collect_output(pid, os_pid, timeout_ms, [], [])
+  defp normalize_run_error(%CliSubprocessCore.Command.Error{} = error),
+    do: {:error, {:exec_start_failed, error}}
 
-      {:error, reason} ->
-        {:error, {:exec_start_failed, reason}}
+  defp normalize_run_error(other), do: {:error, {:exec_start_failed, other}}
+
+  defp exit_code(exit) do
+    case Codex.ProcessExit.exit_status(exit) do
+      {:ok, status} -> status
+      :unknown -> 1
     end
-  end
-
-  defp maybe_add_cd(opts, nil), do: opts
-  defp maybe_add_cd(opts, ""), do: opts
-  defp maybe_add_cd(opts, cwd), do: [{:cd, to_charlist(cwd)} | opts]
-
-  defp collect_output(pid, os_pid, timeout_ms, stdout_acc, stderr_acc) do
-    receive do
-      {:stdout, ^os_pid, data} ->
-        collect_output(pid, os_pid, timeout_ms, [data | stdout_acc], stderr_acc)
-
-      {:stderr, ^os_pid, data} ->
-        collect_output(pid, os_pid, timeout_ms, stdout_acc, [data | stderr_acc])
-
-      {:DOWN, ^os_pid, :process, _proc, reason} ->
-        stdout = stdout_acc |> Enum.reverse() |> IO.iodata_to_binary()
-        stderr = stderr_acc |> Enum.reverse() |> IO.iodata_to_binary()
-        exit_code = normalize_exit_status(reason)
-        {:ok, stdout, stderr, exit_code}
-    after
-      timeout_ms ->
-        safe_stop(pid)
-        {:error, :timeout}
-    end
-  end
-
-  defp safe_stop(pid) do
-    if Process.alive?(pid) do
-      :exec.stop(pid)
-    else
-      :ok
-    end
-  rescue
-    _ -> :ok
-  end
-
-  defp normalize_exit_status(:normal), do: 0
-
-  defp normalize_exit_status({:exit_status, status}) when is_integer(status) do
-    ProcessExit.normalize_wait_status(status)
-  end
-
-  defp normalize_exit_status(status) when is_integer(status),
-    do: ProcessExit.normalize_wait_status(status)
-
-  defp normalize_exit_status(_), do: 1
-
-  defp ensure_erlexec_started do
-    Erlexec.ensure_started()
   end
 
   defp normalize_ghost_commit(%Items.GhostSnapshot{ghost_commit: ghost_commit}),
