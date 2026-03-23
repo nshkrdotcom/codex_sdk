@@ -3,7 +3,8 @@ defmodule Codex.MCP.Transport.Stdio do
   Runs MCP servers over stdio using a managed subprocess.
 
   This transport stays SDK-local because MCP stdio is a provider-native control
-  protocol rather than the shared one-shot command lane.
+  protocol rather than the shared one-shot command lane. Subprocess lifecycle
+  still rides the core-backed `Codex.IO.Transport.Erlexec` compatibility layer.
   """
 
   use GenServer

@@ -690,7 +690,8 @@ end)
 
 Extracted from duplicated patterns across the codebase, these modules centralize cross-cutting concerns:
 
-- **`Codex.Runtime.Erlexec`**: Unified erlexec startup configuration shared by Exec, Connection, Sessions, ShellTool, and MCP Stdio
+- **`Codex.Runtime.Erlexec`**: Erlexec bootstrap for the SDK-local subprocess families that still own raw PTY or provider-native control protocol lifecycle (`Codex.CLI.Session`, app-server, and MCP stdio)
+- **`Codex.IO.Transport.Erlexec`**: Compatibility facade over `CliSubprocessCore.Transport.Erlexec` that preserves the historical Codex transport event contract for app-server and MCP without re-owning common transport behavior
 - **`Codex.Runtime.Env`**: Subprocess environment construction shared between Exec and AppServer.Connection; sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` by default
 - **`Codex.Runtime.KeyringWarning`**: Deduplicated warn-once logic from Auth and MCP.OAuth
 - **`Codex.Config.BaseURL`**: `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)

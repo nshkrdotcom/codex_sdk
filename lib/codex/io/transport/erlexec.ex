@@ -1,5 +1,11 @@
 defmodule Codex.IO.Transport.Erlexec do
-  @moduledoc "Core-backed subprocess transport implementation."
+  @moduledoc """
+  Compatibility facade over `CliSubprocessCore.Transport.Erlexec`.
+
+  This module preserves the historical `Codex.IO.Transport` event contract for
+  SDK-local control protocols such as app-server and MCP stdio while leaving
+  the shared subprocess lifecycle in `cli_subprocess_core`.
+  """
 
   alias CliSubprocessCore.Transport.Erlexec, as: CoreErlexec
   alias CliSubprocessCore.Transport.Error, as: CoreError
