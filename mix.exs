@@ -3,6 +3,9 @@ defmodule CodexSdk.MixProject do
 
   @version "0.15.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
+  @homepage_url "https://hex.pm/packages/codex_sdk"
+  @docs_url "https://hexdocs.pm/codex_sdk"
+  @cli_subprocess_core_requirement "~> 0.1.0"
 
   def project do
     [
@@ -16,7 +19,7 @@ defmodule CodexSdk.MixProject do
       package: package(),
       name: "Codex SDK",
       source_url: @source_url,
-      homepage_url: @source_url,
+      homepage_url: @homepage_url,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
         coveralls: :test,
@@ -41,7 +44,11 @@ defmodule CodexSdk.MixProject do
 
   defp deps do
     [
-      workspace_dep(:cli_subprocess_core, "../cli_subprocess_core", "~> 0.1.0"),
+      workspace_dep(
+        :cli_subprocess_core,
+        "../cli_subprocess_core",
+        @cli_subprocess_core_requirement
+      ),
 
       # Core dependencies
       {:jason, "~> 1.4"},
@@ -83,7 +90,7 @@ defmodule CodexSdk.MixProject do
       name: "Codex SDK",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      homepage_url: @source_url,
+      homepage_url: @homepage_url,
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
       extras: [
@@ -242,7 +249,9 @@ defmodule CodexSdk.MixProject do
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
-        "HexDocs" => "https://hexdocs.pm/codex_sdk",
+        "Hex" => @homepage_url,
+        "HexDocs" => @docs_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
         "OpenAI Codex" => "https://github.com/openai/codex"
       },
       maintainers: ["nshkrdotcom"],
