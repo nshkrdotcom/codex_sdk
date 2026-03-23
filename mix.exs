@@ -41,7 +41,7 @@ defmodule CodexSdk.MixProject do
 
   defp deps do
     [
-      {:cli_subprocess_core, path: "../cli_subprocess_core"},
+      workspace_dep(:cli_subprocess_core, "../cli_subprocess_core", "~> 0.1.0"),
 
       # Core dependencies
       {:jason, "~> 1.4"},
@@ -238,10 +238,11 @@ defmodule CodexSdk.MixProject do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib config priv mix.exs README.md CHANGELOG.md LICENSE),
+      files: ~w(lib config priv guides assets mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
+        "HexDocs" => "https://hexdocs.pm/codex_sdk",
         "OpenAI Codex" => "https://github.com/openai/codex"
       },
       maintainers: ["nshkrdotcom"],
@@ -250,5 +251,17 @@ defmodule CodexSdk.MixProject do
         ".DS_Store"
       ]
     ]
+  end
+
+  defp workspace_dep(app, path, requirement, opts \\ []) do
+    if hex_packaging?() do
+      {app, requirement, opts}
+    else
+      {app, Keyword.put(opts, :path, path)}
+    end
+  end
+
+  defp hex_packaging? do
+    Enum.any?(System.argv(), &String.starts_with?(&1, "hex."))
   end
 end

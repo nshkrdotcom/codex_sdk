@@ -270,6 +270,16 @@ families are explicit:
 - realtime and voice clients, which use OpenAI APIs directly instead of the CLI
   runtime
 
+Phase 2B freezes the packaging rule for those richer families:
+
+- `codex_sdk` is the source of truth for app-server, MCP, realtime, voice, and
+  other non-common Codex-native surfaces
+- `cli_subprocess_core` keeps only the common non-PTY exec lane used by the
+  shared stack
+- ASM may bridge into Codex through the optional
+  `ASM.Extensions.ProviderSDK.Codex` namespace, but that bridge does not move
+  these families into the normalized ASM kernel
+
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
 

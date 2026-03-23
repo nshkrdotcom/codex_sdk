@@ -62,6 +62,14 @@ Intentional SDK-local ownership:
 - the MCP stdio transport used by `codex mcp-server`
 - realtime and voice clients, which call OpenAI APIs directly instead of using the CLI runtime
 
+Phase 2B freezes the publication boundary on that split:
+
+- `cli_subprocess_core` remains the home of the common exec lane only
+- `codex_sdk` remains the home of app-server, MCP, realtime, voice, and other
+  non-common Codex-native families
+- optional ASM integration may exist only as an explicit bridge above the
+  normalized kernel; it does not re-home these families or widen the core
+
 ## Component Architecture
 
 ### High-Level Component Diagram
