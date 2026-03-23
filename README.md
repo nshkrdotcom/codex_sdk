@@ -270,6 +270,13 @@ The ownership line is now:
 - realtime and voice remain provider-owned because they call OpenAI APIs
   directly instead of spawning Codex CLI subprocesses
 
+When `codex_sdk` is installed alongside `agent_session_manager`, ASM
+auto-detects the runtime kit and activates `ASM.Extensions.ProviderSDK.Codex`
+in `ASM.Extensions.ProviderSDK.available_extensions/0` and
+`ASM.Extensions.ProviderSDK.capability_report/0`. That ASM seam is only a
+bridge into Codex-native helpers such as app-server entrypoints; the actual
+app-server, MCP, realtime, and voice APIs remain here.
+
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
 
