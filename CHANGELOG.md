@@ -238,7 +238,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Deferred finalize exit with 25ms delay for late stdout arrival
   - Headless timeout auto-shutdown when no subscribers attach
   - Bounded stderr buffer with tail-truncation at `max_stderr_buffer_size`
-  - `force_close/1` with `:exec.stop` + `:exec.kill(pid, 9)` escalation
+  - `force_close/1` with low-level stop plus SIGKILL escalation
 
 - **Codex.IO.Buffer** — shared line-splitting and JSON-line decoding extracted from triplicated code:
   - `split_lines/1`, `decode_json_lines/2`, `decode_complete_lines/1`, `decode_line/1`, `iodata_to_binary/1`
@@ -254,16 +254,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Codex.Exec migrated to IO.Transport.Erlexec**:
-  - Replaced `start_process/2` direct `:exec.run` with `IO.Transport.Erlexec.start_link` using tagged subscription ref
+  - Replaced `start_process/2` direct low-level launch with `IO.Transport.Erlexec.start_link` using tagged subscription ref
   - Replaced `do_collect/3` and `next_stream_chunk/1` raw `{:stdout, os_pid, chunk}` receive with tagged `{:codex_io_transport, ref, {:message, line}}` events
-  - Replaced direct `:exec.stop` in `safe_stop/1` with monitor-based shutdown cascade via IO.Transport
+  - Replaced direct low-level stop in `safe_stop/1` with monitor-based shutdown cascade via IO.Transport
   - Removed `pid`, `os_pid`, `buffer` from internal state; changed `stderr` from list to string; added `transport` and `transport_ref`
-  - Deleted `ensure_erlexec_started/0`, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
+  - Deleted the legacy erlexec startup helper, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
 
 - **AppServer.Connection migrated to IO.Transport.Erlexec**:
   - Removed `subprocess_mod`, `subprocess_opts`, `subprocess_pid`, `os_pid`, `stdout_buffer` from State; added `transport_mod`, `transport`, and `transport_ref`
   - Replaced raw erlexec message handlers with tagged transport events
-  - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, `ensure_erlexec_started/1`, `start_opts/1`
+  - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, the per-call erlexec startup helper, and `start_opts/1`
 
 - **MCP.Transport.Stdio migrated to IO.Transport.Erlexec** (same pattern as Connection)
 

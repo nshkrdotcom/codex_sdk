@@ -68,7 +68,6 @@ defmodule Codex.MCP.Transport.Stdio do
        }}
     else
       {:error, _} = error -> error
-      other -> {:stop, other}
     end
   end
 

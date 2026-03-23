@@ -9,7 +9,7 @@ This document specifies how `codex_sdk` must handle failures, timeouts, and reco
 **Trigger**: `codex app-server` binary not found, permission denied, or immediate crash.
 
 **Detection**:
-- `:exec.run/2` returns `{:error, reason}`
+- the low-level launch path returns `{:error, reason}`
 - Process exits immediately before handshake completes
 
 **Recovery**:

@@ -106,10 +106,12 @@ defmodule Codex.Tools.ShellTool do
       timeout: timeout_ms
     ]
 
-    case :exec.run(~c"sh -c '#{command}'", opts) do
-      {:ok, [{:stdout, output}]} -> {:ok, to_string(output), 0}
-      {:ok, [{:exit_status, code}]} -> {:ok, "", code}
-      {:ok, [{:stdout, output}, {:exit_status, code}]} -> {:ok, to_string(output), code}
+    case CliSubprocessCore.Command.run("sh", ["-c", command],
+           cwd: cwd,
+           stderr_to_stdout: true,
+           timeout_ms: timeout_ms
+         ) do
+      {:ok, %{stdout: output, exit_status: code}} -> {:ok, to_string(output), code}
       {:error, reason} -> {:error, reason}
     end
   end

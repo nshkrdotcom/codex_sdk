@@ -24,6 +24,6 @@ Gaps/deltas
 Porting steps + test plan
 - Implement an agent turn loop that can rerun after tools/handoffs, honoring `max_turns` and `tool_use_behavior`; validate with parity cases from `tests/test_max_turns.py`, `tests/test_tool_use_behavior.py`, and `tests/test_agent_runner.py`.
 - Add guardrail support (input/output/tool) with tripwire errors; mirror coverage from `tests/test_guardrails.py`, `tests/test_tool_guardrails.py`, and `tests/test_stream_input_guardrail_timing.py`.
-- Introduce session/history layer compatible with codex (or shims) with merge callbacks and list-input validation; test against scenarios in `tests/test_session.py` and `tests/test_openai_conversations_session.py`.
+- Introduce session/history layer compatible with codex (or adapters) with merge callbacks and list-input validation; test against scenarios in `tests/test_session.py` and `tests/test_openai_conversations_session.py`.
 - Enhance streaming wrapper to emit semantic events and soft-cancel behavior; port tests like `tests/test_agent_runner_streamed.py`, `tests/test_cancel_streaming.py`, and `tests/test_tracing_errors_streamed.py`.
 - Add resume support for conversation_id/previous_response_id equivalents if codex exposes them; otherwise document limitations and add regression tests for continuation tokens (`test/integration/turn_resumption_test.exs`).***

@@ -62,7 +62,7 @@ This is not an exhaustive per-file list (184 files), but it covers every *port-r
 
 **Port to Elixir**
 - `lib/codex/app_server.ex`:
-  - Deprecate/remove `thread_compact/2`, or change it into a compatibility shim:
+  - Deprecate/remove `thread_compact/2`, or change it into a compatibility adapter:
     - Option A (recommended): keep the function but return `{:error, :unsupported}` with a message pointing to auto-compaction.
     - Option B: attempt `thread/compact` only when talking to older servers (requires a capability/version probe; otherwise detect “unknown method” and surface a targeted error).
 - Docs needing updates:
@@ -360,4 +360,3 @@ These are vendoring/CI concerns inside `codex/` and do not change the Elixir SDK
 - Manual checks:
   - `Codex.AppServer.Mcp.list_servers/2` works on new servers.
   - `Codex.AppServer.config_read(conn, include_layers: true)` shape matches docs.
-

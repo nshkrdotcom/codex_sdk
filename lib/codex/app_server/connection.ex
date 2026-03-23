@@ -138,11 +138,7 @@ defmodule Codex.AppServer.Connection do
            ) do
       initialize_transport(raw_session, codex_opts, init_timeout_ms, init_params)
     else
-      {:error, _} = error ->
-        error
-
-      other ->
-        {:stop, other}
+      {:error, _} = error -> error
     end
   end
 
@@ -560,11 +556,7 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp build_command(%Options{} = opts) do
-    with {:ok, binary_path} <- Options.codex_path(opts) do
-      {:ok, binary_path}
-    end
-  end
+  defp build_command(%Options{} = opts), do: Options.codex_path(opts)
 
   defp resolve_transport(opts) do
     opts
@@ -652,8 +644,6 @@ defmodule Codex.AppServer.Connection do
   catch
     :exit, _reason -> ""
   end
-
-  defp transport_stderr(%State{}), do: ""
 
   defp failure_reason(%CliSubprocessCore.ProcessExit{reason: reason}), do: reason
   defp failure_reason(reason), do: reason
