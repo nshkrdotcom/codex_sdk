@@ -256,29 +256,20 @@ Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 Use `Codex.CLI.run/2` when you want literal command-surface parity with the upstream terminal client, and `Codex.CLI.interactive/2` or `Codex.CLI.start/2` when you need a long-running or PTY-backed session.
 
 Under the hood, `Codex.CLI.run/2` and the synchronous wrapper functions ride
-the shared `CliSubprocessCore.Command` lane. The SDK-local raw runtime is
-reserved for `Codex.CLI.Session`, `codex app-server`, `codex mcp-server`, and
-other PTY or provider-native control surfaces that are not part of the common
-non-PTY lane.
+the shared `CliSubprocessCore.Command` lane. `Codex.CLI.Session`,
+`Codex.AppServer`, and `Codex.MCP.Transport.Stdio` preserve their public Codex
+entrypoints while mapping raw PTY, stdio transport, stdin, stderr, interrupt,
+and exit lifecycle onto `CliSubprocessCore.RawSession` and
+`CliSubprocessCore.Transport`.
 
-After the Phase 2A ownership cut, the intentionally SDK-local Codex runtime
-families are explicit:
+The ownership line is now:
 
-- `Codex.CLI.Session` and the root interactive PTY client
-- `Codex.AppServer` and the `codex app-server` control protocol
-- `Codex.MCP.Transport.*` and `codex mcp-server`
-- realtime and voice clients, which use OpenAI APIs directly instead of the CLI
-  runtime
-
-Phase 2B freezes the packaging rule for those richer families:
-
-- `codex_sdk` is the source of truth for app-server, MCP, realtime, voice, and
-  other non-common Codex-native surfaces
-- `cli_subprocess_core` keeps only the common non-PTY exec lane used by the
-  shared stack
-- ASM may bridge into Codex through the optional
-  `ASM.Extensions.ProviderSDK.Codex` namespace, but that bridge does not move
-  these families into the normalized ASM kernel
+- `cli_subprocess_core` owns all Codex subprocess lifecycle, transport, and
+  `erlexec` interaction
+- `codex_sdk` owns Codex-native semantics, typed events, request/response
+  mapping, app-server APIs, MCP helpers, realtime, and voice
+- realtime and voice remain provider-owned because they call OpenAI APIs
+  directly instead of spawning Codex CLI subprocesses
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})

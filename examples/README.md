@@ -7,7 +7,7 @@ All examples run with `mix run` from the repository root.
 This SDK contains two distinct subsystems with different authentication:
 
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
-   - Wraps the `codex` CLI via erlexec subprocess
+   - Wraps the `codex` CLI via `CliSubprocessCore` command/session lanes
    - Uses `codex login`, native `Codex.OAuth`, or `CODEX_API_KEY`
    - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.4` from the bundled catalog unless env overrides or a fresher ChatGPT `/models` cache win)
 

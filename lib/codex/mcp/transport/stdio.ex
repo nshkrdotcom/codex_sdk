@@ -4,17 +4,16 @@ defmodule Codex.MCP.Transport.Stdio do
 
   This transport stays SDK-local because MCP stdio is a provider-native control
   protocol rather than the shared one-shot command lane. Subprocess lifecycle
-  still rides the core-backed `Codex.IO.Transport.Erlexec` compatibility layer.
+  is owned by `cli_subprocess_core`.
   """
 
   use GenServer
 
   require Logger
 
+  alias CliSubprocessCore.Transport
   alias Codex.IO.Buffer
-  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.MCP.Protocol
-  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
   defmodule State do
     @moduledoc false
@@ -53,15 +52,15 @@ defmodule Codex.MCP.Transport.Stdio do
     {transport_mod, transport_opts} = resolve_transport(opts)
     transport_ref = make_ref()
 
-    with :ok <- maybe_ensure_erlexec(transport_mod),
-         {:ok, command} <- build_command(opts),
+    with {:ok, command} <- build_command(opts),
          {:ok, transport} <-
            transport_mod.start_link(
              [
                command: command,
                cwd: Keyword.get(opts, :cwd),
                env: build_env(opts),
-               subscriber: {self(), transport_ref}
+               subscriber: {self(), transport_ref},
+               event_tag: :codex_io_transport
              ] ++ transport_opts
            ) do
       {:ok,
@@ -247,7 +246,7 @@ defmodule Codex.MCP.Transport.Stdio do
       :error ->
         case Keyword.get(opts, :subprocess_mod) do
           nil ->
-            {IOTransportErlexec, []}
+            {Transport, []}
 
           module when is_atom(module) ->
             {module, Keyword.get(opts, :subprocess_opts, [])}
@@ -257,9 +256,6 @@ defmodule Codex.MCP.Transport.Stdio do
         end
     end
   end
-
-  defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
-  defp maybe_ensure_erlexec(_other), do: :ok
 
   defp build_env(opts) do
     env_vars = Keyword.get(opts, :env_vars, [])

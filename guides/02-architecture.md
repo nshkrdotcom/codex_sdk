@@ -12,8 +12,8 @@ Separate from thread/turn execution, the SDK also exposes a thin command-surface
 passthrough layer (`Codex.CLI` and `Codex.CLI.Session`) for CLI-only workflows
 such as `codex completion`, `codex cloud`, `codex features`, `codex mcp-server`,
 and the root interactive client. One-shot non-PTY passthrough goes through the
-shared `CliSubprocessCore.Command` lane, while `Codex.CLI.Session` remains the
-raw local path for PTY and long-lived control surfaces.
+shared `CliSubprocessCore.Command` lane, while `Codex.CLI.Session` preserves the
+historical mailbox-facing session API on top of `CliSubprocessCore.RawSession`.
 
 ## Transports
 
@@ -53,20 +53,24 @@ Shared core ownership:
 
 - `Codex.Exec` on `CliSubprocessCore.Session`
 - `Codex.CLI.run/2` and the synchronous CLI wrappers on `CliSubprocessCore.Command`
+- `Codex.CLI.Session` on `CliSubprocessCore.RawSession`
+- the subprocess lifecycle behind `Codex.AppServer.connect/2` and
+  `Codex.MCP.Transport.Stdio` on `CliSubprocessCore.Transport`
 - one-shot hosted shell execution and `Codex.Sessions.apply/2` on the shared command lane
 
-Intentional SDK-local ownership:
+Intentional SDK-local ownership above the core:
 
-- `Codex.CLI.Session` for raw PTY and long-lived CLI sessions
+- `Codex.CLI.Session` as the public Codex session API for PTY and long-lived CLI sessions
 - the app-server connection process used by `Codex.AppServer.connect/2` for the provider-native `codex app-server` control protocol
 - the MCP stdio transport used by `codex mcp-server`
 - realtime and voice clients, which call OpenAI APIs directly instead of using the CLI runtime
 
-Phase 2B freezes the publication boundary on that split:
+The publication boundary on that split is now:
 
-- `cli_subprocess_core` remains the home of the common exec lane only
+- `cli_subprocess_core` owns every Codex subprocess-backed lifecycle and the
+  only `erlexec` dependency in the stack
 - `codex_sdk` remains the home of app-server, MCP, realtime, voice, and other
-  non-common Codex-native families
+  Codex-native semantics
 - optional ASM integration may exist only as an explicit bridge above the
   normalized kernel; it does not re-home these families or widen the core
 
@@ -698,8 +702,7 @@ end)
 
 Extracted from duplicated patterns across the codebase, these modules centralize cross-cutting concerns:
 
-- **`Codex.Runtime.Erlexec`**: Erlexec bootstrap for the SDK-local subprocess families that still own raw PTY or provider-native control protocol lifecycle (`Codex.CLI.Session`, app-server, and MCP stdio)
-- **`Codex.IO.Transport.Erlexec`**: Compatibility facade over `CliSubprocessCore.Transport.Erlexec` that preserves the historical Codex transport event contract for app-server and MCP without re-owning common transport behavior
+- **`Codex.IO.Transport.Erlexec`**: Codex-branded transport surface backed by `CliSubprocessCore.Transport`; preserves the historical Codex event contract for app-server and MCP while leaving subprocess ownership in the core
 - **`Codex.Runtime.Env`**: Subprocess environment construction shared between Exec and AppServer.Connection; sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` by default
 - **`Codex.Runtime.KeyringWarning`**: Deduplicated warn-once logic from Auth and MCP.OAuth
 - **`Codex.Config.BaseURL`**: `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)

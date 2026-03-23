@@ -96,6 +96,18 @@ defmodule Codex.AppServer.ConnectionTest do
     assert env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "codex_sdk_elixir"
   end
 
+  test "transport start options include the codex event tag contract", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^transport_ref, start_opts}
+    assert start_opts[:event_tag] == :codex_io_transport
+  end
+
   test "launch options reject invalid child env overrides", %{codex_opts: codex_opts} do
     assert {:error, {:invalid_env, ["/tmp/not-a-keyword"]}} =
              Connection.start_link(codex_opts,

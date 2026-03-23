@@ -58,4 +58,4 @@ iex> flush()
 ## Cleaning Execution State
 - Clear staged attachments: `Codex.Files.force_cleanup()` or `rm -rf $(Codex.Files.staging_dir())`.
 - Restart the OTEL stack if configuration drifts: re-run `Codex.Telemetry.configure/1` after adjusting environment variables.
-- If an `erlexec` worker gets wedged, call `:exec.stop(pid)` (visible in telemetry metadata) or restart the host BEAM node; `Codex.Thread.run/3` always tears down processes on completion.
+- If a Codex subprocess gets wedged, terminate the owning core-backed transport/session process surfaced in telemetry metadata or restart the host BEAM node; `Codex.Thread.run/3` always tears down processes on completion.

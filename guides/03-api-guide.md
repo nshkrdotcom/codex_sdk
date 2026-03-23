@@ -17,7 +17,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.RunConfig` | Per-run overrides (max_turns, history behavior, hooks) |
 | `Codex.AgentRunner` | Multi-turn runner coordinating threads and tool invocations |
 | `Codex.CLI` | Raw Codex CLI passthrough for command-surface parity |
-| `Codex.CLI.Session` | PTY/raw subprocess session helpers for interactive commands |
+| `Codex.CLI.Session` | PTY/raw subprocess session helpers for interactive commands, backed by `cli_subprocess_core` |
 | `Codex.Exec` | Exec JSONL subprocess wrapper (`codex exec --json`) |
 | `Codex.Sessions` | Session file utilities plus apply/undo helpers |
 | `Codex.Events` | Event type definitions |
@@ -25,7 +25,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Options` | Configuration structs |
 | `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, session/subagent sources, collab agent metadata, request_user_input, request_permissions, rate limits) |
 | `Codex.Config.Overrides` | Config override serialization, nested map flattening, and TOML value validation |
-| `Codex.Runtime.Erlexec` | Erlexec bootstrap for the SDK-local PTY and control-protocol subprocess families |
+| `Codex.IO.Transport.Erlexec` | Codex-branded subprocess transport backed by `CliSubprocessCore.Transport` |
 | `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding, CA env forwarding) |
 | `Codex.Config.BaseURL` | Base URL resolution with option/config → env → default precedence |
 | `Codex.Net.CA` | Shared CA bundle resolution for subprocesses, Req, `:httpc`, and websockets |
@@ -83,7 +83,8 @@ Use `send_input/2`, `close_input/1`, `interrupt/1`, `stop/1`, and `collect/2`
 to drive the session.
 
 This module intentionally remains SDK-local for interactive PTY flows and
-long-lived control surfaces such as `codex app-server` and `codex mcp-server`.
+long-lived control surfaces such as `codex app-server` and `codex mcp-server`,
+but its subprocess lifecycle now runs through `CliSubprocessCore.RawSession`.
 
 ```elixir
 {:ok, session} =

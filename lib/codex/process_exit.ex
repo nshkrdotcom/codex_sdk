@@ -61,12 +61,19 @@ defmodule Codex.ProcessExit do
 
   @spec normalize_wait_status(integer()) :: integer()
   def normalize_wait_status(raw_status) when is_integer(raw_status) do
-    case :exec.status(raw_status) do
-      {:status, code} -> code
-      {:signal, signal, _core?} -> 128 + signal_to_int(signal)
+    case CoreProcessExit.from_reason(raw_status) do
+      %CoreProcessExit{status: :success} ->
+        0
+
+      %CoreProcessExit{status: :exit, code: code} when is_integer(code) ->
+        code
+
+      %CoreProcessExit{status: :signal, signal: signal} ->
+        128 + signal_to_int(signal)
+
+      _other ->
+        raw_status
     end
-  rescue
-    _ -> raw_status
   end
 
   defp wrapped_exit_reason?(:normal), do: true
@@ -87,9 +94,47 @@ defmodule Codex.ProcessExit do
 
   defp signal_to_int(signal) when is_integer(signal), do: signal
 
-  defp signal_to_int(signal) when is_atom(signal) do
-    :exec.signal_to_int(signal)
-  rescue
-    _ -> 1
+  defp signal_to_int(signal) when is_atom(signal),
+    do: Map.get(signal_numbers(), signal, 1)
+
+  defp signal_numbers do
+    %{
+      sigabrt: 6,
+      sigalrm: 14,
+      sigbus: 7,
+      sigchld: 17,
+      sigcld: 17,
+      sigcont: 18,
+      sigemt: 7,
+      sigfpe: 8,
+      sighup: 1,
+      sigill: 4,
+      siginfo: 29,
+      sigint: 2,
+      sigio: 29,
+      sigiote: 6,
+      sigkill: 9,
+      siglost: 29,
+      sigpipe: 13,
+      sigpoll: 29,
+      sigprof: 27,
+      sigpwr: 30,
+      sigquit: 3,
+      sigsegv: 11,
+      sigstop: 19,
+      sigsys: 31,
+      sigterm: 15,
+      sigtrap: 5,
+      sigtstp: 20,
+      sigttin: 21,
+      sigttou: 22,
+      sigurg: 23,
+      sigusr1: 10,
+      sigusr2: 12,
+      sigvtalrm: 26,
+      sigwinch: 28,
+      sigxcpu: 24,
+      sigxfsz: 25
+    }
   end
 end

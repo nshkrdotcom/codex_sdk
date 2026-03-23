@@ -1,6 +1,7 @@
 defmodule Codex.CLISessionTest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.{RawSession, Transport}
   alias Codex.{CLI, Options}
   alias Codex.CLI.Session
 
@@ -17,6 +18,10 @@ defmodule Codex.CLISessionTest do
              )
 
     assert %Session{} = session
+    assert %RawSession{} = raw_session = Map.fetch!(session, :raw_session)
+    assert raw_session.transport_module == Transport
+    assert raw_session.pty? == true
+    assert raw_session.stdin? == true
     assert_receive {:stdout, os_pid, data}, 1_000
     assert os_pid == session.os_pid
     assert data =~ "ready"
@@ -30,6 +35,25 @@ defmodule Codex.CLISessionTest do
     assert {:ok, result} = Session.collect(session, 1_000)
     assert result.exit_code in [0, 129]
     assert argv(args_path) == ["resume", "--last"]
+  end
+
+  test "stop closes a session even when the subprocess ignores SIGINT" do
+    args_path = tmp_path("argv_stop")
+    script_path = interactive_probe_script(args_path, ignore_sigint?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.start(["resume", "--last"],
+               codex_opts: codex_opts
+             )
+
+    assert_receive {:stdout, os_pid, data}, 1_000
+    assert os_pid == session.os_pid
+    assert data =~ "ready"
+
+    assert :ok = Session.stop(session)
+    assert {:ok, result} = Session.collect(session, 1_000)
+    refute result.success
   end
 
   test "interactive wrapper builds base codex argv with global flags" do
@@ -97,14 +121,18 @@ defmodule Codex.CLISessionTest do
 
   defp interactive_probe_script(args_path, opts) do
     exit_immediately? = Keyword.get(opts, :exit_immediately?, false)
+    ignore_sigint? = Keyword.get(opts, :ignore_sigint?, false)
 
     body = """
     #!/usr/bin/env python3
     import json
+    import signal
+    import time
     import sys
 
     ARGS_PATH = #{inspect(args_path)}
     EXIT_IMMEDIATELY = #{if(exit_immediately?, do: "True", else: "False")}
+    IGNORE_SIGINT = #{if(ignore_sigint?, do: "True", else: "False")}
 
     with open(ARGS_PATH, "w", encoding="utf-8") as handle:
         json.dump(sys.argv[1:], handle)
@@ -114,6 +142,11 @@ defmodule Codex.CLISessionTest do
 
     if EXIT_IMMEDIATELY:
         sys.exit(0)
+
+    if IGNORE_SIGINT:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        while True:
+            time.sleep(1)
 
     for line in sys.stdin:
         sys.stdout.write("ack:" + line)

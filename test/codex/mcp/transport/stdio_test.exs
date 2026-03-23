@@ -62,12 +62,12 @@ defmodule Codex.MCP.Transport.StdioTest do
       owner = Keyword.fetch!(opts, :owner)
       subscriber = Keyword.fetch!(opts, :subscriber)
       Kernel.send(owner, {:stdio_fake_started, self(), subscriber})
-      {:ok, %{subscriber: subscriber}}
+      {:ok, %{opts: opts, subscriber: subscriber}}
     end
 
     @impl true
-    def handle_call({:subscribe, pid, tag}, _from, _state) do
-      {:reply, :ok, %{subscriber: {pid, tag}}}
+    def handle_call({:subscribe, pid, tag}, _from, state) do
+      {:reply, :ok, %{state | subscriber: {pid, tag}}}
     end
 
     @impl true
@@ -102,6 +102,20 @@ defmodule Codex.MCP.Transport.StdioTest do
     assert Task.await(waiter, 500) == {:error, :closed}
     assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 500
     refute Process.alive?(transport)
+  end
+
+  test "transport start options include the codex event tag contract" do
+    {:ok, transport} =
+      Stdio.start_link(
+        command: "mock",
+        transport: {FakeTransport, owner: self()}
+      )
+
+    assert_receive {:stdio_fake_started, fake_transport, {^transport, _ref}}
+                   when is_pid(fake_transport)
+
+    assert %{opts: start_opts} = :sys.get_state(fake_transport)
+    assert start_opts[:event_tag] == :codex_io_transport
   end
 
   defp wait_for_waiter(transport) do

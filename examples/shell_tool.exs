@@ -2,7 +2,7 @@
 # Run: mix run examples/shell_tool.exs
 #
 # Demonstrates the fully-featured Shell hosted tool with:
-# - Default executor using erlexec
+# - Default executor using CliSubprocessCore.Command
 # - Custom executor for testing/mocking
 # - Approval integration
 # - Timeout handling
@@ -209,7 +209,7 @@ IO.puts("Shell Tool Example Complete!")
 IO.puts("""
 
 Features demonstrated:
-- Basic command execution with default erlexec executor
+- Basic command execution with the default core-backed executor
 - Exit code capture and success flag
 - Working directory (workdir) support
 - Output truncation for large outputs

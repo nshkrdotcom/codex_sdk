@@ -38,7 +38,7 @@ defmodule CodexSdk.MixProject do
   def application do
     [
       mod: {Codex.Application, []},
-      extra_applications: [:logger, :crypto, :erlexec]
+      extra_applications: [:logger, :crypto]
     ]
   end
 
@@ -54,7 +54,6 @@ defmodule CodexSdk.MixProject do
       {:jason, "~> 1.4"},
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.3"},
-      {:erlexec, "~> 2.0"},
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:req, "~> 0.4"},

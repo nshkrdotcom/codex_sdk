@@ -33,6 +33,8 @@ If you need the literal command surface instead of the managed JSON-RPC connecti
 ## Connect / Disconnect
 
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
+The JSON-RPC semantics stay in `codex_sdk`, while the managed subprocess
+lifecycle is owned by `cli_subprocess_core`.
 If the application supervision tree is unavailable, `connect/2` returns `{:error, :supervisor_unavailable}`.
 Pass `experimental_api: true` when you need upstream experimental fields such as
 `approvals_reviewer`, granular approval policies, or memory-mode external OAuth auth.

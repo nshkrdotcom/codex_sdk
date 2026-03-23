@@ -1,13 +1,13 @@
 defmodule Codex.IO.Transport.Erlexec do
   @moduledoc """
-  Compatibility facade over `CliSubprocessCore.Transport.Erlexec`.
+  Codex subprocess transport backed by `cli_subprocess_core`.
 
   This module preserves the historical `Codex.IO.Transport` event contract for
-  SDK-local control protocols such as app-server and MCP stdio while leaving
-  the shared subprocess lifecycle in `cli_subprocess_core`.
+  Codex-native control protocols such as app-server and MCP stdio while the
+  shared subprocess lifecycle remains owned by `cli_subprocess_core`.
   """
 
-  alias CliSubprocessCore.Transport.Erlexec, as: CoreErlexec
+  alias CliSubprocessCore.Transport, as: CoreTransport
   alias CliSubprocessCore.Transport.Error, as: CoreError
 
   @behaviour Codex.IO.Transport
@@ -18,7 +18,7 @@ defmodule Codex.IO.Transport.Erlexec do
   def start(opts) when is_list(opts) do
     opts
     |> normalize_start_opts()
-    |> CoreErlexec.start()
+    |> CoreTransport.start()
     |> normalize_result()
   end
 
@@ -26,14 +26,14 @@ defmodule Codex.IO.Transport.Erlexec do
   def start_link(opts) when is_list(opts) do
     opts
     |> normalize_start_opts()
-    |> CoreErlexec.start_link()
+    |> CoreTransport.start_link()
     |> normalize_result()
   end
 
   @impl Codex.IO.Transport
   def send(transport, message) when is_pid(transport) do
     transport
-    |> CoreErlexec.send(message)
+    |> CoreTransport.send(message)
     |> normalize_result()
   end
 
@@ -46,41 +46,39 @@ defmodule Codex.IO.Transport.Erlexec do
   def subscribe(transport, pid, tag)
       when is_pid(transport) and is_pid(pid) and (tag == :legacy or is_reference(tag)) do
     transport
-    |> CoreErlexec.subscribe(pid, tag)
+    |> CoreTransport.subscribe(pid, tag)
     |> normalize_result()
   end
 
   @impl Codex.IO.Transport
-  def close(transport) when is_pid(transport), do: CoreErlexec.close(transport)
+  def close(transport) when is_pid(transport), do: CoreTransport.close(transport)
 
   @impl Codex.IO.Transport
   def force_close(transport) when is_pid(transport) do
-    case transport |> CoreErlexec.force_close() |> normalize_result() do
-      {:error, {:transport, :not_connected}} -> :ok
-      other -> other
-    end
+    transport
+    |> CoreTransport.force_close()
+    |> normalize_result()
   end
 
   @impl Codex.IO.Transport
   def interrupt(transport) when is_pid(transport) do
-    case transport |> CoreErlexec.interrupt() |> normalize_result() do
-      {:error, {:transport, :not_connected}} -> :ok
-      other -> other
-    end
-  end
-
-  @impl Codex.IO.Transport
-  def status(transport) when is_pid(transport), do: CoreErlexec.status(transport)
-
-  @impl Codex.IO.Transport
-  def end_input(transport) when is_pid(transport) do
     transport
-    |> CoreErlexec.end_input()
+    |> CoreTransport.interrupt()
     |> normalize_result()
   end
 
   @impl Codex.IO.Transport
-  def stderr(transport) when is_pid(transport), do: CoreErlexec.stderr(transport)
+  def status(transport) when is_pid(transport), do: CoreTransport.status(transport)
+
+  @impl Codex.IO.Transport
+  def end_input(transport) when is_pid(transport) do
+    transport
+    |> CoreTransport.end_input()
+    |> normalize_result()
+  end
+
+  @impl Codex.IO.Transport
+  def stderr(transport) when is_pid(transport), do: CoreTransport.stderr(transport)
 
   defp normalize_start_opts(opts) do
     Keyword.put_new(opts, :event_tag, @event_tag)

@@ -22,6 +22,7 @@ defmodule Codex.Runtime.Exec do
   alias Codex.IO.Buffer
   alias Codex.Models
   alias Codex.Options
+  alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @impl true
@@ -511,8 +512,12 @@ defmodule Codex.Runtime.Exec do
   defp exit_code(%CoreProcessExit{status: :success}), do: 0
   defp exit_code(%CoreProcessExit{status: :exit, code: code}) when is_integer(code), do: code
 
-  defp exit_code(%CoreProcessExit{status: :signal, signal: signal}),
-    do: 128 + signal_to_int(signal)
+  defp exit_code(%CoreProcessExit{status: :signal, signal: signal}) do
+    case ProcessExit.exit_status(%CoreProcessExit{status: :signal, signal: signal}) do
+      {:ok, status} -> status
+      :unknown -> -1
+    end
+  end
 
   defp exit_code(%CoreProcessExit{code: code}) when is_integer(code), do: code
   defp exit_code(_exit), do: -1
@@ -531,12 +536,4 @@ defmodule Codex.Runtime.Exec do
 
   defp retryable_exit?(%CoreProcessExit{} = exit),
     do: Codex.TransportError.retryable_status?(exit_code(exit))
-
-  defp signal_to_int(signal) when is_integer(signal), do: signal
-
-  defp signal_to_int(signal) when is_atom(signal) do
-    :exec.signal_to_int(signal)
-  rescue
-    _ -> 1
-  end
 end

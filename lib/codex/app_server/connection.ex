@@ -1,6 +1,6 @@
 # Provider-local runtime: `codex app-server` speaks a native control protocol,
-# so this connection stays SDK-local above the core-backed transport wrapper
-# instead of using the shared one-shot command lane.
+# so this connection stays SDK-local above the shared subprocess core instead
+# of using the one-shot command lane.
 defmodule Codex.AppServer.Connection do
   @moduledoc false
 
@@ -8,14 +8,12 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
-  alias CliSubprocessCore.Command
+  alias CliSubprocessCore.{Command, Transport}
   alias Codex.AppServer.Protocol
   alias Codex.Config.Defaults
   alias Codex.IO.Buffer
-  alias Codex.IO.Transport.Erlexec, as: IOTransportErlexec
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
-  alias Codex.Runtime.Erlexec, as: RuntimeErlexec
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
   @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
@@ -132,8 +130,7 @@ defmodule Codex.AppServer.Connection do
 
     transport_ref = make_ref()
 
-    with :ok <- maybe_ensure_erlexec(transport_mod),
-         {:ok, command} <- build_command(codex_opts),
+    with {:ok, command} <- build_command(codex_opts),
          {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
          {:ok, transport} <-
@@ -142,7 +139,8 @@ defmodule Codex.AppServer.Connection do
                command: command,
                cwd: cwd,
                env: env,
-               subscriber: {self(), transport_ref}
+               subscriber: {self(), transport_ref},
+               event_tag: :codex_io_transport
              ] ++ transport_opts
            ) do
       initialize_transport(
@@ -622,7 +620,7 @@ defmodule Codex.AppServer.Connection do
     normalize_transport_value(value, "transport")
   end
 
-  defp normalize_transport_value(nil, _source), do: {IOTransportErlexec, []}
+  defp normalize_transport_value(nil, _source), do: {Transport, []}
 
   defp normalize_transport_value({module, transport_opts}, _source)
        when is_atom(module) and is_list(transport_opts) do
@@ -661,9 +659,6 @@ defmodule Codex.AppServer.Connection do
 
   defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
   defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)
-
-  defp maybe_ensure_erlexec(IOTransportErlexec), do: RuntimeErlexec.ensure_started()
-  defp maybe_ensure_erlexec(_other), do: :ok
 
   defp send_iolist(%State{transport_mod: transport_mod, transport: transport}, data)
        when is_atom(transport_mod) and is_pid(transport) do
