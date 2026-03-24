@@ -7,7 +7,6 @@ defmodule CodexSdk.MixProject do
   @docs_url "https://hexdocs.pm/codex_sdk"
   @cli_subprocess_core_requirement "~> 0.1.0"
   @cli_subprocess_core_repo "nshkrdotcom/cli_subprocess_core"
-  @cli_subprocess_core_ref "d5f7c5daa810965f60503bd4499c42ca3c4f5574"
   def project do
     [
       app: :codex_sdk,
@@ -49,8 +48,7 @@ defmodule CodexSdk.MixProject do
         :cli_subprocess_core,
         "../cli_subprocess_core",
         @cli_subprocess_core_requirement,
-        github: @cli_subprocess_core_repo,
-        ref: @cli_subprocess_core_ref
+        github: @cli_subprocess_core_repo
       ),
 
       # Core dependencies
