@@ -2,6 +2,10 @@ defmodule Codex.Exec do
   @moduledoc """
   Process manager wrapping the `codex` binary via the shared CLI subprocess core.
 
+  This module is the implementation behind Codex's historical `:exec`
+  compatibility selector. That selector names the default core-backed exec JSONL
+  lane; it does not imply direct ownership of the Erlang `:exec` worker.
+
   Provides blocking and streaming helpers that project core session events into
   typed `%Codex.Events{}` structs.
   """

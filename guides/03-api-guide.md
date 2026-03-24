@@ -1523,6 +1523,8 @@ Thread-specific configuration.
 - `labels`: Optional label map merged with server metadata
 - `auto_run`: Enable CLI-driven auto-run (default: false)
 - `transport`: `:exec` for the default core-backed exec JSONL lane, or `{:app_server, pid()}` for JSON-RPC transport
+  The `:exec` name is a historical compatibility selector. It does not imply
+  direct ownership of the Erlang `:exec` worker.
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
 - `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
 - `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`
