@@ -4,7 +4,7 @@ This guide covers using the **stateful** `codex app-server` transport from Elixi
 
 The SDK supports two external Codex transports:
 
-- **Exec JSONL (default, backwards compatible)**: `codex exec --json`
+- **Exec JSONL (default `:exec` compatibility selector)**: `codex exec --json`
 - **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON messages over stdio)
 
 Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive, skills/models/config APIs, server-driven approvals, etc.).

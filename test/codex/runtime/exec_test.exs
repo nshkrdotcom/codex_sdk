@@ -5,7 +5,9 @@ defmodule Codex.Runtime.ExecTest do
 
   alias CliSubprocessCore.{Event, Payload, ProcessExit}
   alias Codex.{Events, Options}
+  alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
+  alias Codex.TestSupport.FixtureScripts
 
   import Codex.Test.ModelFixtures
 
@@ -76,5 +78,18 @@ defmodule Codex.Runtime.ExecTest do
 
     assert log =~ "Failed to decode codex event"
     assert log =~ "<<255>>"
+  end
+
+  test "build_session_options pins the exec lane to a Codex-owned session tag" do
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.cat_fixture()
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts})
+
+    assert {:ok, session_opts} = Exec.build_session_options(exec_opts: exec_opts)
+    assert Keyword.fetch!(session_opts, :session_event_tag) == Exec.session_event_tag()
   end
 end

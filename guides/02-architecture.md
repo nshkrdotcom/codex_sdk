@@ -19,7 +19,7 @@ historical mailbox-facing session API on top of `CliSubprocessCore.RawSession`.
 
 `codex_sdk` supports two upstream external transports:
 
-- **Exec JSONL (default)**: spawns `codex exec --json` and parses JSONL events
+- **Exec JSONL (default `:exec` compatibility selector)**: spawns `codex exec --json` and parses JSONL events
 - **App-server JSON-RPC (optional)**: maintains a stateful `codex app-server` subprocess and speaks newline-delimited JSON-RPC over stdio
 
 The app-server path is the parity transport for upstream v2 features such as `fs/*`, `plugin/read`,
@@ -168,7 +168,7 @@ defstruct [
   :codex_opts,         # %Codex.Options{}
   :thread_opts,        # %Codex.Thread.Options{}
   :rate_limits,        # latest rate limit snapshot (if provided)
-  :transport           # :exec | {:app_server, pid()}
+  :transport           # :exec compatibility selector | {:app_server, pid()}
 ]
 ```
 

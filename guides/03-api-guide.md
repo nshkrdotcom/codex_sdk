@@ -108,7 +108,7 @@ such as `codex completion`, `codex cloud`, `codex execpolicy`, and
 
 The SDK supports both upstream external transports:
 
-- **Exec JSONL (default)**: `codex exec --json`
+- **Exec JSONL (default `:exec` compatibility selector)**: `codex exec --json`
 - **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON over stdio)
 
 Select transport per-thread via `Codex.Thread.Options.transport`:
@@ -515,7 +515,8 @@ end
 
 ## Codex.Exec
 
-Public exec JSONL API. `Codex.Exec` now runs on `Codex.Runtime.Exec`, a
+Public exec JSONL API for the `:exec` compatibility lane. `Codex.Exec` now runs
+on `Codex.Runtime.Exec`, a
 session-oriented runtime kit built on `CliSubprocessCore.Session`, while
 preserving the existing `%Codex.Events{}` surface returned by the SDK.
 
@@ -1518,7 +1519,7 @@ Thread-specific configuration.
 - `metadata`: Arbitrary per-thread metadata stored on the thread and passed to tool contexts (commonly includes `:tool_context` or approval hints)
 - `labels`: Optional label map merged with server metadata
 - `auto_run`: Enable CLI-driven auto-run (default: false)
-- `transport`: `:exec` or `{:app_server, pid()}` for JSON-RPC transport
+- `transport`: `:exec` for the default core-backed exec JSONL lane, or `{:app_server, pid()}` for JSON-RPC transport
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
 - `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
 - `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`

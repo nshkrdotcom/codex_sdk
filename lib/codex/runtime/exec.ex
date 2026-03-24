@@ -25,6 +25,8 @@ defmodule Codex.Runtime.Exec do
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
 
+  @default_session_event_tag :codex_sdk_exec_session
+
   @impl true
   def start_session(opts) when is_list(opts) do
     with {:ok, session_opts} <- build_session_options(opts) do
@@ -56,6 +58,10 @@ defmodule Codex.Runtime.Exec do
 
   @impl true
   def capabilities, do: CoreCodex.capabilities()
+
+  @doc false
+  @spec session_event_tag() :: atom()
+  def session_event_tag, do: @default_session_event_tag
 
   @impl true
   def project_event(%CoreEvent{kind: :run_started}, state), do: {[], state}
@@ -149,6 +155,7 @@ defmodule Codex.Runtime.Exec do
           output_schema: exec_opts.output_schema_path,
           config_values: config_values,
           env: build_env(exec_opts),
+          session_event_tag: @default_session_event_tag,
           headless_timeout_ms: :infinity,
           max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
         ]

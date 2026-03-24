@@ -205,4 +205,4 @@ OpenAI API base URL does not change the ChatGPT OAuth authority. Use
 | `max_agent_turns/0` | 10 | — |
 | `system_config_path/0` | `/etc/codex/config.toml` | — |
 | `project_root_markers/0` | `[".git"]` | — |
-| `default_transport/0` | `:exec` | `:default_transport` |
+| `default_transport/0` | `:exec` (compatibility selector) | `:default_transport` |

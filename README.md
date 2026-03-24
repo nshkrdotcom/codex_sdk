@@ -16,7 +16,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
-- **Multi-Transport Support**: Default exec JSONL (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
+- **Multi-Transport Support**: Default `:exec` compatibility selector for the core-backed exec JSONL lane (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
 - **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly.
 - **Native OAuth**: `Codex.OAuth` provides SDK-managed browser/device login, refresh, status, and logout with upstream-compatible `auth.json` persistence or memory-only sessions.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
@@ -144,7 +144,8 @@ IO.inspect(result.items)
 
 ### App-server Transport (Optional)
 
-The SDK defaults to exec JSONL for backwards compatibility. To use the stateful app-server transport:
+The SDK defaults to the `:exec` compatibility selector for the core-backed exec
+JSONL lane. To use the stateful app-server transport:
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{api_key: System.fetch_env!("CODEX_API_KEY")})
@@ -217,7 +218,8 @@ input = [
 {:ok, result} = Codex.Thread.run(thread, input)
 ```
 
-Note: exec JSONL transport still accepts text input only; list inputs return `{:error, {:unsupported_input, :exec}}`.
+Note: the `:exec` compatibility lane still accepts text input only; list inputs
+return `{:error, {:unsupported_input, :exec}}`.
 
 App-server-only APIs include:
 

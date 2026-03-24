@@ -265,11 +265,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       assert :ok = ErlexecTransport.force_close(transport)
     end
 
-    test "force_close does not restart the shared exec worker" do
-      exec_pid = Process.whereis(:exec)
-      assert is_pid(exec_pid)
-
-      exec_ref = Process.monitor(exec_pid)
+    test "force_close leaves future transports usable" do
       ref = make_ref()
       script = create_test_script("sleep 60")
 
@@ -284,10 +280,18 @@ defmodule Codex.IO.Transport.ErlexecTest do
         assert :ok = ErlexecTransport.force_close(transport)
       end)
 
-      Process.sleep(50)
+      echo_script = create_test_script("echo recovered")
 
-      refute_received {:DOWN, ^exec_ref, :process, ^exec_pid, _reason}
-      assert Process.alive?(exec_pid)
+      {:ok, transport} =
+        ErlexecTransport.start_link(
+          command: echo_script,
+          args: [],
+          subscriber: {self(), ref}
+        )
+
+      assert_receive {:codex_io_transport, ^ref, {:message, "recovered"}}, 2_000
+      assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
+      assert :ok = ErlexecTransport.close(transport)
     end
   end
 

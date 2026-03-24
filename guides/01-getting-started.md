@@ -145,7 +145,8 @@ Threads are persisted by the Codex CLI under `$CODEX_HOME/sessions` (default
 
 ## Transports
 
-- **Exec JSONL (default):** `codex exec --json` for a simple subprocess flow.
+- **Exec JSONL (default `:exec` compatibility selector):** `codex exec --json`
+  for a simple core-backed subprocess flow.
 - **App-server JSON-RPC (optional):** `codex app-server` for v2 APIs and server-driven
   approvals.
 

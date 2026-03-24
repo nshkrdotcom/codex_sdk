@@ -17,8 +17,6 @@ defmodule Codex.Exec do
   alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TransportError
 
-  @runtime_event_tag :cli_subprocess_core_session
-
   @type exec_opts :: %{
           optional(:codex_opts) => Codex.Options.t(),
           optional(:thread) => Codex.Thread.t(),
@@ -102,7 +100,7 @@ defmodule Codex.Exec do
   defp start_session(%ExecOptions{} = exec_opts, input, command_args \\ nil) do
     session_ref = make_ref()
 
-    with {:ok, session, _info} <-
+    with {:ok, session, info} <-
            RuntimeExec.start_session(
              exec_opts: exec_opts,
              input: input,
@@ -120,7 +118,8 @@ defmodule Codex.Exec do
         max_stderr_buffer_bytes: resolve_max_stderr_buffer_bytes(exec_opts),
         timeout_ms: resolve_timeout_ms(exec_opts),
         idle_timeout_ms: resolve_idle_timeout_ms(exec_opts),
-        cancellation_token: exec_opts.cancellation_token
+        cancellation_token: exec_opts.cancellation_token,
+        session_event_tag: session_event_tag(info)
       }
 
       :ok = maybe_register_cancellation(state.cancellation_token, session)
@@ -132,7 +131,8 @@ defmodule Codex.Exec do
 
   defp do_collect(%{timeout_ms: timeout_ms} = state, events) do
     receive do
-      {@runtime_event_tag, ref, {:event, %CoreEvent{} = event}} when ref == state.session_ref ->
+      {event_tag, ref, {:event, %CoreEvent{} = event}}
+      when event_tag == state.session_event_tag and ref == state.session_ref ->
         state = capture_stderr(state, event)
         log_transport_error(event, :collect)
 
@@ -182,7 +182,8 @@ defmodule Codex.Exec do
     timeout = idle_timeout_ms || :infinity
 
     receive do
-      {@runtime_event_tag, ref, {:event, %CoreEvent{} = event}} when ref == state.session_ref ->
+      {event_tag, ref, {:event, %CoreEvent{} = event}}
+      when event_tag == state.session_event_tag and ref == state.session_ref ->
         state = capture_stderr(state, event)
         log_transport_error(event, :stream)
 
@@ -254,7 +255,7 @@ defmodule Codex.Exec do
     maybe_unregister_cancellation(state)
     _ = RuntimeExec.close(session)
     await_session_down_or_demonitor(state.session_monitor_ref, session)
-    flush_session_messages(session_ref)
+    flush_session_messages(session_ref, state.session_event_tag)
     :ok
   rescue
     _ -> :ok
@@ -313,17 +314,24 @@ defmodule Codex.Exec do
 
   defp await_session_down_or_demonitor(_ref, _session), do: :ok
 
-  defp flush_session_messages(ref) when is_reference(ref) do
+  defp flush_session_messages(ref, session_event_tag)
+       when is_reference(ref) and is_atom(session_event_tag) do
     receive do
-      {@runtime_event_tag, ^ref, {:event, _event}} ->
-        flush_session_messages(ref)
+      {event_tag, ^ref, {:event, _event}} when event_tag == session_event_tag ->
+        flush_session_messages(ref, session_event_tag)
     after
       0 ->
         :ok
     end
   end
 
-  defp flush_session_messages(_other), do: :ok
+  defp flush_session_messages(_ref, _session_event_tag), do: :ok
+
+  defp session_event_tag(info) when is_map(info) do
+    Map.get(info, :session_event_tag, RuntimeExec.session_event_tag())
+  end
+
+  defp session_event_tag(_info), do: RuntimeExec.session_event_tag()
 
   defp maybe_register_cancellation(token, session)
        when is_binary(token) and token != "" and is_pid(session) do

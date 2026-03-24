@@ -425,6 +425,9 @@ defmodule Codex.Config.Defaults do
   @doc """
   Default transport for thread options.
 
+  `:exec` is the compatibility selector for the default core-backed exec JSONL
+  lane.
+
   Overridable at runtime:
 
       config :codex_sdk, default_transport: :exec

@@ -1,6 +1,10 @@
 defmodule Codex.Thread.Options do
   @moduledoc """
   Per-thread configuration options.
+
+  The historical `:exec` selector remains the compatibility label for the
+  default core-backed subprocess lane. It does not imply direct ownership of
+  the Erlang `:exec` worker or raw `erlexec` lifecycle in `codex_sdk`.
   """
 
   # credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
