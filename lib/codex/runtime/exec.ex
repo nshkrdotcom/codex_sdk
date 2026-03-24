@@ -60,7 +60,7 @@ defmodule Codex.Runtime.Exec do
   def capabilities, do: CoreCodex.capabilities()
 
   @doc false
-  @spec session_event_tag() :: atom()
+  @spec session_event_tag() :: :codex_sdk_exec_session
   def session_event_tag, do: @default_session_event_tag
 
   @impl true

@@ -61,4 +61,27 @@ defmodule Codex.ThreadStreamTest do
                partial_stream |> RunResultStreaming.raw_events() |> Enum.take(take_count)
     end)
   end
+
+  test "run_streamed/3 does not consume unrelated mailbox messages", %{
+    thread_opts: thread_opts
+  } do
+    script_path =
+      FixtureScripts.cat_fixture("thread_basic.jsonl")
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path
+      })
+
+    marker = make_ref()
+    send(self(), {:unrelated_message, marker})
+
+    thread = Thread.build(codex_opts, thread_opts)
+    {:ok, result} = Thread.run_streamed(thread, "Mailbox safety")
+
+    assert length(result |> RunResultStreaming.raw_events() |> Enum.to_list()) == 5
+    assert_received {:unrelated_message, ^marker}
+  end
 end

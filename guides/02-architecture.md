@@ -226,10 +226,10 @@ defstruct [
 **Lifecycle**:
 
 1. Build session options and start `Codex.Runtime.Exec`
-2. Subscribe to `CliSubprocessCore.Session` events with a tagged mailbox ref
+2. Subscribe to `CliSubprocessCore.Session` events using the per-run session ref
 3. Project core events into `%Codex.Events{}` values as they arrive
 4. Convert terminal core exit events into `Codex.TransportError` when needed
-5. Stop the session and flush any remaining tagged mailbox messages
+5. Stop the session and flush any remaining internal session messages for that run
 
 **Error Scenarios**:
 - **Spawn failure**: Return error immediately

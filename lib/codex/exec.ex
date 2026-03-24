@@ -119,7 +119,7 @@ defmodule Codex.Exec do
         timeout_ms: resolve_timeout_ms(exec_opts),
         idle_timeout_ms: resolve_idle_timeout_ms(exec_opts),
         cancellation_token: exec_opts.cancellation_token,
-        session_event_tag: session_event_tag(info)
+        session_event_tag: Map.get(info, :session_event_tag, RuntimeExec.session_event_tag())
       }
 
       :ok = maybe_register_cancellation(state.cancellation_token, session)
@@ -326,12 +326,6 @@ defmodule Codex.Exec do
   end
 
   defp flush_session_messages(_ref, _session_event_tag), do: :ok
-
-  defp session_event_tag(info) when is_map(info) do
-    Map.get(info, :session_event_tag, RuntimeExec.session_event_tag())
-  end
-
-  defp session_event_tag(_info), do: RuntimeExec.session_event_tag()
 
   defp maybe_register_cancellation(token, session)
        when is_binary(token) and token != "" and is_pid(session) do

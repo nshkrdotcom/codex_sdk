@@ -80,7 +80,7 @@ defmodule Codex.Runtime.ExecTest do
     assert log =~ "<<255>>"
   end
 
-  test "build_session_options pins the exec lane to a Codex-owned session tag" do
+  test "build_session_options preserves the default Codex core lane metadata" do
     script_path =
       "thread_basic.jsonl"
       |> FixtureScripts.cat_fixture()
@@ -90,6 +90,9 @@ defmodule Codex.Runtime.ExecTest do
     {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts})
 
     assert {:ok, session_opts} = Exec.build_session_options(exec_opts: exec_opts)
-    assert Keyword.fetch!(session_opts, :session_event_tag) == Exec.session_event_tag()
+    assert Keyword.fetch!(session_opts, :provider) == :codex
+    assert Keyword.fetch!(session_opts, :profile) == Codex.Runtime.Exec.Profile
+    assert Keyword.fetch!(session_opts, :metadata) == %{lane: :codex_sdk}
+    assert Keyword.fetch!(session_opts, :headless_timeout_ms) == :infinity
   end
 end
