@@ -44,6 +44,10 @@ config :codex_sdk,
   default_transport: :exec
 ```
 
+`default_transport: :exec` is the historical compatibility selector for the
+default subprocess lane backed by `cli_subprocess_core`. It does not imply
+direct ownership of the Erlang `:exec` worker.
+
 ## Layered Config Notes
 
 Not every runtime behavior is a `Codex.Config.Defaults` constant. Two important upstream-parity

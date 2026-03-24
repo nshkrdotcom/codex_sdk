@@ -520,6 +520,9 @@ on `Codex.Runtime.Exec`, a
 session-oriented runtime kit built on `CliSubprocessCore.Session`, while
 preserving the existing `%Codex.Events{}` surface returned by the SDK.
 
+The runtime-owned mailbox tag stays below this API; callers consume projected
+`%Codex.Events{}` values rather than raw tagged session tuples.
+
 Additional exec helpers:
 
 - `Codex.Exec.review/2` and `Codex.Exec.review_stream/2` run `codex exec review` with a review target (uncommitted, base branch, commit, or custom prompt).
