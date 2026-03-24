@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Release notes and package-facing docs now call out the final Phase 3
+- Release notes and package-facing docs now call out the final Phase 4
   ownership boundary explicitly: `cli_subprocess_core` owns every
   subprocess-backed Codex lifecycle, while `codex_sdk` keeps Codex-native
   semantics such as app-server, MCP, realtime, and voice.
