@@ -109,19 +109,19 @@ defmodule Codex.ModelsTest do
     end)
   end
 
-  test "default reasoning effort stays safe for cross-catalog model overrides" do
+  test "default reasoning effort lookup supports explicitly named models" do
     with_temp_codex_home(fn home ->
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
       System.put_env("CODEX_MODEL", "gpt-5.4-mini")
 
-      assert Models.default_model() == "gpt-5.4-mini"
+      assert Models.default_model() == "gpt-5-codex"
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
     end)
   end
 
-  test "honors OPENAI_DEFAULT_MODEL override" do
+  test "default_model/0 no longer applies local OPENAI_DEFAULT_MODEL policy" do
     System.put_env("OPENAI_DEFAULT_MODEL", "custom-model")
-    assert Models.default_model() == "custom-model"
+    assert Models.default_model() == "gpt-5-codex"
   end
 
   test "visible model listing comes from the shared core catalog" do

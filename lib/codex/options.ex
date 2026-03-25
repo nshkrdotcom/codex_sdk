@@ -46,7 +46,7 @@ defmodule Codex.Options do
           base_url: String.t(),
           codex_path_override: String.t() | nil,
           telemetry_prefix: [atom()],
-          model_payload: CliSubprocessCore.ModelRegistry.Selection.t() | nil,
+          model_payload: CliSubprocessCore.ModelRegistry.selection() | nil,
           model: String.t() | nil,
           reasoning_effort: Models.reasoning_effort() | nil,
           model_personality: Codex.Protocol.ConfigTypes.personality() | nil,

@@ -1,9 +1,8 @@
 defmodule Codex.Models do
   @moduledoc """
-  Known Codex models and their defaults.
+  Codex model metadata projected from `cli_subprocess_core`.
   """
 
-  alias CliSubprocessCore.ModelCatalog
   alias CliSubprocessCore.ModelRegistry
   alias CliSubprocessCore.ModelRegistry.Model, as: RegistryModel
   alias Codex.Auth
@@ -37,43 +36,13 @@ defmodule Codex.Models do
           is_default: boolean(),
           upgrade: model_upgrade() | nil,
           show_in_picker: boolean(),
-          supported_in_api: boolean()
-        }
-
-  @type model_visibility :: :list | :hide | :none
-  @type shell_tool_type :: :default | :local | :unified_exec | :disabled | :shell_command
-  @type apply_patch_tool_type :: :freeform | :function
-  @type truncation_policy :: %{mode: :bytes | :tokens, limit: non_neg_integer()}
-  @type client_version :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}
-  @type verbosity :: :low | :medium | :high
-  @type reasoning_summary_format :: :none | :experimental
-
-  @type model_info :: %{
-          slug: String.t(),
-          display_name: String.t(),
-          description: String.t() | nil,
-          default_reasoning_level: reasoning_effort(),
-          supported_reasoning_levels: [reasoning_effort_preset()],
-          shell_type: shell_tool_type(),
-          visibility: model_visibility(),
-          minimal_client_version: client_version(),
           supported_in_api: boolean(),
-          priority: integer(),
-          upgrade: String.t() | map() | nil,
-          base_instructions: String.t() | nil,
-          supports_reasoning_summaries: boolean(),
-          support_verbosity: boolean(),
-          default_verbosity: verbosity() | nil,
-          apply_patch_tool_type: apply_patch_tool_type() | nil,
-          truncation_policy: truncation_policy(),
-          supports_parallel_tool_calls: boolean(),
-          context_window: non_neg_integer() | nil,
-          reasoning_summary_format: reasoning_summary_format(),
-          experimental_supported_tools: [String.t()]
+          family: String.t() | nil
         }
+
+  @type client_version :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}
 
   @reasoning_efforts [:none, :minimal, :low, :medium, :high, :xhigh]
-
   @reasoning_effort_aliases %{
     "none" => :none,
     "extra_high" => :xhigh,
@@ -85,265 +54,45 @@ defmodule Codex.Models do
     "xhigh" => :xhigh
   }
 
-  @default_api_model Defaults.default_api_model()
-  @default_chatgpt_model Defaults.default_chatgpt_model()
-  @remote_models_cache_ttl_seconds Defaults.remote_models_cache_ttl_seconds()
-
-  # -- Shared reasoning-effort preset templates --------------------------------
-  # Each list is reused across multiple model presets to avoid duplication.
-
-  @efforts_full [
-    %{effort: :low, description: "Fast responses with lighter reasoning"},
-    %{effort: :medium, description: "Balances speed and reasoning depth for everyday tasks"},
-    %{effort: :high, description: "Greater reasoning depth for complex problems"},
-    %{effort: :xhigh, description: "Extra high reasoning depth for complex problems"}
-  ]
-
-  @efforts_mini [
-    %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
-  ]
-
-  @efforts_standard [
-    %{effort: :low, description: "Fastest responses with limited reasoning"},
-    %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
-  ]
-
-  @efforts_frontier [
-    %{
-      effort: :low,
-      description:
-        "Balances speed with some reasoning; useful for straightforward queries and short explanations"
-    },
-    %{
-      effort: :medium,
-      description:
-        "Provides a solid balance of reasoning depth and latency for general-purpose tasks"
-    },
-    %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
-  ]
-
-  @efforts_frontier_xhigh @efforts_frontier ++
-                            [
-                              %{
-                                effort: :xhigh,
-                                description: "Extra high reasoning for complex problems"
-                              }
-                            ]
-
-  @efforts_gpt5 [
-                  %{effort: :minimal, description: "Fastest responses with little reasoning"}
-                ] ++ @efforts_frontier
-
-  # -- Upgrade target ----------------------------------------------------------
-
-  @default_model_upgrade_copy "Codex is now powered by #{@default_api_model}, our latest frontier agentic coding model. " <>
-                                "It is smarter and faster than its predecessors and capable of long-running project-scale work."
-
-  # -- Local model presets -----------------------------------------------------
-  # Each preset uses `id` as the single source of truth for `model` and
-  # `display_name`, with a helper that expands them at compile time.
-
-  @local_presets [
-                   %{
-                     id: @default_api_model,
-                     description: "Latest frontier agentic coding model.",
-                     supported_reasoning_efforts: @efforts_full,
-                     is_default: true,
-                     upgrade: nil,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.3-codex",
-                     description: "Frontier Codex-optimized agentic coding model.",
-                     supported_reasoning_efforts: @efforts_full,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.3-codex-spark",
-                     description: "Ultra-fast coding model.",
-                     supported_reasoning_efforts: @efforts_full,
-                     default_reasoning_effort: :high,
-                     is_default: false,
-                     upgrade: nil,
-                     show_in_picker: true,
-                     supported_in_api: false,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.2-codex",
-                     description: "Frontier agentic coding model.",
-                     supported_reasoning_efforts: @efforts_full,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.1-codex-max",
-                     description: "Codex-optimized flagship for deep and fast reasoning.",
-                     supported_reasoning_efforts: @efforts_full,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.2",
-                     description:
-                       "Latest frontier model with improvements across knowledge, reasoning and coding",
-                     supported_reasoning_efforts: @efforts_frontier_xhigh,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.1-codex-mini",
-                     description: "Optimized for codex. Cheaper, faster, but less capable.",
-                     supported_reasoning_efforts: @efforts_mini,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: true,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5-codex",
-                     description: "Optimized for codex.",
-                     supported_reasoning_efforts: @efforts_standard,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: false,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5-codex-mini",
-                     description: "Optimized for codex. Cheaper, faster, but less capable.",
-                     supported_reasoning_efforts: @efforts_mini,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: false,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5.1-codex",
-                     description: "Optimized for codex.",
-                     supported_reasoning_efforts: @efforts_standard,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: false,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   },
-                   %{
-                     id: "gpt-5",
-                     description: "Broad world knowledge with strong general reasoning.",
-                     supported_reasoning_efforts: @efforts_gpt5,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: false,
-                     supported_in_api: true,
-                     shell_type: :default
-                   },
-                   %{
-                     id: "gpt-5.1",
-                     description: "Broad world knowledge with strong general reasoning.",
-                     supported_reasoning_efforts: @efforts_frontier,
-                     is_default: false,
-                     upgrade: :default_model_upgrade,
-                     show_in_picker: false,
-                     supported_in_api: true,
-                     shell_type: :shell_command
-                   }
-                 ]
-                 |> Enum.map(fn preset ->
-                   upgrade =
-                     case Map.get(preset, :upgrade) do
-                       :default_model_upgrade ->
-                         %{
-                           id: @default_api_model,
-                           reasoning_effort_mapping: nil,
-                           migration_config_key: preset.id,
-                           model_link: nil,
-                           upgrade_copy: @default_model_upgrade_copy
-                         }
-
-                       other ->
-                         other
-                     end
-
-                   preset
-                   |> Map.put(:upgrade, upgrade)
-                   |> Map.put_new(:model, preset.id)
-                   |> Map.put_new(:display_name, preset.id)
-                   |> Map.put_new(:default_reasoning_effort, :medium)
-                 end)
-
   @doc """
   Returns the list of supported models visible for the inferred auth mode.
   """
-  @spec list() :: nonempty_list(model_preset())
-  def list do
-    list_visible(Auth.infer_auth_mode())
-  end
+  @spec list() :: [model_preset()]
+  def list, do: list_visible(Auth.infer_auth_mode())
 
   @doc """
   Returns models visible in the model picker.
-
-  If auth_mode is :api, only include supported_in_api models.
   """
   @spec list_visible() :: [model_preset()]
   @spec list_visible(:api | :chatgpt) :: [model_preset()]
   @spec list_visible(:api | :chatgpt, keyword()) :: [model_preset()]
-  def list_visible(auth_mode \\ :api, opts \\ []) do
-    _auth_mode = normalize_auth_mode(auth_mode)
-    family = Keyword.get(opts, :model_family)
+  def list_visible(_auth_mode \\ :api, opts \\ []) do
+    family = Keyword.get(opts, :model_family) |> normalize_optional_binary()
+    default_id = core_default_model!()
 
-    core_presets()
-    |> Enum.filter(& &1.show_in_picker)
-    |> Enum.filter(fn model -> is_nil(family) or Map.get(model, :family) == family end)
-    |> ensure_core_default()
+    :codex
+    |> ModelRegistry.list_visible(visibility: :public)
+    |> unwrap_registry!(:list_visible)
+    |> Enum.map(&fetch_model!/1)
+    |> Enum.map(&registry_model_to_preset(&1, default_id))
+    |> Enum.filter(fn preset -> is_nil(family) or preset.family == family end)
   end
 
   @doc """
-  Returns the SDK default model, honoring environment overrides when present.
+  Returns the SDK default model from the shared core registry.
   """
   @spec default_model() :: String.t()
   @spec default_model(:api | :chatgpt) :: String.t()
-  def default_model(auth_mode \\ Auth.infer_auth_mode()) do
-    _auth_mode = normalize_auth_mode(auth_mode)
-    env_override() || core_default_model!()
-  end
+  def default_model(_auth_mode \\ Auth.infer_auth_mode()), do: core_default_model!()
 
   @doc """
   Returns the default reasoning effort for the given model (or the default model).
   """
   @spec default_reasoning_effort(String.t() | atom() | nil) :: reasoning_effort() | nil
   def default_reasoning_effort(model \\ default_model()) do
-    model
-    |> normalize_model()
-    |> case do
-      nil ->
-        nil
-
-      normalized ->
-        case find_model(normalized) do
-          %{default_reasoning_effort: effort} -> effort
-          _ -> :medium
-        end
+    case find_model(model) do
+      %{default_reasoning_effort: effort} when is_atom(effort) -> effort
+      _ -> :medium
     end
   end
 
@@ -363,10 +112,7 @@ defmodule Codex.Models do
   end
 
   def normalize_reasoning_effort(value) when is_binary(value) do
-    normalized =
-      value
-      |> String.trim()
-      |> String.downcase()
+    normalized = value |> String.trim() |> String.downcase()
 
     cond do
       normalized == "" ->
@@ -386,14 +132,7 @@ defmodule Codex.Models do
   Returns `true` when the given model supports tool execution.
   """
   @spec tool_enabled?(String.t() | atom() | nil) :: boolean()
-  def tool_enabled?(model) do
-    model
-    |> normalize_model()
-    |> case do
-      nil -> false
-      normalized -> tool_enabled_for_model(normalized)
-    end
-  end
+  def tool_enabled?(model), do: not is_nil(find_model(model))
 
   @doc """
   Lists the valid reasoning effort values understood by the SDK.
@@ -442,8 +181,7 @@ defmodule Codex.Models do
   def coerce_reasoning_effort(nil, effort), do: effort
 
   def coerce_reasoning_effort(model, effort) do
-    model = normalize_model(model)
-    supported = supported_reasoning_efforts(model) |> Enum.map(& &1.effort)
+    supported = supported_reasoning_efforts(to_string(model)) |> Enum.map(& &1.effort)
 
     cond do
       supported == [] -> effort
@@ -485,166 +223,79 @@ defmodule Codex.Models do
     end
   end
 
-  defp env_override do
-    System.get_env("CODEX_MODEL") ||
-      System.get_env("OPENAI_DEFAULT_MODEL") ||
-      System.get_env("CODEX_MODEL_DEFAULT")
+  @doc false
+  @spec remote_models_http_options() :: keyword()
+  def remote_models_http_options do
+    [timeout: Defaults.remote_models_http_timeout_ms()]
+    |> CA.merge_httpc_options()
   end
 
-  defp default_model_for_auth(auth_mode, cwd) do
-    auth_mode
-    |> available_presets(cwd)
-    |> select_default_model_id(auth_mode)
+  @doc false
+  @spec remote_models_url(String.t() | nil) :: String.t()
+  def remote_models_url(cwd \\ default_cwd()) do
+    models_url(cwd)
+  end
+
+  @doc false
+  @spec parse_client_version(term()) :: client_version()
+  def parse_client_version([major, minor, patch])
+      when is_integer(major) and is_integer(minor) and is_integer(patch) and
+             major >= 0 and minor >= 0 and patch >= 0 do
+    {major, minor, patch}
+  end
+
+  def parse_client_version(value) when is_binary(value) do
+    value
+    |> String.split("-", parts: 2)
+    |> List.first()
+    |> String.split(".")
+    |> Enum.take(3)
+    |> Enum.map(&Integer.parse/1)
     |> case do
-      nil -> fallback_default_model(auth_mode)
-      model_id -> model_id
+      [{major, ""}, {minor, ""}, {patch, ""}] when major >= 0 and minor >= 0 and patch >= 0 ->
+        {major, minor, patch}
+
+      _ ->
+        {0, 0, 0}
     end
   end
 
-  defp available_presets(auth_mode, cwd) do
-    remote_models =
-      auth_mode
-      |> remote_models(cwd)
-      |> Enum.with_index()
-      |> Enum.sort_by(fn {model, index} -> {model.priority, index} end)
-      |> Enum.map(fn {model, _index} -> model end)
-      |> Enum.map(&model_info_to_preset/1)
-
-    merge_presets(remote_models, @local_presets)
-  end
-
-  defp filter_visible_models(models, auth_mode) do
-    Enum.filter(models, fn model ->
-      model.show_in_picker && (auth_mode == :chatgpt || model.supported_in_api)
-    end)
-  end
-
-  defp ensure_default([], _auth_mode), do: []
-
-  defp ensure_default(models, auth_mode) do
-    preferred_model = select_default_model_id(models, auth_mode)
-
-    case Enum.find_index(models, fn model ->
-           preferred_model != nil and
-             (model.id == preferred_model || model.model == preferred_model)
-         end) do
-      nil ->
-        if Enum.any?(models, & &1.is_default) do
-          models
-        else
-          [first | rest] = models
-          [%{first | is_default: true} | rest]
-        end
-
-      preferred_index ->
-        models
-        |> Enum.with_index()
-        |> Enum.map(fn {model, index} ->
-          %{model | is_default: index == preferred_index}
-        end)
-    end
-  end
-
-  defp select_default_model_id(models, auth_mode) do
-    visible_models = visible_models_or_all(models, auth_mode)
-
-    preferred_default_ids(auth_mode)
-    |> Enum.find(&model_available?(visible_models, &1))
-    |> Kernel.||(first_model_id(visible_models))
-  end
-
-  defp visible_models_or_all(models, auth_mode) do
-    case filter_visible_models(models, auth_mode) do
-      [] -> models
-      visible -> visible
-    end
-  end
-
-  defp model_available?(models, preferred_id) do
-    Enum.any?(models, &model_matches_id?(&1, preferred_id))
-  end
-
-  defp model_matches_id?(model, preferred_id) do
-    model.id == preferred_id || model.model == preferred_id
-  end
-
-  defp first_model_id([%{id: id} | _]), do: id
-  defp first_model_id([%{model: model} | _]), do: model
-  defp first_model_id(_), do: nil
-
-  defp merge_presets([], _local_presets), do: []
-
-  defp merge_presets(remote_presets, _local_presets), do: remote_presets
+  def parse_client_version(_), do: {0, 0, 0}
 
   defp find_model(model_id) do
-    normalized = normalize_model(model_id)
-
-    Enum.find(core_presets(), fn preset ->
-      preset.id == normalized || preset.model == normalized
-    end)
-  end
-
-  defp all_available_presets do
-    cwd = default_cwd()
-    auth_mode = Auth.infer_auth_mode()
-
-    [
-      available_presets(auth_mode, cwd),
-      available_presets(other_auth_mode(auth_mode), cwd),
-      @local_presets
-    ]
-    |> List.flatten()
-    |> Enum.uniq_by(fn preset -> {preset.id, preset.model} end)
-  end
-
-  defp other_auth_mode(:api), do: :chatgpt
-  defp other_auth_mode(:chatgpt), do: :api
-
-  defp normalize_model(nil), do: nil
-  defp normalize_model(model) when is_binary(model), do: model
-  defp normalize_model(model), do: to_string(model)
-
-  defp tool_enabled_for_model(model_id) do
-    find_model(model_id) != nil
-  end
-
-  defp core_presets do
-    core_models()
-    |> Enum.map(&registry_model_to_preset/1)
-  end
-
-  defp core_models do
-    case ModelCatalog.load(:codex) do
-      {:ok, %{models: models}} ->
-        models
-
-      {:error, reason} ->
-        raise ArgumentError, "codex model catalog is unavailable: #{inspect(reason)}"
+    case normalize_model(model_id) do
+      nil -> nil
+      normalized -> ModelRegistry.validate(:codex, normalized) |> normalize_model_result()
     end
   end
 
-  defp core_default_model! do
-    case ModelRegistry.default_model(:codex) do
-      {:ok, model} ->
-        model
-
-      {:error, reason} ->
-        raise ArgumentError, "codex default model resolution failed: #{inspect(reason)}"
-    end
+  defp normalize_model_result({:ok, %RegistryModel{} = model}) do
+    registry_model_to_preset(model, core_default_model!())
   end
 
-  defp registry_model_to_preset(%RegistryModel{} = model) do
-    default_reasoning_effort = model.default_reasoning_effort |> normalize_reasoning_atom()
+  defp normalize_model_result({:error, _reason}), do: nil
+
+  defp fetch_model!(model_id) do
+    model_id
+    |> ModelRegistry.validate(:codex)
+    |> unwrap_registry!(:validate)
+  end
+
+  defp registry_model_to_preset(%RegistryModel{} = model, default_id) do
+    default_reasoning_effort =
+      model.default_reasoning_effort
+      |> normalize_reasoning_atom()
+      |> Kernel.||(:medium)
 
     %{
       id: model.id,
       model: model.id,
       display_name: Map.get(model.metadata, "display_name", model.id),
       description: Map.get(model.metadata, "description", ""),
-      default_reasoning_effort: default_reasoning_effort || :medium,
+      default_reasoning_effort: default_reasoning_effort,
       supported_reasoning_efforts: reasoning_presets_from_model(model),
-      is_default: model.default,
-      upgrade: nil,
+      is_default: model.id == default_id,
+      upgrade: normalize_upgrade(model),
       show_in_picker: model.visibility == :public,
       supported_in_api: model.visibility == :public,
       family: model.family
@@ -659,12 +310,33 @@ defmodule Codex.Models do
     end)
   end
 
+  defp normalize_upgrade(%RegistryModel{metadata: %{"upgrade" => upgrade}})
+       when is_map(upgrade) do
+    id = Map.get(upgrade, "id") || Map.get(upgrade, :id)
+
+    if is_binary(id) and String.trim(id) != "" do
+      %{
+        id: String.trim(id),
+        reasoning_effort_mapping:
+          Map.get(upgrade, "reasoning_effort_mapping") ||
+            Map.get(upgrade, :reasoning_effort_mapping),
+        migration_config_key:
+          Map.get(upgrade, "migration_config_key") || Map.get(upgrade, :migration_config_key) ||
+            String.trim(id),
+        model_link: Map.get(upgrade, "model_link") || Map.get(upgrade, :model_link),
+        upgrade_copy: Map.get(upgrade, "upgrade_copy") || Map.get(upgrade, :upgrade_copy)
+      }
+    end
+  end
+
+  defp normalize_upgrade(_model), do: nil
+
   defp normalize_reasoning_atom(nil), do: nil
 
   defp normalize_reasoning_atom(value) do
     case normalize_reasoning_effort(value) do
       {:ok, effort} -> effort
-      _ -> nil
+      {:error, _reason} -> nil
     end
   end
 
@@ -675,195 +347,39 @@ defmodule Codex.Models do
     |> String.capitalize()
   end
 
-  defp ensure_core_default([]), do: []
-
-  defp ensure_core_default(models) do
-    default_id = core_default_model!()
-
-    models
-    |> Enum.map(fn model ->
-      %{model | is_default: model.id == default_id}
-    end)
+  defp core_default_model! do
+    :codex
+    |> ModelRegistry.default_model()
+    |> unwrap_registry!(:default_model)
   end
 
-  defp shell_type_for_model(model_id, auth_mode) do
-    remote =
-      auth_mode
-      |> remote_models(default_cwd())
-      |> Enum.find(&(&1.slug == model_id))
+  defp unwrap_registry!({:ok, value}, _operation), do: value
 
-    case remote do
-      %{shell_type: shell_type} -> shell_type
-      _ -> nil
-    end
+  defp unwrap_registry!({:error, reason}, operation) do
+    raise ArgumentError, "codex model registry #{operation} failed: #{inspect(reason)}"
   end
 
-  defp normalize_auth_mode(:api), do: :api
-  defp normalize_auth_mode(:chatgpt), do: :chatgpt
-  defp normalize_auth_mode("api"), do: :api
-  defp normalize_auth_mode("chatgpt"), do: :chatgpt
-  defp normalize_auth_mode(_), do: :api
+  defp normalize_model(nil), do: nil
+  defp normalize_model(model) when is_binary(model), do: String.trim(model)
+  defp normalize_model(model), do: model |> to_string() |> String.trim()
 
-  defp config_cwd_from_opts(opts) when is_list(opts) do
-    Keyword.get(opts, :cwd) || Keyword.get(opts, :working_directory) || default_cwd()
+  defp nearest_effort(target, supported) do
+    target_rank = effort_rank(target)
+
+    supported
+    |> Enum.min_by(fn candidate -> abs(effort_rank(candidate) - target_rank) end, fn -> target end)
   end
 
-  defp config_cwd_from_opts(opts) when is_map(opts) do
-    Map.get(opts, :cwd) ||
-      Map.get(opts, "cwd") ||
-      Map.get(opts, :working_directory) ||
-      Map.get(opts, "working_directory") ||
-      default_cwd()
-  end
-
-  defp config_cwd_from_opts(_), do: default_cwd()
-
-  defp default_cwd do
-    case File.cwd() do
-      {:ok, cwd} -> cwd
-      _ -> nil
-    end
-  end
-
-  defp remote_models(:api, _cwd), do: load_models_json()
-
-  defp remote_models(:chatgpt, cwd) do
-    case load_models_cache() do
-      {:ok, models} -> models
-      :miss -> fetch_or_load_models(cwd)
-    end
-  end
-
-  defp fetch_or_load_models(cwd) do
-    case Auth.chatgpt_access_token() do
-      nil -> load_models_json()
-      token -> fetch_models_with_token(token, cwd)
-    end
-  end
-
-  defp fetch_models_with_token(token, cwd) do
-    case fetch_remote_models(token, cwd) do
-      {:ok, models, etag} ->
-        save_models_cache(models, etag)
-        models
-
-      {:error, _reason} ->
-        load_models_json()
-    end
-  end
-
-  defp load_models_json do
-    case File.read(bundled_models_path()) do
-      {:ok, contents} ->
-        case Jason.decode(contents) do
-          {:ok, decoded} -> decoded |> parse_models_response() |> elem(0)
-          _ -> []
-        end
-
-      _ ->
-        []
-    end
-  end
-
-  defp load_models_cache do
-    case File.read(models_cache_path()) do
-      {:ok, contents} ->
-        with {:ok, decoded} <- Jason.decode(contents),
-             fetched_at when is_binary(fetched_at) <- Map.get(decoded, "fetched_at"),
-             {:ok, fetched_at, _} <- DateTime.from_iso8601(fetched_at),
-             true <- cache_fresh?(fetched_at) do
-          {models, _etag} = parse_models_response(decoded)
-          {:ok, models}
-        else
-          _ -> :miss
-        end
-
-      _ ->
-        :miss
-    end
-  end
-
-  defp cache_fresh?(fetched_at) do
-    if @remote_models_cache_ttl_seconds <= 0 do
-      false
-    else
-      DateTime.diff(DateTime.utc_now(), fetched_at, :second) <= @remote_models_cache_ttl_seconds
-    end
-  end
-
-  defp save_models_cache(models, etag) do
-    cache = %{
-      "fetched_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "etag" => etag,
-      "models" => models
-    }
-
-    path = models_cache_path()
-
-    with {:ok, json} <- Jason.encode(cache) do
-      path
-      |> Path.dirname()
-      |> File.mkdir_p()
-
-      _ = File.write(path, json)
-      :ok
-    end
-  end
-
-  defp models_cache_path do
-    Path.join(Auth.codex_home(), "models_cache.json")
-  end
-
-  defp bundled_models_path do
-    case :code.priv_dir(:codex_sdk) do
-      {:error, _} -> Path.join(File.cwd!(), "priv/models.json")
-      path -> Path.join(List.to_string(path), "models.json")
-    end
-  end
-
-  defp fetch_remote_models(token, cwd) do
-    url = models_url(cwd)
-    headers = [{~c"authorization", ~c"Bearer " ++ String.to_charlist(token)}]
-    http_opts = remote_models_http_options()
-    request_opts = [body_format: :binary]
-
-    :inets.start()
-    :ssl.start()
-
-    case :httpc.request(:get, {String.to_charlist(url), headers}, http_opts, request_opts) do
-      {:ok, {{_, 200, _}, response_headers, body}} ->
-        with {:ok, decoded} <- Jason.decode(body) do
-          {models, body_etag} = parse_models_response(decoded)
-          etag = header_etag(response_headers) || body_etag
-          {:ok, models, etag}
-        end
-
-      {:ok, {{_, status, _}, _headers, _body}} ->
-        {:error, {:http_status, status}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc false
-  @spec remote_models_http_options() :: keyword()
-  def remote_models_http_options do
-    [timeout: Defaults.remote_models_http_timeout_ms()]
-    |> CA.merge_httpc_options()
-  end
-
-  @doc false
-  @spec remote_models_url(String.t() | nil) :: String.t()
-  def remote_models_url(cwd \\ default_cwd()) do
-    models_url(cwd)
-  end
+  defp effort_rank(:none), do: 0
+  defp effort_rank(:minimal), do: 1
+  defp effort_rank(:low), do: 2
+  defp effort_rank(:medium), do: 3
+  defp effort_rank(:high), do: 4
+  defp effort_rank(:xhigh), do: 5
 
   defp models_url(cwd) do
-    base = resolve_models_base_url(cwd)
-    base = String.trim_trailing(base, "/")
+    base = resolve_models_base_url(cwd) |> String.trim_trailing("/")
     client_version = client_version()
-
     "#{base}/models?client_version=#{client_version}"
   end
 
@@ -879,299 +395,30 @@ defmodule Codex.Models do
     end
   end
 
-  defp header_etag(headers) do
-    headers
-    |> Enum.find_value(fn {key, value} ->
-      if String.downcase(to_string(key)) == "etag" do
-        to_string(value)
-      end
-    end)
-  end
-
   defp client_version do
-    version =
-      case Application.spec(:codex_sdk, :vsn) do
-        nil -> "0.0.0"
-        vsn -> to_string(vsn)
-      end
-
-    normalized =
-      version
-      |> String.split("-", parts: 2)
-      |> List.first()
-
-    if normalized == "0.0.0", do: "99.99.99", else: normalized
-  end
-
-  defp parse_models_response(%{"models" => models} = decoded) when is_list(models) do
-    parsed_models =
-      models
-      |> Enum.map(&parse_model_info/1)
-      |> Enum.reject(&is_nil/1)
-
-    {parsed_models, Map.get(decoded, "etag")}
-  end
-
-  defp parse_models_response(_), do: {[], nil}
-
-  defp parse_model_info(%{} = data) do
-    slug = Map.get(data, "slug")
-    display_name = Map.get(data, "display_name")
-
-    if is_binary(slug) and is_binary(display_name) do
-      %{
-        slug: slug,
-        display_name: display_name,
-        description: Map.get(data, "description"),
-        default_reasoning_level:
-          parse_reasoning_effort(Map.get(data, "default_reasoning_level")) || :medium,
-        supported_reasoning_levels:
-          parse_reasoning_presets(Map.get(data, "supported_reasoning_levels")),
-        shell_type: parse_shell_type(Map.get(data, "shell_type")),
-        visibility: parse_visibility(Map.get(data, "visibility")),
-        minimal_client_version: parse_client_version(Map.get(data, "minimal_client_version")),
-        supported_in_api: Map.get(data, "supported_in_api", false),
-        priority: Map.get(data, "priority", 0),
-        upgrade: Map.get(data, "upgrade"),
-        base_instructions: Map.get(data, "base_instructions"),
-        supports_reasoning_summaries: Map.get(data, "supports_reasoning_summaries", false),
-        support_verbosity: Map.get(data, "support_verbosity", false),
-        default_verbosity: parse_verbosity(Map.get(data, "default_verbosity")),
-        apply_patch_tool_type:
-          parse_apply_patch_tool_type(Map.get(data, "apply_patch_tool_type")),
-        truncation_policy: parse_truncation_policy(Map.get(data, "truncation_policy")),
-        supports_parallel_tool_calls: Map.get(data, "supports_parallel_tool_calls", false),
-        context_window: parse_optional_integer(Map.get(data, "context_window")),
-        reasoning_summary_format:
-          parse_reasoning_summary_format(Map.get(data, "reasoning_summary_format")),
-        experimental_supported_tools:
-          parse_string_list(Map.get(data, "experimental_supported_tools"))
-      }
+    case Application.spec(:codex_sdk, :vsn) do
+      nil -> "99.99.99"
+      vsn -> vsn |> to_string() |> parse_client_version() |> format_client_version()
     end
   end
 
-  defp parse_model_info(_), do: nil
+  defp format_client_version({major, minor, patch}), do: "#{major}.#{minor}.#{patch}"
 
-  defp parse_reasoning_presets(presets) when is_list(presets) do
-    presets
-    |> Enum.map(fn
-      %{"effort" => effort, "description" => description} ->
-        case parse_reasoning_effort(effort) do
-          nil -> nil
-          effort -> %{effort: effort, description: normalize_description(description)}
-        end
-
-      _ ->
-        nil
-    end)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp parse_reasoning_presets(_), do: []
-
-  defp parse_reasoning_effort(value) do
-    case normalize_reasoning_effort(value) do
-      {:ok, effort} -> effort
+  defp default_cwd do
+    case File.cwd() do
+      {:ok, cwd} -> cwd
       _ -> nil
     end
   end
 
-  defp normalize_description(value) when is_binary(value), do: value
-  defp normalize_description(_), do: ""
+  defp normalize_optional_binary(nil), do: nil
 
-  defp parse_shell_type(value) when is_binary(value) do
-    case String.downcase(value) do
-      "default" -> :default
-      "local" -> :local
-      "unified_exec" -> :unified_exec
-      "disabled" -> :disabled
-      "shell_command" -> :shell_command
-      _ -> :default
+  defp normalize_optional_binary(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
     end
   end
 
-  defp parse_shell_type(_), do: :default
-
-  defp parse_visibility(value) when is_binary(value) do
-    case String.downcase(value) do
-      "list" -> :list
-      "hide" -> :hide
-      "none" -> :none
-      _ -> :none
-    end
-  end
-
-  defp parse_visibility(_), do: :none
-
-  @doc false
-  @spec parse_client_version(term()) :: client_version()
-  def parse_client_version([major, minor, patch])
-      when is_integer(major) and is_integer(minor) and is_integer(patch) do
-    {major, minor, patch}
-  end
-
-  def parse_client_version(value) when is_binary(value) do
-    version =
-      value
-      |> String.split("-", parts: 2)
-      |> List.first()
-
-    case String.split(version, ".", parts: 3) do
-      [major, minor, patch] ->
-        with {major, ""} <- Integer.parse(major),
-             {minor, ""} <- Integer.parse(minor),
-             {patch, ""} <- Integer.parse(patch) do
-          {major, minor, patch}
-        else
-          _ -> {0, 0, 0}
-        end
-
-      _ ->
-        {0, 0, 0}
-    end
-  end
-
-  def parse_client_version(_), do: {0, 0, 0}
-
-  defp parse_verbosity(value) when is_binary(value) do
-    case String.downcase(value) do
-      "low" -> :low
-      "medium" -> :medium
-      "high" -> :high
-      _ -> nil
-    end
-  end
-
-  defp parse_verbosity(_), do: nil
-
-  defp parse_apply_patch_tool_type(value) when is_binary(value) do
-    case String.downcase(value) do
-      "freeform" -> :freeform
-      "function" -> :function
-      _ -> nil
-    end
-  end
-
-  defp parse_apply_patch_tool_type(_), do: nil
-
-  defp parse_truncation_policy(%{"mode" => mode, "limit" => limit}) when is_integer(limit) do
-    mode = parse_truncation_mode(mode)
-
-    if mode do
-      %{mode: mode, limit: limit}
-    else
-      %{mode: :bytes, limit: limit}
-    end
-  end
-
-  defp parse_truncation_policy(_), do: %{mode: :bytes, limit: 0}
-
-  defp parse_truncation_mode(value) when is_binary(value) do
-    case String.downcase(value) do
-      "bytes" -> :bytes
-      "tokens" -> :tokens
-      _ -> nil
-    end
-  end
-
-  defp parse_truncation_mode(_), do: nil
-
-  defp parse_optional_integer(value) when is_integer(value) and value >= 0, do: value
-  defp parse_optional_integer(_), do: nil
-
-  defp parse_reasoning_summary_format(value) when is_binary(value) do
-    case String.downcase(value) do
-      "experimental" -> :experimental
-      "none" -> :none
-      _ -> :none
-    end
-  end
-
-  defp parse_reasoning_summary_format(_), do: :none
-
-  defp parse_string_list(list) when is_list(list) do
-    Enum.map(list, &to_string/1)
-  end
-
-  defp parse_string_list(_), do: []
-
-  defp model_info_to_preset(%{
-         slug: slug,
-         display_name: display_name,
-         description: description,
-         default_reasoning_level: default_reasoning_level,
-         supported_reasoning_levels: supported_reasoning_levels,
-         visibility: visibility,
-         supported_in_api: supported_in_api,
-         upgrade: upgrade
-       }) do
-    %{
-      id: slug,
-      model: slug,
-      display_name: display_name,
-      description: description || "",
-      default_reasoning_effort: default_reasoning_level,
-      supported_reasoning_efforts: supported_reasoning_levels,
-      is_default: false,
-      upgrade: upgrade_from_info(slug, upgrade, supported_reasoning_levels),
-      show_in_picker: visibility == :list,
-      supported_in_api: supported_in_api
-    }
-  end
-
-  defp upgrade_from_info(_slug, nil, _presets), do: nil
-
-  defp upgrade_from_info(slug, %{"model" => upgrade_slug} = upgrade, presets)
-       when is_binary(upgrade_slug) do
-    %{
-      id: upgrade_slug,
-      reasoning_effort_mapping: reasoning_effort_mapping_from_presets(presets),
-      migration_config_key: slug,
-      model_link: nil,
-      upgrade_copy: Map.get(upgrade, "migration_markdown")
-    }
-  end
-
-  defp upgrade_from_info(slug, upgrade_slug, presets) when is_binary(upgrade_slug) do
-    %{
-      id: upgrade_slug,
-      reasoning_effort_mapping: reasoning_effort_mapping_from_presets(presets),
-      migration_config_key: slug,
-      model_link: nil,
-      upgrade_copy: nil
-    }
-  end
-
-  defp upgrade_from_info(_slug, _upgrade, _presets), do: nil
-
-  defp fallback_default_model(:chatgpt), do: @default_chatgpt_model
-  defp fallback_default_model(:api), do: @default_api_model
-
-  defp preferred_default_ids(:chatgpt), do: ["codex-auto-balanced", @default_chatgpt_model]
-  defp preferred_default_ids(:api), do: [@default_api_model]
-
-  defp reasoning_effort_mapping_from_presets([]), do: nil
-
-  defp reasoning_effort_mapping_from_presets(presets) do
-    supported = Enum.map(presets, & &1.effort)
-
-    @reasoning_efforts
-    |> Enum.reduce(%{}, fn effort, acc ->
-      Map.put(acc, effort, nearest_effort(effort, supported))
-    end)
-  end
-
-  defp nearest_effort(target, supported) do
-    target_rank = effort_rank(target)
-
-    supported
-    |> Enum.min_by(fn candidate -> abs(effort_rank(candidate) - target_rank) end, fn -> target end)
-  end
-
-  defp effort_rank(:none), do: 0
-  defp effort_rank(:minimal), do: 1
-  defp effort_rank(:low), do: 2
-  defp effort_rank(:medium), do: 3
-  defp effort_rank(:high), do: 4
-  defp effort_rank(:xhigh), do: 5
+  defp normalize_optional_binary(_other), do: nil
 end
