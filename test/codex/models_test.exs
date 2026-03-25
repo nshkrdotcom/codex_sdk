@@ -62,11 +62,16 @@ defmodule Codex.ModelsTest do
       assert Enum.map(models, & &1.id) == [
                "gpt-5.3-codex",
                "gpt-5.4",
+               "gpt-5.4-mini",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
                "gpt-5.1-codex-mini"
              ]
+
+      assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
+      refute Enum.any?(models, &(&1.id == "gpt-5.3-codex-spark"))
+      assert length(models) >= 7
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
@@ -79,6 +84,8 @@ defmodule Codex.ModelsTest do
       assert Enum.map(models, & &1.id) == [
                "gpt-5.3-codex",
                "gpt-5.4",
+               "gpt-5.4-mini",
+               "gpt-5.3-codex-spark",
                "gpt-5.2-codex",
                "gpt-5.1-codex-max",
                "gpt-5.2",
@@ -86,6 +93,10 @@ defmodule Codex.ModelsTest do
              ]
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
+      assert Models.supported_in_api?("gpt-5.4-mini")
+      refute Models.supported_in_api?("gpt-5.3-codex-spark")
+      assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
+      assert Models.default_reasoning_effort("gpt-5.3-codex-spark") == :high
     end)
   end
 
@@ -122,7 +133,7 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
       assert Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       assert Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
-      assert length(models) >= 6
+      assert length(models) >= 7
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)

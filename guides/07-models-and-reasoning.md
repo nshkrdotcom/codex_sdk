@@ -66,6 +66,19 @@ iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.3-codex",
 #=>   "gpt-5.4",
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.2-codex",
+#=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.2",
+#=>   "gpt-5.1-codex-mini"
+#=> ]
+
+iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
+#=> [
+#=>   "gpt-5.3-codex",
+#=>   "gpt-5.4",
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2-codex",
 #=>   "gpt-5.1-codex-max",
 #=>   "gpt-5.2",
@@ -74,9 +87,8 @@ iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 ```
 
 That is the current bundled picker-visible snapshot shipped with this repo.
-ChatGPT-auth `/models` refreshes can expose additional runtime-visible models
-such as `gpt-5.4-mini`, so treat the bundled list as the offline baseline rather
-than the maximum possible menu.
+ChatGPT-auth `/models` refreshes can expose additional runtime-visible models,
+so treat this as the offline baseline rather than the maximum possible menu.
 
 Each model preset includes:
 
