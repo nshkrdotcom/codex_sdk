@@ -137,6 +137,7 @@ defmodule Codex.Runtime.Exec do
           full_auto: exec_opt(exec_opts, :full_auto),
           dangerously_bypass_approvals_and_sandbox:
             exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
+          model: normalize_option_string(exec_opts.codex_opts.model),
           model_payload: exec_opts.codex_opts.model_payload,
           color: normalize_option_string(exec_opt(exec_opts, :color)),
           output_last_message: exec_opt(exec_opts, :output_last_message),
@@ -197,8 +198,8 @@ defmodule Codex.Runtime.Exec do
         _ -> %{}
       end
 
-    model = model_payload_value(opts.model_payload, :resolved_model)
-    reasoning_effort = model_payload_value(opts.model_payload, :reasoning)
+    model = normalize_option_string(opts.model)
+    reasoning_effort = normalize_reasoning_value(opts.reasoning_effort)
 
     metadata
     |> put_if_missing("model", model)
@@ -266,7 +267,7 @@ defmodule Codex.Runtime.Exec do
   end
 
   defp reasoning_config_values(%ExecOptions{codex_opts: %Options{} = opts}) do
-    case model_payload_value(opts.model_payload, :reasoning) do
+    case normalize_reasoning_value(opts.reasoning_effort) do
       nil ->
         []
 
@@ -304,11 +305,13 @@ defmodule Codex.Runtime.Exec do
 
   defp approval_config_values(_thread), do: {:ok, []}
 
-  defp model_payload_value(payload, key) when is_map(payload) do
-    Map.get(payload, key, Map.get(payload, Atom.to_string(key)))
+  defp normalize_reasoning_value(nil), do: nil
+
+  defp normalize_reasoning_value(value) when is_atom(value) do
+    Codex.Models.reasoning_effort_to_string(value)
   end
 
-  defp model_payload_value(_payload, _key), do: nil
+  defp normalize_reasoning_value(value) when is_binary(value), do: value
 
   defp network_access_config_values(%{
          thread_opts: %Codex.Thread.Options{sandbox: {:external_sandbox, network_access}}

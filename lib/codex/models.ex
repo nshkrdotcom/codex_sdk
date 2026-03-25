@@ -276,8 +276,8 @@ defmodule Codex.Models do
   defp normalize_model_result({:error, _reason}), do: nil
 
   defp fetch_model!(model_id) do
-    model_id
-    |> ModelRegistry.validate(:codex)
+    :codex
+    |> ModelRegistry.validate(model_id)
     |> unwrap_registry!(:validate)
   end
 
