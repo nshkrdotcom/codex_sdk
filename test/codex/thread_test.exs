@@ -209,6 +209,11 @@ defmodule Codex.ThreadTest do
                  config_overrides: %{"features" => %{"web_search_request" => nil}}
                })
     end
+
+    test "rejects invalid color values" do
+      assert {:error, {:invalid_color, "nil"}} = ThreadOptions.new(%{color: "nil"})
+      assert {:error, {:invalid_color, "bad"}} = ThreadOptions.new(%{color: "bad"})
+    end
   end
 
   describe "build/3" do

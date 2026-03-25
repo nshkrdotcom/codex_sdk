@@ -723,13 +723,20 @@ defmodule Codex.Thread.Options do
   defp normalize_sandbox_policy(value), do: {:error, {:invalid_sandbox_policy, value}}
 
   defp normalize_color(nil), do: {:ok, nil}
-  defp normalize_color(:auto), do: {:ok, :auto}
-  defp normalize_color(:always), do: {:ok, :always}
-  defp normalize_color(:never), do: {:ok, :never}
-  defp normalize_color("auto"), do: {:ok, :auto}
-  defp normalize_color("always"), do: {:ok, :always}
-  defp normalize_color("never"), do: {:ok, :never}
-  defp normalize_color(value) when is_binary(value), do: {:ok, value}
+
+  defp normalize_color(value) when is_atom(value),
+    do: value |> Atom.to_string() |> normalize_color()
+
+  defp normalize_color(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
+      "auto" -> {:ok, :auto}
+      "always" -> {:ok, :always}
+      "never" -> {:ok, :never}
+      "" -> {:ok, nil}
+      _other -> {:error, {:invalid_color, value}}
+    end
+  end
+
   defp normalize_color(value), do: {:error, {:invalid_color, value}}
 
   defp normalize_history_persistence(value),
