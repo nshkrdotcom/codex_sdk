@@ -36,6 +36,43 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 
 ---
 
+## Model Selection APIs
+
+Model policy is centralized in `cli_subprocess_core`. In `codex_sdk`, the
+public API surfaces are projections and consumers of that shared contract.
+
+Primary entrypoints:
+
+- `Codex.Options.new/1` resolves the shared `model_payload` via
+  `CliSubprocessCore.ModelRegistry.build_arg_payload/3`
+- `Codex.Models.default_model/0` returns the current shared core default
+- `Codex.Models.list_visible/1` returns the shared visible Codex catalog
+- `Codex.Models.default_reasoning_effort/1` projects reasoning defaults from
+  the shared catalog
+
+Operational notes:
+
+- `codex_sdk` does not own a separate bundled policy layer anymore
+- unknown model, invalid reasoning effort, and unavailable model errors come
+  from the core registry contract
+- runtime CLI rendering consumes resolved state and does not invent fallback
+  models locally
+
+Example:
+
+```elixir
+{:ok, opts} =
+  Codex.Options.new(%{
+    model: "gpt-5.4-mini",
+    reasoning_effort: :medium
+  })
+
+opts.model_payload.resolved_model
+# => "gpt-5.4-mini"
+```
+
+---
+
 ## Codex.CLI and Codex.CLI.Session
 
 Use `Codex.CLI` when you need the upstream command surface directly rather than

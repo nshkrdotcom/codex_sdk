@@ -74,6 +74,33 @@ The publication boundary on that split is now:
 - optional ASM integration may exist only as an explicit bridge above the
   normalized kernel; it does not re-home these families or widen the core
 
+## Centralized Model Selection
+
+`cli_subprocess_core` is the only model-policy owner in the Codex stack.
+`codex_sdk` consumes the resolved selection payload and never implements a
+second defaulting or fallback path.
+
+Resolution ownership:
+
+- `CliSubprocessCore.ModelRegistry.resolve/3`
+- `CliSubprocessCore.ModelRegistry.validate/2`
+- `CliSubprocessCore.ModelRegistry.default_model/2`
+- `CliSubprocessCore.ModelRegistry.build_arg_payload/3`
+
+Codex-side consumption points:
+
+- `Codex.Options.new/1` resolves `model_payload`, `model`, and
+  `reasoning_effort`
+- `Codex.Models` projects visible models and defaults from the shared catalog
+- `Codex.Runtime.Exec` renders CLI args from the current resolved options state
+
+Contract rules:
+
+- no repo-local model catalog owns policy
+- no implicit provider fallback exists outside the core registry
+- no silent acceptance of blank, placeholder, or invalid model requests
+- no `--model nil`, `--model null`, or blank `--model` emission
+
 ## Component Architecture
 
 ### High-Level Component Diagram

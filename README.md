@@ -13,6 +13,15 @@
 
 An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support and comprehensive event handling.
 
+## Documentation Menu
+
+- `README.md` - installation, quick start, and runtime boundaries
+- `guides/01-getting-started.md` - first threads, turns, and sessions
+- `guides/02-architecture.md` - transport layering and ownership boundaries
+- `guides/03-api-guide.md` - public modules and common call patterns
+- `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
+- `guides/08-configuration-defaults.md` - config precedence and default resolution
+
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
@@ -115,9 +124,35 @@ Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. 
 ignored. The same PEM bundle is applied consistently to Codex CLI subprocesses, direct HTTP
 clients, remote model fetches, MCP HTTP/OAuth, realtime websockets, and voice HTTP requests.
 
-Default model: `Codex.Models.default_model/0` currently resolves to `gpt-5.4` with the bundled catalog unless `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, `CODEX_MODEL_DEFAULT`, or a fresher ChatGPT `/models` cache overrides it.
+## Centralized Model Selection
 
-The SDK always loads the bundled upstream model catalog from `priv/models.json`, which is synced from the vendored upstream catalog in `codex/codex-rs/core/models.json`. When ChatGPT auth tokens are available it can still refresh `/models` and cache the result, but the old `features.remote_models` flag is no longer required for current catalog/default behavior. See `guides/07-models-and-reasoning.md` for the current bundled snapshot and how to inspect the effective runtime list.
+`codex_sdk` no longer owns the active model catalog, fallback rules, or default
+selection policy. That authority now lives in `cli_subprocess_core`.
+
+The authoritative path is:
+
+- `CliSubprocessCore.ModelRegistry.resolve/3`
+- `CliSubprocessCore.ModelRegistry.validate/2`
+- `CliSubprocessCore.ModelRegistry.default_model/2`
+- `CliSubprocessCore.ModelRegistry.build_arg_payload/3`
+
+`Codex.Options.new/1` resolves a shared `model_payload`, then projects the
+current `model` and `reasoning_effort` from that payload. `Codex.Models` is now
+a read-only projection of the shared core catalog. It no longer owns a separate
+catalog or a separate fallback/defaulting path.
+
+Operationally, that means:
+
+- explicit request wins first
+- environment override comes next
+- provider default and remote default are core-owned, not SDK-owned
+- missing provider, missing model, placeholder model input, and invalid
+  reasoning effort all fail through the core error contract
+- CLI argument rendering only emits `--model` from a non-empty resolved value
+
+Use `Codex.Models.default_model/0`, `Codex.Models.list_visible/1`, and
+`Codex.Models.default_reasoning_effort/1` as convenience readers over that
+shared contract.
 
 See the [OpenAI Codex documentation](https://github.com/openai/codex) for more authentication options.
 
