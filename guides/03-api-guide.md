@@ -1813,3 +1813,7 @@ For developers familiar with the TypeScript SDK:
 - [Examples](04-examples.md)
 - [App-server Transport](05-app-server-transport.md)
 - [Realtime and Voice](06-realtime-and-voice.md)
+
+## Model Selection API Update
+
+Model selection now resolves in `/home/home/p/g/n/cli_subprocess_core` before command rendering. `/home/home/p/g/n/codex_sdk` treats model values and reasoning metadata as payload inputs, not policy inputs. Callers should expect hard failures from the core error contract for unknown models, invalid reasoning effort, unavailable provider policy, or empty/placeholder model input.

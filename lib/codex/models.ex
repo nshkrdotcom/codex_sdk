@@ -3,6 +3,9 @@ defmodule Codex.Models do
   Known Codex models and their defaults.
   """
 
+  alias CliSubprocessCore.ModelCatalog
+  alias CliSubprocessCore.ModelRegistry
+  alias CliSubprocessCore.ModelRegistry.Model, as: RegistryModel
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.Defaults
@@ -306,13 +309,13 @@ defmodule Codex.Models do
   @spec list_visible(:api | :chatgpt) :: [model_preset()]
   @spec list_visible(:api | :chatgpt, keyword()) :: [model_preset()]
   def list_visible(auth_mode \\ :api, opts \\ []) do
-    cwd = config_cwd_from_opts(opts)
-    auth_mode = normalize_auth_mode(auth_mode)
+    _auth_mode = normalize_auth_mode(auth_mode)
+    family = Keyword.get(opts, :model_family)
 
-    auth_mode
-    |> available_presets(cwd)
-    |> filter_visible_models(auth_mode)
-    |> ensure_default(auth_mode)
+    core_presets()
+    |> Enum.filter(& &1.show_in_picker)
+    |> Enum.filter(fn model -> is_nil(family) or Map.get(model, :family) == family end)
+    |> ensure_core_default()
   end
 
   @doc """
@@ -321,8 +324,8 @@ defmodule Codex.Models do
   @spec default_model() :: String.t()
   @spec default_model(:api | :chatgpt) :: String.t()
   def default_model(auth_mode \\ Auth.infer_auth_mode()) do
-    auth_mode = normalize_auth_mode(auth_mode)
-    env_override() || default_model_for_auth(auth_mode, default_cwd())
+    _auth_mode = normalize_auth_mode(auth_mode)
+    env_override() || core_default_model!()
   end
 
   @doc """
@@ -576,9 +579,7 @@ defmodule Codex.Models do
   defp find_model(model_id) do
     normalized = normalize_model(model_id)
 
-    all_presets = all_available_presets()
-
-    Enum.find(all_presets, fn preset ->
+    Enum.find(core_presets(), fn preset ->
       preset.id == normalized || preset.model == normalized
     end)
   end
@@ -604,14 +605,85 @@ defmodule Codex.Models do
   defp normalize_model(model), do: to_string(model)
 
   defp tool_enabled_for_model(model_id) do
-    auth_mode = Auth.infer_auth_mode()
-    shell_type = shell_type_for_model(model_id, auth_mode)
+    find_model(model_id) != nil
+  end
 
-    case shell_type do
-      :disabled -> false
-      nil -> false
-      _ -> true
+  defp core_presets do
+    core_models()
+    |> Enum.map(&registry_model_to_preset/1)
+  end
+
+  defp core_models do
+    case ModelCatalog.load(:codex) do
+      {:ok, %{models: models}} ->
+        models
+
+      {:error, reason} ->
+        raise ArgumentError, "codex model catalog is unavailable: #{inspect(reason)}"
     end
+  end
+
+  defp core_default_model! do
+    case ModelRegistry.default_model(:codex) do
+      {:ok, model} ->
+        model
+
+      {:error, reason} ->
+        raise ArgumentError, "codex default model resolution failed: #{inspect(reason)}"
+    end
+  end
+
+  defp registry_model_to_preset(%RegistryModel{} = model) do
+    default_reasoning_effort = model.default_reasoning_effort |> normalize_reasoning_atom()
+
+    %{
+      id: model.id,
+      model: model.id,
+      display_name: Map.get(model.metadata, "display_name", model.id),
+      description: Map.get(model.metadata, "description", ""),
+      default_reasoning_effort: default_reasoning_effort || :medium,
+      supported_reasoning_efforts: reasoning_presets_from_model(model),
+      is_default: model.default,
+      upgrade: nil,
+      show_in_picker: model.visibility == :public,
+      supported_in_api: model.visibility == :public,
+      family: model.family
+    }
+  end
+
+  defp reasoning_presets_from_model(%RegistryModel{} = model) do
+    @reasoning_efforts
+    |> Enum.filter(&Map.has_key?(model.reasoning_efforts, Atom.to_string(&1)))
+    |> Enum.map(fn effort ->
+      %{effort: effort, description: reasoning_effort_description(effort)}
+    end)
+  end
+
+  defp normalize_reasoning_atom(nil), do: nil
+
+  defp normalize_reasoning_atom(value) do
+    case normalize_reasoning_effort(value) do
+      {:ok, effort} -> effort
+      _ -> nil
+    end
+  end
+
+  defp reasoning_effort_description(effort) when effort in @reasoning_efforts do
+    effort
+    |> Atom.to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+
+  defp ensure_core_default([]), do: []
+
+  defp ensure_core_default(models) do
+    default_id = core_default_model!()
+
+    models
+    |> Enum.map(fn model ->
+      %{model | is_default: model.id == default_id}
+    end)
   end
 
   defp shell_type_for_model(model_id, auth_mode) do

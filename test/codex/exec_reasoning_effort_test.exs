@@ -5,7 +5,7 @@ defmodule Codex.ExecReasoningEffortTest do
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
 
-  test "coerces config reasoning effort to a supported value for the model" do
+  test "uses the resolved model payload reasoning effort" do
     codex_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
     File.mkdir_p!(codex_home)
     File.write!(Path.join(codex_home, "config.toml"), "model_reasoning_effort = \"xhigh\"\n")
@@ -43,7 +43,7 @@ defmodule Codex.ExecReasoningEffortTest do
         api_key: "test",
         codex_path_override: script_path,
         model: "gpt-5.1-codex-mini",
-        reasoning_effort: ""
+        reasoning_effort: :medium
       })
 
     {:ok, thread_opts} = ThreadOptions.new(%{})
@@ -58,7 +58,7 @@ defmodule Codex.ExecReasoningEffortTest do
       |> String.split(~r/\s+/, trim: true)
       |> flag_values("--config")
 
-    assert ~s(model_reasoning_effort="high") in configs
+    assert ~s(model_reasoning_effort="medium") in configs
   end
 
   defp flag_values(args, flag) do

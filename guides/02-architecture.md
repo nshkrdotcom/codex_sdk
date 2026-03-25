@@ -763,3 +763,12 @@ Auth precedence for both: `CODEX_API_KEY` → `auth.json OPENAI_API_KEY` → `OP
 - Custom event handlers
 - Advanced streaming modes
 - Performance optimizations
+
+## Model Selection Architecture Update
+
+The long-term architecture now places all model policy in `/home/home/p/g/n/cli_subprocess_core`. `/home/home/p/g/n/codex_sdk` receives a resolved payload and does not implement provider fallback, defaulting, placeholder sanitization policy, or reasoning-effort validation on its own.
+
+Authoritative APIs:
+- `CliSubprocessCore.ModelRegistry.resolve/3`
+- `CliSubprocessCore.ModelRegistry.validate/2`
+- `CliSubprocessCore.ModelRegistry.default_model/2`

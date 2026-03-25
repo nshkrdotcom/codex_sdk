@@ -6,6 +6,7 @@ defmodule Codex.Options do
   """
 
   require Bitwise
+  alias CliSubprocessCore.ModelRegistry
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
@@ -17,6 +18,7 @@ defmodule Codex.Options do
             base_url: BaseURL.default(),
             codex_path_override: nil,
             telemetry_prefix: [:codex],
+            model_payload: nil,
             model: Models.default_model(),
             reasoning_effort: Models.default_reasoning_effort(),
             model_personality: nil,
@@ -44,6 +46,7 @@ defmodule Codex.Options do
           base_url: String.t(),
           codex_path_override: String.t() | nil,
           telemetry_prefix: [atom()],
+          model_payload: CliSubprocessCore.ModelRegistry.Selection.t() | nil,
           model: String.t() | nil,
           reasoning_effort: Models.reasoning_effort() | nil,
           model_personality: Codex.Protocol.ConfigTypes.personality() | nil,
@@ -77,8 +80,9 @@ defmodule Codex.Options do
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model} <- fetch_model(attrs, auth_mode_for(api_key)),
-         {:ok, reasoning_effort} <- fetch_reasoning_effort(attrs, model),
+         {:ok, model_payload} <- resolve_model_payload(attrs, auth_mode_for(api_key)),
+         {:ok, model} <- fetch_model(model_payload),
+         {:ok, reasoning_effort} <- fetch_reasoning_effort(model_payload),
          {:ok, model_personality} <- fetch_model_personality(attrs),
          {:ok, reasoning_summary} <- fetch_reasoning_summary(attrs),
          {:ok, model_verbosity} <- fetch_model_verbosity(attrs),
@@ -98,6 +102,7 @@ defmodule Codex.Options do
          base_url: base_url,
          codex_path_override: override,
          telemetry_prefix: telemetry_prefix,
+         model_payload: model_payload,
          model: model,
          reasoning_effort: reasoning_effort,
          model_personality: model_personality,
@@ -209,25 +214,44 @@ defmodule Codex.Options do
 
   defp pick(_attrs, [], default), do: default
 
-  defp fetch_model(attrs, auth_mode) do
-    case pick(attrs, [:model, "model"], Models.default_model(auth_mode)) do
-      nil -> {:ok, nil}
-      "" -> {:ok, nil}
-      model -> {:ok, model}
-    end
+  defp resolve_model_payload(attrs, _auth_mode) do
+    requested_model = pick(attrs, [:model, "model"])
+
+    requested_reasoning =
+      pick(attrs, [:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"])
+
+    opts =
+      []
+      |> maybe_put_env_model(
+        System.get_env("CODEX_MODEL") ||
+          System.get_env("OPENAI_DEFAULT_MODEL") ||
+          System.get_env("CODEX_MODEL_DEFAULT")
+      )
+      |> maybe_put_reasoning(requested_reasoning)
+
+    ModelRegistry.build_arg_payload(:codex, requested_model, opts)
   end
 
-  defp fetch_reasoning_effort(attrs, model) do
-    default = Models.default_reasoning_effort(model)
-
-    attrs
-    |> pick([:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"], default)
-    |> Models.normalize_reasoning_effort()
-    |> case do
-      {:ok, effort} -> {:ok, Models.coerce_reasoning_effort(model, effort)}
-      {:error, _} = error -> error
-    end
+  defp fetch_model(model_payload) when is_map(model_payload) do
+    {:ok, Map.get(model_payload, :resolved_model, Map.get(model_payload, "resolved_model"))}
   end
+
+  defp fetch_reasoning_effort(model_payload) when is_map(model_payload) do
+    reasoning =
+      Map.get(model_payload, :reasoning, Map.get(model_payload, "reasoning"))
+
+    {:ok, normalize_reasoning_atom(reasoning)}
+  end
+
+  defp maybe_put_env_model(opts, nil), do: opts
+  defp maybe_put_env_model(opts, env_model), do: Keyword.put(opts, :env_model, env_model)
+
+  defp maybe_put_reasoning(opts, nil), do: opts
+  defp maybe_put_reasoning(opts, reasoning), do: Keyword.put(opts, :reasoning_effort, reasoning)
+
+  defp normalize_reasoning_atom(nil), do: nil
+  defp normalize_reasoning_atom(value) when is_atom(value), do: value
+  defp normalize_reasoning_atom(value) when is_binary(value), do: String.to_atom(value)
 
   defp fetch_model_personality(attrs) do
     attrs

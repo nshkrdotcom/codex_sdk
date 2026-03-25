@@ -1200,3 +1200,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">Made with ❤️ and Elixir</p>
+
+## Model Selection Contract
+
+`/home/home/p/g/n/codex_sdk` no longer owns active model-selection policy. The only authoritative resolver/defaulting/validation path is `/home/home/p/g/n/cli_subprocess_core` through `CliSubprocessCore.ModelRegistry.resolve/3`, `CliSubprocessCore.ModelRegistry.validate/2`, and `CliSubprocessCore.ModelRegistry.default_model/2`.
+
+`Codex.Options` and the runtime execution path now consume the resolved payload returned by core and only render transport arguments from that payload. Any older references in this document to local bundled catalogs such as `priv/models.json` should be treated as historical packaging details, not policy authority.

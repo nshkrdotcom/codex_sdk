@@ -55,46 +55,42 @@ defmodule Codex.ModelsTest do
     :ok
   end
 
-  test "list_visible/1 returns bundled api catalog defaults" do
+  test "list_visible/1 returns the core public codex catalog" do
     with_temp_codex_home(fn _home ->
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5.3-codex",
-               "gpt-5.4",
-               "gpt-5.4-mini",
-               "gpt-5.2-codex",
-               "gpt-5.1-codex-max",
-               "gpt-5.2",
-               "gpt-5.1-codex-mini"
-             ]
-
-      assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
-      refute Enum.any?(models, &(&1.id == "gpt-5.3-codex-spark"))
-      assert length(models) >= 7
-
-      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
-    end)
-  end
-
-  test "list_visible/1 returns bundled chatgpt catalog defaults" do
-    with_temp_codex_home(fn _home ->
-      models = Models.list_visible(:chatgpt)
-
-      assert Enum.map(models, & &1.id) == [
+               "gpt-5-codex",
                "gpt-5.3-codex",
                "gpt-5.4",
                "gpt-5.4-mini",
                "gpt-5.3-codex-spark",
                "gpt-5.2-codex",
-               "gpt-5.1-codex-max",
                "gpt-5.2",
-               "gpt-5.1-codex-mini"
+               "gpt-5.1-codex-max",
+               "gpt-5.1-codex-mini",
+               "gpt-5.1-codex",
+               "gpt-5",
+               "gpt-5.1"
              ]
 
+      assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
+      refute Enum.any?(models, &(&1.id == "gpt-5-codex-internal"))
+      assert length(models) == 12
+
+      assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
+    end)
+  end
+
+  test "list_visible/1 no longer changes across auth modes" do
+    with_temp_codex_home(fn _home ->
+      assert Enum.map(Models.list_visible(:chatgpt), & &1.id) ==
+               Enum.map(Models.list_visible(:api), & &1.id)
+
+      models = Models.list_visible(:chatgpt)
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
       assert Models.supported_in_api?("gpt-5.4-mini")
-      refute Models.supported_in_api?("gpt-5.3-codex-spark")
+      assert Models.supported_in_api?("gpt-5.3-codex-spark")
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
       assert Models.default_reasoning_effort("gpt-5.3-codex-spark") == :high
     end)
@@ -128,19 +124,20 @@ defmodule Codex.ModelsTest do
     assert Models.default_model() == "custom-model"
   end
 
-  test "bundled catalog does not depend on features.remote_models" do
+  test "visible model listing comes from the shared core catalog" do
     with_temp_codex_home(fn home ->
       models = Models.list_visible(:api)
+      assert Enum.any?(models, &(&1.id == "gpt-5-codex"))
       assert Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       assert Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
-      assert length(models) >= 7
+      assert length(models) == 12
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)
     end)
   end
 
-  test "chatgpt defaults can come from cached catalog while api filters API-hidden models" do
+  test "default model no longer depends on cached remote model catalogs" do
     with_temp_codex_home(fn home ->
       write_models_cache!(home, [
         remote_model_info("codex-auto-balanced", 0,
@@ -153,12 +150,12 @@ defmodule Codex.ModelsTest do
         )
       ])
 
-      assert Models.default_model(:chatgpt) == "codex-auto-balanced"
       assert Models.default_model(:api) == default_model()
+      assert Models.default_model(:chatgpt) == default_model()
     end)
   end
 
-  test "upgrade metadata includes reasoning effort mapping for remote models" do
+  test "upgrade metadata is no longer owned locally" do
     with_temp_codex_home(fn home ->
       write_models_cache!(home, [
         remote_model_info(default_model(), 0,
@@ -176,12 +173,7 @@ defmodule Codex.ModelsTest do
         )
       ])
 
-      upgrade = Models.get_upgrade("gpt-5.2-codex")
-
-      assert upgrade.id == default_model()
-      assert upgrade.migration_config_key == "gpt-5.2-codex"
-      assert is_map(upgrade.reasoning_effort_mapping)
-      assert is_binary(upgrade.upgrade_copy)
+      assert Models.get_upgrade("gpt-5.2-codex") == nil
     end)
   end
 
