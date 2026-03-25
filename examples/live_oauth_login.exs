@@ -165,8 +165,7 @@ defmodule CodexExamples.LiveOAuthLogin do
          :ok <- ensure_app_server_supported(codex_path),
          {:ok, codex_opts} <-
            Codex.Options.new(%{
-             codex_path_override: codex_path,
-             reasoning_effort: :low
+             codex_path_override: codex_path
            }),
          {:ok, conn} <-
            Codex.AppServer.connect(codex_opts,

@@ -7,7 +7,7 @@ defmodule LiveUsageAndCompaction do
     prompt = parse_prompt(args)
 
     model = Models.default_model()
-    reasoning = Models.coerce_reasoning_effort(model, :low)
+    reasoning = Models.default_reasoning_effort(model)
     tools? = Models.tool_enabled?(model)
 
     IO.puts("""

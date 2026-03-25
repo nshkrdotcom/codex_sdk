@@ -16,7 +16,6 @@ defmodule LiveOptionsConfigOverrides do
     {:ok, codex_opts} =
       Options.new(%{
         codex_path_override: codex_path,
-        reasoning_effort: :low,
         config: %{
           "approval_policy" => "never",
           "model_reasoning_summary" => "concise"

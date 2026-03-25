@@ -96,6 +96,14 @@ defmodule Codex.OptionsTest do
                })
     end
 
+    test "rejects unsupported low reasoning for gpt-5.4-mini" do
+      assert {:error, {:invalid_reasoning_effort, :low, ["high", "medium"], :codex}} =
+               Options.new(%{
+                 model: "gpt-5.4-mini",
+                 reasoning_effort: :low
+               })
+    end
+
     test "accepts reasoning summary and verbosity options" do
       {:ok, opts} =
         Options.new(%{

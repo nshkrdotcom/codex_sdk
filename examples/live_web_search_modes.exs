@@ -62,7 +62,7 @@ defmodule LiveWebSearchModes do
 
   defp run_mode_once(mode, prompt, codex_path) do
     with {:ok, codex_opts} <-
-           Options.new(%{codex_path_override: codex_path, reasoning_effort: :low}),
+           Options.new(%{codex_path_override: codex_path}),
          {:ok, thread_opts} <- Codex.Thread.Options.new(%{web_search_mode: mode}),
          {:ok, thread} <- Codex.start_thread(codex_opts, thread_opts),
          {:ok, result} <- Thread.run_streamed(thread, prompt),

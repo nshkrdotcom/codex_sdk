@@ -94,39 +94,39 @@ defmodule CodexSdk.MixProject do
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
       extras: [
-        "README.md",
-        "LICENSE",
-        "CHANGELOG.md",
-        "guides/01-getting-started.md",
-        "guides/02-architecture.md",
-        "guides/03-api-guide.md",
-        "guides/04-examples.md",
-        "guides/05-app-server-transport.md",
-        "guides/06-realtime-and-voice.md",
-        "guides/07-models-and-reasoning.md",
-        "guides/08-configuration-defaults.md",
-        "guides/09-oauth-and-login.md",
-        "guides/10-subagents.md"
+        "README.md": [title: "Overview"],
+        "guides/01-getting-started.md": [title: "Getting Started"],
+        "guides/02-architecture.md": [title: "Architecture"],
+        "guides/03-api-guide.md": [title: "API Guide"],
+        "guides/04-examples.md": [title: "Examples"],
+        "guides/05-app-server-transport.md": [title: "App Server Transport"],
+        "guides/06-realtime-and-voice.md": [title: "Realtime And Voice"],
+        "guides/07-models-and-reasoning.md": [title: "Models And Reasoning"],
+        "guides/08-configuration-defaults.md": [title: "Configuration Defaults"],
+        "guides/09-oauth-and-login.md": [title: "OAuth And Login"],
+        "guides/10-subagents.md": [title: "Subagents"],
+        "CHANGELOG.md": [title: "Changelog"],
+        LICENSE: [title: "License"]
       ],
       groups_for_extras: [
-        Introduction: ["README.md", "guides/01-getting-started.md"],
-        Guides: [
+        "Project Overview": ["README.md"],
+        Foundations: [
+          "guides/01-getting-started.md",
           "guides/02-architecture.md",
-          "guides/05-app-server-transport.md",
-          "guides/06-realtime-and-voice.md"
+          "guides/03-api-guide.md"
         ],
-        Advanced: [
-          "guides/07-models-and-reasoning.md",
-          "guides/08-configuration-defaults.md",
-          "guides/09-oauth-and-login.md",
+        Capabilities: [
+          "guides/04-examples.md",
+          "guides/05-app-server-transport.md",
+          "guides/06-realtime-and-voice.md",
           "guides/10-subagents.md"
         ],
-        Reference: [
-          "guides/03-api-guide.md",
-          "guides/04-examples.md",
-          "LICENSE"
+        "Models & Configuration": [
+          "guides/07-models-and-reasoning.md",
+          "guides/08-configuration-defaults.md",
+          "guides/09-oauth-and-login.md"
         ],
-        Changelog: ["CHANGELOG.md"]
+        Reference: ["CHANGELOG.md", "LICENSE"]
       ],
       groups_for_modules: [
         "Public API": [

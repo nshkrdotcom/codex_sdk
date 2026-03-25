@@ -14,7 +14,7 @@ defmodule CodexExamples.LiveToolingStream do
     prompt = parse_prompt(argv)
 
     codex_opts =
-      Options.new(%{codex_path_override: fetch_codex_path!(), reasoning_effort: :low})
+      Options.new(%{codex_path_override: fetch_codex_path!()})
       |> unwrap!("codex options")
 
     thread_opts =

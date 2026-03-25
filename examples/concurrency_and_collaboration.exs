@@ -13,7 +13,7 @@ defmodule Examples.Concurrency do
     tasks =
       Enum.map(files, fn file ->
         Task.Supervisor.async_nolink(supervisor, fn ->
-          {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
+          {:ok, thread} = Codex.start_thread(%{})
 
           prompt =
             "Give 2 quick risk notes you'd flag for a module like #{file} based only on its path/name. " <>
@@ -40,7 +40,7 @@ defmodule Examples.Concurrency do
       items
       |> Enum.map(fn item ->
         Task.Supervisor.async_nolink(supervisor, fn ->
-          {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
+          {:ok, thread} = Codex.start_thread(%{})
           prompt = "Process #{item} and summarise it succinctly (1-2 sentences)."
 
           case Codex.Thread.run(thread, prompt, %{timeout_ms: timeout_ms, max_turns: 1}) do
@@ -51,7 +51,7 @@ defmodule Examples.Concurrency do
       end)
       |> await_many_with_progress(timeout_ms: 60_000, tick_ms: 5_000, label: "map-reduce")
 
-    {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, thread} = Codex.start_thread(%{})
 
     prompt = """
     Summarise these analyses into a concise checklist:
@@ -65,7 +65,7 @@ defmodule Examples.Concurrency do
 
   def collaboration(file) do
     timeout_ms = 20_000
-    {:ok, analyzer} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, analyzer} = Codex.start_thread(%{})
 
     {:ok, analysis} =
       Codex.Thread.run(
@@ -75,7 +75,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, security} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, security} = Codex.start_thread(%{})
 
     {:ok, security_review} =
       Codex.Thread.run(
@@ -88,7 +88,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, performance} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, performance} = Codex.start_thread(%{})
 
     {:ok, perf_review} =
       Codex.Thread.run(
@@ -101,7 +101,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, synthesizer} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, synthesizer} = Codex.start_thread(%{})
 
     prompt = """
     Synthesize these reviews into actionable recommendations:

@@ -86,7 +86,7 @@ defmodule SandboxWarningsAndApprovalBypass do
   defp live_demo do
     IO.puts("\n-- optional live Codex run (CLI auth or API key) --")
 
-    with {:ok, codex_opts} <- Codex.Options.new(%{reasoning_effort: :low}),
+    with {:ok, codex_opts} <- Codex.Options.new(%{}),
          {:ok, _path} <- Codex.Options.codex_path(codex_opts),
          {:ok, thread_opts} <- Codex.Thread.Options.new(%{sandbox: :strict}),
          thread <- Codex.Thread.build(codex_opts, thread_opts),

@@ -42,8 +42,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
     {:ok, codex_opts} =
       Options.new(%{
         codex_path_override: codex_path,
-        model: model,
-        reasoning_effort: :low
+        model: model
       })
 
     IO.puts("Connecting to codex app-server with experimental API enabled...")

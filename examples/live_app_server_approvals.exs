@@ -51,8 +51,7 @@ defmodule CodexExamples.LiveAppServerApprovals do
 
         with {:ok, codex_opts} <-
                Codex.Options.new(%{
-                 codex_path_override: codex_path,
-                 reasoning_effort: :low
+                 codex_path_override: codex_path
                }),
              {:ok, conn, experimental_api?, init_fallback_reason} <-
                connect_for_approvals_demo(codex_opts, fixture) do

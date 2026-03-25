@@ -7,7 +7,7 @@ defmodule Examples.StructuredOutput do
   @moduledoc false
 
   def run_schema_example do
-    {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, thread} = Codex.start_thread(%{})
 
     case Codex.Thread.run(
            thread,
@@ -46,7 +46,7 @@ defmodule Examples.StructuredOutput do
   end
 
   def run_struct_example do
-    {:ok, thread} = Codex.start_thread(%{reasoning_effort: :low})
+    {:ok, thread} = Codex.start_thread(%{})
 
     case Codex.Thread.run(
            thread,

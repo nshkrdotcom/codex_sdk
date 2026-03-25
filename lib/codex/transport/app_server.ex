@@ -326,7 +326,7 @@ defmodule Codex.Transport.AppServer do
 
   defp maybe_apply_reasoning_effort(
          config,
-         %Thread{codex_opts: %Options{model: model, reasoning_effort: effort}},
+         %Thread{codex_opts: %Options{reasoning_effort: effort}},
          :start
        ) do
     config = config || %{}
@@ -334,8 +334,6 @@ defmodule Codex.Transport.AppServer do
     if has_reasoning_effort?(config) do
       config
     else
-      effort = Models.coerce_reasoning_effort(model, effort)
-
       case effort do
         nil -> config
         _ -> Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))

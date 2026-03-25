@@ -11,6 +11,7 @@ defmodule Codex.AgentRunnerTest do
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Tools
+  import Codex.Test.ModelFixtures
 
   describe "Agent.new/1" do
     test "builds agent with defaults and validates inputs" do
@@ -124,6 +125,32 @@ defmodule Codex.AgentRunnerTest do
 
       assert {:error, {:max_turns_exceeded, 2, %{continuation: "cont-auto-run"}}} =
                AgentRunner.run(pending_thread, "Still running", %{max_turns: 2})
+    end
+
+    test "errors when a model override makes the current reasoning invalid", %{thread: _thread} do
+      {script_path, state_file} =
+        FixtureScripts.sequential_fixtures([
+          "thread_auto_run_step1.jsonl"
+        ])
+
+      on_exit(fn ->
+        File.rm_rf(script_path)
+        File.rm_rf(state_file)
+      end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path,
+          model: max_model(),
+          reasoning_effort: :xhigh
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:invalid_reasoning_effort, :xhigh, ["high", "medium"], :codex}} =
+               AgentRunner.run(thread, "Hello Codex", %{run_config: %{model: alt_model()}})
     end
   end
 

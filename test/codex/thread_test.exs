@@ -984,12 +984,12 @@ defmodule Codex.ThreadTest do
       assert Thread.rate_limits(updated) == rate_limits
     end
 
-    test "session configured updates model and coerces reasoning effort" do
+    test "session configured updates model and preserves provider-reported reasoning effort" do
       {:ok, codex_opts} =
         Options.new(%{
           api_key: "test",
           model: default_model(),
-          reasoning_effort: :xhigh
+          reasoning_effort: :medium
         })
 
       {:ok, thread_opts} = ThreadOptions.new(%{})
@@ -997,7 +997,7 @@ defmodule Codex.ThreadTest do
 
       event = %Events.SessionConfigured{
         model: alt_model(),
-        reasoning_effort: "xhigh"
+        reasoning_effort: "high"
       }
 
       {updated, _response, _usage} = Thread.reduce_events(thread, [event], %{})

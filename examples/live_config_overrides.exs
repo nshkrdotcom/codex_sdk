@@ -10,7 +10,7 @@ defmodule LiveConfigOverrides do
     demo_layered_provider_config()
     codex_path = fetch_codex_path!()
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path, reasoning_effort: :low})
+    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
 
     # Demonstrate nested map auto-flattening for config overrides.
     # These nested maps are flattened to dotted-path keys before being

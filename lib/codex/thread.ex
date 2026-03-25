@@ -668,7 +668,6 @@ defmodule Codex.Thread do
         nil -> thread.codex_opts.reasoning_effort
         value -> value
       end
-      |> then(&Models.coerce_reasoning_effort(model, &1))
 
     updated_opts =
       thread.codex_opts

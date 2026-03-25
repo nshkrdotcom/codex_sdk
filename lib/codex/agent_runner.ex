@@ -9,7 +9,6 @@ defmodule Codex.AgentRunner do
   alias Codex.Guardrail
   alias Codex.GuardrailError
   alias Codex.Handoff
-  alias Codex.Models
   alias Codex.Options
   alias Codex.RunConfig
   alias Codex.RunResultStreaming
@@ -77,10 +76,10 @@ defmodule Codex.AgentRunner do
     {agent_opts, run_config_opts, turn_opts, backoff} = normalize_opts(opts)
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
-         {:ok, %RunConfig{} = run_config} <- RunConfig.new(run_config_opts) do
+         {:ok, %RunConfig{} = run_config} <- RunConfig.new(run_config_opts),
+         {:ok, tuned_thread} <- apply_model_override(thread, run_config) do
       tuned_thread =
-        thread
-        |> apply_model_override(run_config)
+        tuned_thread
         |> apply_tracing_metadata(run_config)
         |> apply_file_search_config(run_config)
 
@@ -131,6 +130,7 @@ defmodule Codex.AgentRunner do
 
     with {:ok, %Agent{} = agent} <- Agent.new(agent_opts),
          {:ok, %RunConfig{} = run_config} <- RunConfig.new(run_config_opts),
+         {:ok, tuned_thread} <- apply_model_override(thread, run_config),
          {:ok, queue} <- StreamQueue.start_link(),
          {:ok, control} <- StreamingControl.start_link() do
       :ok = StreamingControl.attach_queue(control, queue)
@@ -142,8 +142,7 @@ defmodule Codex.AgentRunner do
         end)
 
       tuned_thread =
-        thread
-        |> apply_model_override(run_config)
+        tuned_thread
         |> apply_tracing_metadata(run_config)
         |> apply_file_search_config(run_config)
 
@@ -1024,14 +1023,22 @@ defmodule Codex.AgentRunner do
          model: model
        }) do
     if is_binary(model) and model != "" do
-      coerced = Models.coerce_reasoning_effort(model, opts.reasoning_effort)
-      %{thread | codex_opts: %{opts | model: model, reasoning_effort: coerced}}
+      attrs =
+        opts
+        |> Map.from_struct()
+        |> Map.drop([:model_payload])
+        |> Map.put(:model, model)
+
+      case Options.new(attrs) do
+        {:ok, updated_opts} -> {:ok, %{thread | codex_opts: updated_opts}}
+        {:error, reason} -> {:error, reason}
+      end
     else
-      thread
+      {:ok, thread}
     end
   end
 
-  defp apply_model_override(thread, _run_config), do: thread
+  defp apply_model_override(thread, _run_config), do: {:ok, thread}
 
   defp apply_tracing_metadata(%Thread{} = thread, %RunConfig{} = run_config) do
     tracing_meta =

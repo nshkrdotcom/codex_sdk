@@ -12,7 +12,7 @@ defmodule LiveRateLimits do
     prompt = parse_prompt(argv)
     codex_path = fetch_codex_path!()
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path, reasoning_effort: :low})
+    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
     {:ok, thread} = Codex.start_thread(codex_opts, %{working_directory: File.cwd!()})
 
     case Thread.run_streamed(thread, prompt) do

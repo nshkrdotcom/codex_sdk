@@ -73,8 +73,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
 
     {:ok, codex_opts} =
       Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!(),
-        reasoning_effort: :low
+        codex_path_override: fetch_codex_path!()
       })
 
     {:ok, thread_opts} =

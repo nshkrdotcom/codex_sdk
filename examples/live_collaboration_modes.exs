@@ -32,7 +32,7 @@ defmodule LiveCollaborationModes do
     ensure_app_server_supported!(codex_path)
 
     with {:ok, codex_opts} <-
-           Options.new(%{codex_path_override: codex_path, reasoning_effort: :low}),
+           Options.new(%{codex_path_override: codex_path}),
          {:ok, conn, experimental_api?, fallback_reason} <-
            connect_for_collaboration_modes(codex_opts) do
       try do
@@ -258,14 +258,10 @@ defmodule LiveCollaborationModes do
         {effort, note}
 
       _ ->
-        effort = Models.coerce_reasoning_effort(model, :low)
+        effort = Models.default_reasoning_effort(model)
 
         note =
-          if effort == :low do
-            " (server omitted effort; using the global default)"
-          else
-            " (server omitted effort; using the model-coerced form of the global :low default)"
-          end
+          " (server omitted effort; using the selected model default)"
 
         {effort, note}
     end

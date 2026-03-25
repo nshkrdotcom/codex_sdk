@@ -9,7 +9,7 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via `CliSubprocessCore` command/session lanes
    - Uses `codex login`, native `Codex.OAuth`, or `CODEX_API_KEY`
-   - SDK default model: `Codex.Models.default_model()` (currently resolves to `gpt-5.4` from the bundled catalog unless env overrides or a fresher ChatGPT `/models` cache win)
+   - SDK default model: `Codex.Models.default_model()` from the shared `cli_subprocess_core` catalog
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
@@ -17,7 +17,12 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` pins `CODEX_MODEL` to `gpt-5.4-mini` for faster reproducible runs; override it by exporting `CODEX_MODEL` before running. The library default itself remains `gpt-5.4`. Most live scripts now use `Codex.Models.default_model()` instead of hardcoded strings, and examples that start Codex turns explicitly prefer `reasoning_effort: :low`, letting the SDK coerce upward when the selected model or live collaboration-mode preset requires a higher minimum.
+By default, `./examples/run_all.sh` does not pin a local example model. It uses
+the shared `CliSubprocessCore.ModelRegistry` default through
+`Codex.Models.default_model()`, unless you export `CODEX_MODEL` yourself.
+Examples that start Codex turns no longer force a global `:low` reasoning
+effort. They rely on the selected model's shared core default unless a live
+collaboration-mode preset explicitly advertises a different value.
 The runner executes CLI-backed examples first, then runs realtime/voice examples only when a direct API key is available (`CODEX_API_KEY`, `OPENAI_API_KEY`, or `auth.json` `OPENAI_API_KEY`).
 
 For TLS interception or private roots, set `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE`

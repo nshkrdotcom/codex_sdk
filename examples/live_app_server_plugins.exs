@@ -23,8 +23,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
       try do
         with {:ok, codex_opts} <-
                Codex.Options.new(%{
-                 codex_path_override: codex_path,
-                 reasoning_effort: :low
+                 codex_path_override: codex_path
                }),
              {:ok, conn} <-
                Codex.AppServer.connect(codex_opts,

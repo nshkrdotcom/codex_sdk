@@ -29,8 +29,7 @@ defmodule CodexExamples.LiveAppServerBasic do
          :ok <- ensure_auth_available(),
          {:ok, codex_opts} <-
            Codex.Options.new(%{
-             codex_path_override: codex_path,
-             reasoning_effort: :low
+             codex_path_override: codex_path
            }),
          {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
       try do

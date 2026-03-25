@@ -2,6 +2,7 @@ defmodule Codex.Config.DefaultsTest do
   use ExUnit.Case, async: false
 
   alias Codex.Config.Defaults
+  alias Codex.Models
 
   setup do
     original_env = Application.get_all_env(:codex_sdk)
@@ -257,12 +258,12 @@ defmodule Codex.Config.DefaultsTest do
   # ── Model defaults ─────────────────────────────────────────────────────
 
   describe "model defaults" do
-    test "default_api_model/0 returns gpt-5.4" do
-      assert Defaults.default_api_model() == "gpt-5.4"
+    test "default_api_model/0 delegates to the shared core default" do
+      assert Defaults.default_api_model() == Models.default_model()
     end
 
-    test "default_chatgpt_model/0 returns gpt-5.4" do
-      assert Defaults.default_chatgpt_model() == "gpt-5.4"
+    test "default_chatgpt_model/0 delegates to the shared core default" do
+      assert Defaults.default_chatgpt_model() == Models.default_model()
     end
 
     test "remote_models_cache_ttl_seconds/0 returns 300" do
