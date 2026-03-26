@@ -101,6 +101,27 @@ Contract rules:
 - no silent acceptance of blank, placeholder, or invalid model requests
 - no `--model nil`, `--model null`, or blank `--model` emission
 
+### Codex Local OSS And Ollama
+
+The current external-model path implemented end-to-end is local Ollama through
+Codex OSS mode.
+
+The flow is:
+
+1. `Codex.Options.new/1` forwards `provider_backend: :oss` and
+   `oss_provider: "ollama"` into `CliSubprocessCore.ModelRegistry`
+2. the core validates the Ollama runtime and selected local model id
+3. the resolved payload carries:
+   - `provider_backend: :oss`
+   - `backend_metadata["oss_provider"] = "ollama"`
+4. exec and app-server startup render:
+   - `--oss`
+   - `--local-provider ollama`
+   - `--model <resolved local model>`
+
+That keeps Codex backend selection centralized while still preserving the
+upstream Codex routing concepts.
+
 ## Component Architecture
 
 ### High-Level Component Diagram

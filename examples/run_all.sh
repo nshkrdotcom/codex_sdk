@@ -4,15 +4,81 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+usage() {
+  cat <<'EOF'
+Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--help]
+
+Options:
+  --ollama               Run all examples against local Codex OSS + Ollama.
+  --ollama-model MODEL   Override the Ollama model. Default: llama3.2
+  --help                 Show this help text.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ollama)
+      export CODEX_PROVIDER_BACKEND="oss"
+      export CODEX_OSS_PROVIDER="ollama"
+      shift
+      ;;
+    --ollama-model)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --ollama-model requires a model name." >&2
+        exit 1
+      fi
+
+      export CODEX_PROVIDER_BACKEND="oss"
+      export CODEX_OSS_PROVIDER="ollama"
+      export CODEX_MODEL="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      echo >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 if [[ -n "${CODEX_MODEL:-}" ]]; then
   echo "Using model override: ${CODEX_MODEL}"
 else
   echo "Using shared core default model from cli_subprocess_core"
 fi
 
+if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+  OLLAMA_MODEL="${CODEX_MODEL:-llama3.2}"
+  export CODEX_MODEL="${OLLAMA_MODEL}"
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "ERROR: ollama binary not found for --ollama mode"
+    exit 1
+  fi
+
+  echo "Using Codex local OSS provider: ollama"
+  echo "  model: ${OLLAMA_MODEL}"
+  echo
+  echo "==> ollama --version"
+  ollama --version
+  echo
+  echo "==> ollama show ${OLLAMA_MODEL}"
+  if ! ollama show "${OLLAMA_MODEL}" >/dev/null 2>&1; then
+    echo "ERROR: Ollama model not installed: ${OLLAMA_MODEL}" >&2
+    exit 1
+  fi
+
+  export CODEX_API_KEY=""
+fi
+
 echo
 
-if [[ -z "${CODEX_API_KEY:-}" ]]; then
+if [[ "${CODEX_PROVIDER_BACKEND:-}" != "oss" || "${CODEX_OSS_PROVIDER:-}" != "ollama" ]] && [[ -z "${CODEX_API_KEY:-}" ]]; then
   echo "Warning: No CODEX_API_KEY set (CLI examples require codex login or CODEX_API_KEY)"
   echo
 fi

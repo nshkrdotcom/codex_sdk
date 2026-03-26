@@ -71,6 +71,23 @@ opts.model_payload.resolved_model
 # => "gpt-5.4-mini"
 ```
 
+Local Ollama through the shared core contract:
+
+```elixir
+{:ok, opts} =
+  Codex.Options.new(%{
+    model: "llama3.2",
+    provider_backend: :oss,
+    oss_provider: "ollama"
+  })
+
+opts.model_payload.provider_backend
+# => :oss
+
+opts.model_payload.backend_metadata["oss_provider"]
+# => "ollama"
+```
+
 ---
 
 ## Codex.CLI and Codex.CLI.Session

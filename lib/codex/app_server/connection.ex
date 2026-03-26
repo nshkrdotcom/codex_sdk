@@ -124,7 +124,7 @@ defmodule Codex.AppServer.Connection do
     with {:ok, binary_path} <- build_command(codex_opts),
          {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
-         invocation <- Command.new(binary_path, ["app-server"], cwd: cwd, env: env),
+         invocation <- Command.new(binary_path, app_server_args(codex_opts), cwd: cwd, env: env),
          {:ok, raw_session} <-
            RawSession.start_link(
              invocation,
@@ -634,10 +634,78 @@ defmodule Codex.AppServer.Connection do
     with {:ok, custom_env} <- RuntimeEnv.normalize_overrides(process_env) do
       codex_opts.api_key
       |> RuntimeEnv.base_overrides(codex_opts.base_url)
+      |> Map.merge(payload_env_overrides(codex_opts), fn _key, _base, payload -> payload end)
       |> Map.merge(custom_env, fn _key, _base, custom -> custom end)
       |> then(&{:ok, &1})
     end
   end
+
+  defp app_server_args(%Options{} = codex_opts) do
+    payload = codex_opts.model_payload
+    backend = payload_provider_backend(payload)
+    metadata = payload_backend_metadata(payload)
+    model = normalize_option_string(codex_opts.model)
+
+    ["app-server"]
+    |> maybe_append_flag("--oss", backend in [:oss, "oss"])
+    |> maybe_append_pair("--local-provider", Map.get(metadata, "oss_provider"))
+    |> maybe_append_pair("--model", model)
+    |> maybe_append_configs(Map.get(metadata, "config_values", []))
+  end
+
+  defp payload_env_overrides(%Options{model_payload: payload}) do
+    payload
+    |> case do
+      payload when is_map(payload) ->
+        Map.get(payload, :env_overrides, Map.get(payload, "env_overrides", %{}))
+
+      _ ->
+        %{}
+    end
+    |> case do
+      env when is_map(env) ->
+        Map.new(env, fn {key, value} -> {to_string(key), to_string(value)} end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp payload_backend_metadata(payload) when is_map(payload) do
+    Map.get(payload, :backend_metadata, Map.get(payload, "backend_metadata", %{}))
+    |> case do
+      metadata when is_map(metadata) -> metadata
+      _ -> %{}
+    end
+  end
+
+  defp payload_backend_metadata(_payload), do: %{}
+
+  defp payload_provider_backend(payload) when is_map(payload) do
+    Map.get(payload, :provider_backend, Map.get(payload, "provider_backend"))
+  end
+
+  defp payload_provider_backend(_payload), do: nil
+
+  defp maybe_append_flag(args, _flag, false), do: args
+  defp maybe_append_flag(args, flag, true), do: args ++ [flag]
+
+  defp maybe_append_pair(args, _flag, nil), do: args
+  defp maybe_append_pair(args, _flag, ""), do: args
+  defp maybe_append_pair(args, flag, value), do: args ++ [flag, to_string(value)]
+
+  defp maybe_append_configs(args, values) when is_list(values) do
+    Enum.reduce(values, args, fn
+      value, acc when is_binary(value) and value != "" -> acc ++ ["--config", value]
+      _value, acc -> acc
+    end)
+  end
+
+  defp maybe_append_configs(args, _values), do: args
+
+  defp normalize_option_string(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_option_string(value) when is_binary(value) and value != "", do: value
+  defp normalize_option_string(_value), do: nil
 
   defp transport_stderr(%State{raw_session: %RawSession{} = raw_session}) do
     RawSession.stderr(raw_session)

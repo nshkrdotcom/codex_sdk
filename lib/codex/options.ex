@@ -217,6 +217,19 @@ defmodule Codex.Options do
   defp resolve_model_payload(attrs, _auth_mode) do
     requested_model = pick(attrs, [:model, "model"])
 
+    provider_backend =
+      pick(
+        attrs,
+        [:provider_backend, "provider_backend"],
+        System.get_env("CODEX_PROVIDER_BACKEND")
+      )
+
+    oss_provider =
+      pick(attrs, [:oss_provider, "oss_provider"], System.get_env("CODEX_OSS_PROVIDER"))
+
+    ollama_base_url =
+      pick(attrs, [:ollama_base_url, "ollama_base_url"], System.get_env("CODEX_OLLAMA_BASE_URL"))
+
     requested_reasoning =
       pick(attrs, [:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"])
 
@@ -228,6 +241,17 @@ defmodule Codex.Options do
           System.get_env("CODEX_MODEL_DEFAULT")
       )
       |> maybe_put_reasoning(requested_reasoning)
+      |> maybe_put_registry_opt(:provider_backend, provider_backend)
+      |> maybe_put_registry_opt(:oss_provider, oss_provider)
+      |> maybe_put_registry_opt(:ollama_base_url, ollama_base_url)
+      |> maybe_put_registry_opt(
+        :ollama_http,
+        pick(attrs, [:ollama_http, "ollama_http"])
+      )
+      |> maybe_put_registry_opt(
+        :ollama_timeout_ms,
+        pick(attrs, [:ollama_timeout_ms, "ollama_timeout_ms"])
+      )
 
     ModelRegistry.build_arg_payload(:codex, requested_model, opts)
   end
@@ -248,6 +272,10 @@ defmodule Codex.Options do
 
   defp maybe_put_reasoning(opts, nil), do: opts
   defp maybe_put_reasoning(opts, reasoning), do: Keyword.put(opts, :reasoning_effort, reasoning)
+
+  defp maybe_put_registry_opt(opts, _key, nil), do: opts
+  defp maybe_put_registry_opt(opts, _key, ""), do: opts
+  defp maybe_put_registry_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp normalize_reasoning_atom(nil), do: nil
   defp normalize_reasoning_atom(value) when is_atom(value), do: value

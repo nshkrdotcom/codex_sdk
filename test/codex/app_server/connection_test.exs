@@ -108,6 +108,38 @@ defmodule Codex.AppServer.ConnectionTest do
     assert start_opts[:event_tag] == :codex_io_transport
   end
 
+  test "launch args include payload-derived local oss settings" do
+    codex_opts = %Options{
+      api_key: nil,
+      codex_path_override: System.find_executable("bash") || "/bin/bash",
+      model: "llama3.2",
+      model_payload: %{
+        provider_backend: :oss,
+        backend_metadata: %{"oss_provider" => "ollama"}
+      }
+    }
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+    assert %CliSubprocessCore.Command{} = command = Keyword.fetch!(start_opts, :command)
+
+    assert command.args == [
+             "app-server",
+             "--oss",
+             "--local-provider",
+             "ollama",
+             "--model",
+             "llama3.2"
+           ]
+  end
+
   test "runtime is backed by a raw session with line stdout and raw stdin", %{
     codex_opts: codex_opts
   } do

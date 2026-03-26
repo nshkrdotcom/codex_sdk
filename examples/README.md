@@ -8,7 +8,7 @@ This SDK contains two distinct subsystems with different authentication:
 
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via `CliSubprocessCore` command/session lanes
-   - Uses `codex login`, native `Codex.OAuth`, or `CODEX_API_KEY`
+   - Uses `codex login`, native `Codex.OAuth`, `CODEX_API_KEY`, or local OSS via Ollama
    - SDK default model: `Codex.Models.default_model()` from the shared `cli_subprocess_core` catalog
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
@@ -34,6 +34,22 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 ```bash
 ./examples/run_all.sh
 ```
+
+Run the same CLI-backed example set against local Codex OSS + Ollama:
+
+```bash
+./examples/run_all.sh --ollama
+./examples/run_all.sh --ollama --ollama-model llama3.2
+```
+
+`--ollama` sets:
+
+- `CODEX_PROVIDER_BACKEND=oss`
+- `CODEX_OSS_PROVIDER=ollama`
+- `CODEX_MODEL=llama3.2` by default
+
+The runner checks that the requested Ollama model is installed before starting
+the examples.
 
 If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
 If credentials exist but direct API access is unavailable (for example `insufficient_quota`, missing realtime model access, or an upstream Realtime `server_error`), direct API examples print `SKIPPED: <reason>`. Realtime demos now run a minimal raw-WebSocket health probe first and include the upstream `session_id` in the skip reason when OpenAI fails before any example-specific logic.

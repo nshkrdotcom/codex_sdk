@@ -148,6 +148,30 @@ Operationally, that means:
 - provider default and remote default are core-owned, not SDK-owned
 - missing provider, missing model, placeholder model input, and invalid
   reasoning effort all fail through the core error contract
+
+## Local Ollama Through The Shared Core Contract
+
+`codex_sdk` now consumes the core-owned Codex OSS payload for local Ollama.
+
+Use:
+
+```elixir
+{:ok, opts} =
+  Codex.Options.new(%{
+    model: "llama3.2",
+    provider_backend: :oss,
+    oss_provider: "ollama"
+  })
+```
+
+That causes the shared core registry to:
+
+- validate the Ollama runtime
+- validate the local model id
+- enforce the Codex OSS default and reasoning rules
+- return a payload that renders `--oss --local-provider ollama --model llama3.2`
+
+The SDK does not infer those flags on its own.
 - CLI argument rendering only emits `--model` from a non-empty resolved value
 
 Use `Codex.Models.default_model/0`, `Codex.Models.list_visible/1`, and

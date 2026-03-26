@@ -201,6 +201,51 @@ defmodule Codex.ExecTest do
     assert ~s(model="o3") in flag_values(args, "--config")
   end
 
+  test "payload-derived local oss settings override legacy thread flags" do
+    capture_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codex_exec_payload_oss_#{System.unique_integer([:positive])}"
+      )
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+        end)
+      end)
+
+    codex_opts = %Options{
+      api_key: nil,
+      codex_path_override: script_path,
+      model: "llama3.2",
+      reasoning_effort: :xhigh,
+      model_payload: %{
+        provider_backend: :oss,
+        reasoning: "xhigh",
+        backend_metadata: %{"oss_provider" => "ollama"}
+      }
+    }
+
+    {:ok, thread_opts} = ThreadOptions.new(%{})
+    thread = Thread.build(codex_opts, thread_opts)
+
+    assert {:ok, _} = Thread.run(thread, "payload oss")
+
+    args =
+      capture_path
+      |> File.read!()
+      |> String.trim()
+      |> String.split(~r/\s+/, trim: true)
+
+    assert Enum.any?(args, &(&1 == "--oss"))
+    assert fetch_flag_value(args, "--local-provider") == "ollama"
+    assert fetch_flag_value(args, "--model") == "llama3.2"
+  end
+
   test "forwards options-level global config overrides as --config flags" do
     capture_path =
       Path.join(

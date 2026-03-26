@@ -97,7 +97,7 @@ defmodule Codex.Config.Overrides do
       thread_value(thread_opts, :shell_environment_policy)
     )
     |> add_sandbox_policy_overrides(thread_value(thread_opts, :sandbox_policy))
-    |> add_provider_tuning_overrides(thread_opts)
+    |> add_provider_tuning_overrides(codex_opts, thread_opts)
   end
 
   @spec merge_config(map() | nil, Options.t(), ThreadOptions.t()) :: map() | nil
@@ -554,8 +554,12 @@ defmodule Codex.Config.Overrides do
     _ -> false
   end
 
-  defp add_provider_tuning_overrides(overrides, %ThreadOptions{} = thread_opts) do
-    provider_id = provider_id_for_tuning(thread_opts)
+  defp add_provider_tuning_overrides(
+         overrides,
+         %Options{} = codex_opts,
+         %ThreadOptions{} = thread_opts
+       ) do
+    provider_id = provider_id_for_tuning(codex_opts, thread_opts)
 
     overrides
     |> maybe_put_override(
@@ -572,19 +576,39 @@ defmodule Codex.Config.Overrides do
     )
   end
 
-  defp add_provider_tuning_overrides(overrides, _), do: overrides
+  defp add_provider_tuning_overrides(overrides, _codex_opts, _thread_opts), do: overrides
 
-  defp provider_id_for_tuning(%ThreadOptions{model_provider: provider})
+  defp provider_id_for_tuning(_codex_opts, %ThreadOptions{model_provider: provider})
        when is_binary(provider) and provider != "" do
     provider
   end
 
-  defp provider_id_for_tuning(%ThreadOptions{oss: true, local_provider: provider})
+  defp provider_id_for_tuning(_codex_opts, %ThreadOptions{oss: true, local_provider: provider})
        when is_binary(provider) and provider != "" do
     provider
   end
 
-  defp provider_id_for_tuning(_), do: "openai"
+  defp provider_id_for_tuning(%Options{model_payload: payload}, _thread_opts)
+       when is_map(payload) do
+    backend = Map.get(payload, :provider_backend, Map.get(payload, "provider_backend"))
+
+    metadata =
+      Map.get(payload, :backend_metadata, Map.get(payload, "backend_metadata", %{}))
+      |> case do
+        value when is_map(value) -> value
+        _ -> %{}
+      end
+
+    case backend do
+      :oss -> Map.get(metadata, "oss_provider", "openai")
+      "oss" -> Map.get(metadata, "oss_provider", "openai")
+      :model_provider -> Map.get(metadata, "model_provider", "openai")
+      "model_provider" -> Map.get(metadata, "model_provider", "openai")
+      _ -> "openai"
+    end
+  end
+
+  defp provider_id_for_tuning(_codex_opts, _thread_opts), do: "openai"
 
   defp thread_value(nil, _field), do: nil
   defp thread_value(%ThreadOptions{} = thread_opts, field), do: Map.get(thread_opts, field)

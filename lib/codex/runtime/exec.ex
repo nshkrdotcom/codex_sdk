@@ -132,8 +132,8 @@ defmodule Codex.Runtime.Exec do
           command: binary_path,
           prompt: normalize_prompt(input),
           cli_profile: exec_opt(exec_opts, :profile),
-          oss: exec_opt(exec_opts, :oss),
-          local_provider: exec_opt(exec_opts, :local_provider),
+          oss: payload_oss?(exec_opts),
+          local_provider: payload_local_provider(exec_opts),
           full_auto: exec_opt(exec_opts, :full_auto),
           dangerously_bypass_approvals_and_sandbox:
             exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
@@ -248,6 +248,7 @@ defmodule Codex.Runtime.Exec do
       {:ok,
        reasoning_config_values(exec_opts) ++
          network_access_config_values(exec_opts.thread) ++
+         payload_config_values(exec_opts) ++
          approval_values ++
          override_values}
     end
@@ -366,6 +367,7 @@ defmodule Codex.Runtime.Exec do
 
   defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env}) do
     RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
+    |> Map.merge(payload_env_overrides(opts), fn _key, _base, payload -> payload end)
     |> Map.merge(env, fn _key, _base, custom -> custom end)
   end
 
@@ -404,6 +406,65 @@ defmodule Codex.Runtime.Exec do
       value -> value
     end
   end
+
+  defp payload_oss?(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
+    case payload_provider_backend(opts.model_payload) do
+      backend when backend in [:oss, "oss"] -> true
+      _ -> exec_opt(exec_opts, :oss) == true
+    end
+  end
+
+  defp payload_local_provider(%ExecOptions{codex_opts: %Options{} = opts} = exec_opts) do
+    case payload_backend_metadata(opts.model_payload) do
+      %{"oss_provider" => provider} when is_binary(provider) and provider != "" ->
+        provider
+
+      _ ->
+        exec_opt(exec_opts, :local_provider)
+    end
+  end
+
+  defp payload_config_values(%ExecOptions{codex_opts: %Options{} = opts}) do
+    opts.model_payload
+    |> payload_backend_metadata()
+    |> Map.get("config_values", [])
+    |> List.wrap()
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+  end
+
+  defp payload_env_overrides(%Options{model_payload: payload}) do
+    payload
+    |> case do
+      payload when is_map(payload) ->
+        Map.get(payload, :env_overrides, Map.get(payload, "env_overrides", %{}))
+
+      _ ->
+        %{}
+    end
+    |> case do
+      env when is_map(env) ->
+        Map.new(env, fn {key, value} -> {to_string(key), to_string(value)} end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp payload_backend_metadata(payload) when is_map(payload) do
+    Map.get(payload, :backend_metadata, Map.get(payload, "backend_metadata", %{}))
+    |> case do
+      metadata when is_map(metadata) -> metadata
+      _ -> %{}
+    end
+  end
+
+  defp payload_backend_metadata(_payload), do: %{}
+
+  defp payload_provider_backend(payload) when is_map(payload) do
+    Map.get(payload, :provider_backend, Map.get(payload, "provider_backend"))
+  end
+
+  defp payload_provider_backend(_payload), do: nil
 
   defp fetch_turn_opt(%{} = opts, key) when is_atom(key) do
     case Map.fetch(opts, key) do

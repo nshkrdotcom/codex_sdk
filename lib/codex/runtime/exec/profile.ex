@@ -20,14 +20,14 @@ defmodule Codex.Runtime.Exec.Profile do
     args =
       ["exec", "--json"]
       |> Shared.maybe_add_pair("--profile", Keyword.get(opts, :cli_profile))
-      |> Shared.maybe_add_flag("--oss", Keyword.get(opts, :oss))
-      |> Shared.maybe_add_pair("--local-provider", Keyword.get(opts, :local_provider))
+      |> Shared.maybe_add_flag("--oss", oss_enabled?(opts))
+      |> Shared.maybe_add_pair("--local-provider", local_provider_value(opts))
       |> Shared.maybe_add_flag("--full-auto", Keyword.get(opts, :full_auto))
       |> Shared.maybe_add_flag(
         "--dangerously-bypass-approvals-and-sandbox",
         Keyword.get(opts, :dangerously_bypass_approvals_and_sandbox)
       )
-      |> Shared.maybe_add_pair("--model", Keyword.get(opts, :model))
+      |> Shared.maybe_add_pair("--model", model_value(opts))
       |> Shared.maybe_add_pair("--color", Keyword.get(opts, :color))
       |> Shared.maybe_add_pair("--output-last-message", Keyword.get(opts, :output_last_message))
       |> Shared.maybe_add_pair("--sandbox", Keyword.get(opts, :sandbox))
@@ -39,7 +39,7 @@ defmodule Codex.Runtime.Exec.Profile do
       |> Shared.maybe_add_pair("--cancellation-token", Keyword.get(opts, :cancellation_token))
       |> Shared.maybe_add_repeat("--image", Keyword.get(opts, :images, []))
       |> maybe_add_output_schema(Keyword.get(opts, :output_schema))
-      |> Shared.maybe_add_repeat("--config", Keyword.get(opts, :config_values, []))
+      |> Shared.maybe_add_repeat("--config", config_values(opts))
       |> maybe_add_prompt(Keyword.get(opts, :prompt))
 
     {:ok,
@@ -86,6 +86,56 @@ defmodule Codex.Runtime.Exec.Profile do
   end
 
   defp normalize_string_list(_values), do: []
+
+  defp model_value(opts) do
+    Keyword.get(opts, :model) || model_payload_value(opts, :resolved_model)
+  end
+
+  defp oss_enabled?(opts) do
+    payload_backend = model_payload_value(opts, :provider_backend)
+    payload_backend in [:oss, "oss"] || Keyword.get(opts, :oss) == true
+  end
+
+  defp local_provider_value(opts) do
+    Keyword.get(opts, :local_provider) ||
+      Map.get(model_payload_backend_metadata(opts), "oss_provider")
+  end
+
+  defp config_values(opts) do
+    payload_values =
+      model_payload_backend_metadata(opts)
+      |> Map.get("config_values", [])
+      |> List.wrap()
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+
+    (Keyword.get(opts, :config_values, []) ++ payload_values)
+    |> Enum.uniq()
+  end
+
+  defp model_payload_backend_metadata(opts) do
+    opts
+    |> Keyword.get(:model_payload, %{})
+    |> case do
+      payload when is_map(payload) ->
+        Map.get(payload, :backend_metadata, Map.get(payload, "backend_metadata", %{}))
+
+      _ ->
+        %{}
+    end
+    |> case do
+      metadata when is_map(metadata) -> metadata
+      _ -> %{}
+    end
+  end
+
+  defp model_payload_value(opts, key) when is_atom(key) do
+    opts
+    |> Keyword.get(:model_payload, %{})
+    |> case do
+      payload when is_map(payload) -> Map.get(payload, key, Map.get(payload, Atom.to_string(key)))
+      _ -> nil
+    end
+  end
 
   defp normalize_env(nil), do: %{}
 
