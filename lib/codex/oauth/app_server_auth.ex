@@ -19,6 +19,12 @@ defmodule Codex.OAuth.AppServerAuth do
           auto_refresh?: boolean(),
           oauth_opts: keyword()
         }
+  @type ensure_before_remote_connect_error ::
+          :experimental_api_required_for_memory_oauth
+          | :remote_persistent_oauth_not_supported
+          | {:invalid_oauth_options, term()}
+          | {:invalid_oauth_storage, term()}
+          | {:unsupported_oauth_mode, term()}
 
   @spec ensure_before_connect(keyword()) :: :ok | {:error, term()}
   def ensure_before_connect(connect_opts) when is_list(connect_opts) do
@@ -27,8 +33,33 @@ defmodule Codex.OAuth.AppServerAuth do
     end
   end
 
+  @spec ensure_before_remote_connect(keyword()) ::
+          :ok | {:error, ensure_before_remote_connect_error()}
+  def ensure_before_remote_connect(connect_opts) when is_list(connect_opts) do
+    with {:ok, oauth} <- normalize_options(connect_opts) do
+      case oauth do
+        %{enabled?: false} ->
+          :ok
+
+        %{storage: :memory} ->
+          :ok
+
+        %{storage: storage} when storage in [:auto, :file] ->
+          {:error, :remote_persistent_oauth_not_supported}
+      end
+    end
+  end
+
   @spec authenticate_connection(pid(), keyword()) :: :ok | {:error, term()}
   def authenticate_connection(conn, connect_opts)
+      when is_pid(conn) and is_list(connect_opts) do
+    with {:ok, oauth} <- normalize_options(connect_opts) do
+      maybe_authenticate_memory_connection(conn, oauth, connect_opts)
+    end
+  end
+
+  @spec authenticate_remote_connection(pid(), keyword()) :: :ok | {:error, term()}
+  def authenticate_remote_connection(conn, connect_opts)
       when is_pid(conn) and is_list(connect_opts) do
     with {:ok, oauth} <- normalize_options(connect_opts) do
       maybe_authenticate_memory_connection(conn, oauth, connect_opts)

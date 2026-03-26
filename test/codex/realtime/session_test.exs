@@ -234,6 +234,118 @@ defmodule Codex.Realtime.SessionTest do
     end
   end
 
+  describe "response.create sequencing" do
+    test "defers a follow-up response.create until response.done for overlapping user input", %{
+      agent: agent
+    } do
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      :ok = Session.send_message(session, "first")
+      :ok = MockWebSocket.clear_sent_messages(mock_ws)
+
+      :ok = Session.send_message(session, "second")
+
+      messages = MockWebSocket.get_sent_messages(mock_ws)
+
+      assert Enum.any?(messages, fn msg ->
+               msg["type"] == "conversation.item.create" and
+                 get_in(msg, ["item", "content", Access.at(0), "text"]) == "second"
+             end)
+
+      refute Enum.any?(messages, &(&1["type"] == "response.create"))
+
+      send(
+        session,
+        {:websocket_event,
+         %{
+           "type" => "response.done",
+           "response" => %{"id" => "resp_1", "status" => "completed"}
+         }}
+      )
+
+      assert_receive {:session_event, %Events.AgentEndEvent{}}
+
+      messages = MockWebSocket.get_sent_messages(mock_ws)
+      assert Enum.any?(messages, &(&1["type"] == "response.create"))
+
+      Session.close(session)
+    end
+
+    test "defers tool-output response.create until response.done when a response is already active",
+         %{agent: _agent} do
+      agent = %{
+        name: "ToolAgent",
+        model: "gpt-4o-realtime-preview",
+        instructions: "Use tools when needed",
+        tools: [
+          %{
+            name: "get_weather",
+            description: "Get weather for a city",
+            on_invoke: fn _args, _ctx -> "Sunny" end
+          }
+        ]
+      }
+
+      {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())
+
+      {:ok, session} =
+        Session.start_link(
+          agent: agent,
+          websocket_pid: mock_ws,
+          websocket_module: MockWebSocket
+        )
+
+      :ok = Session.subscribe(session, self())
+      :ok = Session.send_message(session, "start")
+      :ok = MockWebSocket.clear_sent_messages(mock_ws)
+
+      tool_call =
+        ModelEvents.tool_call(
+          name: "get_weather",
+          call_id: "call_overlap",
+          arguments: "{}",
+          id: "item_overlap"
+        )
+
+      send(session, {:model_event, tool_call})
+      Process.sleep(50)
+
+      messages = MockWebSocket.get_sent_messages(mock_ws)
+
+      assert Enum.any?(messages, fn msg ->
+               msg["type"] == "conversation.item.create" and
+                 get_in(msg, ["item", "type"]) == "function_call_output" and
+                 get_in(msg, ["item", "call_id"]) == "call_overlap"
+             end)
+
+      refute Enum.any?(messages, &(&1["type"] == "response.create"))
+
+      send(
+        session,
+        {:websocket_event,
+         %{
+           "type" => "response.done",
+           "response" => %{"id" => "resp_tool_1", "status" => "completed"}
+         }}
+      )
+
+      assert_receive {:session_event, %Events.AgentEndEvent{}}
+
+      messages = MockWebSocket.get_sent_messages(mock_ws)
+      assert Enum.any?(messages, &(&1["type"] == "response.create"))
+
+      Session.close(session)
+    end
+  end
+
   describe "interrupt/1" do
     test "sends response cancel", %{agent: agent} do
       {:ok, mock_ws} = MockWebSocket.start_link(test_pid: self())

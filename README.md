@@ -25,8 +25,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 ## Features
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
-- **Multi-Transport Support**: Default `:exec` compatibility selector for the core-backed exec JSONL lane (`codex exec --json`) plus stateful app-server JSON-RPC over stdio (`codex app-server`) with multi-modal `UserInput` blocks.
-- **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly.
+- **Multi-Transport Support**: Default `:exec` compatibility selector for the core-backed exec JSONL lane (`codex exec --json`) plus stateful app-server JSON-RPC via managed local stdio children or managed remote websockets.
+- **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly, including remote-root and websocket-auth app-server flags.
 - **Native OAuth**: `Codex.OAuth` provides SDK-managed browser/device login, refresh, status, and logout with upstream-compatible `auth.json` persistence or memory-only sessions.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
@@ -106,6 +106,11 @@ Environment-aware OAuth behavior matches current native-app guidance:
 - WSL starts with the browser path, then falls back to device code when the callback is unreachable
 - SSH/headless/container environments prefer device code
 - CI and other non-interactive environments never auto-start login; existing credentials are used or the call fails clearly
+
+ChatGPT plan types are normalized before they surface through SDK auth/status
+structs or app-server external-auth forwarding. In particular, `hc` and
+`enterprise` normalize to `"enterprise"`, while `education` and `edu`
+normalize to `"edu"`.
 
 If `cli_auth_credentials_store = "keyring"` is set in config and keyring support is unavailable,
 the SDK logs a warning and skips file-based tokens (remote model fetch falls back to bundled models).
@@ -254,6 +259,28 @@ tmp_home = Path.join(System.tmp_dir!(), "codex-sdk-app-server-home")
 `cwd` and `process_env` apply to the app-server child process. Per-thread working
 directories still belong on `working_directory` / `cwd` thread params.
 
+For a managed remote app-server websocket instead of a local `codex app-server`
+child, use `Codex.AppServer.connect_remote/2`:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect_remote(
+    "wss://app-server.example/ws",
+    auth_token_env: "CODEX_REMOTE_AUTH_TOKEN",
+    client_name: "my_app",
+    experimental_api: true
+  )
+```
+
+`connect_remote/2` keeps the same pid contract as `connect/2`, so the existing
+`Codex.AppServer.*` request helpers, `disconnect/1`, `alive?/1`, `subscribe/2`,
+`unsubscribe/1`, and `respond/3` work unchanged. Bearer auth headers are only
+attached for `wss://` or loopback `ws://` endpoints; plain non-loopback
+`ws://` plus `auth_token` or `auth_token_env` is rejected. Remote OAuth only
+supports `oauth: [storage: :memory]`; persistent child-login preflight
+(`:file` / `:auto`) is not available because remote mode does not spawn a local
+child or child `CODEX_HOME`.
+
 `connect/2` also supports OAuth-aware child auth bootstrapping:
 
 ```elixir
@@ -293,6 +320,7 @@ App-server-only APIs include:
 
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
+- `Codex.AppServer.experimental_feature_list/2`, `experimental_feature_enablement_set/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
 - `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
@@ -320,6 +348,21 @@ inside this repository.
 
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
+
+Experimental feature enablement is forwarded without a stale local allowlist:
+
+```elixir
+{:ok, %{"data" => features}} = Codex.AppServer.experimental_feature_list(conn)
+
+{:ok, _} =
+  Codex.AppServer.experimental_feature_enablement_set(conn,
+    apps: true,
+    plugins: false
+  )
+```
+
+The SDK forwards the `enablement` map as given and lets the server validate the
+current supported keys.
 
 ### Raw CLI Passthrough and Interactive Sessions
 
@@ -379,6 +422,16 @@ IO.puts(session_result.stdout)
 ```
 
 This layer is also the simplest way to reach CLI-only workflows such as `codex completion`, `codex cloud`, `codex execpolicy`, `codex features`, `codex mcp-server`, and the root interactive client without dropping down to `System.cmd/3` yourself.
+
+Current upstream parity helpers also include:
+
+- `Codex.CLI.interactive/2`, `resume/2`, and `fork/2` accept `remote:` and `remote_auth_token_env:`
+- `Codex.CLI.resume/2` accepts `include_non_interactive: true`
+- `Codex.CLI.app_server/1` forwards websocket auth flags: `ws_auth`, `ws_token_file`, `ws_shared_secret_file`, `ws_issuer`, `ws_audience`, and `ws_max_clock_skew_seconds`
+
+`ws_auth` atoms normalize to upstream CLI values such as
+`:capability_token -> capability-token` and
+`:signed_bearer_token -> signed-bearer-token`.
 
 ### Streaming Responses
 
@@ -510,6 +563,13 @@ mix run examples/live_cli_session.exs "Summarize this repository in three bullet
 For bidirectional voice interactions using the OpenAI Realtime API:
 - Auth precedence for realtime/voice API keys is:
   `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`.
+
+`Codex.Realtime.Diagnostics.probe_text_turn/1` now uses a minimal
+schema-compatible probe and treats `unknown_parameter`-style schema drift as a
+protocol-incompatible skip reason instead of a hard failure. `Codex.Realtime.Session`
+also defers follow-up `response.create` calls until the active response reaches
+`response.done`, so overlapping user input and tool output no longer trigger
+premature create requests.
 
 ```elixir
 alias Codex.Realtime

@@ -21,6 +21,11 @@ helps CLI/app-server flows; realtime and voice still need an API key or an
 
 If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. When the upstream Realtime service itself returns a generic `server_error`, the realtime examples now run a minimal raw-WebSocket probe first and print `SKIPPED` with the detected `session_id` so you can report the exact upstream failure cleanly.
 
+`Codex.Realtime.Diagnostics.probe_text_turn/1` keeps that probe minimal and now
+classifies `unknown_parameter`-style schema mismatches as a
+`realtime_protocol_incompatible` skip reason instead of a hard failure. This
+helps distinguish upstream schema drift from auth/quota/runtime failures.
+
 Custom trust roots use `CODEX_CA_CERTIFICATE` first and `SSL_CERT_FILE` second. Blank values are
 ignored. The same PEM bundle is applied to HTTPS requests and secure realtime websockets.
 
@@ -79,6 +84,11 @@ chunks
   Realtime.send_audio(session, chunk, commit: idx == total)
 end)
 ```
+
+If you queue additional text input or tool output while a response is still
+active, `Codex.Realtime.Session` defers the follow-up `response.create` until
+the current response reaches `response.done`. That keeps overlapping turns from
+issuing premature create requests.
 
 ### Receiving events
 

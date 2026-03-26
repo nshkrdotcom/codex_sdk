@@ -86,7 +86,7 @@ defmodule Codex.CLI do
 
   def interactive(prompt, opts) when is_binary(prompt) or is_nil(prompt) do
     with {:ok, global_args} <- global_args(opts) do
-      args = global_args ++ maybe_prompt(prompt)
+      args = global_args ++ interactive_remote_args(opts) ++ maybe_prompt(prompt)
       start(args, Keyword.merge(opts, pty: true, stdin: true))
     end
   end
@@ -118,7 +118,10 @@ defmodule Codex.CLI do
   def app_server(opts \\ []) when is_list(opts) do
     with {:ok, global_args} <- global_args(opts) do
       args =
-        ["app-server"] ++ global_args ++ optional_flag("--listen", Keyword.get(opts, :listen))
+        ["app-server"] ++
+          global_args ++
+          optional_flag("--listen", Keyword.get(opts, :listen)) ++
+          websocket_auth_args(opts)
 
       start(args, Keyword.merge(opts, stdin: true))
     end
@@ -424,7 +427,13 @@ defmodule Codex.CLI do
       args =
         ["resume"] ++
           global_args ++
-          optional_boolean("--all", Keyword.get(opts, :all)) ++ resume_target(target)
+          optional_boolean("--all", Keyword.get(opts, :all)) ++
+          optional_boolean(
+            "--include-non-interactive",
+            Keyword.get(opts, :include_non_interactive)
+          ) ++
+          interactive_remote_args(opts) ++
+          resume_target(target)
 
       start(args, Keyword.merge(opts, pty: true, stdin: true))
     end
@@ -443,7 +452,10 @@ defmodule Codex.CLI do
     with {:ok, global_args} <- global_args(opts) do
       args =
         ["fork"] ++
-          global_args ++ optional_boolean("--all", Keyword.get(opts, :all)) ++ fork_target(target)
+          global_args ++
+          optional_boolean("--all", Keyword.get(opts, :all)) ++
+          interactive_remote_args(opts) ++
+          fork_target(target)
 
       start(args, Keyword.merge(opts, pty: true, stdin: true))
     end
@@ -605,6 +617,33 @@ defmodule Codex.CLI do
 
   defp maybe_prompt(prompt) when is_binary(prompt) and prompt != "", do: [prompt]
   defp maybe_prompt(_prompt), do: []
+
+  defp interactive_remote_args(opts) do
+    optional_flag("--remote", Keyword.get(opts, :remote)) ++
+      optional_flag("--remote-auth-token-env", Keyword.get(opts, :remote_auth_token_env))
+  end
+
+  defp websocket_auth_args(opts) do
+    optional_flag("--ws-auth", normalize_ws_auth(Keyword.get(opts, :ws_auth))) ++
+      optional_flag("--ws-token-file", Keyword.get(opts, :ws_token_file)) ++
+      optional_flag("--ws-shared-secret-file", Keyword.get(opts, :ws_shared_secret_file)) ++
+      optional_flag("--ws-issuer", Keyword.get(opts, :ws_issuer)) ++
+      optional_flag("--ws-audience", Keyword.get(opts, :ws_audience)) ++
+      optional_flag(
+        "--ws-max-clock-skew-seconds",
+        Keyword.get(opts, :ws_max_clock_skew_seconds)
+      )
+  end
+
+  defp normalize_ws_auth(nil), do: nil
+  defp normalize_ws_auth(:capability_token), do: "capability-token"
+  defp normalize_ws_auth(:signed_bearer_token), do: "signed-bearer-token"
+  defp normalize_ws_auth(value) when is_binary(value), do: value
+
+  defp normalize_ws_auth(value) when is_atom(value),
+    do: value |> Atom.to_string() |> String.replace("_", "-")
+
+  defp normalize_ws_auth(_value), do: nil
 
   defp optional_flag(_name, nil), do: []
   defp optional_flag(name, value), do: [name, to_string(value)]

@@ -241,6 +241,65 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(turn_task, 200)
   end
 
+  test "experimental_feature_enablement_set/2 uses the upstream method and payload", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.experimental_feature_enablement_set(conn, apps: true, plugins: false)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "experimentalFeature/enablement/set",
+              "params" => params
+            }} =
+             Jason.decode(request_line)
+
+    assert params == %{
+             "enablement" => %{
+               "apps" => true,
+               "plugins" => false
+             }
+           }
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(req_id, %{"enablement" => params["enablement"]})}
+    )
+
+    assert {:ok, %{"enablement" => %{"apps" => true, "plugins" => false}}} =
+             Task.await(task, 200)
+  end
+
+  test "experimental_feature_enablement_set/2 allows an empty enablement map", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.experimental_feature_enablement_set(conn, %{})
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "experimentalFeature/enablement/set",
+              "params" => %{"enablement" => %{}}
+            }} =
+             Jason.decode(request_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"enablement" => %{}})})
+
+    assert {:ok, %{"enablement" => %{}}} = Task.await(task, 200)
+  end
+
   test "thread_start/2 rejects malformed granular approval policies without sending a request", %{
     conn: conn
   } do
@@ -266,6 +325,28 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["path"] == "/tmp/rollout.jsonl"
     assert params["model"] == "gpt-5.1-codex"
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+
+    assert {:ok, %{"thread" => _}} = Task.await(task, 200)
+  end
+
+  test "thread_fork/3 does not inject startup history or duplicate context params", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task = Task.async(fn -> AppServer.thread_fork(conn, "thr_1") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/fork", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params == %{"threadId" => "thr_1"}
+    refute Map.has_key?(params, "history")
+    refute Map.has_key?(params, "input")
+    refute Map.has_key?(params, "baseInstructions")
+    refute Map.has_key?(params, "developerInstructions")
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
 

@@ -88,6 +88,55 @@ defmodule Codex.OAuth.AppServerAuthTest do
     refute_receive {:app_server_subprocess_started, _, _}
   end
 
+  test "memory-mode oauth forwards canonicalized enterprise chatgptPlanType for hc claims", %{
+    tmp_root: tmp_root,
+    codex_opts: codex_opts
+  } do
+    child_home = Path.join(tmp_root, "child_home_hc")
+    File.mkdir_p!(child_home)
+
+    access_token = fake_chatgpt_access_token("acct_hc", "hc")
+    write_chatgpt_auth(child_home, access_token, "refresh-token", "acct_hc", "hc")
+
+    owner = self()
+
+    task =
+      Task.async(fn ->
+        AppServer.connect(codex_opts,
+          transport: {AppServerSubprocess, owner: owner},
+          experimental_api: true,
+          init_timeout_ms: 200,
+          process_env: child_env(child_home),
+          oauth: [storage: :memory, auto_refresh: false, interactive?: false]
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_started, conn, os_pid}
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, _start_opts}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+
+    assert_receive {:app_server_subprocess_send, ^conn, initialized_line}
+    assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
+
+    assert_receive {:app_server_subprocess_send, ^conn, login_line}
+
+    assert {:ok, %{"id" => login_id, "method" => "account/login/start", "params" => login_params}} =
+             Jason.decode(login_line)
+
+    assert login_params["chatgptPlanType"] == "enterprise"
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})}
+    )
+
+    assert {:ok, ^conn} = Task.await(task, 200)
+    assert AppServer.disconnect(conn) == :ok
+  end
+
   @tag :requires_loopback
   test "AppServer.connect with oauth memory mode performs external login and auto-refresh without rewriting auth.json",
        %{

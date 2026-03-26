@@ -75,6 +75,26 @@ defmodule Codex.Auth.StoreTest do
       assert auth.tokens.plan_type == "team"
       assert %DateTime{} = auth.tokens.expires_at
     end
+
+    test "normalizes hc plan claims to enterprise", %{codex_home: codex_home} do
+      File.write!(
+        Path.join(codex_home, "auth.json"),
+        Jason.encode!(%{
+          "auth_mode" => "chatgpt",
+          "tokens" => %{
+            "access_token" => "chatgpt-access-token",
+            "refresh_token" => "refresh-token",
+            "id_token" =>
+              fake_jwt(%{"https://api.openai.com/auth" => %{"chatgpt_plan_type" => "hc"}})
+          }
+        })
+      )
+
+      assert {:ok, %Store.Record{} = auth} =
+               Store.load(codex_home: codex_home, codex_home_explicit?: true)
+
+      assert auth.tokens.plan_type == "enterprise"
+    end
   end
 
   describe "write/2 and delete/1" do

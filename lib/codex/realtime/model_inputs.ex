@@ -156,8 +156,8 @@ defmodule Codex.Realtime.ModelInputs do
     end
   end
 
-  def to_json(%SendToolOutput{tool_call: tc, output: output, start_response: start}) do
-    msgs = [
+  def to_json(%SendToolOutput{tool_call: tc, output: output}) do
+    [
       %{
         "type" => "conversation.item.create",
         "item" => %{
@@ -167,12 +167,6 @@ defmodule Codex.Realtime.ModelInputs do
         }
       }
     ]
-
-    if start do
-      msgs ++ [%{"type" => "response.create"}]
-    else
-      msgs
-    end
   end
 
   def to_json(%SendInterrupt{}) do

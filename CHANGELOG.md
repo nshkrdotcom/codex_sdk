@@ -7,12 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Codex.AppServer.connect_remote/2` for managed remote websocket app-server
+  connections, including auth-token transport policy checks and pid-compatible
+  reuse of the existing request/helper surface.
+
 ### Changed
 
 - Release notes and package-facing docs now call out the final Phase 4
   ownership boundary explicitly: `cli_subprocess_core` owns every
   subprocess-backed Codex lifecycle, while `codex_sdk` keeps Codex-native
   semantics such as app-server, MCP, realtime, and voice.
+- App-server and CLI parity now cover `experimentalFeature/enablement/set`,
+  current websocket auth flags for `codex app-server`, root `--remote` /
+  `--remote-auth-token-env` passthrough on interactive session wrappers, and
+  `resume --include-non-interactive`.
+- Realtime diagnostics now use a schema-compatible probe and Realtime session
+  sequencing now defers follow-up `response.create` calls until the active
+  response completes.
+
+### Fixed
+
+- ChatGPT plan claims now normalize to the SDK's canonical lowercase strings,
+  including `hc -> "enterprise"` and `education -> "edu"`, before auth/status
+  structs and app-server external-auth payloads are built.
 
 ## [0.15.0] - 2026-03-19
 

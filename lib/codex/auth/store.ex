@@ -372,8 +372,29 @@ defmodule Codex.Auth.Store do
   end
 
   defp token_plan_type(access_claims, id_claims, _openai_api_key) do
-    chatgpt_claim(access_claims, "chatgpt_plan_type") ||
-      chatgpt_claim(id_claims, "chatgpt_plan_type")
+    access_claims
+    |> chatgpt_claim("chatgpt_plan_type")
+    |> case do
+      nil -> chatgpt_claim(id_claims, "chatgpt_plan_type")
+      value -> value
+    end
+    |> normalize_plan_type()
+  end
+
+  defp normalize_plan_type(nil), do: nil
+  defp normalize_plan_type("enterprise"), do: "enterprise"
+  defp normalize_plan_type("hc"), do: "enterprise"
+  defp normalize_plan_type("education"), do: "edu"
+  defp normalize_plan_type("edu"), do: "edu"
+  defp normalize_plan_type("free"), do: "free"
+  defp normalize_plan_type("go"), do: "go"
+  defp normalize_plan_type("plus"), do: "plus"
+  defp normalize_plan_type("pro"), do: "pro"
+  defp normalize_plan_type("team"), do: "team"
+  defp normalize_plan_type("business"), do: "business"
+
+  defp normalize_plan_type(value) when is_binary(value) do
+    value
   end
 
   defp do_write_atomic_json(io_device, encoded, tmp_path, path) do

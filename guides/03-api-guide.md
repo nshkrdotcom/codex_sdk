@@ -104,6 +104,13 @@ Key entry points:
 - `interactive/2` — launches the root `codex` client (prompt mode or full interactive mode)
 - wrappers for `app`, `app_server`, `apply`, `cloud`, `cloud_list`, `cloud_exec`, `completion`, `debug_app_server_send_message_v2`, `execpolicy_check`, `features_*`, `login`, `logout`, `mcp_*`, `mcp_server`, `resume`, `fork`, and `sandbox`
 
+Current parity notes:
+
+- `interactive/2`, `resume/2`, and `fork/2` accept `remote:` plus `remote_auth_token_env:`
+- `resume/2` accepts `include_non_interactive: true`
+- `app_server/1` accepts websocket auth options: `ws_auth`, `ws_token_file`, `ws_shared_secret_file`, `ws_issuer`, `ws_audience`, and `ws_max_clock_skew_seconds`
+- `ws_auth` atoms normalize to the upstream CLI spellings such as `:capability_token -> capability-token`
+
 `run/2` and the synchronous wrappers execute through the shared
 `CliSubprocessCore.Command` lane.
 
@@ -163,7 +170,7 @@ such as `codex completion`, `codex cloud`, `codex execpolicy`, and
 The SDK supports both upstream external transports:
 
 - **Exec JSONL (default `:exec` compatibility selector)**: `codex exec --json`
-- **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON over stdio)
+- **App-server JSON-RPC (optional)**: managed local `codex app-server` over stdio or managed remote app-server over websocket
 
 Select transport per-thread via `Codex.Thread.Options.transport`:
 
@@ -179,6 +186,23 @@ When the managed app-server child itself needs an isolated working directory or
 temporary `CODEX_HOME`, pass `cwd:` and `process_env:` to `connect/2`. Those
 launch options affect the child process; per-thread cwd still belongs on thread
 params.
+
+For a managed remote app-server websocket, use `connect_remote/2` instead of
+`connect/2`:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect_remote(
+    "wss://app-server.example/ws",
+    auth_token_env: "CODEX_REMOTE_AUTH_TOKEN",
+    experimental_api: true
+  )
+```
+
+Remote connections keep the same pid-compatible request surface as local ones.
+Bearer headers are only attached for `wss://` or loopback `ws://` endpoints.
+Remote OAuth only supports `oauth: [storage: :memory]`; `:file` / `:auto`
+storage is rejected because remote mode does not prepare a child `CODEX_HOME`.
 
 `connect/2` also accepts `oauth:` for child-auth-aware startup:
 
@@ -200,6 +224,7 @@ conversation APIs.
 The direct `Codex.AppServer` surface also includes upstream v2 filesystem,
 plugin, and thread-shell helpers:
 
+- `experimental_feature_list/2` and `experimental_feature_enablement_set/2`
 - `fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`,
   `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
 - `plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
@@ -210,6 +235,10 @@ transport: `ephemeral`, `service_name`, and `service_tier` on thread options,
 plus per-turn `service_tier` on `Codex.Thread.run/3` / `run_streamed/3`.
 `plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`,
 and raw plugin maps preserve newer upstream fields such as `needsAuth`.
+
+`experimental_feature_enablement_set/2` forwards the supplied `enablement` map
+without a local allowlist and lets the connected server validate the active
+feature keys.
 
 ## Codex.Subagents
 

@@ -5,10 +5,12 @@ defmodule Codex.AppServer do
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Params
+  alias Codex.AppServer.RemoteConnection
   alias Codex.AppServer.Supervisor, as: ConnectionSupervisor
   alias Codex.Config.Defaults
   alias Codex.OAuth.AppServerAuth
   alias Codex.Options
+  alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type connection :: pid()
 
@@ -24,6 +26,20 @@ defmodule Codex.AppServer do
           client_title: String.t(),
           client_version: String.t(),
           experimental_api: boolean(),
+          cwd: String.t(),
+          process_env: map() | keyword(),
+          env: map() | keyword(),
+          oauth: keyword()
+        ]
+
+  @type connect_remote_opts :: [
+          init_timeout_ms: pos_integer(),
+          client_name: String.t(),
+          client_title: String.t(),
+          client_version: String.t(),
+          experimental_api: boolean(),
+          auth_token: String.t(),
+          auth_token_env: String.t(),
           cwd: String.t(),
           process_env: map() | keyword(),
           env: map() | keyword(),
@@ -50,9 +66,37 @@ defmodule Codex.AppServer do
     end
   end
 
+  @doc """
+  Connects to a remote websocket-backed app-server endpoint and completes the
+  `initialize` handshake.
+  """
+  @spec connect_remote(String.t(), connect_remote_opts()) ::
+          {:ok, connection()} | {:error, term()}
+  def connect_remote(websocket_url, opts \\ [])
+      when is_binary(websocket_url) and is_list(opts) do
+    init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
+
+    with {:ok, _pid} <- ensure_connection_supervisor(),
+         {:ok, opts} <- resolve_remote_auth_token(opts),
+         :ok <- validate_remote_auth_transport(websocket_url, Keyword.get(opts, :auth_token)),
+         :ok <- AppServerAuth.ensure_before_remote_connect(opts),
+         {:ok, conn} <- start_remote_connection(websocket_url, opts),
+         {:ok, ^conn} <- await_connection_ready(conn, init_timeout_ms) do
+      authenticate_remote_connection(conn, opts)
+    end
+  end
+
   defp start_connection(codex_opts, opts) do
     child_spec =
       {Connection, {codex_opts, opts}}
+      |> Supervisor.child_spec(restart: :temporary)
+
+    DynamicSupervisor.start_child(ConnectionSupervisor, child_spec)
+  end
+
+  defp start_remote_connection(websocket_url, opts) do
+    child_spec =
+      {RemoteConnection, {websocket_url, opts}}
       |> Supervisor.child_spec(restart: :temporary)
 
     DynamicSupervisor.start_child(ConnectionSupervisor, child_spec)
@@ -107,6 +151,17 @@ defmodule Codex.AppServer do
 
   defp authenticate_connection(conn, opts) do
     case AppServerAuth.authenticate_connection(conn, opts) do
+      :ok ->
+        {:ok, conn}
+
+      {:error, _reason} = error ->
+        maybe_terminate_connection(conn)
+        error
+    end
+  end
+
+  defp authenticate_remote_connection(conn, opts) do
+    case AppServerAuth.authenticate_remote_connection(conn, opts) do
       :ok ->
         {:ok, conn}
 
@@ -888,6 +943,14 @@ defmodule Codex.AppServer do
     Connection.request(conn, "experimentalFeature/list", params, timeout_ms: 30_000)
   end
 
+  @spec experimental_feature_enablement_set(connection(), map() | keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def experimental_feature_enablement_set(conn, enablement \\ %{}) when is_pid(conn) do
+    params = %{"enablement" => Params.normalize_map(enablement)}
+
+    Connection.request(conn, "experimentalFeature/enablement/set", params, timeout_ms: 30_000)
+  end
+
   @spec config_read(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def config_read(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
     params =
@@ -1151,6 +1214,93 @@ defmodule Codex.AppServer do
   defp normalize_true(true), do: true
   defp normalize_true("true"), do: true
   defp normalize_true(_), do: nil
+
+  defp resolve_remote_auth_token(opts) when is_list(opts) do
+    with {:ok, process_env} <-
+           RuntimeEnv.normalize_overrides(
+             Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
+           ) do
+      auth_token =
+        opts
+        |> Keyword.get(:auth_token)
+        |> normalize_remote_auth_token()
+
+      case {auth_token, Keyword.get(opts, :auth_token_env)} do
+        {token, _auth_token_env} when is_binary(token) ->
+          {:ok, Keyword.put(opts, :auth_token, token)}
+
+        {nil, nil} ->
+          {:ok, Keyword.delete(opts, :auth_token)}
+
+        {nil, auth_token_env} ->
+          resolve_remote_auth_token_env(opts, process_env, auth_token_env)
+      end
+    end
+  end
+
+  defp resolve_remote_auth_token_env(opts, process_env, auth_token_env) do
+    auth_token_env =
+      auth_token_env
+      |> to_string()
+      |> String.trim()
+
+    auth_token =
+      process_env[auth_token_env]
+      |> case do
+        nil -> System.get_env(auth_token_env)
+        value -> value
+      end
+      |> normalize_remote_auth_token()
+
+    cond do
+      auth_token_env == "" ->
+        {:error, {:missing_auth_token_env, auth_token_env}}
+
+      is_binary(auth_token) ->
+        {:ok, Keyword.put(opts, :auth_token, auth_token)}
+
+      Map.has_key?(process_env, auth_token_env) or System.get_env(auth_token_env) != nil ->
+        {:error, {:empty_auth_token_env, auth_token_env}}
+
+      true ->
+        {:error, {:missing_auth_token_env, auth_token_env}}
+    end
+  end
+
+  defp normalize_remote_auth_token(value) when is_binary(value) do
+    value = String.trim(value)
+    if value == "", do: nil, else: value
+  end
+
+  defp normalize_remote_auth_token(_value), do: nil
+
+  defp validate_remote_auth_transport(_websocket_url, nil), do: :ok
+
+  defp validate_remote_auth_transport(websocket_url, auth_token) when is_binary(auth_token) do
+    case URI.parse(websocket_url) do
+      %URI{scheme: "wss", host: host} when is_binary(host) ->
+        :ok
+
+      %URI{scheme: "ws", host: host} when is_binary(host) ->
+        if loopback_host?(host) do
+          :ok
+        else
+          {:error, {:invalid_remote_auth_transport, websocket_url}}
+        end
+
+      _ ->
+        {:error, {:invalid_remote_auth_transport, websocket_url}}
+    end
+  end
+
+  defp loopback_host?(host) when is_binary(host) do
+    String.downcase(host) == "localhost" or
+      case :inet.parse_address(String.to_charlist(host)) do
+        {:ok, {127, _, _, _}} -> true
+        {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+        _ -> false
+      end
+  end
 
   defp fetch_any(%{} = map, keys) when is_list(keys) do
     Enum.find_value(keys, &Map.get(map, &1))

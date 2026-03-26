@@ -141,8 +141,7 @@ defmodule Codex.Realtime.ModelInputsTest do
                    "call_id" => "call_123",
                    "output" => "Sunny"
                  }
-               },
-               %{"type" => "response.create"}
+               }
              ]
     end
 

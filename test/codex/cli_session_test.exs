@@ -86,6 +86,84 @@ defmodule Codex.CLISessionTest do
            ]
   end
 
+  test "interactive wrapper forwards remote app-server flags" do
+    args_path = tmp_path("argv_root_remote")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.interactive("Explain this repo",
+               codex_opts: codex_opts,
+               remote: "ws://127.0.0.1:4500",
+               remote_auth_token_env: "CODEX_REMOTE_TOKEN"
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+
+    assert argv(args_path) == [
+             "--remote",
+             "ws://127.0.0.1:4500",
+             "--remote-auth-token-env",
+             "CODEX_REMOTE_TOKEN",
+             "Explain this repo"
+           ]
+  end
+
+  test "app_server wrapper forwards websocket capability-token flags" do
+    args_path = tmp_path("argv_app_server_capability")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.app_server(
+               codex_opts: codex_opts,
+               ws_auth: :capability_token,
+               ws_token_file: "/tmp/codex-token"
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+
+    assert argv(args_path) == [
+             "app-server",
+             "--ws-auth",
+             "capability-token",
+             "--ws-token-file",
+             "/tmp/codex-token"
+           ]
+  end
+
+  test "app_server wrapper forwards signed bearer websocket flags" do
+    args_path = tmp_path("argv_app_server_signed")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.app_server(
+               codex_opts: codex_opts,
+               ws_auth: :signed_bearer_token,
+               ws_shared_secret_file: "/tmp/codex-secret",
+               ws_issuer: "issuer",
+               ws_audience: "audience",
+               ws_max_clock_skew_seconds: 9
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+
+    assert argv(args_path) == [
+             "app-server",
+             "--ws-auth",
+             "signed-bearer-token",
+             "--ws-shared-secret-file",
+             "/tmp/codex-secret",
+             "--ws-issuer",
+             "issuer",
+             "--ws-audience",
+             "audience",
+             "--ws-max-clock-skew-seconds",
+             "9"
+           ]
+  end
+
   test "session wrappers build expected argv" do
     cases = [
       {"app_server",
@@ -111,6 +189,56 @@ defmodule Codex.CLISessionTest do
       assert {:ok, %{success: true}} = Session.collect(session, 1_000)
       assert argv(args_path) == expected_argv
     end)
+  end
+
+  test "resume wrapper forwards include_non_interactive and remote flags" do
+    args_path = tmp_path("argv_resume_remote")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.resume(:last,
+               codex_opts: codex_opts,
+               include_non_interactive: true,
+               remote: "ws://127.0.0.1:4500",
+               remote_auth_token_env: "CODEX_REMOTE_TOKEN"
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+
+    assert argv(args_path) == [
+             "resume",
+             "--include-non-interactive",
+             "--remote",
+             "ws://127.0.0.1:4500",
+             "--remote-auth-token-env",
+             "CODEX_REMOTE_TOKEN",
+             "--last"
+           ]
+  end
+
+  test "fork wrapper forwards remote flags" do
+    args_path = tmp_path("argv_fork_remote")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.fork(:last,
+               codex_opts: codex_opts,
+               remote: "ws://127.0.0.1:4500",
+               remote_auth_token_env: "CODEX_REMOTE_TOKEN"
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+
+    assert argv(args_path) == [
+             "fork",
+             "--remote",
+             "ws://127.0.0.1:4500",
+             "--remote-auth-token-env",
+             "CODEX_REMOTE_TOKEN",
+             "--last"
+           ]
   end
 
   defp argv(path) do

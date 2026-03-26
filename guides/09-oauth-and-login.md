@@ -27,6 +27,13 @@ Persistent OAuth respects upstream `auth_mode`:
 - stale `OPENAI_API_KEY` values in `auth.json` do not silently override a
   persisted ChatGPT `auth_mode`
 
+ChatGPT plan strings are canonicalized before the SDK exposes or forwards them:
+
+- `hc` and case variants of `enterprise` become `"enterprise"`
+- `education` and `edu` become `"edu"`
+- existing canonical lowercase plans such as `"free"`, `"plus"`, `"pro"`,
+  `"team"`, and `"business"` stay unchanged
+
 ## Public API
 
 ```elixir
@@ -107,11 +114,31 @@ Memory mode works like this:
 Set `auto_refresh: false` when you want to subscribe and respond to refresh
 requests yourself.
 
+Remote websocket app-server connections use the same external-auth shape:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect_remote(
+    "wss://app-server.example/ws",
+    auth_token_env: "CODEX_REMOTE_AUTH_TOKEN",
+    experimental_api: true,
+    oauth: [mode: :auto, storage: :memory, auto_refresh: true]
+  )
+```
+
+Remote mode only supports `storage: :memory`. `storage: :file` and `:auto` are
+rejected because there is no managed child process or child `CODEX_HOME` to
+prepare ahead of time.
+
 ## Child environment semantics
 
 When OAuth is used through `Codex.AppServer.connect/2`, auth resolution is based
 on the effective child `cwd` and `process_env`, not the caller's current shell
 state. That matters for isolated `CODEX_HOME` setups and repo-local config.
+
+For `connect_remote/2`, `cwd` and `process_env` still inform auth-context
+resolution, but they do not create or prepare a child process. Remote bearer
+auth headers are only attached for `wss://` or loopback `ws://` websocket URLs.
 
 ## TLS / CA behavior
 

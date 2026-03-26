@@ -1,11 +1,11 @@
-# App-server Transport (JSON-RPC over stdio)
+# App-server Transport (JSON-RPC over stdio or websocket)
 
 This guide covers using the **stateful** `codex app-server` transport from Elixir via `Codex.AppServer`.
 
 The SDK supports two external Codex transports:
 
 - **Exec JSONL (default `:exec` compatibility selector)**: `codex exec --json`
-- **App-server JSON-RPC (optional)**: `codex app-server` (newline-delimited JSON messages over stdio)
+- **App-server JSON-RPC (optional)**: managed local `codex app-server` over stdio or managed remote app-server over websocket
 
 Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive, skills/models/config APIs, server-driven approvals, etc.).
 
@@ -30,6 +30,10 @@ If you need the literal command surface instead of the managed JSON-RPC connecti
 `Codex.CLI.app_server/1` launches a raw `codex app-server` subprocess session and
 `Codex.CLI.run/2` can be used for one-shot passthrough commands.
 
+`Codex.CLI.app_server/1` also forwards the current websocket auth flags:
+`ws_auth`, `ws_token_file`, `ws_shared_secret_file`, `ws_issuer`,
+`ws_audience`, and `ws_max_clock_skew_seconds`.
+
 ## Connect / Disconnect
 
 `Codex.AppServer.connect/2` starts a supervised `codex app-server` subprocess and performs the required `initialize` → `initialized` handshake automatically.
@@ -47,6 +51,25 @@ Pass `experimental_api: true` when you need upstream experimental fields such as
 
 :ok = Codex.AppServer.disconnect(conn)
 ```
+
+For a managed remote websocket connection, use `Codex.AppServer.connect_remote/2`:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect_remote(
+    "wss://app-server.example/ws",
+    auth_token_env: "CODEX_REMOTE_AUTH_TOKEN",
+    client_name: "my_app",
+    experimental_api: true
+  )
+
+:ok = Codex.AppServer.disconnect(conn)
+```
+
+Remote mode does not take `Codex.Options` because it does not spawn a local
+`codex` child. The returned pid stays compatible with the rest of the
+`Codex.AppServer` API surface, including `subscribe/2`, `unsubscribe/1`,
+`respond/3`, request helpers, and `disconnect/1`.
 
 ### Child cwd and environment isolation
 
@@ -73,6 +96,10 @@ without mutating the caller's shell state. `process_env` is the preferred name;
 These launch options apply to the app-server child process. Per-thread working
 directories still belong on `thread/start`, `thread/resume`, or
 `Codex.Thread.Options`.
+
+For `connect_remote/2`, `cwd` and `process_env` are only used to resolve auth
+context for SDK-managed OAuth helpers. They do not launch or mutate a child
+process because remote mode has no local child.
 
 ### OAuth-aware connect
 
@@ -105,6 +132,22 @@ Notes:
   `chatgptAuthTokens`, and starts a connection-owned refresh responder
 - set `auto_refresh: false` when you want to handle
   `account/chatgptAuthTokens/refresh` yourself via `subscribe/2`
+- remote websocket mode only supports `storage: :memory`; persistent
+  `:file` / `:auto` child-login preflight is rejected because there is no child
+  `CODEX_HOME` to prepare
+
+### Remote auth-token transport policy
+
+Remote websocket auth supports both `auth_token:` and `auth_token_env:`.
+Bearer headers are only attached when the websocket URL is:
+
+- `wss://...`
+- loopback `ws://127.0.0.1/...`
+- loopback `ws://localhost/...`
+
+If you configure an auth token for a non-loopback plain `ws://` URL,
+`connect_remote/2` returns `{:error, {:invalid_remote_auth_transport, url}}`
+instead of sending credentials over an unsafe transport.
 
 ### Client identity
 
@@ -168,12 +211,15 @@ App-server enables additional APIs that are not available via exec JSONL. Exampl
 {:ok, %{"data" => skills}} =
   Codex.AppServer.skills_list(conn, cwds: ["/path/to/project"], force_reload: true)
 {:ok, %{"data" => models}} = Codex.AppServer.model_list(conn, limit: 25)
+```
 
 When you need feature-flag gating or to load the underlying `SKILL.md` contents,
 use `Codex.Skills.list/2` and `Codex.Skills.load/2`, which honor `features.skills`.
 
+```elixir
 {:ok, %{"config" => config}} = Codex.AppServer.config_read(conn, include_layers: false)
 {:ok, _} = Codex.AppServer.config_write(conn, "features.web_search_request", true)
+{:ok, _} = Codex.AppServer.experimental_feature_enablement_set(conn, apps: true, plugins: false)
 
 {:ok, %{"data" => threads, "nextCursor" => cursor}} = Codex.AppServer.thread_list(conn, limit: 10)
 
@@ -191,6 +237,7 @@ IO.puts(Base.decode64!(encoded_back))
 
 Additional v2 APIs include:
 
+- `Codex.AppServer.experimental_feature_list/2` and `experimental_feature_enablement_set/2`
 - `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_shell_command/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
 - `Codex.AppServer.plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
@@ -207,6 +254,10 @@ Current upstream routing and sync controls are also covered:
 `thread_shell_command/3` is a thin wrapper over the app-server's thread-bound
 `!` workflow, so treat it with the same care you would give shell access in the
 interactive CLI.
+
+`experimental_feature_enablement_set/2` forwards the `enablement` map as given.
+The SDK does not keep a stale local allowlist; the connected app-server remains
+the source of truth for supported feature keys.
 
 When `include_layers: true`, `config_read/2` returns a `layers` list. Recent Codex versions encode each layer's `name` as a tagged union (`ConfigLayerSource`), for example:
 

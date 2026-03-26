@@ -42,17 +42,17 @@ defmodule Codex.Realtime.Diagnostics do
     prompt = Keyword.get(opts, :prompt, @default_probe_prompt)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     model_config = Keyword.get(opts, :model_config, %ModelConfig{})
+    websocket_module = Keyword.get(opts, :websocket_module, OpenAIWebSocket)
+    websocket_opts = Keyword.get(opts, :websocket_opts, [])
 
     with {:ok, ws} <-
-           OpenAIWebSocket.start_link(
-             session_pid: self(),
-             config: model_config,
-             model_name: model
+           websocket_module.start_link(
+             [session_pid: self(), config: model_config, model_name: model] ++ websocket_opts
            ) do
       try do
-        run_probe_turn(ws, model, prompt, timeout_ms)
+        run_probe_turn(ws, websocket_module, model, prompt, timeout_ms)
       after
-        OpenAIWebSocket.close(ws)
+        websocket_module.close(ws)
       end
     end
   end
@@ -101,30 +101,48 @@ defmodule Codex.Realtime.Diagnostics do
     error_type = error_type(error)
 
     cond do
-      String.contains?(normalized, "insufficient_quota") ->
+      insufficient_quota_error?(normalized) ->
         "insufficient_quota"
 
-      String.contains?(normalized, "model_not_found") or
-          String.contains?(normalized, "do not have access") ->
+      realtime_model_unavailable_error?(normalized) ->
         "realtime_model_unavailable"
 
-      error_type == "server_error" or String.contains?(normalized, "server_error") ->
-        case extract_session_id(error) do
-          nil -> "realtime_upstream_server_error"
-          session_id -> "realtime_upstream_server_error (session_id=#{session_id})"
-        end
+      protocol_incompatibility_error?(error, normalized) ->
+        "realtime_protocol_incompatible"
+
+      realtime_server_error?(error_type, normalized) ->
+        server_error_skip_reason(error)
 
       true ->
         nil
     end
   end
 
-  defp send_minimal_text_probe(ws, prompt) do
-    OpenAIWebSocket.send_message(ws, %{
+  defp insufficient_quota_error?(normalized) do
+    String.contains?(normalized, "insufficient_quota")
+  end
+
+  defp realtime_model_unavailable_error?(normalized) do
+    String.contains?(normalized, "model_not_found") or
+      String.contains?(normalized, "do not have access")
+  end
+
+  defp realtime_server_error?(error_type, normalized) do
+    error_type == "server_error" or String.contains?(normalized, "server_error")
+  end
+
+  defp server_error_skip_reason(error) do
+    case extract_session_id(error) do
+      nil -> "realtime_upstream_server_error"
+      session_id -> "realtime_upstream_server_error (session_id=#{session_id})"
+    end
+  end
+
+  defp send_minimal_text_probe(ws, websocket_module, prompt) do
+    websocket_module.send_message(ws, %{
       "type" => "response.create",
       "response" => %{
         "conversation" => "none",
-        "output_modalities" => ["text"],
         "input" => [
           %{
             "type" => "message",
@@ -136,9 +154,9 @@ defmodule Codex.Realtime.Diagnostics do
     })
   end
 
-  defp run_probe_turn(ws, model, prompt, timeout_ms) do
+  defp run_probe_turn(ws, websocket_module, model, prompt, timeout_ms) do
     with {:ok, created, events} <- await_session_created(deadline(timeout_ms), []),
-         :ok <- send_minimal_text_probe(ws, prompt) do
+         :ok <- send_minimal_text_probe(ws, websocket_module, prompt) do
       await_probe_outcome(deadline(timeout_ms), model, prompt, created, events)
     end
   end
@@ -266,4 +284,30 @@ defmodule Codex.Realtime.Diagnostics do
 
   defp error_type(%{"type" => type}) when is_binary(type), do: type
   defp error_type(_), do: nil
+
+  defp protocol_incompatibility_error?(%{} = error, normalized) do
+    code = Map.get(error, "code")
+    param = Map.get(error, "param")
+    type = Map.get(error, "type")
+
+    (code == "unknown_parameter" or
+       String.contains?(normalized, "unknown parameter") or
+       String.contains?(normalized, "unknown field") or
+       String.contains?(normalized, "unexpected field") or
+       String.contains?(normalized, "unrecognized field")) and
+      (type in [nil, "invalid_request_error"] or is_binary(type)) and
+      schema_param?(param, normalized)
+  end
+
+  defp protocol_incompatibility_error?(_error, _normalized), do: false
+
+  defp schema_param?(param, _normalized)
+       when param in ["response.output_modalities", "response.output_modalities[]"] do
+    true
+  end
+
+  defp schema_param?(_param, normalized) do
+    String.contains?(normalized, "response.output_modalities") or
+      String.contains?(normalized, "output_modalities")
+  end
 end

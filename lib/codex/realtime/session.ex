@@ -73,6 +73,8 @@ defmodule Codex.Realtime.Session do
     history: [],
     subscribers: %{},
     pending_tool_calls: %{},
+    active_response?: false,
+    pending_response_create?: false,
     item_transcripts: %{},
     item_guardrail_run_counts: %{},
     interrupted_response_ids: MapSet.new()
@@ -89,6 +91,8 @@ defmodule Codex.Realtime.Session do
           history: [Items.item()],
           subscribers: %{optional(pid()) => reference()},
           pending_tool_calls: %{optional(pid()) => map()},
+          active_response?: boolean(),
+          pending_response_create?: boolean(),
           item_transcripts: %{String.t() => String.t()},
           item_guardrail_run_counts: %{String.t() => non_neg_integer()},
           interrupted_response_ids: MapSet.t(String.t())
@@ -321,10 +325,12 @@ defmodule Codex.Realtime.Session do
 
   def handle_call({:send_message, message}, _from, state) do
     with :ok <- send_to_websocket(state, ModelInputs.send_user_input(message)),
-         :ok <-
-           send_to_websocket(state, ModelInputs.send_raw_message(%{"type" => "response.create"})) do
+         {:ok, state} <- request_response_create(state) do
       {:reply, :ok, state}
     else
+      {:error, reason, state} ->
+        {:reply, {:error, reason}, state}
+
       {:error, _} = error ->
         {:reply, error, state}
     end
@@ -347,7 +353,7 @@ defmodule Codex.Realtime.Session do
 
   def handle_call({:send_raw_event, event}, _from, state) do
     case send_to_websocket(state, ModelInputs.send_raw_message(event)) do
-      :ok -> {:reply, :ok, state}
+      :ok -> {:reply, :ok, track_outbound_event(state, event)}
       {:error, _} = error -> {:reply, error, state}
     end
   end
@@ -610,7 +616,7 @@ defmodule Codex.Realtime.Session do
   defp handle_model_event(%ModelEvents.TurnStartedEvent{}, state) do
     event = Events.agent_start(state.agent, state.context)
     notify_subscribers(state, event)
-    state
+    %{state | active_response?: true}
   end
 
   defp handle_model_event(%ModelEvents.TurnEndedEvent{}, state) do
@@ -618,7 +624,14 @@ defmodule Codex.Realtime.Session do
     event = Events.agent_end(state.agent, state.context)
     notify_subscribers(state, event)
 
-    %{state | item_transcripts: %{}, item_guardrail_run_counts: %{}}
+    state = %{
+      state
+      | active_response?: false,
+        item_transcripts: %{},
+        item_guardrail_run_counts: %{}
+    }
+
+    maybe_flush_deferred_response_create(state)
   end
 
   defp handle_model_event(%ModelEvents.ErrorEvent{error: error}, state) do
@@ -948,13 +961,60 @@ defmodule Codex.Realtime.Session do
 
     notify_subscribers(state, event)
 
-    send_to_websocket(
-      state,
-      ModelInputs.send_tool_output(pending_tool_call.tool_call, output, true)
-    )
-
     state
+    |> maybe_send_tool_output(pending_tool_call.tool_call, output)
+    |> maybe_start_response_after_tool_output()
   end
+
+  defp maybe_send_tool_output(state, tool_call, output) do
+    case send_to_websocket(state, ModelInputs.send_tool_output(tool_call, output, false)) do
+      :ok -> state
+      {:error, _} -> state
+    end
+  end
+
+  defp maybe_start_response_after_tool_output(state) do
+    case request_response_create(state) do
+      {:ok, state} -> state
+      {:error, _reason, state} -> state
+    end
+  end
+
+  defp maybe_flush_deferred_response_create(%{pending_response_create?: false} = state), do: state
+
+  defp maybe_flush_deferred_response_create(state) do
+    state
+    |> Map.put(:pending_response_create?, false)
+    |> request_response_create()
+    |> case do
+      {:ok, state} -> state
+      {:error, _reason, state} -> state
+    end
+  end
+
+  defp request_response_create(%{active_response?: true} = state) do
+    {:ok, %{state | pending_response_create?: true}}
+  end
+
+  defp request_response_create(state) do
+    case send_response_create(state) do
+      :ok ->
+        {:ok, %{state | active_response?: true, pending_response_create?: false}}
+
+      {:error, reason} ->
+        {:error, reason, state}
+    end
+  end
+
+  defp send_response_create(state) do
+    send_to_websocket(state, ModelInputs.send_raw_message(%{"type" => "response.create"}))
+  end
+
+  defp track_outbound_event(state, %{"type" => "response.create"}) do
+    %{state | active_response?: true, pending_response_create?: false}
+  end
+
+  defp track_outbound_event(state, _event), do: state
 
   defp handle_tool_call_down(state, ref, pid, :normal) do
     case Map.pop(state.pending_tool_calls, pid) do
