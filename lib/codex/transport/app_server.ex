@@ -169,7 +169,10 @@ defmodule Codex.Transport.AppServer do
 
     %{}
     |> maybe_put(:model, model)
-    |> maybe_put(:model_provider, thread.thread_opts.model_provider)
+    |> maybe_put(
+      :model_provider,
+      thread.thread_opts.model_provider || default_model_provider(thread)
+    )
     |> maybe_put(:working_directory, thread.thread_opts.working_directory)
     |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
     |> maybe_put(:approvals_reviewer, thread.thread_opts.approvals_reviewer)
@@ -354,6 +357,29 @@ defmodule Codex.Transport.AppServer do
   end
 
   defp default_model(_thread, _mode), do: nil
+
+  defp default_model_provider(%Thread{codex_opts: %Options{model_payload: payload}})
+       when is_map(payload) do
+    metadata =
+      Map.get(payload, :backend_metadata, Map.get(payload, "backend_metadata", %{}))
+      |> case do
+        value when is_map(value) -> value
+        _ -> %{}
+      end
+
+    case Map.get(payload, :provider_backend, Map.get(payload, "provider_backend")) do
+      backend when backend in [:oss, "oss"] ->
+        Map.get(metadata, "oss_provider")
+
+      backend when backend in [:model_provider, "model_provider"] ->
+        Map.get(metadata, "model_provider")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp default_model_provider(_thread), do: nil
 
   defp approval_request_matches?(%{thread_id: thread_id, turn_id: turn_id}, method, params)
        when is_binary(method) and is_map(params) do

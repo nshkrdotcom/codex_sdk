@@ -641,17 +641,45 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp app_server_args(%Options{} = codex_opts) do
-    payload = codex_opts.model_payload
-    backend = payload_provider_backend(payload)
-    metadata = payload_backend_metadata(payload)
-    model = normalize_option_string(codex_opts.model)
-
     ["app-server"]
-    |> maybe_append_flag("--oss", backend in [:oss, "oss"])
-    |> maybe_append_pair("--local-provider", Map.get(metadata, "oss_provider"))
-    |> maybe_append_pair("--model", model)
-    |> maybe_append_configs(Map.get(metadata, "config_values", []))
+    |> maybe_append_configs(app_server_config_values(codex_opts))
   end
+
+  defp app_server_config_values(%Options{} = codex_opts) do
+    payload = codex_opts.model_payload
+    metadata = payload_backend_metadata(payload)
+
+    payload_values =
+      metadata
+      |> Map.get("config_values", [])
+      |> List.wrap()
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+
+    derived_values =
+      []
+      |> maybe_add_config_value("model_provider", app_server_model_provider(payload))
+      |> maybe_add_config_value("model", normalize_option_string(codex_opts.model))
+
+    (payload_values ++ derived_values)
+    |> Enum.uniq()
+  end
+
+  defp app_server_model_provider(payload) when is_map(payload) do
+    metadata = payload_backend_metadata(payload)
+
+    case payload_provider_backend(payload) do
+      backend when backend in [:oss, "oss"] ->
+        Map.get(metadata, "oss_provider")
+
+      backend when backend in [:model_provider, "model_provider"] ->
+        Map.get(metadata, "model_provider")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp app_server_model_provider(_payload), do: nil
 
   defp payload_env_overrides(%Options{model_payload: payload}) do
     payload
@@ -685,14 +713,12 @@ defmodule Codex.AppServer.Connection do
     Map.get(payload, :provider_backend, Map.get(payload, "provider_backend"))
   end
 
-  defp payload_provider_backend(_payload), do: nil
+  defp maybe_add_config_value(values, _key, nil), do: values
+  defp maybe_add_config_value(values, _key, ""), do: values
 
-  defp maybe_append_flag(args, _flag, false), do: args
-  defp maybe_append_flag(args, flag, true), do: args ++ [flag]
-
-  defp maybe_append_pair(args, _flag, nil), do: args
-  defp maybe_append_pair(args, _flag, ""), do: args
-  defp maybe_append_pair(args, flag, value), do: args ++ [flag, to_string(value)]
+  defp maybe_add_config_value(values, key, value) when is_binary(key) do
+    values ++ ["#{key}=#{inspect(value)}"]
+  end
 
   defp maybe_append_configs(args, values) when is_list(values) do
     Enum.reduce(values, args, fn
@@ -700,8 +726,6 @@ defmodule Codex.AppServer.Connection do
       _value, acc -> acc
     end)
   end
-
-  defp maybe_append_configs(args, _values), do: args
 
   defp normalize_option_string(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_option_string(value) when is_binary(value) and value != "", do: value

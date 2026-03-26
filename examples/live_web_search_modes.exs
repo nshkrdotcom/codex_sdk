@@ -1,6 +1,7 @@
 Mix.Task.run("app.start")
 
 alias Codex.{Error, Events, Items, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.ExamplesSupport
 
 defmodule LiveWebSearchModes do
   @moduledoc false
@@ -17,6 +18,14 @@ defmodule LiveWebSearchModes do
   def main(args) do
     {modes, prompt} = parse_args(args)
     codex_path = fetch_codex_path!()
+
+    if ExamplesSupport.ollama_mode?() do
+      IO.puts("""
+      Ollama mode detected. This local OSS route does not guarantee Codex web-search events.
+      Running a request-plumbing demo instead of enforcing live web-search event assertions.
+      """)
+    end
+
     failures = Enum.flat_map(modes, &run_mode(&1, prompt, codex_path))
 
     if failures != [] do
@@ -96,17 +105,24 @@ defmodule LiveWebSearchModes do
 
   defp validate_mode_expectation(:disabled, final_state), do: {:ok, final_state}
 
-  defp validate_mode_expectation(:live, %{web_search?: true} = final_state),
-    do: {:ok, final_state}
-
-  defp validate_mode_expectation(:live, _final_state) do
-    {:retry_required, {:expected_web_search_events, :none_observed}}
+  defp validate_mode_expectation(:live, final_state) do
+    if ExamplesSupport.ollama_mode?() do
+      {:ok, final_state}
+    else
+      validate_live_mode_expectation(final_state)
+    end
   end
 
   # Cached mode only permits cached search results. A turn may legitimately emit
   # no web-search events when no cached result is available or the model answers
   # without using the tool.
   defp validate_mode_expectation(:cached, final_state), do: {:ok, final_state}
+
+  defp validate_live_mode_expectation(%{web_search?: true} = final_state),
+    do: {:ok, final_state}
+
+  defp validate_live_mode_expectation(_final_state),
+    do: {:retry_required, {:expected_web_search_events, :none_observed}}
 
   defp report_final_state(mode, final_state) do
     if final_state.web_search? do
@@ -122,6 +138,16 @@ defmodule LiveWebSearchModes do
     IO.puts(
       "No web search events observed. Cached mode may legitimately complete without a cache hit."
     )
+  end
+
+  defp report_no_web_search_events(:live) do
+    if ExamplesSupport.ollama_mode?() do
+      IO.puts(
+        "No web search events observed. Ollama mode validates request plumbing only for live web_search."
+      )
+    else
+      IO.puts("No web search events observed.")
+    end
   end
 
   defp report_no_web_search_events(_mode), do: IO.puts("No web search events observed.")

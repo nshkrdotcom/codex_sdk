@@ -108,7 +108,7 @@ defmodule Codex.AppServer.ConnectionTest do
     assert start_opts[:event_tag] == :codex_io_transport
   end
 
-  test "launch args include payload-derived local oss settings" do
+  test "launch args include payload-derived local oss config overrides" do
     codex_opts = %Options{
       api_key: nil,
       codex_path_override: System.find_executable("bash") || "/bin/bash",
@@ -132,11 +132,10 @@ defmodule Codex.AppServer.ConnectionTest do
 
     assert command.args == [
              "app-server",
-             "--oss",
-             "--local-provider",
-             "ollama",
-             "--model",
-             "llama3.2"
+             "--config",
+             "model_provider=\"ollama\"",
+             "--config",
+             "model=\"llama3.2\""
            ]
   end
 

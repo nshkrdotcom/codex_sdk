@@ -1,5 +1,6 @@
 Mix.Task.run("app.start")
 
+alias Codex.ExamplesSupport
 alias Codex.{AppServer, Items, Models, Options, Thread}
 alias Codex.Protocol.CollaborationMode
 
@@ -236,18 +237,25 @@ defmodule LiveCollaborationModes do
   defp normalize_effort_value(_), do: nil
 
   defp resolve_selected_model(selected_mode) do
-    case selected_mode.model do
-      model when is_binary(model) and model != "" ->
+    case {ExamplesSupport.ollama_mode?(), selected_mode.model} do
+      {true, model} ->
+        {ExamplesSupport.example_model(model),
+         " (Ollama mode forces the selected local OSS model)"}
+
+      {false, model} when is_binary(model) and model != "" ->
         {model, " (advertised by the server preset)"}
 
       _ ->
-        {Models.default_model(), " (server omitted model; using the SDK default)"}
+        {ExamplesSupport.example_model(), " (server omitted model; using the SDK default)"}
     end
   end
 
   defp resolve_selected_effort(selected_mode, model) do
-    case selected_mode.reasoning_effort do
-      effort when not is_nil(effort) ->
+    case {ExamplesSupport.ollama_mode?(), selected_mode.reasoning_effort} do
+      {true, _effort} ->
+        {nil, " (Ollama mode does not force a reasoning effort)"}
+
+      {false, effort} when not is_nil(effort) ->
         note =
           if effort == :low do
             " (advertised by the server preset)"
@@ -258,7 +266,7 @@ defmodule LiveCollaborationModes do
         {effort, note}
 
       _ ->
-        effort = Models.default_reasoning_effort(model)
+        effort = ExamplesSupport.example_reasoning(Models.default_reasoning_effort(model))
 
         note =
           " (server omitted effort; using the selected model default)"

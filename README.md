@@ -174,6 +174,15 @@ That causes the shared core registry to:
 The SDK does not infer those flags on its own.
 - CLI argument rendering only emits `--model` from a non-empty resolved value
 
+For the stateful app-server transport, the same resolved payload is rendered into
+supported `codex app-server --config ...` startup overrides plus `thread/start`
+`modelProvider` selection. The SDK does not pass unsupported exec-only OSS flags
+to `codex app-server`.
+
+`./examples/run_all.sh --ollama` uses that same route. It runs the CLI-backed
+example suite against local Ollama and skips the direct OpenAI realtime/voice
+examples, which are a separate subsystem and are not Ollama-backed.
+
 Use `Codex.Models.default_model/0`, `Codex.Models.list_visible/1`, and
 `Codex.Models.default_reasoning_effort/1` as convenience readers over that
 shared contract.

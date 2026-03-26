@@ -1,6 +1,7 @@
 Mix.Task.run("app.start")
 
 alias Codex.{AppServer, Events, Items, Options, RunResultStreaming, Subagents, Thread}
+alias Codex.ExamplesSupport
 
 defmodule CodexExamples.LiveSubagentHostControls do
   @moduledoc false
@@ -28,14 +29,17 @@ defmodule CodexExamples.LiveSubagentHostControls do
     prompt = parse_prompt(argv)
     cwd = File.cwd!()
     codex_path = fetch_codex_path!()
-    model = System.get_env("CODEX_MODEL") || Codex.Models.default_model()
-    reasoning_effort = Codex.Models.default_reasoning_effort(model)
+    model = ExamplesSupport.example_model(System.get_env("CODEX_MODEL"))
+
+    reasoning_effort =
+      ExamplesSupport.example_reasoning(Codex.Models.default_reasoning_effort(model))
+
     ensure_app_server_supported!(codex_path)
 
     IO.puts("""
     Starting live subagent host-controls example.
       model: #{model}
-      reasoning_effort: #{reasoning_effort}
+      reasoning_effort: #{reasoning_effort || "none"}
       working_directory: #{cwd}
       codex_path: #{codex_path}
     """)

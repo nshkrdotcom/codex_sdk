@@ -1,5 +1,7 @@
 Mix.Task.run("app.start")
 
+alias Codex.ExamplesSupport
+
 defmodule CodexExamples.LiveSessionWalkthrough do
   def main(argv) do
     prompt =
@@ -14,7 +16,7 @@ defmodule CodexExamples.LiveSessionWalkthrough do
     codex_opts =
       Codex.Options.new(%{
         codex_path_override: fetch_codex_path!(),
-        model: Codex.Models.default_model()
+        model: ExamplesSupport.example_model()
       })
       |> unwrap!("codex options")
 

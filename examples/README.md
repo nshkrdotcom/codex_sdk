@@ -51,6 +51,17 @@ Run the same CLI-backed example set against local Codex OSS + Ollama:
 The runner checks that the requested Ollama model is installed before starting
 the examples.
 
+In `--ollama` mode, the runner:
+
+- executes the full CLI-backed example suite against the local Ollama-backed Codex route
+- keeps app-server examples enabled by configuring `codex app-server` with supported
+  `--config` overrides instead of unsupported OSS argv flags
+- uses deterministic local fallbacks where upstream features are not reliable on the
+  local OSS path (for example strict structured-output assertions or live web-search
+  event enforcement)
+- skips the direct OpenAI realtime/voice examples, because those examples are not
+  Ollama-backed and use a separate direct API subsystem
+
 If direct API credentials are missing, realtime/voice examples are reported as `SKIPPED` and do not fail the run.
 If credentials exist but direct API access is unavailable (for example `insufficient_quota`, missing realtime model access, or an upstream Realtime `server_error`), direct API examples print `SKIPPED: <reason>`. Realtime demos now run a minimal raw-WebSocket health probe first and include the upstream `session_id` in the skip reason when OpenAI fails before any example-specific logic.
 The native OAuth example also self-skips in runner contexts unless you point it
@@ -108,6 +119,9 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 ## Realtime Voice Examples (OpenAI Agents SDK)
 
 These examples use the OpenAI Realtime API directly (not via Codex CLI). They demonstrate real-time bidirectional voice interactions:
+
+`./examples/run_all.sh --ollama` skips this entire section on purpose. Those examples are
+OpenAI-only and do not participate in the local Codex OSS + Ollama route.
 
 - `examples/live_realtime_voice.exs` — full realtime voice interaction demo with real audio I/O
 - `examples/realtime_basic.exs` — basic realtime session setup with real audio input

@@ -1,5 +1,6 @@
 #!/usr/bin/env mix run
 
+alias Codex.ExamplesSupport
 alias Codex.Items
 
 defmodule Examples.Conversation do
@@ -7,7 +8,7 @@ defmodule Examples.Conversation do
 
   def multi_turn do
     {:ok, codex_opts} =
-      Codex.Options.new(%{model: Codex.Models.default_model()})
+      Codex.Options.new(%{model: ExamplesSupport.example_model()})
 
     {:ok, thread} = Codex.start_thread(codex_opts)
 
@@ -36,7 +37,7 @@ defmodule Examples.Conversation do
 
   def resume_existing(thread_id) do
     {:ok, codex_opts} =
-      Codex.Options.new(%{model: Codex.Models.default_model()})
+      Codex.Options.new(%{model: ExamplesSupport.example_model()})
 
     {:ok, thread} = Codex.resume_thread(thread_id, codex_opts)
 
@@ -48,7 +49,7 @@ defmodule Examples.Conversation do
 
   def save_and_resume_demo do
     {:ok, codex_opts} =
-      Codex.Options.new(%{model: Codex.Models.default_model()})
+      Codex.Options.new(%{model: ExamplesSupport.example_model()})
 
     {:ok, thread} = Codex.start_thread(codex_opts)
     {:ok, result1} = Codex.Thread.run(thread, "Remember the number 42 for me.")

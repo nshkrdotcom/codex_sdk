@@ -1,4 +1,5 @@
 alias Codex.{Error, Events, Items, Models, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.ExamplesSupport
 
 defmodule LiveUsageAndCompaction do
   @moduledoc false
@@ -6,8 +7,8 @@ defmodule LiveUsageAndCompaction do
   def main(args) do
     prompt = parse_prompt(args)
 
-    model = Models.default_model()
-    reasoning = Models.default_reasoning_effort(model)
+    model = ExamplesSupport.example_model(Models.default_model())
+    reasoning = ExamplesSupport.example_reasoning(Models.default_reasoning_effort(model))
     tools? = Models.tool_enabled?(model)
 
     IO.puts("""

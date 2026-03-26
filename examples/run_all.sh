@@ -78,6 +78,25 @@ fi
 
 echo
 
+if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+  echo "CLI backend: Ollama via Codex OSS"
+  echo "CLI model: ${CODEX_MODEL}"
+  echo "CLI route: codex --oss --local-provider ollama --model ${CODEX_MODEL}"
+  echo "Direct API examples: skipped in --ollama mode because they are OpenAI-only"
+  EXAMPLE_TIMEOUT_SECONDS="${CODEX_EXAMPLES_TIMEOUT_SECONDS:-120}"
+  echo "Per-example timeout: ${EXAMPLE_TIMEOUT_SECONDS}s"
+  echo
+else
+  echo "CLI backend: standard Codex CLI"
+  if [[ -n "${CODEX_MODEL:-}" ]]; then
+    echo "CLI model override: ${CODEX_MODEL}"
+  else
+    echo "CLI model: shared core default"
+  fi
+  EXAMPLE_TIMEOUT_SECONDS="${CODEX_EXAMPLES_TIMEOUT_SECONDS:-}"
+  echo
+fi
+
 if [[ "${CODEX_PROVIDER_BACKEND:-}" != "oss" || "${CODEX_OSS_PROVIDER:-}" != "ollama" ]] && [[ -z "${CODEX_API_KEY:-}" ]]; then
   echo "Warning: No CODEX_API_KEY set (CLI examples require codex login or CODEX_API_KEY)"
   echo
@@ -160,14 +179,29 @@ run_example_group() {
   local group_name="$1"
   shift
   local ex
+  local rc
 
   echo "==> Running ${group_name}"
   for ex in "$@"; do
     echo "==> mix run ${ex}"
-    if ! mix run "${ex}"; then
+
+    rc=0
+
+    if [[ -n "${EXAMPLE_TIMEOUT_SECONDS:-}" ]] && command -v timeout >/dev/null 2>&1; then
+      timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" || rc=$?
+    else
+      mix run "${ex}" || rc=$?
+    fi
+
+    if [[ "$rc" -ne 0 ]]; then
       echo
-      echo "FAILED: ${ex}"
-      failures+=("${ex}")
+      if [[ "$rc" -eq 124 ]]; then
+        echo "TIMED OUT: ${ex} (${EXAMPLE_TIMEOUT_SECONDS}s)"
+        failures+=("${ex} (timeout=${EXAMPLE_TIMEOUT_SECONDS}s)")
+      else
+        echo "FAILED: ${ex} (exit=${rc})"
+        failures+=("${ex} (exit=${rc})")
+      fi
     fi
     echo
   done
@@ -175,7 +209,14 @@ run_example_group() {
 
 run_example_group "CLI/Auth examples" "${cli_examples[@]}"
 
-if detect_direct_api_key; then
+if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+  echo "==> Skipping Direct OpenAI API examples in --ollama mode"
+  for ex in "${direct_api_examples[@]}"; do
+    skipped+=("${ex}")
+    echo "SKIPPED: ${ex}"
+  done
+  echo
+elif detect_direct_api_key; then
   run_example_group "Direct OpenAI API examples (realtime/voice)" "${direct_api_examples[@]}"
 else
   echo "==> Skipping Direct OpenAI API examples (no CODEX_API_KEY/OPENAI_API_KEY/auth.json OPENAI_API_KEY)"

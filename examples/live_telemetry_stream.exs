@@ -1,4 +1,5 @@
 alias Codex.{Error, Models, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.ExamplesSupport
 
 defmodule LiveTelemetryStream do
   @moduledoc false
@@ -22,13 +23,13 @@ defmodule LiveTelemetryStream do
     prompt = parse_prompt(args)
     handler_id = "codex-live-telemetry-#{System.unique_integer([:positive])}"
 
-    model = Models.default_model()
-    reasoning = :low
+    model = ExamplesSupport.example_model(Models.default_model())
+    reasoning = ExamplesSupport.example_reasoning(:low)
 
     IO.puts("""
     Streaming live Codex telemetry (thread/diff/usage/compaction).
     Auth will use CODEX_API_KEY if set, otherwise your Codex CLI login.
-    Using model=#{model} reasoning_effort=#{reasoning}.
+    Using model=#{model} reasoning_effort=#{reasoning || "none"}.
     Starting live stream; you should see a thread start notice shortly.
     Some telemetry (usage/diff/compaction) may only appear at completion, and
     tool-heavy prompts can take 30-60s.

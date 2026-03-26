@@ -3,6 +3,7 @@ Mix.Task.run("app.start")
 
 alias Codex.{AgentRunner, Events, RunConfig, Tools}
 alias Codex.Agent, as: CodexAgent
+alias Codex.ExamplesSupport
 alias Codex.Items.AgentMessage
 
 defmodule CodexExamples.StubMcpTransport do
@@ -175,7 +176,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
     {:ok, codex_opts} =
       Codex.Options.new(%{
         codex_path_override: fetch_codex_path!(),
-        model: Codex.Models.default_model()
+        model: ExamplesSupport.example_model()
       })
 
     {:ok, thread} = Codex.start_thread(codex_opts)
