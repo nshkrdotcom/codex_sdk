@@ -121,10 +121,10 @@ defmodule Codex.AppServer.Connection do
     init_params =
       initialize_params(client_name, client_version, client_title, experimental_api)
 
-    with {:ok, binary_path} <- build_command(codex_opts),
+    with {:ok, command_spec} <- build_command(codex_opts),
          {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
-         invocation <- Command.new(binary_path, app_server_args(codex_opts), cwd: cwd, env: env),
+         invocation <- Command.new(command_spec, app_server_args(codex_opts), cwd: cwd, env: env),
          {:ok, raw_session} <-
            RawSession.start_link(
              invocation,
@@ -556,7 +556,7 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp build_command(%Options{} = opts), do: Options.codex_path(opts)
+  defp build_command(%Options{} = opts), do: Options.codex_command_spec(opts)
 
   defp resolve_transport(opts) do
     opts

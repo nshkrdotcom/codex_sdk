@@ -11,6 +11,34 @@ defmodule Codex.Plugins do
 
   alias Codex.Plugins.{Manifest, Marketplace, Reader, Scaffold, Writer}
 
+  @type scaffold_result :: %{
+          scope: Codex.Plugins.Paths.scope(),
+          plugin_name: String.t(),
+          plugin_root: String.t(),
+          manifest_path: String.t(),
+          manifest: Manifest.t(),
+          skill_paths: [String.t()],
+          marketplace_path: String.t() | nil,
+          marketplace: Marketplace.t() | nil,
+          created_paths: [String.t()]
+        }
+
+  @type scaffold_error ::
+          {:plugin_io, %{action: atom(), path: String.t(), reason: term()}}
+          | {:invalid_plugin_json, %{path: String.t(), reason: String.t(), raw_reason: term()}}
+          | {:plugin_file_exists, %{path: String.t()}}
+          | {:repo_root_not_found, %{cwd: String.t()}}
+          | {:invalid_plugin_scope, %{scope: term()}}
+          | {:invalid_plugin_name, %{name: term(), message: String.t()}}
+          | {:invalid_plugin_root, %{path: String.t(), message: String.t()}}
+          | {:invalid_marketplace_path, %{path: String.t(), message: String.t()}}
+          | {:invalid_marketplace_source_path,
+             %{path: String.t(), source_path: String.t(), message: String.t()}}
+          | {:plugin_conflict, %{path: String.t(), plugin_name: String.t()}}
+          | {:invalid_plugin_manifest, CliSubprocessCore.Schema.error_detail()}
+          | {:invalid_plugin_marketplace, CliSubprocessCore.Schema.error_detail()}
+          | {:invalid_plugin_marketplace_plugin, CliSubprocessCore.Schema.error_detail()}
+
   @doc """
   Builds and validates a manifest struct.
   """
@@ -93,7 +121,7 @@ defmodule Codex.Plugins do
   @doc """
   Scaffolds a minimal local plugin tree.
   """
-  @spec scaffold(keyword()) :: {:ok, map()} | {:error, term()}
+  @spec scaffold(keyword()) :: {:ok, scaffold_result()} | {:error, scaffold_error()}
   def scaffold(opts), do: Scaffold.scaffold(opts)
 
   defp to_validation_result({:ok, _struct}), do: :ok

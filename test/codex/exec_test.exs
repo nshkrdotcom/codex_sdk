@@ -3,6 +3,7 @@ defmodule Codex.ExecTest do
 
   import ExUnit.CaptureLog
 
+  alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
@@ -887,6 +888,21 @@ defmodule Codex.ExecTest do
 
     assert error.retryable? == true
     assert error.message =~ "idle timeout"
+  end
+
+  test "finite streams do not wait for shutdown grace after the final event" do
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.cat_fixture()
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, stream} = Exec.run_stream("fast shutdown", %{codex_opts: codex_opts})
+
+    {elapsed_us, events} = :timer.tc(fn -> Enum.to_list(stream) end)
+
+    assert length(events) == 5
+    assert elapsed_us < Defaults.transport_close_grace_ms() * 1_000 - 250_000
   end
 
   test "caps stderr in blocking runs and marks truncation" do

@@ -75,6 +75,9 @@ resolution follows this order:
 3. `System.find_executable("codex")`
 
 Make sure the binary at the resolved location is executable and kept up to date.
+When the resolved path is a version-manager shim (for example `asdf`/`mise`), the SDK
+stabilizes it to the underlying installed executable when possible so child subprocess
+launches do not depend on the child working directory.
 
 For authentication, sign in with your ChatGPT account (this stores credentials for the CLI):
 

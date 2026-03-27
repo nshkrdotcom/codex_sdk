@@ -22,7 +22,7 @@ defmodule Codex.CLI.Session do
   Use `collect/2` to accumulate output until the process exits.
   """
 
-  alias CliSubprocessCore.{Command, RawSession}
+  alias CliSubprocessCore.{Command, CommandSpec, RawSession}
   alias CliSubprocessCore.Transport.Info
   alias Codex.Config.Defaults
   alias Codex.ProcessExit
@@ -53,11 +53,13 @@ defmodule Codex.CLI.Session do
         }
 
   @doc """
-  Starts a raw subprocess session for `binary_path` and `args`.
+  Starts a raw subprocess session for a resolved Codex program and `args`.
   """
-  @spec start(String.t(), [String.t()], keyword()) :: {:ok, t()} | {:error, term()}
-  def start(binary_path, args, opts \\ [])
-      when is_binary(binary_path) and is_list(args) and is_list(opts) do
+  @spec start(String.t() | CommandSpec.t(), [String.t()], keyword()) ::
+          {:ok, t()} | {:error, term()}
+  def start(binary_or_spec, args, opts \\ [])
+      when (is_binary(binary_or_spec) or is_struct(binary_or_spec, CommandSpec)) and is_list(args) and
+             is_list(opts) do
     receiver = Keyword.get(opts, :receiver, self())
     pty? = Keyword.get(opts, :pty, false)
     stdin? = Keyword.get(opts, :stdin, false)
@@ -66,7 +68,7 @@ defmodule Codex.CLI.Session do
 
     with {:ok, {env, clear_env?}} <- normalize_env_spec(Keyword.get(opts, :env)),
          invocation <-
-           Command.new(binary_path, args,
+           Command.new(binary_or_spec, args,
              cwd: Keyword.get(opts, :cwd),
              env: env,
              clear_env?: clear_env?
@@ -87,7 +89,7 @@ defmodule Codex.CLI.Session do
       {:ok,
        %__MODULE__{
          args: args,
-         command: [binary_path | args],
+         command: Command.argv(invocation),
          os_pid: os_pid,
          pid: pid,
          raw_session: raw_session,

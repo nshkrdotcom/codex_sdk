@@ -30,6 +30,8 @@ instead of relying on a pre-existing CLI login:
   initialization and optionally auto-answers refresh requests
 
 The SDK resolves the `codex` executable via `codex_path_override` → `CODEX_PATH` → `System.find_executable("codex")`.
+When that path is a version-manager shim, the SDK resolves it to a stable installed
+binary when possible before launching the child process.
 
 If you need the literal command surface instead of the managed JSON-RPC connection,
 `Codex.CLI.app_server/1` launches a raw `codex app-server` subprocess session and

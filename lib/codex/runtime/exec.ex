@@ -119,7 +119,7 @@ defmodule Codex.Runtime.Exec do
     subscriber = Keyword.get(opts, :subscriber)
 
     with %ExecOptions{} = exec_opts <- exec_opts,
-         {:ok, binary_path} <- Options.codex_path(exec_opts.codex_opts),
+         {:ok, command_spec} <- Options.codex_command_spec(exec_opts.codex_opts),
          {:ok, config_values} <- config_values(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
 
@@ -129,7 +129,7 @@ defmodule Codex.Runtime.Exec do
           profile: Codex.Runtime.Exec.Profile,
           subscriber: subscriber,
           metadata: %{lane: :codex_sdk},
-          command: binary_path,
+          command_spec: command_spec,
           prompt: normalize_prompt(input),
           cli_profile: exec_opt(exec_opts, :profile),
           oss: payload_oss?(exec_opts),

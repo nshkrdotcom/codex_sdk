@@ -3,18 +3,17 @@ defmodule Codex.Plugins.Reader do
 
   alias Codex.Plugins.{Errors, Manifest, Marketplace, Paths}
 
-  @spec read_manifest(Path.t()) :: {:ok, Manifest.t()} | {:error, term()}
+  @spec read_manifest(String.t()) :: {:ok, Manifest.t()} | {:error, term()}
   def read_manifest(path) when is_binary(path) do
     manifest_path = Paths.manifest_path(path)
 
     with {:ok, contents} <- read_file(manifest_path),
-         {:ok, decoded} <- decode_json(manifest_path, contents),
-         {:ok, manifest} <- Manifest.parse(decoded) do
-      {:ok, manifest}
+         {:ok, decoded} <- decode_json(manifest_path, contents) do
+      Manifest.parse(decoded)
     end
   end
 
-  @spec read_marketplace(Path.t()) :: {:ok, Marketplace.t()} | {:error, term()}
+  @spec read_marketplace(String.t()) :: {:ok, Marketplace.t()} | {:error, term()}
   def read_marketplace(path) when is_binary(path) do
     marketplace_path = Path.expand(path)
 
@@ -27,7 +26,7 @@ defmodule Codex.Plugins.Reader do
     end
   end
 
-  @spec validate_marketplace_sources(Path.t(), Marketplace.t()) :: :ok | {:error, term()}
+  @spec validate_marketplace_sources(String.t(), Marketplace.t()) :: :ok | {:error, term()}
   def validate_marketplace_sources(marketplace_path, %Marketplace{plugins: plugins}) do
     Enum.reduce_while(plugins, :ok, fn plugin, :ok ->
       case Paths.resolve_marketplace_source_path(marketplace_path, plugin.source.path) do

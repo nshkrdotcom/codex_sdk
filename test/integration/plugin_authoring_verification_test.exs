@@ -1,18 +1,20 @@
 defmodule Codex.Integration.PluginAuthoringVerificationTest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.CommandSpec
   alias Codex.AppServer
-  alias Codex.Protocol.Plugin
+  alias Codex.Options
   alias Codex.Plugins
+  alias Codex.Protocol.Plugin
 
   @moduletag :integration
 
   test "local scaffold output remains separate from runtime verification and is readable through app-server" do
-    case codex_path() do
+    case codex_options() do
       {:skip, _reason} ->
         :ok
 
-      {:ok, codex_path} ->
+      {:ok, codex_opts} ->
         temp_root = temp_root("plugin_authoring_verification")
         repo_root = Path.join(temp_root, "repo")
         home_root = Path.join(temp_root, "home")
@@ -28,8 +30,6 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
                    with_marketplace: true,
                    skill: [name: "hello-world", description: "Greets the user"]
                  )
-
-        {:ok, codex_opts} = Codex.Options.new(%{codex_path_override: codex_path})
 
         {:ok, conn} =
           AppServer.connect(codex_opts,
@@ -58,8 +58,12 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
                 assert detail.summary.name == "demo-plugin"
                 assert Enum.any?(detail.skills, &(&1.name == "demo-plugin:hello-world"))
 
+              {:error, {:invalid_plugin_read_response, details}} ->
+                assert missing_enabled_issue?(details)
+                :ok
+
               {:error, %{"code" => code}}
-              when code in [-32_601, -32_600, -32601, -32600] ->
+              when code in [-32_601, -32_600] ->
                 :ok
 
               {:error, reason} ->
@@ -67,7 +71,7 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
             end
 
           {:error, %{"code" => code, "message" => message}}
-          when code in [-32_601, -32_600, -32601, -32600] ->
+          when code in [-32_601, -32_600] ->
             assert is_binary(message)
             :ok
 
@@ -77,20 +81,33 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
     end
   end
 
-  defp codex_path do
-    case System.find_executable("codex") do
-      nil ->
+  defp codex_options do
+    with {:ok, codex_opts} <- Options.new(%{}),
+         {:ok, spec} <- Options.codex_command_spec(codex_opts) do
+      case run_command_spec(spec, ["app-server", "--help"]) do
+        {_output, 0} -> {:ok, codex_opts}
+        _ -> {:skip, "codex CLI does not support app-server"}
+      end
+    else
+      {:error, :codex_binary_not_found} ->
         {:skip, "codex CLI is not installed"}
 
-      path ->
-        case System.cmd(path, ["app-server", "--help"], stderr_to_stdout: true) do
-          {_output, 0} -> {:ok, path}
-          _ -> {:skip, "codex CLI does not support app-server"}
-        end
+      {:error, reason} ->
+        {:skip, "codex CLI is not runnable: #{inspect(reason)}"}
     end
   end
 
   defp temp_root(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
+
+  defp run_command_spec(%CommandSpec{} = spec, args) when is_list(args) do
+    System.cmd(spec.program, CommandSpec.command_args(spec, args), stderr_to_stdout: true)
+  end
+
+  defp missing_enabled_issue?(%{issues: issues}) when is_list(issues) do
+    Enum.any?(issues, &(&1[:code] == :required and &1[:path] == ["enabled"]))
+  end
+
+  defp missing_enabled_issue?(_details), do: false
 end

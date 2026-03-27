@@ -141,6 +141,39 @@ defmodule Codex.AppServer.ConnectionTest do
            ]
   end
 
+  test "launch command resolves cwd-sensitive asdf shims to stable executables" do
+    {root, shim_path, resolved_path} = build_fake_asdf_codex()
+
+    try do
+      previous_asdf_dir = System.get_env("ASDF_DIR")
+      System.put_env("ASDF_DIR", Path.join(root, ".asdf"))
+
+      on_exit(fn ->
+        case previous_asdf_dir do
+          nil -> System.delete_env("ASDF_DIR")
+          value -> System.put_env("ASDF_DIR", value)
+        end
+      end)
+
+      {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: shim_path})
+
+      {:ok, conn} =
+        Connection.start_link(codex_opts,
+          transport: {AppServerSubprocess, owner: self()},
+          cwd: "/tmp/codex-app-server-fixture",
+          init_timeout_ms: 200
+        )
+
+      assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+      assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+      assert %CliSubprocessCore.Command{} = command = Keyword.fetch!(start_opts, :command)
+      assert command.command == resolved_path
+    after
+      File.rm_rf(root)
+    end
+  end
+
   test "runtime is backed by a raw session with line stdout and raw stdin", %{
     codex_opts: codex_opts
   } do
@@ -590,5 +623,65 @@ defmodule Codex.AppServer.ConnectionTest do
     |> :sys.get_state()
     |> Map.fetch!(:ready_waiters)
     |> length()
+  end
+
+  defp build_fake_asdf_codex do
+    root =
+      Path.join(System.tmp_dir!(), "codex_app_server_asdf_#{System.unique_integer([:positive])}")
+
+    asdf_root = Path.join(root, ".asdf")
+    bin_dir = Path.join(asdf_root, "bin")
+    shim_dir = Path.join(asdf_root, "shims")
+    installs_dir = Path.join(root, "installs/nodejs/25.1.0/bin")
+
+    File.mkdir_p!(bin_dir)
+    File.mkdir_p!(shim_dir)
+    File.mkdir_p!(installs_dir)
+
+    resolved_path =
+      Path.join(installs_dir, "codex")
+      |> then(fn path ->
+        File.write!(path, "#!/bin/bash\nexit 0\n")
+        File.chmod!(path, 0o755)
+        path
+      end)
+
+    asdf_path =
+      Path.join(bin_dir, "asdf")
+      |> then(fn path ->
+        File.write!(
+          path,
+          """
+          #!/bin/sh
+          if [ "$1" = "which" ] && [ "$2" = "codex" ]; then
+            printf '%s\\n' "#{resolved_path}"
+            exit 0
+          fi
+
+          printf 'unsupported asdf invocation: %s %s\\n' "$1" "$2" >&2
+          exit 1
+          """
+        )
+
+        File.chmod!(path, 0o755)
+        path
+      end)
+
+    shim_path =
+      Path.join(shim_dir, "codex")
+      |> then(fn path ->
+        File.write!(
+          path,
+          """
+          #!/bin/sh
+          exec "#{asdf_path}" exec "codex" "$@"
+          """
+        )
+
+        File.chmod!(path, 0o755)
+        path
+      end)
+
+    {root, shim_path, resolved_path}
   end
 end

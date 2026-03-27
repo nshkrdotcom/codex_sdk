@@ -221,16 +221,8 @@ defmodule Codex.Plugins.Manifest do
       {:error, "expected at most #{@max_default_prompt_count} prompts"}
     else
       values
-      |> Enum.reduce_while({:ok, []}, fn
-        value, {:ok, acc} when is_binary(value) ->
-          case normalize_prompt_string(value) do
-            {:ok, prompt} -> {:cont, {:ok, acc ++ [prompt]}}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-
-        _value, _acc ->
-          {:halt, {:error, "expected a string or a list of strings"}}
-      end)
+      |> Enum.reduce_while({:ok, []}, &append_prompt/2)
+      |> reverse_prompts()
     end
   end
 
@@ -408,6 +400,19 @@ defmodule Codex.Plugins.Manifest do
       Zoi.nullish(Zoi.any() |> Zoi.transform({__MODULE__, :normalize_relative_path, [field]}))
     )
   end
+
+  defp append_prompt(value, {:ok, acc}) when is_binary(value) do
+    case normalize_prompt_string(value) do
+      {:ok, prompt} -> {:cont, {:ok, [prompt | acc]}}
+      {:error, reason} -> {:halt, {:error, reason}}
+    end
+  end
+
+  defp append_prompt(_value, _acc),
+    do: {:halt, {:error, "expected a string or a list of strings"}}
+
+  defp reverse_prompts({:ok, prompts}), do: {:ok, Enum.reverse(prompts)}
+  defp reverse_prompts({:error, _reason} = error), do: error
 
   defp normalize_prompt_string(value) when is_binary(value) do
     prompt =

@@ -258,7 +258,7 @@ defmodule Codex.Exec do
   defp safe_stop(%{session: session, session_ref: session_ref} = state) when is_pid(session) do
     maybe_unregister_cancellation(state)
     _ = RuntimeExec.close(session)
-    await_session_down_or_demonitor(state.session_monitor_ref, session)
+    maybe_await_session_down(state.session_monitor_ref, session)
     flush_session_messages(session_ref, state.session_event_tag)
     :ok
   rescue
@@ -317,6 +317,18 @@ defmodule Codex.Exec do
   end
 
   defp await_session_down_or_demonitor(_ref, _session), do: :ok
+
+  defp maybe_await_session_down(ref, session)
+       when is_reference(ref) and is_pid(session) do
+    if Process.alive?(session) do
+      await_session_down_or_demonitor(ref, session)
+    else
+      Process.demonitor(ref, [:flush])
+      :ok
+    end
+  end
+
+  defp maybe_await_session_down(_ref, _session), do: :ok
 
   defp flush_session_messages(ref, session_event_tag)
        when is_reference(ref) and is_atom(session_event_tag) do

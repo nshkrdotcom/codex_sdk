@@ -33,11 +33,11 @@ defmodule Codex.CLI do
     cwd = resolve_cwd(opts)
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
-         {:ok, binary_path} <- Options.codex_path(codex_opts),
+         {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
          {:ok, result} <-
            Command.run(
-             Command.new(binary_path, normalize_args(args),
+             Command.new(command_spec, normalize_args(args),
                cwd: cwd,
                env: env_spec.env,
                clear_env?: env_spec.clear_env?
@@ -58,7 +58,7 @@ defmodule Codex.CLI do
     cwd = resolve_cwd(opts)
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
-         {:ok, binary_path} <- Options.codex_path(codex_opts),
+         {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
       session_opts = [
         receiver: Keyword.get(opts, :receiver, self()),
@@ -68,7 +68,7 @@ defmodule Codex.CLI do
         env: build_session_env(env_spec)
       ]
 
-      Session.start(binary_path, normalize_args(args), session_opts)
+      Session.start(command_spec, normalize_args(args), session_opts)
     end
   end
 

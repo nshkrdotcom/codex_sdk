@@ -3,7 +3,6 @@ defmodule Codex.Runtime.Exec.Profile do
 
   @behaviour CliSubprocessCore.ProviderProfile
 
-  alias CliSubprocessCore.Command
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.ProviderProfiles.Shared
 
@@ -15,38 +14,38 @@ defmodule Codex.Runtime.Exec.Profile do
 
   @impl true
   def build_invocation(opts) when is_list(opts) do
-    binary = Shared.resolve_command(opts, "codex", [:binary_path])
+    with {:ok, command_spec} <- Shared.resolve_command_spec(opts, :codex, "codex", [:binary_path]) do
+      args =
+        ["exec", "--json"]
+        |> Shared.maybe_add_pair("--profile", Keyword.get(opts, :cli_profile))
+        |> Shared.maybe_add_flag("--oss", oss_enabled?(opts))
+        |> Shared.maybe_add_pair("--local-provider", local_provider_value(opts))
+        |> Shared.maybe_add_flag("--full-auto", Keyword.get(opts, :full_auto))
+        |> Shared.maybe_add_flag(
+          "--dangerously-bypass-approvals-and-sandbox",
+          Keyword.get(opts, :dangerously_bypass_approvals_and_sandbox)
+        )
+        |> Shared.maybe_add_pair("--model", model_value(opts))
+        |> Shared.maybe_add_pair("--color", Keyword.get(opts, :color))
+        |> Shared.maybe_add_pair("--output-last-message", Keyword.get(opts, :output_last_message))
+        |> Shared.maybe_add_pair("--sandbox", Keyword.get(opts, :sandbox))
+        |> Shared.maybe_add_pair("--cd", Keyword.get(opts, :working_directory))
+        |> Shared.maybe_add_repeat("--add-dir", Keyword.get(opts, :additional_directories, []))
+        |> Shared.maybe_add_flag("--skip-git-repo-check", Keyword.get(opts, :skip_git_repo_check))
+        |> Kernel.++(normalize_string_list(Keyword.get(opts, :subcommand_args, [])))
+        |> Shared.maybe_add_pair("--continuation-token", Keyword.get(opts, :continuation_token))
+        |> Shared.maybe_add_pair("--cancellation-token", Keyword.get(opts, :cancellation_token))
+        |> Shared.maybe_add_repeat("--image", Keyword.get(opts, :images, []))
+        |> maybe_add_output_schema(Keyword.get(opts, :output_schema))
+        |> Shared.maybe_add_repeat("--config", config_values(opts))
+        |> maybe_add_prompt(Keyword.get(opts, :prompt))
 
-    args =
-      ["exec", "--json"]
-      |> Shared.maybe_add_pair("--profile", Keyword.get(opts, :cli_profile))
-      |> Shared.maybe_add_flag("--oss", oss_enabled?(opts))
-      |> Shared.maybe_add_pair("--local-provider", local_provider_value(opts))
-      |> Shared.maybe_add_flag("--full-auto", Keyword.get(opts, :full_auto))
-      |> Shared.maybe_add_flag(
-        "--dangerously-bypass-approvals-and-sandbox",
-        Keyword.get(opts, :dangerously_bypass_approvals_and_sandbox)
-      )
-      |> Shared.maybe_add_pair("--model", model_value(opts))
-      |> Shared.maybe_add_pair("--color", Keyword.get(opts, :color))
-      |> Shared.maybe_add_pair("--output-last-message", Keyword.get(opts, :output_last_message))
-      |> Shared.maybe_add_pair("--sandbox", Keyword.get(opts, :sandbox))
-      |> Shared.maybe_add_pair("--cd", Keyword.get(opts, :working_directory))
-      |> Shared.maybe_add_repeat("--add-dir", Keyword.get(opts, :additional_directories, []))
-      |> Shared.maybe_add_flag("--skip-git-repo-check", Keyword.get(opts, :skip_git_repo_check))
-      |> Kernel.++(normalize_string_list(Keyword.get(opts, :subcommand_args, [])))
-      |> Shared.maybe_add_pair("--continuation-token", Keyword.get(opts, :continuation_token))
-      |> Shared.maybe_add_pair("--cancellation-token", Keyword.get(opts, :cancellation_token))
-      |> Shared.maybe_add_repeat("--image", Keyword.get(opts, :images, []))
-      |> maybe_add_output_schema(Keyword.get(opts, :output_schema))
-      |> Shared.maybe_add_repeat("--config", config_values(opts))
-      |> maybe_add_prompt(Keyword.get(opts, :prompt))
-
-    {:ok,
-     Command.new(binary, args,
-       cwd: Keyword.get(opts, :cwd),
-       env: normalize_env(Keyword.get(opts, :env, %{}))
-     )}
+      {:ok,
+       Shared.command(command_spec, args,
+         cwd: Keyword.get(opts, :cwd),
+         env: normalize_env(Keyword.get(opts, :env, %{}))
+       )}
+    end
   end
 
   @impl true

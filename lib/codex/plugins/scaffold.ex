@@ -5,7 +5,29 @@ defmodule Codex.Plugins.Scaffold do
 
   @default_category "Productivity"
 
-  @spec scaffold(keyword()) :: {:ok, map()} | {:error, term()}
+  @type skill_t :: %{name: String.t(), description: String.t()}
+  @type marketplace_result_t :: %{
+          marketplace_path: String.t() | nil,
+          marketplace: Marketplace.t() | nil
+        }
+  @type result :: %{
+          scope: Paths.scope(),
+          plugin_name: String.t(),
+          plugin_root: String.t(),
+          manifest_path: String.t(),
+          manifest: Manifest.t(),
+          skill_paths: [String.t()],
+          marketplace_path: String.t() | nil,
+          marketplace: Marketplace.t() | nil,
+          created_paths: [String.t()]
+        }
+  @type error ::
+          Errors.t()
+          | {:invalid_plugin_manifest, CliSubprocessCore.Schema.error_detail()}
+          | {:invalid_plugin_marketplace, CliSubprocessCore.Schema.error_detail()}
+          | {:invalid_plugin_marketplace_plugin, CliSubprocessCore.Schema.error_detail()}
+
+  @spec scaffold(keyword()) :: {:ok, result()} | {:error, error()}
   def scaffold(opts) when is_list(opts) do
     with {:ok, scope} <- normalize_scope(Keyword.get(opts, :scope, :repo)),
          {:ok, plugin_name} <-
@@ -14,6 +36,7 @@ defmodule Codex.Plugins.Scaffold do
            Paths.plugin_root(scope, plugin_name, Keyword.put(opts, :plugin_name, plugin_name)),
          manifest_path = Paths.manifest_path(plugin_root),
          {:ok, skill} <- normalize_skill(Keyword.get(opts, :skill)),
+         skill_paths = skill_paths(plugin_root, skill),
          :ok <- preflight_files(manifest_path, skill_path(plugin_root, skill), opts),
          :ok <- preflight_marketplace(scope, plugin_name, plugin_root, opts),
          {:ok, manifest} <- build_manifest(plugin_name, skill, opts),
@@ -31,15 +54,11 @@ defmodule Codex.Plugins.Scaffold do
          plugin_root: plugin_root,
          manifest_path: manifest_path,
          manifest: manifest,
-         skill_paths: skill_paths(plugin_root, skill),
-         marketplace_path: marketplace_result[:marketplace_path],
-         marketplace: marketplace_result[:marketplace],
+         skill_paths: skill_paths,
+         marketplace_path: marketplace_result.marketplace_path,
+         marketplace: marketplace_result.marketplace,
          created_paths:
-           [
-             manifest_path,
-             marketplace_result[:marketplace_path] | skill_paths(plugin_root, skill)
-           ]
-           |> Enum.reject(&is_nil/1)
+           created_paths(manifest_path, skill_paths, marketplace_result.marketplace_path)
        }}
     end
   end
@@ -114,17 +133,7 @@ defmodule Codex.Plugins.Scaffold do
 
       with {:ok, marketplace_path} <- Paths.marketplace_path(marketplace_scope, opts),
            {:ok, _source_path} <- Paths.relative_plugin_source_path(marketplace_path, plugin_root) do
-        if File.exists?(marketplace_path) do
-          with {:ok, marketplace} <- Reader.read_marketplace(marketplace_path) do
-            if Enum.any?(marketplace.plugins, &(&1.name == plugin_name)) do
-              {:error, Errors.plugin_conflict(marketplace_path, plugin_name)}
-            else
-              :ok
-            end
-          end
-        else
-          :ok
-        end
+        preflight_marketplace_entry(marketplace_path, plugin_name)
       end
     else
       :ok
@@ -151,31 +160,9 @@ defmodule Codex.Plugins.Scaffold do
   defp maybe_write_skill(plugin_root, skill, opts) do
     skill_path = skill_path(plugin_root, skill)
 
-    case File.mkdir_p(Path.dirname(skill_path)) do
-      :ok ->
-        if File.exists?(skill_path) and not Keyword.get(opts, :overwrite, false) do
-          {:error, Errors.file_exists(skill_path)}
-        else
-          case File.write(
-                 skill_path,
-                 """
-                 ---
-                 name: #{skill.name}
-                 description: #{skill.description}
-                 ---
-
-                 # #{humanize_name(skill.name)}
-
-                 #{skill.description}
-                 """
-               ) do
-            :ok -> :ok
-            {:error, reason} -> {:error, Errors.io(:write, skill_path, reason)}
-          end
-        end
-
-      {:error, reason} ->
-        {:error, Errors.io(:mkdir, Path.dirname(skill_path), reason)}
+    with :ok <- create_skill_parent(skill_path),
+         :ok <- ensure_skill_path_available(skill_path, opts) do
+      write_skill_file(skill_path, skill)
     end
   end
 
@@ -185,20 +172,11 @@ defmodule Codex.Plugins.Scaffold do
 
       with {:ok, marketplace_path} <- Paths.marketplace_path(marketplace_scope, opts),
            {:ok, source_path} <- Paths.relative_plugin_source_path(marketplace_path, plugin_root),
-           {:ok, plugin} <- build_marketplace_plugin(plugin_name, source_path, opts),
-           {:ok, result} <-
-             Writer.add_marketplace_plugin(
-               marketplace_path,
-               plugin,
-               overwrite: Keyword.get(opts, :overwrite, false),
-               create_parents: true,
-               marketplace_name: Keyword.get(opts, :marketplace_name),
-               marketplace_display_name: Keyword.get(opts, :marketplace_display_name)
-             ) do
-        {:ok, result}
+           {:ok, plugin} <- build_marketplace_plugin(plugin_name, source_path, opts) do
+        add_marketplace_plugin(marketplace_path, plugin, opts)
       end
     else
-      {:ok, %{}}
+      {:ok, empty_marketplace_result()}
     end
   end
 
@@ -224,6 +202,84 @@ defmodule Codex.Plugins.Scaffold do
     end
   end
 
+  defp preflight_marketplace_entry(marketplace_path, plugin_name) do
+    if File.exists?(marketplace_path) do
+      check_marketplace_conflict(marketplace_path, plugin_name)
+    else
+      :ok
+    end
+  end
+
+  defp check_marketplace_conflict(marketplace_path, plugin_name) do
+    with {:ok, marketplace} <- Reader.read_marketplace(marketplace_path) do
+      if Enum.any?(marketplace.plugins, &(&1.name == plugin_name)) do
+        {:error, Errors.plugin_conflict(marketplace_path, plugin_name)}
+      else
+        :ok
+      end
+    end
+  end
+
+  defp create_skill_parent(skill_path) do
+    parent = Path.dirname(skill_path)
+
+    case File.mkdir_p(parent) do
+      :ok -> :ok
+      {:error, reason} -> {:error, Errors.io(:mkdir, parent, reason)}
+    end
+  end
+
+  defp ensure_skill_path_available(skill_path, opts) do
+    if File.exists?(skill_path) and not Keyword.get(opts, :overwrite, false) do
+      {:error, Errors.file_exists(skill_path)}
+    else
+      :ok
+    end
+  end
+
+  defp write_skill_file(skill_path, skill) do
+    case File.write(skill_path, render_skill(skill)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, Errors.io(:write, skill_path, reason)}
+    end
+  end
+
+  defp render_skill(skill) do
+    """
+    ---
+    name: #{skill.name}
+    description: #{skill.description}
+    ---
+
+    # #{humanize_name(skill.name)}
+
+    #{skill.description}
+    """
+  end
+
+  defp add_marketplace_plugin(marketplace_path, plugin, opts) do
+    case Writer.add_marketplace_plugin(
+           marketplace_path,
+           plugin,
+           overwrite: Keyword.get(opts, :overwrite, false),
+           create_parents: true,
+           marketplace_name: Keyword.get(opts, :marketplace_name),
+           marketplace_display_name: Keyword.get(opts, :marketplace_display_name)
+         ) do
+      {:ok, result} ->
+        {:ok,
+         %{
+           marketplace_path: result.marketplace_path,
+           marketplace: result.marketplace
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp empty_marketplace_result, do: %{marketplace_path: nil, marketplace: nil}
+
   defp normalize_override_map(nil), do: %{}
   defp normalize_override_map(map) when is_map(map), do: map
   defp normalize_override_map(list) when is_list(list), do: Enum.into(list, %{})
@@ -242,6 +298,11 @@ defmodule Codex.Plugins.Scaffold do
 
   defp skill_paths(_plugin_root, nil), do: []
   defp skill_paths(plugin_root, skill), do: [skill_path(plugin_root, skill)]
+
+  defp created_paths(manifest_path, skill_paths, nil), do: [manifest_path | skill_paths]
+
+  defp created_paths(manifest_path, skill_paths, marketplace_path),
+    do: [manifest_path, marketplace_path | skill_paths]
 
   defp humanize_name(name) when is_binary(name) do
     name

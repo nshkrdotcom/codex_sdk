@@ -3,20 +3,27 @@ defmodule Codex.Plugins.Writer do
 
   alias Codex.Plugins.{Errors, Manifest, Marketplace, Paths, Reader}
 
-  @spec write_manifest(Path.t(), Manifest.t(), keyword()) :: :ok | {:error, term()}
+  @type write_manifest_error :: Errors.file_exists_error() | Errors.io_error()
+  @type add_marketplace_plugin_result :: %{
+          marketplace_path: String.t(),
+          marketplace: Marketplace.t(),
+          plugin_name: String.t()
+        }
+
+  @spec write_manifest(String.t(), Manifest.t(), keyword()) ::
+          :ok | {:error, write_manifest_error()}
   def write_manifest(path, %Manifest{} = manifest, opts \\ [])
       when is_binary(path) and is_list(opts) do
     manifest_path = Paths.manifest_path(path)
     payload = Manifest.to_map(manifest)
 
     with {:ok, json} <- encode_json(payload),
-         :ok <- prepare_parent(manifest_path, opts),
-         :ok <- write_file(manifest_path, json, opts) do
-      :ok
+         :ok <- prepare_parent(manifest_path, opts) do
+      write_file(manifest_path, json, opts)
     end
   end
 
-  @spec write_marketplace(Path.t(), Marketplace.t(), keyword()) :: :ok | {:error, term()}
+  @spec write_marketplace(String.t(), Marketplace.t(), keyword()) :: :ok | {:error, term()}
   def write_marketplace(path, %Marketplace{} = marketplace, opts \\ [])
       when is_binary(path) and is_list(opts) do
     marketplace_path = Path.expand(path)
@@ -25,23 +32,21 @@ defmodule Codex.Plugins.Writer do
          {:ok, final_marketplace} <- maybe_merge_marketplace(marketplace_path, marketplace, opts),
          :ok <- Reader.validate_marketplace_sources(marketplace_path, final_marketplace),
          {:ok, json} <- encode_json(Marketplace.to_map(final_marketplace)),
-         :ok <- prepare_parent(marketplace_path, opts),
-         :ok <-
-           write_file(
-             marketplace_path,
-             json,
-             Keyword.put(
-               opts,
-               :overwrite,
-               Keyword.get(opts, :overwrite, false) or Keyword.get(opts, :merge, false)
-             )
-           ) do
-      :ok
+         :ok <- prepare_parent(marketplace_path, opts) do
+      write_file(
+        marketplace_path,
+        json,
+        Keyword.put(
+          opts,
+          :overwrite,
+          Keyword.get(opts, :overwrite, false) or Keyword.get(opts, :merge, false)
+        )
+      )
     end
   end
 
-  @spec add_marketplace_plugin(Path.t(), Marketplace.plugin_t(), keyword()) ::
-          {:ok, map()} | {:error, term()}
+  @spec add_marketplace_plugin(String.t(), Marketplace.plugin_t(), keyword()) ::
+          {:ok, add_marketplace_plugin_result()} | {:error, term()}
   def add_marketplace_plugin(path, plugin, opts \\ [])
       when is_binary(path) and is_map(plugin) and is_list(opts) do
     marketplace_path = Path.expand(path)
@@ -104,18 +109,16 @@ defmodule Codex.Plugins.Writer do
   end
 
   defp build_default_marketplace(path, opts) do
-    with {:ok, root} <- Paths.marketplace_root(path),
-         {:ok, marketplace} <-
-           Marketplace.parse(%{
-             "name" => Keyword.get(opts, :marketplace_name) || default_marketplace_name(root),
-             "interface" => %{
-               "displayName" =>
-                 Keyword.get(opts, :marketplace_display_name) ||
-                   default_marketplace_display_name(root)
-             },
-             "plugins" => []
-           }) do
-      {:ok, marketplace}
+    with {:ok, root} <- Paths.marketplace_root(path) do
+      Marketplace.parse(%{
+        "name" => Keyword.get(opts, :marketplace_name) || default_marketplace_name(root),
+        "interface" => %{
+          "displayName" =>
+            Keyword.get(opts, :marketplace_display_name) ||
+              default_marketplace_display_name(root)
+        },
+        "plugins" => []
+      })
     end
   end
 
@@ -149,21 +152,23 @@ defmodule Codex.Plugins.Writer do
   defp write_file(path, contents, opts) do
     overwrite? = Keyword.get(opts, :overwrite, false)
 
-    cond do
-      File.exists?(path) and not overwrite? ->
-        {:error, Errors.file_exists(path)}
+    if File.exists?(path) and not overwrite? do
+      {:error, Errors.file_exists(path)}
+    else
+      do_write_file(path, contents)
+    end
+  end
 
-      true ->
-        temp_path = "#{path}.tmp-#{System.unique_integer([:positive])}"
+  defp do_write_file(path, contents) do
+    temp_path = "#{path}.tmp-#{System.unique_integer([:positive])}"
 
-        with :ok <- File.write(temp_path, contents),
-             :ok <- File.rename(temp_path, path) do
-          :ok
-        else
-          {:error, reason} ->
-            _ = File.rm(temp_path)
-            {:error, Errors.io(:write, path, reason)}
-        end
+    with :ok <- File.write(temp_path, contents),
+         :ok <- File.rename(temp_path, path) do
+      :ok
+    else
+      {:error, reason} ->
+        _ = File.rm(temp_path)
+        {:error, Errors.io(:write, path, reason)}
     end
   end
 

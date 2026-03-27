@@ -223,8 +223,8 @@ defmodule Codex.Plugins.Paths do
   @doc """
   Resolves a marketplace entry source path to an absolute path under its root.
   """
-  @spec resolve_marketplace_source_path(Path.t(), String.t()) ::
-          {:ok, Path.t()} | {:error, term()}
+  @spec resolve_marketplace_source_path(String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
   def resolve_marketplace_source_path(marketplace_path, source_path)
       when is_binary(marketplace_path) and is_binary(source_path) do
     with {:ok, root} <- marketplace_root(marketplace_path),
@@ -232,37 +232,12 @@ defmodule Codex.Plugins.Paths do
       relative = String.replace_prefix(normalized, "./", "")
       expanded_root = Path.expand(root)
 
-      if invalid_component?(relative) do
-        {:error,
-         Errors.invalid_marketplace_source_path(
-           marketplace_path,
-           source_path,
-           "path must stay within the marketplace root"
-         )}
-      else
-        resolved_path = Path.expand(relative, expanded_root)
-        relative_to_root = Path.relative_to(resolved_path, expanded_root)
+      case resolve_relative_marketplace_source(relative, expanded_root) do
+        {:ok, resolved_path} ->
+          {:ok, resolved_path}
 
-        cond do
-          Path.type(relative_to_root) == :absolute ->
-            {:error,
-             Errors.invalid_marketplace_source_path(
-               marketplace_path,
-               source_path,
-               "path must stay within the marketplace root"
-             )}
-
-          relative_to_root == ".." or String.starts_with?(relative_to_root, "../") ->
-            {:error,
-             Errors.invalid_marketplace_source_path(
-               marketplace_path,
-               source_path,
-               "path must stay within the marketplace root"
-             )}
-
-          true ->
-            {:ok, resolved_path}
-        end
+        {:error, message} ->
+          {:error, Errors.invalid_marketplace_source_path(marketplace_path, source_path, message)}
       end
     else
       {:error, message} when is_binary(message) ->
@@ -307,5 +282,27 @@ defmodule Codex.Plugins.Paths do
     relative_path
     |> Path.split()
     |> Enum.any?(&(&1 in [".", ""]))
+  end
+
+  defp resolve_relative_marketplace_source(relative, expanded_root) do
+    with :ok <- ensure_relative_marketplace_components(relative) do
+      resolved_path = Path.expand(relative, expanded_root)
+      relative_to_root = Path.relative_to(resolved_path, expanded_root)
+
+      if Path.type(relative_to_root) == :absolute or relative_to_root == ".." or
+           String.starts_with?(relative_to_root, "../") do
+        {:error, "path must stay within the marketplace root"}
+      else
+        {:ok, resolved_path}
+      end
+    end
+  end
+
+  defp ensure_relative_marketplace_components(relative) do
+    if invalid_component?(relative) do
+      {:error, "path must stay within the marketplace root"}
+    else
+      :ok
+    end
   end
 end

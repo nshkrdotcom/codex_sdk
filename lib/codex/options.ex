@@ -6,7 +6,7 @@ defmodule Codex.Options do
   """
 
   require Bitwise
-  alias CliSubprocessCore.ModelInput
+  alias CliSubprocessCore.{CommandSpec, ModelInput, ProviderCLI}
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
@@ -127,37 +127,49 @@ defmodule Codex.Options do
   end
 
   @doc """
-  Determines the executable path to `codex-rs`.
+  Determines a stable command spec for launching `codex`.
 
   Order of precedence:
   1. Explicit override on the struct.
   2. `CODEX_PATH` environment variable.
   3. `System.find_executable("codex")`.
   """
-  @spec codex_path(t()) :: {:ok, String.t()} | {:error, term()}
-  def codex_path(%__MODULE__{codex_path_override: override}) when is_binary(override) do
-    validate_executable(override)
+  @spec codex_command_spec(t()) :: {:ok, CommandSpec.t()} | {:error, term()}
+  def codex_command_spec(%__MODULE__{codex_path_override: override}) when is_binary(override) do
+    with {:ok, path} <- validate_executable(override) do
+      ProviderCLI.resolve(:codex, command: path)
+    end
   end
 
-  def codex_path(%__MODULE__{} = opts) do
+  def codex_command_spec(%__MODULE__{} = _opts) do
     env_path = System.get_env("CODEX_PATH")
 
-    path =
-      if env_path && env_path != "" do
-        env_path
-      else
-        System.find_executable("codex")
+    if is_binary(env_path) and env_path != "" do
+      with {:ok, path} <- validate_executable(env_path) do
+        ProviderCLI.resolve(:codex, command: path)
       end
-
-    case path do
-      nil -> {:error, :codex_binary_not_found}
-      path -> validate_executable(path)
+    else
+      case ProviderCLI.resolve(:codex) do
+        {:ok, spec} -> {:ok, spec}
+        {:error, %ProviderCLI.Error{kind: :cli_not_found}} -> {:error, :codex_binary_not_found}
+        {:error, reason} -> {:error, reason}
+      end
     end
-    |> add_override_ref(opts)
   end
 
-  defp add_override_ref(result, %__MODULE__{codex_path_override: nil}), do: result
-  defp add_override_ref(result, _opts), do: result
+  @doc """
+  Determines the stable executable path to `codex`.
+
+  This returns the resolved program from `codex_command_spec/1`. Internal
+  launchers should prefer `codex_command_spec/1` so argv prefixes remain
+  available when needed.
+  """
+  @spec codex_path(t()) :: {:ok, String.t()} | {:error, term()}
+  def codex_path(%__MODULE__{} = opts) do
+    with {:ok, %CommandSpec{program: program}} <- codex_command_spec(opts) do
+      {:ok, program}
+    end
+  end
 
   defp fetch_api_key(attrs) do
     case normalize_string(pick(attrs, [:api_key, "api_key"], Auth.api_key())) do

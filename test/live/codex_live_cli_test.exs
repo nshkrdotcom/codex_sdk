@@ -1,7 +1,9 @@
 defmodule Codex.LiveCLITest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.CommandSpec
   alias Codex.Items
+  alias Codex.Options
   alias Codex.RunResultStreaming
 
   @moduletag :live
@@ -52,51 +54,59 @@ defmodule Codex.LiveCLITest do
   end
 
   defp ensure_real_codex_available do
-    with {:ok, path} <- resolve_codex_path(),
-         :ok <- reject_fixture_script(path) do
-      verify_codex_version(path)
+    with {:ok, spec} <- resolve_codex_command_spec(),
+         :ok <- reject_fixture_script(spec) do
+      verify_codex_version(spec)
     else
       {:error, reason} -> raise reason
     end
   end
 
-  defp resolve_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      path when is_binary(path) and path != "" ->
-        {:ok, path}
-
-      _ ->
+  defp resolve_codex_command_spec do
+    with {:ok, codex_opts} <- Options.new(%{}),
+         {:ok, spec} <- Options.codex_command_spec(codex_opts) do
+      {:ok, spec}
+    else
+      {:error, :codex_binary_not_found} ->
         {:error, "Unable to locate the `codex` CLI. Install it or set CODEX_PATH."}
+
+      {:error, reason} ->
+        {:error, "Unable to resolve a runnable `codex` CLI: #{inspect(reason)}"}
     end
   end
 
-  defp reject_fixture_script(path) when is_binary(path) do
-    if fixture_script?(path) do
+  defp reject_fixture_script(%CommandSpec{program: program} = _spec) do
+    if fixture_script?(program) do
       {:error,
-       "Resolved `codex` CLI to a fixture script at #{inspect(path)}. Unset CODEX_PATH and ensure a real codex binary is on PATH."}
+       "Resolved `codex` CLI to a fixture script at #{inspect(program)}. Unset CODEX_PATH and ensure a real codex binary is on PATH."}
     else
       :ok
     end
   end
 
-  defp verify_codex_version(path) when is_binary(path) do
-    {output, status} = System.cmd(path, ["--version"], stderr_to_stdout: true)
+  defp verify_codex_version(%CommandSpec{} = spec) do
+    {output, status} = run_command_spec(spec, ["--version"])
 
     cond do
       status != 0 ->
         {:error,
-         "Unable to run `codex --version` via #{inspect(path)} (exit #{status}): #{inspect(output)}"}
+         "Unable to run `codex --version` via #{inspect(spec.program)} (exit #{status}): #{inspect(output)}"}
 
       String.contains?(output, "codex") ->
         :ok
 
       true ->
-        {:error, "Unexpected `codex --version` output from #{inspect(path)}: #{inspect(output)}"}
+        {:error,
+         "Unexpected `codex --version` output from #{inspect(spec.program)}: #{inspect(output)}"}
     end
   end
 
   defp fixture_script?(path) when is_binary(path) do
     String.starts_with?(Path.basename(path), "mock_codex_")
+  end
+
+  defp run_command_spec(%CommandSpec{} = spec, args) when is_list(args) do
+    System.cmd(spec.program, CommandSpec.command_args(spec, args), stderr_to_stdout: true)
   end
 
   defp extract_text(%Items.AgentMessage{text: text}) when is_binary(text), do: text
