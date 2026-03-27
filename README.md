@@ -370,6 +370,30 @@ the under-development approval features only inside a temporary `CODEX_HOME`, so
 live command/file/permissions approval flows without mutating your real Codex settings or writing
 inside this repository.
 
+Raw versus typed plugin calls:
+
+```elixir
+alias Codex.AppServer
+alias Codex.Protocol.Plugin
+
+{:ok, raw} =
+  AppServer.plugin_read(conn, "/tmp/marketplace.json", "demo-plugin")
+
+{:ok, %Plugin.ReadResponse{plugin: plugin}} =
+  AppServer.request_typed(
+    conn,
+    "plugin/read",
+    %Plugin.ReadParams{
+      marketplace_path: "/tmp/marketplace.json",
+      plugin_name: "demo-plugin"
+    },
+    Plugin.ReadResponse
+  )
+
+IO.inspect(raw["plugin"]["apps"], label: "raw apps")
+IO.inspect(plugin.apps, label: "typed apps")
+```
+
 App-server v2 input blocks support `text`, `image`, `localImage`, `skill`, and `mention`.
 Legacy app-server v1 conversation flows are available via `Codex.AppServer.V1`.
 

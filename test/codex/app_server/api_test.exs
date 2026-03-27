@@ -4,8 +4,8 @@ defmodule Codex.AppServer.ApiTest do
   alias Codex.AppServer
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol
-  alias Codex.Protocol.Plugin
   alias Codex.Options
+  alias Codex.Protocol.Plugin
   alias Codex.TestSupport.AppServerSubprocess
 
   setup do
@@ -1102,6 +1102,35 @@ defmodule Codex.AppServer.ApiTest do
              Task.await(task, 200)
   end
 
+  test "request_typed/5 remains generic for non-plugin methods with plain params", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.request_typed(
+          conn,
+          "experimentalFeature/list",
+          [cursor: "cur"],
+          Plugin.UninstallResponse,
+          timeout_ms: 30_000
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "experimentalFeature/list",
+              "params" => %{"cursor" => "cur"}
+            }} = Jason.decode(request_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+
+    assert {:ok, %Plugin.UninstallResponse{extra: %{"data" => []}}} = Task.await(task, 200)
+  end
+
   test "request_typed/5 returns adapted parse errors for invalid typed payloads", %{
     conn: conn,
     os_pid: os_pid
@@ -1122,6 +1151,55 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => req_id, "method" => "plugin/list"}} = Jason.decode(request_line)
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"marketplaces" => "bad"})})
+
+    assert {:error, {:invalid_plugin_list_response, details}} = Task.await(task, 200)
+    assert is_binary(details.message)
+    assert is_map(details.errors)
+    assert is_list(details.issues)
+  end
+
+  test "request_typed/5 returns adapted parse errors for invalid nested typed payloads", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.request_typed(
+          conn,
+          "plugin/list",
+          %Plugin.ListParams{},
+          Plugin.ListResponse,
+          timeout_ms: 30_000
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "plugin/list"}} = Jason.decode(request_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "marketplaces" => [
+           %{
+             "name" => "codex-curated",
+             "path" => "/tmp/marketplace.json",
+             "plugins" => [
+               %{
+                 "id" => "demo-plugin@codex-curated",
+                 "name" => "demo-plugin",
+                 "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+                 "installed" => "yes",
+                 "enabled" => true,
+                 "installPolicy" => "AVAILABLE",
+                 "authPolicy" => "ON_INSTALL"
+               }
+             ]
+           }
+         ]
+       })}
+    )
 
     assert {:error, {:invalid_plugin_list_response, details}} = Task.await(task, 200)
     assert is_binary(details.message)

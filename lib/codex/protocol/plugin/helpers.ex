@@ -2,6 +2,7 @@ defmodule Codex.Protocol.Plugin.Helpers do
   @moduledoc false
 
   alias CliSubprocessCore.Schema.Conventions
+  alias CliSubprocessCore.Schema.Error, as: SchemaError
   alias Codex.Schema
 
   @spec required_string() :: Zoi.schema()
@@ -60,7 +61,12 @@ defmodule Codex.Protocol.Plugin.Helpers do
   def parse(schema, value, tag, key_mapping, projector) when is_function(projector, 1) do
     case Schema.parse(schema, normalize_input(value, key_mapping), tag) do
       {:ok, parsed} ->
-        {:ok, projector.(parsed)}
+        try do
+          {:ok, projector.(parsed)}
+        rescue
+          error in [SchemaError] ->
+            {:error, {tag, error.details}}
+        end
 
       {:error, {^tag, details}} ->
         {:error, {tag, details}}
@@ -72,6 +78,9 @@ defmodule Codex.Protocol.Plugin.Helpers do
     schema
     |> Schema.parse!(normalize_input(value, key_mapping), tag)
     |> projector.()
+  rescue
+    error in [SchemaError] ->
+      reraise SchemaError, [tag: tag, details: error.details], __STACKTRACE__
   end
 
   @spec split_extra(map(), [String.t()]) :: {map(), map()}

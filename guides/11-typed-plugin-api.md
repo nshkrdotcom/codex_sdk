@@ -37,6 +37,22 @@ alias Codex.Protocol.Plugin
   )
 ```
 
+Raw and typed usage can live side by side:
+
+```elixir
+alias Codex.AppServer
+alias Codex.Protocol.Plugin
+
+{:ok, raw} =
+  AppServer.plugin_read(conn, "/tmp/marketplace.json", "demo-plugin")
+
+{:ok, %Plugin.ReadResponse{plugin: plugin}} =
+  AppServer.plugin_read_typed(conn, "/tmp/marketplace.json", "demo-plugin")
+
+IO.inspect(raw["plugin"]["apps"], label: "raw apps")
+IO.inspect(plugin.apps, label: "typed apps")
+```
+
 ## Typed Params
 
 Typed plugin params own app-server wire encoding:
@@ -90,6 +106,11 @@ upstream JSON shape directly. Use the typed wrappers when you want:
 - camelCase to snake_case normalization
 - preserved `extra` metadata
 - repo-local parse errors instead of raw validation internals
+
+Nested response validation failures also stay on the outer response contract.
+For example, an invalid `plugin/list` payload still returns
+`{:error, {:invalid_plugin_list_response, details}}` instead of leaking nested
+schema exceptions.
 
 The typed plugin models remain local to `codex_sdk`; they are not moved into the
 shared runtime-core repos.

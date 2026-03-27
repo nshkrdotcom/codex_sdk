@@ -208,9 +208,8 @@ defmodule Codex.AppServer do
   def request_typed(conn, method, params, response_module, opts \\ [])
       when is_pid(conn) and is_binary(method) and is_atom(response_module) and is_list(opts) do
     with {:ok, encoded_params} <- encode_typed_request_params(method, params),
-         {:ok, result} <- Connection.request(conn, method, encoded_params, opts),
-         {:ok, typed_response} <- parse_typed_response(response_module, result) do
-      {:ok, typed_response}
+         {:ok, result} <- Connection.request(conn, method, encoded_params, opts) do
+      parse_typed_response(response_module, result)
     end
   end
 
@@ -891,12 +890,14 @@ defmodule Codex.AppServer do
   """
   @spec plugin_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def plugin_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
-    params = %Plugin.ListParams{
-      cwds: Keyword.get(opts, :cwds),
-      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
-    }
-
-    Connection.request(conn, "plugin/list", Plugin.ListParams.to_map(params), timeout_ms: 30_000)
+    with {:ok, params} <-
+           encode_plugin_request_params(
+             "plugin/list",
+             cwds: Keyword.get(opts, :cwds),
+             force_remote_sync: Keyword.get(opts, :force_remote_sync)
+           ) do
+      Connection.request(conn, "plugin/list", params, timeout_ms: 30_000)
+    end
   end
 
   @doc """
@@ -922,18 +923,15 @@ defmodule Codex.AppServer do
   def plugin_install(conn, marketplace_path, plugin_name, opts \\ [])
       when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) and
              is_list(opts) do
-    params = %Plugin.InstallParams{
-      marketplace_path: marketplace_path,
-      plugin_name: plugin_name,
-      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
-    }
-
-    Connection.request(
-      conn,
-      "plugin/install",
-      Plugin.InstallParams.to_map(params),
-      timeout_ms: 30_000
-    )
+    with {:ok, params} <-
+           encode_plugin_request_params(
+             "plugin/install",
+             marketplace_path: marketplace_path,
+             plugin_name: plugin_name,
+             force_remote_sync: Keyword.get(opts, :force_remote_sync)
+           ) do
+      Connection.request(conn, "plugin/install", params, timeout_ms: 30_000)
+    end
   end
 
   @doc """
@@ -965,14 +963,14 @@ defmodule Codex.AppServer do
   @spec plugin_read(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def plugin_read(conn, marketplace_path, plugin_name)
       when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) do
-    params = %Plugin.ReadParams{marketplace_path: marketplace_path, plugin_name: plugin_name}
-
-    Connection.request(
-      conn,
-      "plugin/read",
-      Plugin.ReadParams.to_map(params),
-      timeout_ms: 30_000
-    )
+    with {:ok, params} <-
+           encode_plugin_request_params(
+             "plugin/read",
+             marketplace_path: marketplace_path,
+             plugin_name: plugin_name
+           ) do
+      Connection.request(conn, "plugin/read", params, timeout_ms: 30_000)
+    end
   end
 
   @doc """
@@ -1003,17 +1001,14 @@ defmodule Codex.AppServer do
   @spec plugin_uninstall(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def plugin_uninstall(conn, plugin_id, opts \\ [])
       when is_pid(conn) and is_binary(plugin_id) and is_list(opts) do
-    params = %Plugin.UninstallParams{
-      plugin_id: plugin_id,
-      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
-    }
-
-    Connection.request(
-      conn,
-      "plugin/uninstall",
-      Plugin.UninstallParams.to_map(params),
-      timeout_ms: 30_000
-    )
+    with {:ok, params} <-
+           encode_plugin_request_params(
+             "plugin/uninstall",
+             plugin_id: plugin_id,
+             force_remote_sync: Keyword.get(opts, :force_remote_sync)
+           ) do
+      Connection.request(conn, "plugin/uninstall", params, timeout_ms: 30_000)
+    end
   end
 
   @doc """
@@ -1327,14 +1322,23 @@ defmodule Codex.AppServer do
   defp encode_command_exec_delta(delta) when is_binary(delta), do: Base.encode64(delta)
   defp encode_command_exec_delta(delta), do: delta
 
+  defp encode_plugin_request_params(method, params) when is_binary(method) and is_list(params) do
+    params
+    |> normalize_plugin_request_params(method)
+    |> then(&encode_typed_request_params(method, &1))
+  end
+
   defp encode_typed_request_params(method, nil) do
     case typed_params_module(method) do
       nil ->
         {:ok, %{}}
 
-      module when is_atom(module) ->
-        with {:ok, typed_params} <- apply(module, :parse, [%{}]) do
-          {:ok, apply(module, :to_map, [typed_params])}
+      module when is_atom(module) and not is_nil(module) ->
+        parser = :erlang.make_fun(module, :parse, 1)
+        encoder = :erlang.make_fun(module, :to_map, 1)
+
+        with {:ok, typed_params} <- parser.(%{}) do
+          {:ok, encoder.(typed_params)}
         end
     end
   end
@@ -1352,9 +1356,12 @@ defmodule Codex.AppServer do
       nil ->
         {:ok, Params.normalize_map(params)}
 
-      module when is_atom(module) ->
-        with {:ok, typed_params} <- apply(module, :parse, [params]) do
-          {:ok, apply(module, :to_map, [typed_params])}
+      module when is_atom(module) and not is_nil(module) ->
+        parser = :erlang.make_fun(module, :parse, 1)
+        encoder = :erlang.make_fun(module, :to_map, 1)
+
+        with {:ok, typed_params} <- parser.(params) do
+          {:ok, encoder.(typed_params)}
         end
     end
   end
@@ -1375,6 +1382,9 @@ defmodule Codex.AppServer do
         {:error, {:invalid_typed_response_module, response_module}}
     end
   rescue
+    error in [CliSubprocessCore.Schema.Error] ->
+      {:error, {error.tag, error.details}}
+
     error in [ArgumentError, RuntimeError] ->
       {:error, {:invalid_typed_response, response_module, error}}
   end
@@ -1384,6 +1394,17 @@ defmodule Codex.AppServer do
   defp typed_params_module("plugin/install"), do: Plugin.InstallParams
   defp typed_params_module("plugin/uninstall"), do: Plugin.UninstallParams
   defp typed_params_module(_method), do: nil
+
+  defp normalize_plugin_request_params(params, method)
+       when method in ["plugin/list", "plugin/install", "plugin/uninstall"] and is_list(params) do
+    if Keyword.has_key?(params, :force_remote_sync) do
+      Keyword.update!(params, :force_remote_sync, &Plugin.Helpers.raw_true?/1)
+    else
+      params
+    end
+  end
+
+  defp normalize_plugin_request_params(params, _method) when is_list(params), do: params
 
   defp normalize_true(true), do: true
   defp normalize_true("true"), do: true

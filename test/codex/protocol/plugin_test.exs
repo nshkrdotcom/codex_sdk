@@ -257,4 +257,33 @@ defmodule Codex.Protocol.PluginTest do
     assert is_map(details.errors)
     assert is_list(details.issues)
   end
+
+  test "nested invalid typed responses return adapted outer parse errors" do
+    payload = %{
+      "marketplaces" => [
+        %{
+          "name" => "codex-curated",
+          "path" => "/tmp/marketplace.json",
+          "plugins" => [
+            %{
+              "id" => "demo-plugin@codex-curated",
+              "name" => "demo-plugin",
+              "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+              "installed" => "yes",
+              "enabled" => true,
+              "installPolicy" => "AVAILABLE",
+              "authPolicy" => "ON_INSTALL"
+            }
+          ]
+        }
+      ]
+    }
+
+    assert {:error, {:invalid_plugin_list_response, details}} =
+             Plugin.ListResponse.parse(payload)
+
+    assert is_binary(details.message)
+    assert is_map(details.errors)
+    assert is_list(details.issues)
+  end
 end
