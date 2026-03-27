@@ -11,6 +11,7 @@ This checklist tracks coverage of Python Codex SDK features in the Elixir port. 
 | Sandbox approval denial | `python/thread_tool_auto_pending.jsonl` | `Codex.ThreadAutoRunTest` | ✅ Implemented | Static approval policy denies tool invocation and halts auto-run. |
 | Error taxonomy coverage | `python/errors_transport.jsonl` | `Codex.ErrorTest` | ✅ Implemented | Typed transport errors mirror Python exit diagnostics. |
 | Telemetry lifecycle events | _N/A_ | `Codex.TelemetryTest` | ✅ Implemented | Thread start/stop/exception events and default logger attached via telemetry. |
+| Schema-backed typed protocol helpers | _N/A_ | `Codex.Protocol.RequestUserInputTest`, `Codex.Protocol.CollaborationModeTest`, `Codex.Protocol.RateLimitTest` | ✅ Implemented | Phase E moved these dynamic boundaries onto local `Zoi` schemas while keeping the public structs and preserving future-compatible keys for evolving wire surfaces. |
 
 Update this table as fixtures land and Elixir parity tests are implemented.
 

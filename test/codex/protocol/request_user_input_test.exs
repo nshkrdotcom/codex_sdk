@@ -10,8 +10,9 @@ defmodule Codex.Protocol.RequestUserInputTest do
       "question" => "Which mode?",
       "isOther" => true,
       "isSecret" => true,
+      "future_field" => "preserved",
       "options" => [
-        %{"label" => "A", "description" => "Option A"},
+        %{"label" => "A", "description" => "Option A", "rank" => 1},
         %{"label" => "B", "description" => "Option B"}
       ]
     }
@@ -22,8 +23,13 @@ defmodule Codex.Protocol.RequestUserInputTest do
              question: "Which mode?",
              is_other: true,
              is_secret: true,
+             extra: %{"future_field" => "preserved"},
              options: [
-               %RequestUserInput.Option{label: "A", description: "Option A"},
+               %RequestUserInput.Option{
+                 label: "A",
+                 description: "Option A",
+                 extra: %{"rank" => 1}
+               },
                %RequestUserInput.Option{label: "B", description: "Option B"}
              ]
            } = RequestUserInput.Question.from_map(data)
@@ -48,6 +54,23 @@ defmodule Codex.Protocol.RequestUserInputTest do
              "isOther" => true,
              "isSecret" => true,
              "options" => [%{"label" => "A", "description" => "Option A"}]
+           } = RequestUserInput.Question.to_map(question)
+  end
+
+  test "question encoding preserves unknown fields" do
+    question = %RequestUserInput.Question{
+      id: "q1",
+      header: "Choose a mode",
+      question: "Which mode?",
+      options: [
+        %RequestUserInput.Option{label: "A", description: "Option A", extra: %{"rank" => 1}}
+      ],
+      extra: %{"future_field" => "preserved"}
+    }
+
+    assert %{
+             "future_field" => "preserved",
+             "options" => [%{"label" => "A", "description" => "Option A", "rank" => 1}]
            } = RequestUserInput.Question.to_map(question)
   end
 

@@ -1649,6 +1649,8 @@ Thread-specific configuration.
 - `web_search_mode`: Web search mode override (`:disabled`, `:cached`, `:live`); untouched defaults now mirror the Codex CLI (`:cached` for normal local runs, `:live` for full-access sandbox modes)
 - `personality`: Thread-level personality override (`:friendly`, `:pragmatic`, `:none`), serialized consistently across exec and app-server transports
 - `collaboration_mode`: Collaboration mode preset for app-server turns (`:plan`, `:pair_programming`, `:execute`, or `:custom`)
+  `Codex.Protocol.CollaborationMode` is now schema-backed and preserves unknown
+  top-level or nested `settings` fields in `extra`.
 - `compact_prompt`: Override prompt used for context compaction
 - `show_raw_agent_reasoning`: Emit raw reasoning content in reasoning items
 - `output_schema`: Default JSON schema for structured outputs (turn options override)
@@ -1678,6 +1680,8 @@ Thread-specific configuration.
 - `shell_environment_policy`: CLI shell env policy overrides (`shell_environment_policy.*`)
 - `retry` / `retry_opts`: Enable transport retries (uses `Codex.Retry`)
 - `rate_limit` / `rate_limit_opts`: Enable rate-limit handling (uses `Codex.RateLimit`)
+  Rate-limit snapshots are schema-backed and preserve forward-compatible unknown
+  fields in `extra`, while `to_map/1` projects them back onto the wire payload.
 - `experimental_raw_events`: App-server raw response item toggle
 
 **Example**:

@@ -4,12 +4,28 @@ defmodule Codex.Protocol.RateLimitTest do
   alias Codex.Protocol.RateLimit
 
   test "window from_map handles camelCase fields" do
-    data = %{"usedPercent" => 12.5, "windowDurationMins" => 15, "resetsAt" => 123}
+    data = %{
+      "usedPercent" => 12.5,
+      "windowDurationMins" => 15,
+      "resetsAt" => 123,
+      "scope" => "burst"
+    }
+
     window = RateLimit.Window.from_map(data)
 
-    assert %RateLimit.Window{used_percent: 12.5, window_minutes: 15, resets_at: 123} = window
+    assert %RateLimit.Window{
+             used_percent: 12.5,
+             window_minutes: 15,
+             resets_at: 123,
+             extra: %{"scope" => "burst"}
+           } = window
 
-    assert %{"used_percent" => 12.5, "window_minutes" => 15, "resets_at" => 123} =
+    assert %{
+             "used_percent" => 12.5,
+             "window_minutes" => 15,
+             "resets_at" => 123,
+             "scope" => "burst"
+           } =
              RateLimit.Window.to_map(window)
   end
 

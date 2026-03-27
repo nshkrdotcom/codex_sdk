@@ -1262,6 +1262,11 @@ The SDK provides structured events for all Codex operations:
 - `EnteredReviewMode` / `ExitedReviewMode` - Review mode lifecycle updates
 - `ConfigWarning` - Config warnings emitted by the server
 
+App-server protocol payload structs such as `RequestUserInput.Question`,
+`CollaborationMode`, and `RateLimit.Snapshot` are now schema-backed. The SDK
+normalizes known fields, preserves forward-compatible unknown wire fields in
+`extra`, and merges them back into `to_map/1`.
+
 ### Item Events
 
 - `ItemStarted` - New item added to thread

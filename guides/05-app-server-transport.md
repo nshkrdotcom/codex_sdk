@@ -392,6 +392,9 @@ response = %Codex.Protocol.RequestUserInput.Response{
 ```
 
 Question payloads now include `is_other` and `is_secret` when upstream sets them.
+The parsed `Codex.Protocol.RequestUserInput.Question` and nested `Option`
+structs preserve forward-compatible unknown fields in `extra`, and
+`to_map/1` merges them back into the outgoing payload.
 
 ### Manual approval handling (UI loop)
 

@@ -51,6 +51,7 @@ defmodule CodexSdk.MixProject do
       [
         # Core dependencies
         {:jason, "~> 1.4"},
+        {:zoi, "~> 0.17"},
         {:typed_struct, "~> 0.3.0"},
         {:telemetry, "~> 1.3"},
         {:opentelemetry, "~> 1.3"},

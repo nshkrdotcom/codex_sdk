@@ -22,10 +22,12 @@ defmodule Codex.Protocol.CollaborationModeTest do
   test "from_map/1 accepts upstream nested settings" do
     data = %{
       "mode" => "plan",
+      "future_top_level" => true,
       "settings" => %{
         "model" => "gpt-5.1-codex",
         "reasoningEffort" => "high",
-        "developerInstructions" => "Keep it brief."
+        "developerInstructions" => "Keep it brief.",
+        "future_nested" => "kept"
       }
     }
 
@@ -33,7 +35,8 @@ defmodule Codex.Protocol.CollaborationModeTest do
              mode: :plan,
              model: "gpt-5.1-codex",
              reasoning_effort: :high,
-             developer_instructions: "Keep it brief."
+             developer_instructions: "Keep it brief.",
+             extra: %{"future_top_level" => true, "settings" => %{"future_nested" => "kept"}}
            } = CollaborationMode.from_map(data)
   end
 
@@ -61,15 +64,18 @@ defmodule Codex.Protocol.CollaborationModeTest do
       mode: :pair_programming,
       model: "gpt-5.1-codex",
       reasoning_effort: :low,
-      developer_instructions: nil
+      developer_instructions: nil,
+      extra: %{"future_top_level" => true, "settings" => %{"future_nested" => "kept"}}
     }
 
     assert %{
+             "future_top_level" => true,
              "mode" => "pair_programming",
              "settings" => %{
                "model" => "gpt-5.1-codex",
                "reasoning_effort" => "low",
-               "developer_instructions" => nil
+               "developer_instructions" => nil,
+               "future_nested" => "kept"
              }
            } = CollaborationMode.to_map(mode)
   end
