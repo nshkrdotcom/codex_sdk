@@ -135,6 +135,7 @@ defmodule CodexSdk.MixProject do
         "guides/08-configuration-defaults.md": [title: "Configuration Defaults"],
         "guides/09-oauth-and-login.md": [title: "OAuth And Login"],
         "guides/10-subagents.md": [title: "Subagents"],
+        "guides/11-typed-plugin-api.md": [title: "Typed Plugin API"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
       ],
@@ -149,7 +150,8 @@ defmodule CodexSdk.MixProject do
           "guides/04-examples.md",
           "guides/05-app-server-transport.md",
           "guides/06-realtime-and-voice.md",
-          "guides/10-subagents.md"
+          "guides/10-subagents.md",
+          "guides/11-typed-plugin-api.md"
         ],
         "Models & Configuration": [
           "guides/07-models-and-reasoning.md",

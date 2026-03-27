@@ -3,6 +3,8 @@ Mix.Task.run("app.start")
 defmodule CodexExamples.LiveAppServerPlugins do
   @moduledoc false
 
+  alias Codex.Protocol.Plugin
+
   def main(_argv) do
     case run() do
       :ok ->
@@ -33,12 +35,12 @@ defmodule CodexExamples.LiveAppServerPlugins do
                ) do
           try do
             with :ok <- ensure_plugin_read_supported(conn),
-                 {:ok, %{"marketplaces" => marketplaces} = list_result} <-
+                 {:ok, %Plugin.ListResponse{marketplaces: marketplaces} = list_result} <-
                    call_with_timeout(
                      fn ->
                        request_or_skip(
-                         Codex.AppServer.plugin_list(conn, cwds: [fixture.repo_root]),
-                         "plugin"
+                         Codex.AppServer.plugin_list_typed(conn, cwds: [fixture.repo_root]),
+                         "plugin/list"
                        )
                      end,
                      10_000,
@@ -47,13 +49,13 @@ defmodule CodexExamples.LiveAppServerPlugins do
                  {:ok, marketplace, plugin_summary} <-
                    pick_demo_plugin(marketplaces, list_result, fixture),
                  marketplace_path when is_binary(marketplace_path) <-
-                   Map.get(marketplace, "path"),
-                 plugin_name when is_binary(plugin_name) <- Map.get(plugin_summary, "name"),
-                 {:ok, %{"plugin" => plugin_detail}} <-
+                   marketplace.path,
+                 plugin_name when is_binary(plugin_name) <- plugin_summary.name,
+                 {:ok, %Plugin.ReadResponse{plugin: plugin_detail}} <-
                    call_with_timeout(
                      fn ->
                        request_or_skip(
-                         Codex.AppServer.plugin_read(conn, marketplace_path, plugin_name),
+                         Codex.AppServer.plugin_read_typed(conn, marketplace_path, plugin_name),
                          "plugin/read"
                        )
                      end,
@@ -230,9 +232,13 @@ defmodule CodexExamples.LiveAppServerPlugins do
     end
   end
 
-  defp pick_demo_plugin(marketplaces, %{"remoteSyncError" => remote_sync_error}, fixture)
+  defp pick_demo_plugin(
+         marketplaces,
+         %Plugin.ListResponse{remote_sync_error: remote_sync_error},
+         fixture
+       )
        when is_list(marketplaces) do
-    case Enum.find(marketplaces, &(Map.get(&1, "path") == fixture.marketplace_path)) do
+    case Enum.find(marketplaces, &(&1.path == fixture.marketplace_path)) do
       nil when is_binary(remote_sync_error) and remote_sync_error != "" ->
         {:skip,
          "plugin/list did not surface the temporary marketplace and reported remoteSyncError: #{remote_sync_error}"}
@@ -241,8 +247,8 @@ defmodule CodexExamples.LiveAppServerPlugins do
         {:skip,
          "plugin/list did not surface the temporary repo-local marketplace; this build may lack repo marketplace discovery parity"}
 
-      %{"plugins" => plugins} = marketplace when is_list(plugins) ->
-        case Enum.find(plugins, &(Map.get(&1, "name") == fixture.plugin_name)) do
+      %Plugin.Marketplace{plugins: plugins} = marketplace ->
+        case Enum.find(plugins, &(&1.name == fixture.plugin_name)) do
           nil ->
             {:skip,
              "plugin/list returned the temporary marketplace but not the expected demo plugin"}
@@ -254,36 +260,31 @@ defmodule CodexExamples.LiveAppServerPlugins do
   end
 
   defp pick_demo_plugin(marketplaces, _response, fixture) when is_list(marketplaces) do
-    pick_demo_plugin(marketplaces, %{}, fixture)
+    pick_demo_plugin(marketplaces, %Plugin.ListResponse{}, fixture)
   end
 
-  defp print_plugin_detail(%{} = plugin, fixture) do
-    summary = Map.get(plugin, "summary") || %{}
-    interface = Map.get(summary, "interface") || %{}
-    skills = Map.get(plugin, "skills") || []
-    apps = Map.get(plugin, "apps") || []
-    mcp_servers = Map.get(plugin, "mcpServers") || Map.get(plugin, "mcp_servers") || []
-
-    needs_auth =
-      Map.get(summary, "needsAuth") ||
-        Map.get(summary, "needs_auth") ||
-        Map.get(plugin, "needsAuth") ||
-        Map.get(plugin, "needs_auth")
+  defp print_plugin_detail(%Plugin.Detail{} = plugin, fixture) do
+    summary = plugin.summary
+    interface = summary.interface
+    skills = plugin.skills
+    apps = plugin.apps
+    mcp_servers = plugin.mcp_servers
+    needs_auth = Enum.any?(apps, & &1.needs_auth)
 
     IO.puts("""
     App-server plugin/read demo completed.
       fixture_root: #{fixture.temp_root}
       app_server_cwd: #{fixture.repo_root}
       isolated_codex_home: #{fixture.codex_home}
-      marketplace: #{Map.get(plugin, "marketplaceName")}
-      marketplace_path: #{Map.get(plugin, "marketplacePath")}
-      id: #{Map.get(summary, "id")}
-      name: #{Map.get(summary, "name")}
-      display_name: #{Map.get(interface, "displayName") || Map.get(summary, "name")}
-      installed: #{inspect(Map.get(summary, "installed"))}
-      enabled: #{inspect(Map.get(summary, "enabled"))}
-      install_policy: #{inspect(Map.get(summary, "installPolicy"))}
-      auth_policy: #{inspect(Map.get(summary, "authPolicy"))}
+      marketplace: #{plugin.marketplace_name}
+      marketplace_path: #{plugin.marketplace_path}
+      id: #{summary.id}
+      name: #{summary.name}
+      display_name: #{(interface && interface.display_name) || summary.name}
+      installed: #{inspect(summary.installed)}
+      enabled: #{inspect(summary.enabled)}
+      install_policy: #{inspect(summary.install_policy)}
+      auth_policy: #{inspect(summary.auth_policy)}
       needs_auth: #{inspect(needs_auth)}
     """)
 
@@ -291,11 +292,12 @@ defmodule CodexExamples.LiveAppServerPlugins do
     Note: this example launches `codex app-server` with an isolated child `cwd` and
     temporary `CODEX_HOME`, so it never touches your real Codex config. Because it only
     exercises `plugin/list` + `plugin/read` and does not install the plugin, `installed`
-    and `enabled` should usually remain false. When upstream includes `needsAuth`, that
-    field is surfaced verbatim so you can see whether an install would require auth.
+    and `enabled` should usually remain false. The typed response projects app auth
+    requirements onto `needs_auth` while still preserving unknown upstream fields in
+    each struct's `extra` map.
     """)
 
-    if description = Map.get(plugin, "description") do
+    if description = plugin.description do
       IO.puts("Description:\n#{description}\n")
     end
 
@@ -305,7 +307,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
       IO.puts("  (none)")
     else
       Enum.each(skills, fn skill ->
-        IO.puts("  - #{skill["name"]}: #{skill["description"]}")
+        IO.puts("  - #{skill.name}: #{skill.description}")
       end)
     end
 
@@ -316,7 +318,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
     else
       Enum.each(apps, fn app ->
         IO.puts(
-          "  - #{app["name"] || app["id"]} (id=#{app["id"]}, installUrl=#{inspect(app["installUrl"])})"
+          "  - #{app.name || app.id} (id=#{app.id}, installUrl=#{inspect(app.install_url)}, needs_auth=#{inspect(app.needs_auth)})"
         )
       end)
     end

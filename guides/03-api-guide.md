@@ -255,14 +255,18 @@ plugin, and thread-shell helpers:
 - `experimental_feature_list/2` and `experimental_feature_enablement_set/2`
 - `fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`,
   `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- raw plugin wrappers: `plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- typed plugin wrappers: `plugin_list_typed/2`, `plugin_read_typed/3`,
+  `plugin_install_typed/4`, `plugin_uninstall_typed/3`
+- `request_typed/5` for `Codex.Protocol.Plugin.*` request/response structs
 - `thread_shell_command/3`
 
 Current app-server lifecycle fields are also forwarded through the high-level
 transport: `ephemeral`, `service_name`, and `service_tier` on thread options,
 plus per-turn `service_tier` on `Codex.Thread.run/3` / `run_streamed/3`.
 `plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`,
-and raw plugin maps preserve newer upstream fields such as `needsAuth`.
+raw plugin maps preserve newer upstream fields such as `needsAuth`, and the
+typed plugin structs preserve forward-compatible fields in `extra` maps.
 
 `experimental_feature_enablement_set/2` forwards the supplied `enablement` map
 without a local allowlist and lets the connected server validate the active

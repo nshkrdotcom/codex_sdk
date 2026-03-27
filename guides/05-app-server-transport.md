@@ -231,7 +231,22 @@ encoded = Base.encode64("hello from app-server")
 {:ok, %{"dataBase64" => encoded_back}} = Codex.AppServer.fs_read_file(conn, "/tmp/demo.txt")
 IO.puts(Base.decode64!(encoded_back))
 
-{:ok, %{"marketplaces" => marketplaces}} = Codex.AppServer.plugin_list(conn, cwds: [File.cwd!()])
+alias Codex.Protocol.Plugin
+
+{:ok, %Plugin.ListResponse{marketplaces: marketplaces}} =
+  Codex.AppServer.plugin_list_typed(conn, cwds: [File.cwd!()])
+
+{:ok, %Plugin.ReadResponse{plugin: plugin}} =
+  Codex.AppServer.request_typed(
+    conn,
+    "plugin/read",
+    %Plugin.ReadParams{
+      marketplace_path: List.first(marketplaces).path,
+      plugin_name: List.first(List.first(marketplaces).plugins).name
+    },
+    Plugin.ReadResponse
+  )
+
 {:ok, _} = Codex.AppServer.thread_shell_command(conn, "thr_123", "git status --short")
 ```
 
@@ -240,7 +255,9 @@ Additional v2 APIs include:
 - `Codex.AppServer.experimental_feature_list/2` and `experimental_feature_enablement_set/2`
 - `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_shell_command/3`, `thread_rollback/3`, `thread_loaded_list/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `Codex.AppServer.plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- raw plugin wrappers: `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- typed plugin wrappers: `Codex.AppServer.plugin_list_typed/2`, `plugin_read_typed/3`, `plugin_install_typed/4`, `plugin_uninstall_typed/3`
+- `Codex.AppServer.request_typed/5` for `Codex.Protocol.Plugin.*` request/response structs
 - `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
 - `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
 
@@ -250,6 +267,7 @@ Current upstream routing and sync controls are also covered:
 - per-turn `service_tier` can be passed through `Codex.Thread.run/3`
 - `plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`
 - raw plugin maps preserve newer auth metadata such as `needsAuth`
+- typed plugin structs preserve forward-compatible upstream fields in `extra`
 
 `thread_shell_command/3` is a thin wrapper over the app-server's thread-bound
 `!` workflow, so treat it with the same care you would give shell access in the

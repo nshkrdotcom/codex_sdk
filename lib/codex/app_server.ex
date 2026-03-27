@@ -10,6 +10,7 @@ defmodule Codex.AppServer do
   alias Codex.Config.Defaults
   alias Codex.OAuth.AppServerAuth
   alias Codex.Options
+  alias Codex.Protocol.Plugin
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type connection :: pid()
@@ -187,6 +188,30 @@ defmodule Codex.AppServer do
   @spec respond(connection(), String.t() | integer(), map()) :: :ok | {:error, term()}
   def respond(conn, id, result) when is_pid(conn) and (is_integer(id) or is_binary(id)) do
     Connection.respond(conn, id, result)
+  end
+
+  @doc """
+  Sends an app-server request and parses the response with a typed response module.
+
+  When `params` is a typed params struct, the struct module's `to_map/1` is used
+  for wire encoding. For the typed plugin APIs, plain maps and keywords are
+  normalized through the matching `Codex.Protocol.Plugin.*Params` module before
+  the request is sent.
+  """
+  @spec request_typed(
+          connection(),
+          String.t(),
+          map() | keyword() | struct() | nil,
+          module(),
+          keyword()
+        ) :: {:ok, struct()} | {:error, term()}
+  def request_typed(conn, method, params, response_module, opts \\ [])
+      when is_pid(conn) and is_binary(method) and is_atom(response_module) and is_list(opts) do
+    with {:ok, encoded_params} <- encode_typed_request_params(method, params),
+         {:ok, result} <- Connection.request(conn, method, encoded_params, opts),
+         {:ok, typed_response} <- parse_typed_response(response_module, result) do
+      {:ok, typed_response}
+    end
   end
 
   @spec thread_start(connection(), map() | keyword()) :: {:ok, map()} | {:error, term()}
@@ -859,63 +884,154 @@ defmodule Codex.AppServer do
     Connection.request(conn, "fs/copy", params, timeout_ms: 30_000)
   end
 
+  @doc """
+  Lists plugin marketplaces via the app-server plugin API and returns the raw response map.
+
+  For typed structs, use `plugin_list_typed/2`.
+  """
   @spec plugin_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def plugin_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
-    params =
-      %{}
-      |> Params.put_optional("cwds", Keyword.get(opts, :cwds))
-      |> Params.put_optional(
-        "forceRemoteSync",
-        normalize_true(Keyword.get(opts, :force_remote_sync))
-      )
+    params = %Plugin.ListParams{
+      cwds: Keyword.get(opts, :cwds),
+      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
+    }
 
-    Connection.request(conn, "plugin/list", params, timeout_ms: 30_000)
+    Connection.request(conn, "plugin/list", Plugin.ListParams.to_map(params), timeout_ms: 30_000)
   end
 
+  @doc """
+  Lists plugin marketplaces via the app-server plugin API and parses the response
+  into `Codex.Protocol.Plugin.ListResponse`.
+
+  The raw `plugin_list/2` wrapper remains available and still returns the
+  original map payload.
+  """
+  @spec plugin_list_typed(connection(), keyword()) ::
+          {:ok, Plugin.ListResponse.t()} | {:error, term()}
+  def plugin_list_typed(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    request_typed(conn, "plugin/list", opts, Plugin.ListResponse, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Installs a plugin via the app-server plugin API and returns the raw response map.
+
+  For typed structs, use `plugin_install_typed/4`.
+  """
   @spec plugin_install(connection(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def plugin_install(conn, marketplace_path, plugin_name, opts \\ [])
       when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) and
              is_list(opts) do
+    params = %Plugin.InstallParams{
+      marketplace_path: marketplace_path,
+      plugin_name: plugin_name,
+      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
+    }
+
     Connection.request(
       conn,
       "plugin/install",
-      %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name}
-      |> Params.put_optional(
-        "forceRemoteSync",
-        normalize_true(Keyword.get(opts, :force_remote_sync))
-      ),
+      Plugin.InstallParams.to_map(params),
       timeout_ms: 30_000
     )
   end
 
   @doc """
-  Reads plugin details from a marketplace entry via the app-server plugin API.
+  Installs a plugin via the app-server plugin API and parses the response into
+  `Codex.Protocol.Plugin.InstallResponse`.
+
+  The raw `plugin_install/4` wrapper remains available and still returns the
+  original map payload.
+  """
+  @spec plugin_install_typed(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, Plugin.InstallResponse.t()} | {:error, term()}
+  def plugin_install_typed(conn, marketplace_path, plugin_name, opts \\ [])
+      when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) and
+             is_list(opts) do
+    params =
+      opts
+      |> Keyword.put(:marketplace_path, marketplace_path)
+      |> Keyword.put(:plugin_name, plugin_name)
+
+    request_typed(conn, "plugin/install", params, Plugin.InstallResponse, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads plugin details from a marketplace entry via the app-server plugin API
+  and returns the raw response map.
+
+  For typed structs, use `plugin_read_typed/3`.
   """
   @spec plugin_read(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def plugin_read(conn, marketplace_path, plugin_name)
       when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) do
+    params = %Plugin.ReadParams{marketplace_path: marketplace_path, plugin_name: plugin_name}
+
     Connection.request(
       conn,
       "plugin/read",
-      %{"marketplacePath" => marketplace_path, "pluginName" => plugin_name},
+      Plugin.ReadParams.to_map(params),
       timeout_ms: 30_000
     )
   end
 
+  @doc """
+  Reads plugin details from a marketplace entry via the app-server plugin API
+  and parses the response into `Codex.Protocol.Plugin.ReadResponse`.
+
+  The raw `plugin_read/3` wrapper remains available and still returns the
+  original map payload.
+  """
+  @spec plugin_read_typed(connection(), String.t(), String.t()) ::
+          {:ok, Plugin.ReadResponse.t()} | {:error, term()}
+  def plugin_read_typed(conn, marketplace_path, plugin_name)
+      when is_pid(conn) and is_binary(marketplace_path) and is_binary(plugin_name) do
+    request_typed(
+      conn,
+      "plugin/read",
+      %Plugin.ReadParams{marketplace_path: marketplace_path, plugin_name: plugin_name},
+      Plugin.ReadResponse,
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Uninstalls a plugin via the app-server plugin API and returns the raw response map.
+
+  For typed structs, use `plugin_uninstall_typed/3`.
+  """
   @spec plugin_uninstall(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def plugin_uninstall(conn, plugin_id, opts \\ [])
       when is_pid(conn) and is_binary(plugin_id) and is_list(opts) do
+    params = %Plugin.UninstallParams{
+      plugin_id: plugin_id,
+      force_remote_sync: Plugin.Helpers.raw_true?(Keyword.get(opts, :force_remote_sync))
+    }
+
     Connection.request(
       conn,
       "plugin/uninstall",
-      %{"pluginId" => plugin_id}
-      |> Params.put_optional(
-        "forceRemoteSync",
-        normalize_true(Keyword.get(opts, :force_remote_sync))
-      ),
+      Plugin.UninstallParams.to_map(params),
       timeout_ms: 30_000
     )
+  end
+
+  @doc """
+  Uninstalls a plugin via the app-server plugin API and parses the response into
+  `Codex.Protocol.Plugin.UninstallResponse`.
+
+  The raw `plugin_uninstall/3` wrapper remains available and still returns the
+  original map payload.
+  """
+  @spec plugin_uninstall_typed(connection(), String.t(), keyword()) ::
+          {:ok, Plugin.UninstallResponse.t()} | {:error, term()}
+  def plugin_uninstall_typed(conn, plugin_id, opts \\ [])
+      when is_pid(conn) and is_binary(plugin_id) and is_list(opts) do
+    params =
+      opts
+      |> Keyword.put(:plugin_id, plugin_id)
+
+    request_typed(conn, "plugin/uninstall", params, Plugin.UninstallResponse, timeout_ms: 30_000)
   end
 
   @doc """
@@ -1210,6 +1326,64 @@ defmodule Codex.AppServer do
   defp encode_command_exec_delta(nil), do: nil
   defp encode_command_exec_delta(delta) when is_binary(delta), do: Base.encode64(delta)
   defp encode_command_exec_delta(delta), do: delta
+
+  defp encode_typed_request_params(method, nil) do
+    case typed_params_module(method) do
+      nil ->
+        {:ok, %{}}
+
+      module when is_atom(module) ->
+        with {:ok, typed_params} <- apply(module, :parse, [%{}]) do
+          {:ok, apply(module, :to_map, [typed_params])}
+        end
+    end
+  end
+
+  defp encode_typed_request_params(_method, %module{} = params) do
+    if function_exported?(module, :to_map, 1) do
+      {:ok, module.to_map(params)}
+    else
+      {:ok, Map.from_struct(params)}
+    end
+  end
+
+  defp encode_typed_request_params(method, params) when is_map(params) or is_list(params) do
+    case typed_params_module(method) do
+      nil ->
+        {:ok, Params.normalize_map(params)}
+
+      module when is_atom(module) ->
+        with {:ok, typed_params} <- apply(module, :parse, [params]) do
+          {:ok, apply(module, :to_map, [typed_params])}
+        end
+    end
+  end
+
+  defp parse_typed_response(response_module, result) do
+    cond do
+      function_exported?(response_module, :parse, 1) ->
+        case response_module.parse(result) do
+          {:ok, typed_response} -> {:ok, typed_response}
+          {:error, _reason} = error -> error
+          typed_response -> {:ok, typed_response}
+        end
+
+      function_exported?(response_module, :from_map, 1) ->
+        {:ok, response_module.from_map(result)}
+
+      true ->
+        {:error, {:invalid_typed_response_module, response_module}}
+    end
+  rescue
+    error in [ArgumentError, RuntimeError] ->
+      {:error, {:invalid_typed_response, response_module, error}}
+  end
+
+  defp typed_params_module("plugin/list"), do: Plugin.ListParams
+  defp typed_params_module("plugin/read"), do: Plugin.ReadParams
+  defp typed_params_module("plugin/install"), do: Plugin.InstallParams
+  defp typed_params_module("plugin/uninstall"), do: Plugin.UninstallParams
+  defp typed_params_module(_method), do: nil
 
   defp normalize_true(true), do: true
   defp normalize_true("true"), do: true

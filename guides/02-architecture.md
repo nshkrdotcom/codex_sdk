@@ -25,6 +25,8 @@ historical mailbox-facing session API on top of `CliSubprocessCore.RawSession`.
 The app-server path is the parity transport for upstream v2 features such as `fs/*`, `plugin/read`,
 `thread/shellCommand`, structured `item/permissions/requestApproval` responses,
 `mcpServer/startupStatus/updated`, guardian review notifications, and `serverRequest/resolved`.
+Typed plugin params and responses live locally under `Codex.Protocol.Plugin.*`;
+they do not move into the shared runtime-core repos.
 
 Transport selection is per-thread via `Codex.Thread.Options.transport`:
 

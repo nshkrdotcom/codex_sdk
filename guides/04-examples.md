@@ -1443,12 +1443,11 @@ end, including base64 round-tripping, and self-skips when the connected build no
 longer advertises those legacy parity methods. `live_app_server_plugins.exs`
 creates a disposable repo-local marketplace and plugin bundle under the system
 temp directory, launches `codex app-server` with an isolated child `cwd` plus a
-temporary `CODEX_HOME`, then demonstrates `plugin/list` discovery followed by
-`plugin/read` detail loading without mutating your real Codex config. Because
+temporary `CODEX_HOME`, then demonstrates the typed `plugin_list_typed/2` and
+`plugin_read_typed/3` wrappers without mutating your real Codex config. Because
 the example never installs or enables that temporary plugin in the isolated home,
-`installed` and `enabled` are expected to remain `false`, `needsAuth` is printed
-when the connected build includes it, and no prior Codex login or plugin install
-is required.
+`installed` and `enabled` are expected to remain `false`, typed app summaries are
+used to derive `needs_auth`, and no prior Codex login or plugin install is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular
 `request_permissions: true` for live permissions requests on an `experimental_api: true`
 connection, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the

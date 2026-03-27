@@ -12,6 +12,7 @@ This checklist tracks coverage of Python Codex SDK features in the Elixir port. 
 | Error taxonomy coverage | `python/errors_transport.jsonl` | `Codex.ErrorTest` | ✅ Implemented | Typed transport errors mirror Python exit diagnostics. |
 | Telemetry lifecycle events | _N/A_ | `Codex.TelemetryTest` | ✅ Implemented | Thread start/stop/exception events and default logger attached via telemetry. |
 | Schema-backed typed protocol helpers | _N/A_ | `Codex.Protocol.RequestUserInputTest`, `Codex.Protocol.CollaborationModeTest`, `Codex.Protocol.RateLimitTest` | ✅ Implemented | Phase E moved these dynamic boundaries onto local `Zoi` schemas while keeping the public structs and preserving future-compatible keys for evolving wire surfaces. |
+| Typed app-server plugin API | app-server plugin protocol (`plugin/list`, `plugin/read`, `plugin/install`, `plugin/uninstall`) | `Codex.Protocol.PluginTest`, `Codex.AppServer.ApiTest` | ✅ Implemented | Phase F adds local `Codex.Protocol.Plugin.*` params/responses, `Codex.AppServer.request_typed/5`, typed wrapper functions beside the raw wrappers, `needsAuth` support on typed app summaries, and `extra` preservation for upstream fields beyond the current Python generation. |
 
 Update this table as fixtures land and Elixir parity tests are implemented.
 

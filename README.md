@@ -19,6 +19,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - `guides/01-getting-started.md` - first threads, turns, and sessions
 - `guides/02-architecture.md` - transport layering and ownership boundaries
 - `guides/03-api-guide.md` - public modules and common call patterns
+- `guides/05-app-server-transport.md` - direct app-server requests and host controls
+- `guides/11-typed-plugin-api.md` - typed plugin params, responses, and migration notes
 - `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
 - `guides/08-configuration-defaults.md` - config precedence and default resolution
 
@@ -340,7 +342,9 @@ App-server-only APIs include:
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
 - `Codex.AppServer.experimental_feature_list/2`, `experimental_feature_enablement_set/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
-- `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- raw plugin wrappers: `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
+- typed plugin wrappers: `Codex.AppServer.plugin_list_typed/2`, `plugin_read_typed/3`, `plugin_install_typed/4`, `plugin_uninstall_typed/3`
+- `Codex.AppServer.request_typed/5` with `Codex.Protocol.Plugin.*` params/response modules
 - `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
 - `Codex.AppServer.turn_interrupt/3`
 - `Codex.AppServer.thread_shell_command/3` (thread-bound `!` workflow)
@@ -351,14 +355,16 @@ App-server-only APIs include:
 
 On app-server transport, thread options now forward current upstream routing fields such as
 `ephemeral`, `service_name`, and `service_tier`; turn options can override `service_tier`
-per `Codex.Thread.run/3`. Plugin response maps also preserve newer upstream auth metadata such
-as `needsAuth`, and subscriptions adapt `mcpServer/startupStatus/updated` into typed
-`Codex.Events` structs.
+per `Codex.Thread.run/3`. Raw plugin response maps still preserve newer upstream auth metadata
+such as `needsAuth`, while the typed plugin API projects those payloads into
+`Codex.Protocol.Plugin.*` structs and preserves unknown upstream fields in `extra` maps.
+Subscriptions adapt `mcpServer/startupStatus/updated` into typed `Codex.Events` structs.
 
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
 repo-local marketplace fixture plus an isolated temporary `CODEX_HOME`, rather than your real
-plugin config; that example now also prints `needsAuth` when the connected build includes it.
+plugin config; that example now uses the typed plugin wrappers and prints derived
+`needs_auth` state from the typed app summaries while the raw wrappers remain available.
 `examples/live_app_server_approvals.exs` uses the same child-process isolation pattern to enable
 the under-development approval features only inside a temporary `CODEX_HOME`, so it can exercise
 live command/file/permissions approval flows without mutating your real Codex settings or writing

@@ -156,6 +156,12 @@ permissions approvals, `mcpServer/startupStatus/updated`, guardian review notifi
 `service_name`, and `service_tier` are forwarded on app-server transport, and
 per-turn `service_tier` can be passed to `Codex.Thread.run/3`.
 
+The plugin APIs now have both raw and typed forms. Use the raw wrappers when you
+want the original response maps, or `Codex.AppServer.plugin_list_typed/2`,
+`plugin_read_typed/3`, and `Codex.AppServer.request_typed/5` with
+`Codex.Protocol.Plugin.*` when you want typed structs with preserved `extra`
+metadata.
+
 When you need the managed app-server child to run against a temporary repo or
 isolated `CODEX_HOME`, pass `cwd:` and `process_env:` to
 `Codex.AppServer.connect/2`. Thread working directories are still configured per

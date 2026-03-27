@@ -4,6 +4,7 @@ defmodule Codex.AppServer.ApiTest do
   alias Codex.AppServer
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol
+  alias Codex.Protocol.Plugin
   alias Codex.Options
   alias Codex.TestSupport.AppServerSubprocess
 
@@ -1042,6 +1043,208 @@ defmodule Codex.AppServer.ApiTest do
 
     send(conn, {:stdout, os_pid, Protocol.encode_response(experimental_id, %{"data" => []})})
     assert {:ok, %{"data" => []}} = Task.await(experimental_task, 200)
+  end
+
+  test "request_typed/5 encodes param structs and parses typed responses", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.request_typed(
+          conn,
+          "plugin/read",
+          %Plugin.ReadParams{
+            marketplace_path: "/tmp/marketplace.json",
+            plugin_name: "demo-plugin"
+          },
+          Plugin.ReadResponse,
+          timeout_ms: 30_000
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "plugin/read",
+              "params" => %{
+                "marketplacePath" => "/tmp/marketplace.json",
+                "pluginName" => "demo-plugin"
+              }
+            }} = Jason.decode(request_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(req_id, %{
+         "plugin" => %{
+           "marketplaceName" => "codex-curated",
+           "marketplacePath" => "/tmp/marketplace.json",
+           "summary" => %{
+             "id" => "demo-plugin@codex-curated",
+             "name" => "demo-plugin",
+             "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+             "installed" => false,
+             "enabled" => false,
+             "installPolicy" => "AVAILABLE",
+             "authPolicy" => "ON_INSTALL"
+           },
+           "skills" => [],
+           "apps" => [],
+           "mcpServers" => []
+         }
+       })}
+    )
+
+    assert {:ok, %Plugin.ReadResponse{plugin: %Plugin.Detail{marketplace_name: "codex-curated"}}} =
+             Task.await(task, 200)
+  end
+
+  test "request_typed/5 returns adapted parse errors for invalid typed payloads", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    task =
+      Task.async(fn ->
+        AppServer.request_typed(
+          conn,
+          "plugin/list",
+          %Plugin.ListParams{},
+          Plugin.ListResponse,
+          timeout_ms: 30_000
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "plugin/list"}} = Jason.decode(request_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"marketplaces" => "bad"})})
+
+    assert {:error, {:invalid_plugin_list_response, details}} = Task.await(task, 200)
+    assert is_binary(details.message)
+    assert is_map(details.errors)
+    assert is_list(details.issues)
+  end
+
+  test "typed plugin wrappers preserve wire parity and return typed structs", %{
+    conn: conn,
+    os_pid: os_pid
+  } do
+    plugin_list_task =
+      Task.async(fn ->
+        AppServer.plugin_list_typed(conn, cwds: ["/tmp/project"], force_remote_sync: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, plugin_list_line}
+
+    assert {:ok,
+            %{"id" => plugin_list_id, "method" => "plugin/list", "params" => plugin_list_params}} =
+             Jason.decode(plugin_list_line)
+
+    assert plugin_list_params["cwds"] == ["/tmp/project"]
+    assert plugin_list_params["forceRemoteSync"] == true
+
+    send(
+      conn,
+      {:stdout, os_pid, Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})}
+    )
+
+    assert {:ok, %Plugin.ListResponse{marketplaces: []}} = Task.await(plugin_list_task, 200)
+
+    install_task =
+      Task.async(fn ->
+        AppServer.plugin_install_typed(conn, "/tmp/market", "demo-plugin",
+          force_remote_sync: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, install_line}
+
+    assert {:ok,
+            %{
+              "id" => install_id,
+              "method" => "plugin/install",
+              "params" => %{
+                "marketplacePath" => "/tmp/market",
+                "pluginName" => "demo-plugin",
+                "forceRemoteSync" => true
+              }
+            }} = Jason.decode(install_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(install_id, %{
+         "authPolicy" => "ON_INSTALL",
+         "appsNeedingAuth" => []
+       })}
+    )
+
+    assert {:ok, %Plugin.InstallResponse{auth_policy: :on_install, apps_needing_auth: []}} =
+             Task.await(install_task, 200)
+
+    uninstall_task =
+      Task.async(fn ->
+        AppServer.plugin_uninstall_typed(conn, "plugin_1", force_remote_sync: true)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, uninstall_line}
+
+    assert {:ok,
+            %{
+              "id" => uninstall_id,
+              "method" => "plugin/uninstall",
+              "params" => %{"pluginId" => "plugin_1", "forceRemoteSync" => true}
+            }} = Jason.decode(uninstall_line)
+
+    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
+    assert {:ok, %Plugin.UninstallResponse{}} = Task.await(uninstall_task, 200)
+
+    plugin_read_task =
+      Task.async(fn ->
+        AppServer.plugin_read_typed(conn, "/tmp/marketplace.json", "demo-plugin")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, plugin_read_line}
+
+    assert {:ok,
+            %{
+              "id" => plugin_read_id,
+              "method" => "plugin/read",
+              "params" => %{
+                "marketplacePath" => "/tmp/marketplace.json",
+                "pluginName" => "demo-plugin"
+              }
+            }} = Jason.decode(plugin_read_line)
+
+    send(
+      conn,
+      {:stdout, os_pid,
+       Protocol.encode_response(plugin_read_id, %{
+         "plugin" => %{
+           "marketplaceName" => "codex-curated",
+           "marketplacePath" => "/tmp/marketplace.json",
+           "summary" => %{
+             "id" => "demo-plugin@codex-curated",
+             "name" => "demo-plugin",
+             "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+             "installed" => false,
+             "enabled" => false,
+             "installPolicy" => "AVAILABLE",
+             "authPolicy" => "ON_INSTALL"
+           },
+           "skills" => [],
+           "apps" => [],
+           "mcpServers" => []
+         }
+       })}
+    )
+
+    assert {:ok, %Plugin.ReadResponse{plugin: %Plugin.Detail{marketplace_name: "codex-curated"}}} =
+             Task.await(plugin_read_task, 200)
   end
 
   test "thread_shell_command/3 encodes request", %{conn: conn, os_pid: os_pid} do
