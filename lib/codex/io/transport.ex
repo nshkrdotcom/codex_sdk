@@ -24,9 +24,10 @@ defmodule Codex.IO.Transport do
   alias CliSubprocessCore.Transport, as: CoreTransport
   alias CliSubprocessCore.Transport.Error, as: CoreError
 
-  @type t :: pid() | GenServer.server()
+  @type t :: pid()
   @type opts :: keyword()
   @type subscription_tag :: :legacy | reference()
+  @type transport_error :: {:transport, :invalid_subscriber | :not_connected | CoreError.t()}
   @event_tag :codex_io_transport
 
   @type message ::
@@ -74,12 +75,12 @@ defmodule Codex.IO.Transport do
     |> normalize_result()
   end
 
-  @spec subscribe(t(), pid()) :: :ok | {:error, term()}
+  @spec subscribe(t(), pid()) :: :ok | {:error, transport_error()}
   def subscribe(transport, pid) when is_pid(transport) and is_pid(pid) do
     subscribe(transport, pid, :legacy)
   end
 
-  @spec subscribe(t(), pid(), subscription_tag()) :: :ok | {:error, term()}
+  @spec subscribe(t(), pid(), subscription_tag()) :: :ok | {:error, transport_error()}
   def subscribe(transport, pid, tag)
       when is_pid(transport) and is_pid(pid) and (tag == :legacy or is_reference(tag)) do
     transport

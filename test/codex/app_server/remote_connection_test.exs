@@ -1,6 +1,7 @@
 defmodule Codex.AppServer.RemoteConnectionTest do
   use ExUnit.Case, async: false
   @moduletag capture_log: true
+  @moduletag :requires_loopback
 
   import Plug.Conn
 

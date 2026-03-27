@@ -1,5 +1,11 @@
 import Config
 
+if config_env() == :test do
+  # Finch reads SSLKEYLOGFILE on startup; clear ambient shell state so tests
+  # do not depend on a writable home directory outside the repo.
+  System.delete_env("SSLKEYLOGFILE")
+end
+
 parse_enabled = fn
   value when is_binary(value) ->
     normalized =
