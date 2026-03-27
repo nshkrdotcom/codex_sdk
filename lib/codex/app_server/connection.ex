@@ -131,7 +131,7 @@ defmodule Codex.AppServer.Connection do
              [
                receiver: self(),
                event_tag: :codex_io_transport,
-               transport_module: transport_mod,
+               transport: transport_mod,
                stdout_mode: :line,
                stdin_mode: :raw
              ] ++ transport_opts

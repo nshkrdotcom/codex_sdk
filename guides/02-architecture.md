@@ -68,7 +68,7 @@ Codex-owned semantics above the core:
 The publication boundary on that split is now:
 
 - `cli_subprocess_core` owns every Codex subprocess-backed lifecycle and the
-  only `erlexec` dependency in the stack
+  only native subprocess dependency in the stack
 - `codex_sdk` remains the home of app-server, MCP, realtime, voice, and other
   Codex-native semantics
 - optional ASM integration may exist only as an explicit bridge above the
@@ -750,7 +750,7 @@ end)
 
 Extracted from duplicated patterns across the codebase, these modules centralize cross-cutting concerns:
 
-- **`Codex.IO.Transport.Erlexec`**: Codex-branded transport surface backed by `CliSubprocessCore.Transport`; preserves the historical Codex event contract for app-server and MCP while leaving subprocess ownership in the core
+- **`Codex.IO.Transport`**: Codex-branded transport surface backed by `CliSubprocessCore.Transport`; preserves the historical Codex event contract for app-server and MCP while leaving subprocess ownership in the core
 - **`Codex.Runtime.Env`**: Subprocess environment construction shared between Exec and AppServer.Connection; sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` by default
 - **`Codex.Runtime.KeyringWarning`**: Deduplicated warn-once logic from Auth and MCP.OAuth
 - **`Codex.Config.BaseURL`**: `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)

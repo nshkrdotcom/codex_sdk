@@ -57,5 +57,5 @@ Remove all dialyzer suppressions, fix the root causes, and keep behavior aligned
 - `mix test`
 
 ## Risks
-- Some warnings may be rooted in upstream types (e.g., `:erlexec`); resolve via safe wrapper types or guards.
+- Some warnings may be rooted in upstream native subprocess types; resolve via safe wrapper types or guards.
 - Behavior changes may affect public API expectations; update tests/docs if changed.

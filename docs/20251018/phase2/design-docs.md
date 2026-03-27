@@ -7,7 +7,7 @@
   - Bump `VERSION` file and `mix.exs` metadata prior to Hex publish.
   - Verify `mix hex.publish --dry-run` succeeds on macOS and Linux.
 - **Packaging Audit**
-  - Ensure `mix release` bundle vendors required native assets (none presently, but confirm erlexec build artifacts are excluded).
+  - Ensure `mix release` bundle vendors required native assets (none presently, but confirm subprocess build artifacts are excluded).
   - Double-check `mix.exs` `files:` list includes `docs/20251017/` for source releases.
 
 ## 2. Extended Testing Matrix
@@ -17,7 +17,7 @@
   - Exercise `mix run examples/live_cli_demo.exs` on each platform to confirm CLI auth heuristics.
 - **Long-Running Sessions**
   - Execute auto-run loops against fixtures with >3 continuations.
-  - Stream 30+ event payloads to validate memory profile under erlexec-managed ports.
+  - Stream 30+ event payloads to validate memory profile under the shared subprocess ports.
 - **Regression Harness**
   - Wire `mix codex.parity` into nightly automation (GitHub Actions).
   - Store parity output artefacts for manual inspection.
@@ -31,7 +31,7 @@
 ## 4. Observability & Ops
 
 - Instrument `Codex.Exec` with optional timing metadata (execution start/stop) feeding into `Codex.Telemetry`.
-- Draft runbook describing how to tail erlexec-managed processes and rotate `_build/codex_files` staging directories.
+- Draft runbook describing how to tail managed subprocesses and rotate `_build/codex_files` staging directories.
 - Evaluate exporting telemetry to OTLP collector; document configuration knobs.
 - Detailed design: `docs/20251017/observability-timing.md`
 

@@ -18,7 +18,7 @@ Augment the telemetry stack with execution timing, error classification, and opt
 1. `Codex.Telemetry.emit/3` wraps duration conversions — it accepts `System.monotonic_time/1` input and normalises payloads with `:duration_ms`.
 2. Thread, tool, and approval emitters surface `originator: :sdk`, span tokens, and stop timestamps to support OpenTelemetry spans.
 3. `Codex.Telemetry.configure/1` restarts the OTEL apps with a simple processor when OTLP is enabled (via `CODEX_OTLP_ENABLE=1`), reading `CODEX_OTLP_ENDPOINT` and optional `CODEX_OTLP_HEADERS`, defaulting to `otel_exporter_pid` during tests.
-4. Provide runbook with commands for enabling exporters, tailing telemetry, and cleaning erlexec state.
+4. Provide runbook with commands for enabling exporters, tailing telemetry, and cleaning subprocess state.
 
 ## Implementation Steps
 1. Add `:duration_ms` (and stop-system timestamps) across thread, tool, and approval events.

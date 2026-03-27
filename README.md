@@ -395,7 +395,7 @@ and exit lifecycle onto `CliSubprocessCore.RawSession`.
 The ownership line is now:
 
 - `cli_subprocess_core` owns all Codex subprocess lifecycle, transport, and
-  `erlexec` interaction
+  native subprocess interaction
 - `codex_sdk` owns Codex-native semantics, typed events, request/response
   mapping, app-server APIs, MCP helpers, realtime, and voice
 - realtime and voice remain provider-owned because they call OpenAI APIs

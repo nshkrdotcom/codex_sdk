@@ -22,7 +22,7 @@ Hard constraints / repo rules:
 Critical context you must internalize (read before coding):
 
 1. Current transport behavior (exec-only today)
-    - Codex.Exec spawns the external codex executable using erlexec and reads JSONL events: lib/codex/exec.ex
+    - Codex.Exec spawns the external codex executable using the shared subprocess runtime and reads JSONL events: lib/codex/exec.ex
     - Codex.Thread is currently hard-wired to exec (Codex.Exec.run/2 / run_stream/2): lib/codex/thread.ex:107,
       lib/codex/thread.ex:188
     - The SDK does not vendor codex; it resolves via CODEX_PATH or PATH: lib/codex/options.ex:58-86 (also

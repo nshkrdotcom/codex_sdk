@@ -28,7 +28,7 @@ realtime/voice and in “Python-style” execution knobs that don’t map cleanl
 | Item types | All item types | `Codex.Items.*` | DONE |
 | MCP support | MCP tool calls | `Codex.MCP.Client` | DONE |
 | Structured output | JSON schema | Supported | DONE |
-| Process execution | spawn/readline | erlexec | DONE |
+| Process execution | spawn/readline | shared subprocess runtime | DONE |
 | Platform/binary resolution | bundled vendor binary | `Options.codex_path/1` | PARTIAL (no bundled binary; uses `CODEX_PATH`/PATH) |
 | Abort/cancellation | `AbortSignal` | cancellation token + stream cancel | PARTIAL |
 
@@ -586,4 +586,4 @@ The SDK is production-ready for text-based agent workflows when the “bring you
 
 - Date: 2025-12-14
 - Summary: Corrected overstated “fully ported” claims and implemented Codex CLI option forwarding in Elixir (`OPENAI_BASE_URL`, `--sandbox`, `--cd`, `--add-dir`, `--skip-git-repo-check`, plus `--config` for `approval_policy`, `features.web_search_request`, and `sandbox_workspace_write.network_access`) to match the TypeScript SDK’s behavior. Added an optional `clear_env?` execution switch to harden subprocess environment handling.
-- Confidence: High (forwarding verified against `codex exec --help`; environment semantics verified against erlexec docs/source).
+- Confidence: High (forwarding verified against `codex exec --help`; environment semantics verified against the shared subprocess runtime docs/source).

@@ -2,7 +2,7 @@
 
 ## What transport `codex_sdk` uses today
 
-`codex_sdk` runs the upstream `codex` binary in **exec JSONL mode** via erlexec:
+`codex_sdk` runs the upstream `codex` binary in **exec JSONL mode** via the shared subprocess runtime:
 
 - `lib/codex/exec.ex:228` builds args starting with `["exec", "--experimental-json"]`
 - `lib/codex/thread.ex:107` calls `Codex.Exec.run/2` for each turn

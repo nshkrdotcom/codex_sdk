@@ -32,13 +32,13 @@ TypeScript forwards these knobs to the CLI:
 
 ### 0.3 Optional hardening: clear environment (`clear_env?`)
 
-Erlexec inherits the parent environment by default. If you want to avoid accidental leakage of
+Built-in transport inherits the parent environment by default. If you want to avoid accidental leakage of
 environment variables into the `codex` subprocess, you can opt into clearing the environment per
 turn.
 
 **Option**: `turn_opts[:clear_env?]` (boolean)
 - `false` (default): inherit parent env + add/override with the provided env map
-- `true`: pass erlexec `{:env, [:clear | ...]}` to clear env first, then re-add a minimal safe set
+- `true`: clear env before startup, then re-add a minimal safe set
   (`HOME`, `PATH`, etc.) plus the Codex-specific env vars (`OPENAI_BASE_URL`, API key, originator)
 
 **Implementation**: `lib/codex/exec.ex` builds an env spec including `:clear` when `clear_env?` is true.

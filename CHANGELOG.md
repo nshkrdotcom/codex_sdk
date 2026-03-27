@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - OAuth browser login now defaults to the upstream-compatible loopback callback port `1455`.
-- Subprocess startup now ensures the shared erlexec worker is running before launching exec/app-server children, avoiding early transport failures.
+- Subprocess startup now ensures the shared built-in transport worker is running before launching exec/app-server children, avoiding early transport failures.
 - App-server connection and shutdown paths now surface initialization/exit errors more reliably and use shared process-exit helpers for cleaner teardown.
 - Live approval flows now preserve command/file/request-permissions parity across exec and app-server transports, including `grant_root`, available decision metadata, and resolved-request notifications.
 
@@ -207,7 +207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Centralized all magic numbers and string literals into `Codex.Config.Defaults`** — 30+ modules now reference `Defaults.*()` instead of inline constants:
-  - Transport timeouts and buffer sizes (`Codex.Exec`, `Codex.IO.Transport.Erlexec`)
+  - Transport timeouts and buffer sizes (`Codex.Exec`, `Codex.IO.Transport`)
   - MCP protocol constants and timeouts (`Codex.MCP.Client`, `Codex.MCP.Transport.StreamableHTTP`)
   - App-server timeouts (`Codex.AppServer`, Codex.AppServer.Connection, Codex.AppServer.Approvals, `Codex.AppServer.Mcp`)
   - OAuth/HTTP timeouts (`Codex.MCP.OAuth`)
@@ -250,7 +250,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Codex.IO.Transport behaviour** with 10 callbacks (`start/1`, `start_link/1`, `send/2`, `end_input/1`, `subscribe/2,3`, `close/1`, `force_close/1`, `status/1`, `stderr/1`) providing a unified I/O transport layer
 
-- **Codex.IO.Transport.Erlexec GenServer** implementation:
+- **Codex.IO.Transport GenServer** implementation:
   - Task-isolated `safe_call/3` via `TaskSupervisor.async_nolink` with timeout and noproc/death handling
   - Async `send`/`end_input` via IO tasks tracked in `pending_calls` map
   - Tagged subscriber dispatch (`{:codex_io_transport, ref, event}`) and legacy dispatch
@@ -266,7 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaces identical `split_lines/1` copies in Exec, AppServer.Protocol, and MCP.Protocol
 
 - **Codex.TaskSupport** — async task helper with automatic `Codex.TaskSupervisor` noproc retry and `Application.ensure_all_started` fallback
-  - `async_nolink/1,2` extracted from IO.Transport.Erlexec
+  - `async_nolink/1,2` extracted from IO.Transport
 
 - `Codex.TaskSupervisor` added to application supervision tree
 
@@ -274,19 +274,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Codex.Exec migrated to IO.Transport.Erlexec**:
-  - Replaced `start_process/2` direct low-level launch with `IO.Transport.Erlexec.start_link` using tagged subscription ref
+- **Codex.Exec migrated to IO.Transport**:
+  - Replaced `start_process/2` direct low-level launch with `IO.Transport.start_link` using tagged subscription ref
   - Replaced `do_collect/3` and `next_stream_chunk/1` raw `{:stdout, os_pid, chunk}` receive with tagged `{:codex_io_transport, ref, {:message, line}}` events
   - Replaced direct low-level stop in `safe_stop/1` with monitor-based shutdown cascade via IO.Transport
   - Removed `pid`, `os_pid`, `buffer` from internal state; changed `stderr` from list to string; added `transport` and `transport_ref`
-  - Deleted the legacy erlexec startup helper, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
+  - Deleted the legacy built-in transport startup helper, `maybe_put_env/2`, `iodata_to_binary/1`, `merge_stderr/1`, and remaining `split_lines`
 
-- **AppServer.Connection migrated to IO.Transport.Erlexec**:
+- **AppServer.Connection migrated to IO.Transport**:
   - Removed `subprocess_mod`, `subprocess_opts`, `subprocess_pid`, `os_pid`, `stdout_buffer` from State; added `transport_mod`, `transport`, and `transport_ref`
-  - Replaced raw erlexec message handlers with tagged transport events
-  - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, the per-call erlexec startup helper, and `start_opts/1`
+  - Replaced raw built-in transport message handlers with tagged transport events
+  - Deleted `resolve_subprocess_module/1`, `resolve_subprocess_opts/1`, the per-call built-in transport startup helper, and `start_opts/1`
 
-- **MCP.Transport.Stdio migrated to IO.Transport.Erlexec** (same pattern as Connection)
+- **MCP.Transport.Stdio migrated to IO.Transport** (same pattern as Connection)
 
 - **Transport lifecycle hardening** (Codex.Exec):
   - `safe_stop/1` now uses monitor-based graceful shutdown escalation: `force_close` → `Process.exit(:shutdown)` → `Process.exit(:kill)` with configurable grace periods (2s / 250ms / 250ms)
@@ -299,7 +299,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added guard clauses to `send_iolist/2` and `stop_subprocess/1` for disconnected transport safety
   - Connection: refactored `resolve_transport/1` into `normalize_transport_option/2` and `normalize_transport_value/2` clause chain
 
-- IO.Transport.Erlexec `init/1` simplified from with-chain to case expression
+- IO.Transport `init/1` simplified from with-chain to case expression
 - `normalize_payload/1` split: lists try `IO.iodata_to_binary` first, falling back to `Jason.encode!` on `ArgumentError`; added map-specific clause
 - `Config.merge_settings` tool serialization refactored into `serialize_tool/1` to handle non-struct tools
 
@@ -319,7 +319,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Deleted `lib/codex/app_server/subprocess.ex` and `lib/codex/app_server/subprocess/erlexec.ex` (superseded by IO.Transport)
+- Deleted `lib/codex/app_server/subprocess.ex` and `lib/codex/app_server/subprocess/built-in transport.ex` (superseded by IO.Transport)
 - Deleted triplicated `split_lines/1`, `decode_lines`, `decode_line` private functions from Exec, AppServer.Protocol, and MCP.Protocol
 
 ### Fixed
@@ -405,7 +405,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SDK originator environment variable** — `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` set in `Runtime.Env.base_overrides/2` via `Map.put_new` (caller can override in `env`)
 
 - **Shared runtime modules** extracted from duplicated patterns:
-  - `Codex.Runtime.Erlexec` — unified erlexec startup across Exec, Connection, Sessions, ShellTool, and MCP Stdio
+  - `Codex.Runtime.Built-in transport` — unified built-in transport startup across Exec, Connection, Sessions, ShellTool, and MCP Stdio
   - `Codex.Runtime.Env` — subprocess environment construction shared between Exec and AppServer.Connection
   - `Codex.Runtime.KeyringWarning` — deduplicated warn-once logic from Auth and MCP.OAuth
   - `Codex.Config.BaseURL` — `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)
@@ -557,7 +557,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Shell hosted tool with `Codex.Tools.ShellTool` for executing shell commands
-- Built-in default executor using erlexec for real command execution
+- Built-in default executor using built-in transport for real command execution
 - Command timeout support with configurable `:timeout_ms` option (default: 60s)
 - Output truncation with configurable `:max_output_bytes` option (default: 10KB)
 - Working directory support via `cwd` argument or `:cwd` option
@@ -773,7 +773,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `OPENAI_BASE_URL` is now set for the `codex` subprocess from `Codex.Options.base_url`
-- Port gap analysis docs updated to reflect the wired Codex CLI surface and erlexec hardening option
+- Port gap analysis docs updated to reflect the wired Codex CLI surface and built-in transport hardening option
 
 ## [0.2.2] - 2025-12-13
 

@@ -1,12 +1,12 @@
-defmodule Codex.IO.Transport.ErlexecTest do
+defmodule Codex.IO.TransportTest do
   use ExUnit.Case, async: true
 
   alias CliSubprocessCore.ProcessExit
   alias CliSubprocessCore.Transport.Error
-  alias Codex.IO.Transport.Erlexec, as: ErlexecTransport
+  alias Codex.IO.Transport
 
   defp create_test_script(body) do
-    dir = Path.join(System.tmp_dir!(), "erlexec_test_#{System.unique_integer([:positive])}")
+    dir = Path.join(System.tmp_dir!(), "codex_io_transport_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     path = Path.join(dir, "test.sh")
 
@@ -27,7 +27,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("echo hello; echo world")
 
       {:ok, _transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
@@ -43,7 +43,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("exit 9")
 
       {:ok, _transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
@@ -59,7 +59,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("echo hello; echo world")
 
       {:ok, _transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), :legacy}
@@ -76,7 +76,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       echo = System.find_executable("echo") || "/bin/echo"
 
       assert {:error, {:transport, :invalid_subscriber}} =
-               ErlexecTransport.start(command: echo, args: ["ok"], subscriber: :invalid)
+               Transport.start(command: echo, args: ["ok"], subscriber: :invalid)
     end
   end
 
@@ -86,7 +86,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("printf 'no-newline'")
 
       {:ok, _transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
@@ -101,7 +101,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script(~s|python3 -c "print('x' * 2000000); print('after')"|)
 
       {:ok, _transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref},
@@ -121,7 +121,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("sleep 5")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
@@ -141,7 +141,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
         assert_receive {:codex_io_transport, ^ref, {:message, "hello — world"}}, 2_000
       after
-        _ = ErlexecTransport.force_close(transport)
+        _ = Transport.force_close(transport)
       end
     end
   end
@@ -152,14 +152,14 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("echo err >&2; sleep 0.2; echo out")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
         )
 
       Process.sleep(50)
-      assert ErlexecTransport.stderr(transport) =~ "err"
+      assert Transport.stderr(transport) =~ "err"
       assert_receive {:codex_io_transport, ^ref, {:message, "out"}}, 2_000
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
     end
@@ -173,7 +173,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
         )
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref},
@@ -181,7 +181,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
         )
 
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 5_000
-      stderr = ErlexecTransport.stderr(transport)
+      stderr = Transport.stderr(transport)
       assert byte_size(stderr) <= 256
     end
   end
@@ -192,16 +192,16 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("while read -r line; do echo \"got: $line\"; done; echo done")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
         )
 
-      :ok = ErlexecTransport.send(transport, "hello\n")
+      :ok = Transport.send(transport, "hello\n")
       assert_receive {:codex_io_transport, ^ref, {:message, "got: hello"}}, 2_000
 
-      :ok = ErlexecTransport.end_input(transport)
+      :ok = Transport.end_input(transport)
       assert_receive {:codex_io_transport, ^ref, {:message, "done"}}, 2_000
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
     end
@@ -220,7 +220,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
         end)
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {subscriber, ref},
@@ -240,7 +240,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("echo hi")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
@@ -248,7 +248,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
       Process.sleep(100)
-      assert {:error, {:transport, :not_connected}} = ErlexecTransport.send(transport, "data")
+      assert {:error, {:transport, :not_connected}} = Transport.send(transport, "data")
     end
 
     test "force_close returns :ok" do
@@ -256,13 +256,13 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("while read -r line; do echo $line; done")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           subscriber: {self(), ref}
         )
 
-      assert :ok = ErlexecTransport.force_close(transport)
+      assert :ok = Transport.force_close(transport)
     end
 
     test "force_close leaves future transports usable" do
@@ -271,19 +271,19 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
       Enum.each(1..10, fn _ ->
         {:ok, transport} =
-          ErlexecTransport.start_link(
+          Transport.start_link(
             command: script,
             args: [],
             subscriber: {self(), ref}
           )
 
-        assert :ok = ErlexecTransport.force_close(transport)
+        assert :ok = Transport.force_close(transport)
       end)
 
       echo_script = create_test_script("echo recovered")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: echo_script,
           args: [],
           subscriber: {self(), ref}
@@ -291,7 +291,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
 
       assert_receive {:codex_io_transport, ^ref, {:message, "recovered"}}, 2_000
       assert_receive {:codex_io_transport, ^ref, {:exit, _}}, 2_000
-      assert :ok = ErlexecTransport.close(transport)
+      assert :ok = Transport.close(transport)
     end
   end
 
@@ -300,7 +300,7 @@ defmodule Codex.IO.Transport.ErlexecTest do
       script = create_test_script("sleep 60")
 
       {:ok, transport} =
-        ErlexecTransport.start_link(
+        Transport.start_link(
           command: script,
           args: [],
           headless_timeout_ms: 100

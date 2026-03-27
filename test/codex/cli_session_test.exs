@@ -19,7 +19,7 @@ defmodule Codex.CLISessionTest do
 
     assert %Session{} = session
     assert %RawSession{} = raw_session = Map.fetch!(session, :raw_session)
-    assert raw_session.transport_module == Transport
+    assert raw_session.transport_api == Transport
     assert raw_session.pty? == true
     assert raw_session.stdin? == true
     assert_receive {:stdout, os_pid, data}, 1_000
