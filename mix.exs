@@ -85,7 +85,7 @@ defmodule CodexSdk.MixProject do
   defp workspace_dep_specs do
     [
       {:cli_subprocess_core, "../cli_subprocess_core", @cli_subprocess_core_requirement,
-       github: @cli_subprocess_core_repo}
+       github: @cli_subprocess_core_repo, branch: "master"}
     ]
   end
 
@@ -309,7 +309,7 @@ defmodule CodexSdk.MixProject do
       hex_packaging?() ->
         {app, requirement, dep_opts}
 
-      File.dir?(expanded_path) ->
+      workspace_checkout?() and File.dir?(expanded_path) ->
         {app, Keyword.put(dep_opts, :path, path)}
 
       true ->
@@ -319,5 +319,9 @@ defmodule CodexSdk.MixProject do
 
   defp hex_packaging? do
     Enum.any?(System.argv(), &String.starts_with?(&1, "hex."))
+  end
+
+  defp workspace_checkout? do
+    not Enum.member?(Path.split(Path.expand(__DIR__)), "deps")
   end
 end
