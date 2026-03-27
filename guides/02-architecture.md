@@ -27,6 +27,9 @@ The app-server path is the parity transport for upstream v2 features such as `fs
 `mcpServer/startupStatus/updated`, guardian review notifications, and `serverRequest/resolved`.
 Typed plugin params and responses live locally under `Codex.Protocol.Plugin.*`;
 they do not move into the shared runtime-core repos.
+Local manifest, marketplace, and scaffold authoring live separately under
+`Codex.Plugins.*`; those helpers use direct local file IO and are not disguised
+app-server filesystem wrappers.
 
 Transport selection is per-thread via `Codex.Thread.Options.transport`:
 

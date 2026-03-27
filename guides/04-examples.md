@@ -23,10 +23,11 @@ so it does not mutate your real login state unless you opt into that explicitly.
 11. [Live Usage & Compaction](#live-usage--compaction)
 12. [Live Exec Controls](#live-exec-controls)
 13. [Live Telemetry Stream](#live-telemetry-stream)
-14. [Additional Live Examples](#additional-live-examples)
-15. [App-server Transport](#app-server-transport)
-16. [Realtime Voice Interactions](#realtime-voice-interactions)
-17. [Voice Pipeline](#voice-pipeline)
+14. [Local Plugin Authoring](#local-plugin-authoring)
+15. [Additional Live Examples](#additional-live-examples)
+16. [App-server Transport](#app-server-transport)
+17. [Realtime Voice Interactions](#realtime-voice-interactions)
+18. [Voice Pipeline](#voice-pipeline)
 
 ---
 
@@ -1405,6 +1406,33 @@ mix run examples/live_telemetry_stream.exs
 
 Auth falls back to your Codex CLI login when `CODEX_API_KEY` is not set.
 
+## Local Plugin Authoring
+
+Local plugin authoring is file-oriented and separate from app-server runtime
+verification.
+
+Use `Codex.Plugins.scaffold/1` when you want a minimal local plugin tree plus
+an optional marketplace entry:
+
+```elixir
+{:ok, scaffold} =
+  Codex.Plugins.scaffold(
+    cwd: "/repo/root",
+    plugin_name: "demo-plugin",
+    with_marketplace: true,
+    skill: [name: "hello-world", description: "Greets the user"]
+  )
+
+{:ok, manifest} = Codex.Plugins.read_manifest(scaffold.manifest_path)
+{:ok, marketplace} = Codex.Plugins.read_marketplace(scaffold.marketplace_path)
+```
+
+Runnable local example:
+
+```bash
+mix run examples/plugin_scaffold.exs
+```
+
 ## Additional Live Examples
 
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
@@ -1441,11 +1469,11 @@ mix run examples/live_thread_management.exs
 `live_app_server_filesystem.exs` demonstrates the thin `fs/*` wrappers end to
 end, including base64 round-tripping, and self-skips when the connected build no
 longer advertises those legacy parity methods. `live_app_server_plugins.exs`
-creates a disposable repo-local marketplace and plugin bundle under the system
-temp directory, launches `codex app-server` with an isolated child `cwd` plus a
-temporary `CODEX_HOME`, then demonstrates the typed `plugin_list_typed/2` and
-`plugin_read_typed/3` wrappers without mutating your real Codex config. Because
-the example never installs or enables that temporary plugin in the isolated home,
+first uses `Codex.Plugins.scaffold/1` to author a disposable repo-local plugin
+fixture under the system temp directory, then launches `codex app-server` with
+an isolated child `cwd` plus a temporary `CODEX_HOME`, and finally verifies the
+result with typed `plugin_list_typed/2` and `plugin_read_typed/3`. Because the
+example never installs or enables that temporary plugin in the isolated home,
 `installed` and `enabled` are expected to remain `false`, typed app summaries are
 used to derive `needs_auth`, and no prior Codex login or plugin install is required.
 `live_app_server_approvals.exs` demonstrates command/file approvals, uses granular

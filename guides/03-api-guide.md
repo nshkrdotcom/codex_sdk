@@ -11,6 +11,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Transport` | Transport behaviour for turn execution |
 | `Codex.AppServer` | Stateful app-server JSON-RPC connection + v2 request APIs |
 | `Codex.AppServer.V1` | Legacy app-server compatibility helpers for v1 conversation APIs |
+| `Codex.Plugins` | Local plugin authoring helpers for manifests, marketplaces, and scaffolds |
 | `Codex.Subagents` | Deterministic host-side discovery, inspection, and await helpers for subagent threads |
 | `Codex.OAuth` | Native OAuth login, refresh, status, logout, and host-managed login helpers |
 | `Codex.Agent` | Reusable agent definition (instructions, tools, hooks) |
@@ -271,6 +272,48 @@ typed plugin structs preserve forward-compatible fields in `extra` maps.
 `experimental_feature_enablement_set/2` forwards the supplied `enablement` map
 without a local allowlist and lets the connected server validate the active
 feature keys.
+
+Local plugin authoring is intentionally separate from that runtime transport
+surface. Use `Codex.Plugins` when you want to create or update:
+
+- `.codex-plugin/plugin.json`
+- `.agents/plugins/marketplace.json`
+- minimal local plugin directory scaffolds
+
+`Codex.Plugins` uses normal Elixir file IO, deterministic JSON writes, and
+schema-backed validation. It does not require a running Codex subprocess and it
+does not route normal authoring flows through app-server `fs/*`.
+
+## Codex.Plugins
+
+Primary local authoring entry points:
+
+- `new_manifest/1` and `validate_manifest/1`
+- `new_marketplace/1` and `validate_marketplace/1`
+- `read_manifest/1` and `read_marketplace/1`
+- `write_manifest/3` and `write_marketplace/3`
+- `add_marketplace_plugin/3`
+- `scaffold/1`
+
+Minimal local scaffold:
+
+```elixir
+{:ok, result} =
+  Codex.Plugins.scaffold(
+    cwd: "/repo/root",
+    plugin_name: "demo-plugin",
+    with_marketplace: true,
+    skill: [name: "hello-world", description: "Greets the user"]
+  )
+
+result.plugin_root
+result.manifest_path
+result.marketplace_path
+```
+
+See `guides/13-plugin-authoring.md` and
+`guides/14-plugin-marketplaces.md` for the path rules, merge behavior, and the
+authoring-versus-runtime split.
 
 ## Codex.Subagents
 

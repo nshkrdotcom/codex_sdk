@@ -21,6 +21,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - `guides/03-api-guide.md` - public modules and common call patterns
 - `guides/05-app-server-transport.md` - direct app-server requests and host controls
 - `guides/11-typed-plugin-api.md` - typed plugin params, responses, and migration notes
+- `guides/13-plugin-authoring.md` - local manifest writes, scaffold helpers, and scope rules
+- `guides/14-plugin-marketplaces.md` - local marketplace modeling, merge behavior, and verification workflows
 - `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
 - `guides/08-configuration-defaults.md` - config precedence and default resolution
 
@@ -36,6 +38,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
 - **Collaboration & Personality Controls**: Collaboration modes, personality overrides, and web search mode toggles.
 - **Tooling & MCP Integration**: Built-in registry for Codex tool manifests, MCP client helpers, and elicitation handling.
+- **Local Plugin Authoring**: Schema-backed local manifest and marketplace models, deterministic JSON writers, and scaffold helpers that do not depend on app-server `fs/*`.
 - **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, usage stats, and rate limit snapshots.
 - **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions with WebSocket streaming.
 - **Voice Pipeline**: Non-realtime STT -> Workflow -> TTS pipeline with streaming audio support and multi-turn conversations.
@@ -345,6 +348,8 @@ App-server-only APIs include:
 - raw plugin wrappers: `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - typed plugin wrappers: `Codex.AppServer.plugin_list_typed/2`, `plugin_read_typed/3`, `plugin_install_typed/4`, `plugin_uninstall_typed/3`
 - `Codex.AppServer.request_typed/5` with `Codex.Protocol.Plugin.*` params/response modules
+- local authoring facade: `Codex.Plugins` with `new_manifest/1`, `new_marketplace/1`,
+  `write_manifest/3`, `write_marketplace/3`, `add_marketplace_plugin/3`, and `scaffold/1`
 - `Codex.AppServer.skills_config_write/3`, `collaboration_mode_list/1`, `apps_list/2`
 - `Codex.AppServer.turn_interrupt/3`
 - `Codex.AppServer.thread_shell_command/3` (thread-bound `!` workflow)
@@ -369,6 +374,26 @@ plugin config; that example now uses the typed plugin wrappers and prints derive
 the under-development approval features only inside a temporary `CODEX_HOME`, so it can exercise
 live command/file/permissions approval flows without mutating your real Codex settings or writing
 inside this repository.
+
+Local plugin authoring is a separate surface from those runtime wrappers:
+
+```elixir
+{:ok, scaffold} =
+  Codex.Plugins.scaffold(
+    cwd: "/repo/root",
+    plugin_name: "demo-plugin",
+    with_marketplace: true,
+    skill: [name: "hello-world", description: "Greets the user"]
+  )
+
+{:ok, marketplace} = Codex.Plugins.read_marketplace(scaffold.marketplace_path)
+```
+
+Use `Codex.Plugins.*` to create and update `.codex-plugin/plugin.json`,
+`.agents/plugins/marketplace.json`, and minimal local plugin trees with normal
+Elixir file IO. Use `Codex.AppServer.plugin_*` later if you want runtime
+verification against a running `codex app-server`. Normal authoring flows do not
+route through app-server `fs/*`.
 
 Raw versus typed plugin calls:
 
@@ -583,6 +608,9 @@ mix run examples/conversation_and_resume.exs save-resume
 # Concurrency + collaboration demos
 mix run examples/concurrency_and_collaboration.exs parallel lib/codex/thread.ex lib/codex/exec.ex
 
+# Local plugin authoring scaffold (writes to a disposable temp repo)
+mix run examples/plugin_scaffold.exs
+
 # Auto-run tool bridging (forwards outputs/failures to codex exec)
 mix run examples/tool_bridging_auto_run.exs
 
@@ -597,6 +625,9 @@ mix run examples/live_telemetry_stream.exs
 
 # Live CLI demo (requires authenticated codex CLI or CODEX_API_KEY)
 mix run examples/live_cli_demo.exs "What is the capital of France?"
+
+# Live app-server plugin verification against a disposable local scaffold
+mix run examples/live_app_server_plugins.exs
 
 # Live Codex CLI passthrough helpers
 mix run examples/live_cli_passthrough.exs completion zsh

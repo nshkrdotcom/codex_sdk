@@ -136,6 +136,8 @@ defmodule CodexSdk.MixProject do
         "guides/09-oauth-and-login.md": [title: "OAuth And Login"],
         "guides/10-subagents.md": [title: "Subagents"],
         "guides/11-typed-plugin-api.md": [title: "Typed Plugin API"],
+        "guides/13-plugin-authoring.md": [title: "Plugin Authoring"],
+        "guides/14-plugin-marketplaces.md": [title: "Plugin Marketplaces"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
       ],
@@ -151,7 +153,9 @@ defmodule CodexSdk.MixProject do
           "guides/05-app-server-transport.md",
           "guides/06-realtime-and-voice.md",
           "guides/10-subagents.md",
-          "guides/11-typed-plugin-api.md"
+          "guides/11-typed-plugin-api.md",
+          "guides/13-plugin-authoring.md",
+          "guides/14-plugin-marketplaces.md"
         ],
         "Models & Configuration": [
           "guides/07-models-and-reasoning.md",
@@ -170,6 +174,9 @@ defmodule CodexSdk.MixProject do
           Codex.OAuth,
           Codex.OAuth.LoginResult,
           Codex.OAuth.Status,
+          Codex.Plugins,
+          Codex.Plugins.Manifest,
+          Codex.Plugins.Marketplace,
           Codex.Subagents,
           Codex.Thread,
           Codex.Thread.Options,

@@ -114,3 +114,7 @@ schema exceptions.
 
 The typed plugin models remain local to `codex_sdk`; they are not moved into the
 shared runtime-core repos.
+
+Local manifest, marketplace, and scaffold authoring are a separate API on
+`Codex.Plugins.*`. See `guides/13-plugin-authoring.md` and
+`guides/14-plugin-marketplaces.md` for the local file-authoring surface.

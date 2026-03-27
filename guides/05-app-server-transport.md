@@ -9,6 +9,11 @@ The SDK supports two external Codex transports:
 
 Use app-server when you need upstream v2 APIs that are not exposed via exec JSONL (threads list/archive, skills/models/config APIs, server-driven approvals, etc.).
 
+Do not use app-server `fs/*` or `plugin/*` as the default authoring backend for
+local plugin work. `Codex.Plugins.*` owns local manifest, marketplace, and
+scaffold flows. `Codex.AppServer.plugin_*` remains the runtime verification and
+install/discovery surface.
+
 ## Prerequisites
 
 - A `codex` CLI install that supports `codex app-server` (run `codex app-server --help`).
@@ -258,6 +263,7 @@ Additional v2 APIs include:
 - raw plugin wrappers: `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - typed plugin wrappers: `Codex.AppServer.plugin_list_typed/2`, `plugin_read_typed/3`, `plugin_install_typed/4`, `plugin_uninstall_typed/3`
 - `Codex.AppServer.request_typed/5` for `Codex.Protocol.Plugin.*` request/response structs
+- local authoring remains on `Codex.Plugins.*`; app-server plugin wrappers are not file-authoring helpers
 - `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
 - `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
 
@@ -517,9 +523,9 @@ See `examples/live_app_server_filesystem.exs` for a runnable `fs/*` walkthrough
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read`.
 Those live scripts probe the connected build first and self-skip when current
 Codex binaries do not advertise the older parity methods. The plugin example
-creates a disposable repo-local marketplace fixture under the system temp
-directory, launches the child process with an isolated temporary `CODEX_HOME`,
-and therefore does not need an existing plugin install, does not require a
+creates that disposable repo-local marketplace fixture first through
+`Codex.Plugins.scaffold/1`, launches the child process with an isolated
+temporary `CODEX_HOME`, and therefore does not need an existing plugin install, does not require a
 prior Codex login, does not mutate your real `$CODEX_HOME`, and prints
 `needsAuth` whenever the connected runtime includes that field.
 `examples/live_app_server_approvals.exs` demonstrates command/file approvals, enables live

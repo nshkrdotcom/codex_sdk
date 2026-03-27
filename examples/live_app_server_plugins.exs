@@ -92,45 +92,6 @@ defmodule CodexExamples.LiveAppServerPlugins do
     codex_home = Path.join(home_root, ".codex")
     marketplace_name = "codex-sdk-demo-marketplace-#{suffix}"
     plugin_name = "codex-sdk-demo-plugin-#{suffix}"
-    plugin_root = Path.join(repo_root, "plugins/#{plugin_name}")
-    marketplace_path = Path.join(repo_root, ".agents/plugins/marketplace.json")
-
-    marketplace_json = """
-    {
-      "name": "#{marketplace_name}",
-      "interface": {
-        "displayName": "Codex SDK Demo Marketplace"
-      },
-      "plugins": [
-        {
-          "name": "#{plugin_name}",
-          "source": {
-            "source": "local",
-            "path": "./plugins/#{plugin_name}"
-          },
-          "policy": {
-            "installation": "AVAILABLE",
-            "authentication": "ON_INSTALL"
-          },
-          "category": "Design"
-        }
-      ]
-    }
-    """
-
-    plugin_json = """
-    {
-      "name": "#{plugin_name}",
-      "description": "Local Codex SDK demo plugin loaded from a disposable fixture",
-      "interface": {
-        "displayName": "Codex SDK Demo Plugin",
-        "shortDescription": "Disposable plugin fixture for plugin/read parity checks",
-        "longDescription": "This plugin bundle is created under the system temp directory so the example can exercise plugin/list and plugin/read without mutating your real Codex home.",
-        "developerName": "OpenAI",
-        "category": "Productivity"
-      }
-    }
-    """
 
     app_json = """
     {
@@ -154,23 +115,28 @@ defmodule CodexExamples.LiveAppServerPlugins do
 
     with :ok <- File.mkdir_p(Path.join(repo_root, ".git")),
          :ok <- File.mkdir_p(codex_home),
-         :ok <- File.mkdir_p(Path.join(repo_root, ".agents/plugins")),
-         :ok <- File.mkdir_p(Path.join(plugin_root, ".codex-plugin")),
-         :ok <- File.mkdir_p(Path.join(plugin_root, "skills/thread-summarizer")),
-         :ok <- File.write(marketplace_path, marketplace_json),
-         :ok <- File.write(Path.join(plugin_root, ".codex-plugin/plugin.json"), plugin_json),
-         :ok <-
-           File.write(
-             Path.join(plugin_root, "skills/thread-summarizer/SKILL.md"),
-             """
-             ---
-             name: thread-summarizer
-             description: Summarize email threads
-             ---
-
-             # Thread Summarizer
-             """
+         {:ok, scaffold} <-
+           Codex.Plugins.scaffold(
+             cwd: repo_root,
+             plugin_name: plugin_name,
+             with_marketplace: true,
+             marketplace_name: marketplace_name,
+             marketplace_display_name: "Codex SDK Demo Marketplace",
+             category: "Design",
+             skill: [name: "thread-summarizer", description: "Summarize email threads"],
+             manifest: [
+               description: "Local Codex SDK demo plugin loaded from a disposable fixture",
+               interface: [
+                 display_name: "Codex SDK Demo Plugin",
+                 short_description: "Disposable plugin fixture for plugin/read parity checks",
+                 long_description:
+                   "This plugin bundle is created under the system temp directory so the example can exercise plugin/list and plugin/read without mutating your real Codex home.",
+                 developer_name: "OpenAI",
+                 category: "Productivity"
+               ]
+             ]
            ),
+         plugin_root = scaffold.plugin_root,
          :ok <- File.write(Path.join(plugin_root, ".app.json"), app_json),
          :ok <- File.write(Path.join(plugin_root, ".mcp.json"), mcp_json) do
       {:ok,
@@ -180,7 +146,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
          home_root: home_root,
          codex_home: codex_home,
          marketplace_name: marketplace_name,
-         marketplace_path: marketplace_path,
+         marketplace_path: scaffold.marketplace_path,
          plugin_name: plugin_name
        }}
     else
