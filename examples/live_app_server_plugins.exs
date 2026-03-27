@@ -96,6 +96,9 @@ defmodule CodexExamples.LiveAppServerPlugins do
     marketplace_json = """
     {
       "name": "#{marketplace_name}",
+      "interface": {
+        "displayName": "Codex SDK Demo Marketplace"
+      },
       "plugins": [
         {
           "name": "#{plugin_name}",
@@ -103,8 +106,10 @@ defmodule CodexExamples.LiveAppServerPlugins do
             "source": "local",
             "path": "./plugins/#{plugin_name}"
           },
-          "installPolicy": "AVAILABLE",
-          "authPolicy": "ON_INSTALL",
+          "policy": {
+            "installation": "AVAILABLE",
+            "authentication": "ON_INSTALL"
+          },
           "category": "Design"
         }
       ]
