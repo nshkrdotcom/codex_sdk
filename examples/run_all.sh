@@ -10,7 +10,7 @@ Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--help]
 
 Options:
   --ollama               Run all examples against local Codex OSS + Ollama.
-  --ollama-model MODEL   Override the Ollama model. Default: llama3.2
+  --ollama-model MODEL   Override the Ollama model. Default: gpt-oss:20b
   --help                 Show this help text.
 EOF
 }
@@ -53,7 +53,7 @@ else
 fi
 
 if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
-  OLLAMA_MODEL="${CODEX_MODEL:-llama3.2}"
+  OLLAMA_MODEL="${CODEX_MODEL:-gpt-oss:20b}"
   export CODEX_MODEL="${OLLAMA_MODEL}"
 
   if ! command -v ollama >/dev/null 2>&1; then

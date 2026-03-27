@@ -140,11 +140,13 @@ The authoritative path is:
 - `CliSubprocessCore.ModelRegistry.validate/2`
 - `CliSubprocessCore.ModelRegistry.default_model/2`
 - `CliSubprocessCore.ModelRegistry.build_arg_payload/3`
+- `CliSubprocessCore.ModelInput.normalize/3`
 
-`Codex.Options.new/1` resolves a shared `model_payload`, then projects the
-current `model` and `reasoning_effort` from that payload. `Codex.Models` is now
-a read-only projection of the shared core catalog. It no longer owns a separate
-catalog or a separate fallback/defaulting path.
+`Codex.Options.new/1` now delegates mixed-input normalization to
+`CliSubprocessCore.ModelInput.normalize/3`, then projects the current `model`
+and `reasoning_effort` from the authoritative shared `model_payload`.
+`Codex.Models` is now a read-only projection of the shared core catalog. It no
+longer owns a separate catalog or a separate fallback/defaulting path.
 
 Operationally, that means:
 
@@ -173,11 +175,21 @@ That causes the shared core registry to:
 
 - validate the Ollama runtime
 - validate the local model id
-- enforce the Codex OSS default and reasoning rules
+- keep `gpt-oss:20b` as the default validated OSS model when no explicit model
+  is supplied
 - return a payload that renders `--oss --local-provider ollama --model llama3.2`
 
 The SDK does not infer those flags on its own.
 - CLI argument rendering only emits `--model` from a non-empty resolved value
+
+If `ollama_base_url:` is supplied, that endpoint is carried inside the
+payload-owned env overrides as `CODEX_OSS_BASE_URL`. The exec and app-server
+transports both consume that payload data directly instead of keeping a second
+raw base-url path alive downstream.
+
+When the chosen local model is outside Codex's built-in model metadata catalog,
+the upstream CLI may warn that it is using fallback metadata. That is an
+upstream degraded-mode distinction, not a hard model rejection in `codex_sdk`.
 
 For the stateful app-server transport, the same resolved payload is rendered into
 supported `codex app-server --config ...` startup overrides plus `thread/start`

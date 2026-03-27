@@ -5,11 +5,12 @@ defmodule CodexSdk.MixProject do
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
-  @cli_subprocess_core_requirement "~> 0.1.0"
+  @app :codex_sdk
+  @cli_subprocess_core_requirement "~> 0.1.1"
   @cli_subprocess_core_repo "nshkrdotcom/cli_subprocess_core"
   def project do
     [
-      app: :codex_sdk,
+      app: @app,
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
@@ -29,7 +30,10 @@ defmodule CodexSdk.MixProject do
       ],
       dialyzer: [
         plt_add_apps: [:mix],
-        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_core_path: "priv/plts/core",
+        plt_local_path: "priv/plts",
+        plt_ignore_apps: workspace_apps(),
+        paths: [project_ebin_path() | workspace_dialyzer_paths()],
         flags: [:error_handling, :underspecs]
       ]
     ]
@@ -43,38 +47,63 @@ defmodule CodexSdk.MixProject do
   end
 
   defp deps do
+    workspace_deps() ++
+      [
+        # Core dependencies
+        {:jason, "~> 1.4"},
+        {:typed_struct, "~> 0.3.0"},
+        {:telemetry, "~> 1.3"},
+        {:opentelemetry, "~> 1.3"},
+        {:opentelemetry_exporter, "~> 1.6"},
+        {:req, "~> 0.4"},
+        {:oauth2, "~> 2.1"},
+        {:plug, "~> 1.16"},
+        {:bandit, "~> 1.5"},
+        {:websockex, "~> 0.5.1"},
+        {:toml, "~> 0.7"},
+
+        # Testing
+        {:supertester, "~> 0.5.1", only: :test},
+        {:mox, "~> 1.0", only: :test},
+        {:stream_data, "~> 1.0", only: :test},
+
+        # Development and documentation
+        {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
+        {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+        {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
+        {:excoveralls, "~> 0.18", only: :test}
+      ]
+  end
+
+  defp workspace_deps do
+    Enum.map(workspace_dep_specs(), fn {app, path, requirement, opts} ->
+      workspace_dep(app, path, requirement, opts)
+    end)
+  end
+
+  defp workspace_dep_specs do
     [
-      workspace_dep(
-        :cli_subprocess_core,
-        "../cli_subprocess_core",
-        @cli_subprocess_core_requirement,
-        github: @cli_subprocess_core_repo
-      ),
-
-      # Core dependencies
-      {:jason, "~> 1.4"},
-      {:typed_struct, "~> 0.3.0"},
-      {:telemetry, "~> 1.3"},
-      {:opentelemetry, "~> 1.3"},
-      {:opentelemetry_exporter, "~> 1.6"},
-      {:req, "~> 0.4"},
-      {:oauth2, "~> 2.1"},
-      {:plug, "~> 1.16"},
-      {:bandit, "~> 1.5"},
-      {:websockex, "~> 0.5.1"},
-      {:toml, "~> 0.7"},
-
-      # Testing
-      {:supertester, "~> 0.5.1", only: :test},
-      {:mox, "~> 1.0", only: :test},
-      {:stream_data, "~> 1.0", only: :test},
-
-      # Development and documentation
-      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:cli_subprocess_core, "../cli_subprocess_core", @cli_subprocess_core_requirement,
+       github: @cli_subprocess_core_repo}
     ]
+  end
+
+  defp workspace_apps do
+    Enum.map(workspace_dep_specs(), &elem(&1, 0))
+  end
+
+  defp workspace_dialyzer_paths do
+    Enum.map(workspace_apps(), fn app ->
+      build_ebin_path(app)
+    end)
+  end
+
+  defp project_ebin_path do
+    build_ebin_path(@app)
+  end
+
+  defp build_ebin_path(app) when is_atom(app) do
+    Path.join(["_build", Atom.to_string(Mix.env()), "lib", Atom.to_string(app), "ebin"])
   end
 
   defp description do

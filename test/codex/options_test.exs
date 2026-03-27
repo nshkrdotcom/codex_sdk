@@ -1,6 +1,7 @@
 defmodule Codex.OptionsTest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.ModelRegistry.Selection
   alias Codex.Options
   import Codex.Test.ModelFixtures
 
@@ -75,6 +76,121 @@ defmodule Codex.OptionsTest do
 
       assert opts.model == alt_model()
       assert opts.reasoning_effort == :medium
+    end
+
+    test "treats an explicit model_payload as authoritative" do
+      payload =
+        Selection.new(%{
+          provider: :codex,
+          requested_model: "gpt-oss:20b",
+          resolved_model: "gpt-oss:20b",
+          resolution_source: :explicit,
+          reasoning: "high",
+          reasoning_effort: nil,
+          normalized_reasoning_effort: nil,
+          model_family: "gpt-oss",
+          catalog_version: nil,
+          visibility: :public,
+          provider_backend: :oss,
+          model_source: :external,
+          env_overrides: %{},
+          settings_patch: %{},
+          backend_metadata: %{
+            "provider_backend" => "oss",
+            "oss_provider" => "ollama",
+            "external_model" => "gpt-oss:20b"
+          },
+          errors: []
+        })
+
+      assert {:ok, opts} =
+               Options.new(%{
+                 model_payload: payload,
+                 model: "gpt-oss:20b",
+                 provider_backend: :oss,
+                 oss_provider: "ollama"
+               })
+
+      assert opts.model_payload == payload
+      assert opts.model == "gpt-oss:20b"
+      assert opts.reasoning_effort == :high
+    end
+
+    test "accepts authoritative payloads for runtime-validated local Ollama models" do
+      payload =
+        Selection.new(%{
+          provider: :codex,
+          requested_model: "llama3.2",
+          resolved_model: "llama3.2",
+          resolution_source: :explicit,
+          reasoning: "high",
+          reasoning_effort: nil,
+          normalized_reasoning_effort: nil,
+          model_family: "llama",
+          catalog_version: nil,
+          visibility: :public,
+          provider_backend: :oss,
+          model_source: :external,
+          env_overrides: %{},
+          settings_patch: %{},
+          backend_metadata: %{
+            "provider_backend" => "oss",
+            "oss_provider" => "ollama",
+            "external_model" => "llama3.2",
+            "support_tier" => "runtime_validated_only"
+          },
+          errors: []
+        })
+
+      assert {:ok, opts} =
+               Options.new(%{
+                 model_payload: payload,
+                 model: "llama3.2",
+                 provider_backend: :oss,
+                 oss_provider: "ollama"
+               })
+
+      assert opts.model_payload == payload
+      assert opts.model == "llama3.2"
+      assert opts.reasoning_effort == :high
+    end
+
+    test "rejects raw attrs that conflict with an explicit model_payload" do
+      payload =
+        Selection.new(%{
+          provider: :codex,
+          requested_model: "gpt-oss:20b",
+          resolved_model: "gpt-oss:20b",
+          resolution_source: :explicit,
+          reasoning: "high",
+          reasoning_effort: nil,
+          normalized_reasoning_effort: nil,
+          model_family: "gpt-oss",
+          catalog_version: nil,
+          visibility: :public,
+          provider_backend: :oss,
+          model_source: :external,
+          env_overrides: %{},
+          settings_patch: %{},
+          backend_metadata: %{
+            "provider_backend" => "oss",
+            "oss_provider" => "ollama",
+            "external_model" => "gpt-oss:20b"
+          },
+          errors: []
+        })
+
+      assert {:error, {:model_payload_conflict, :model, "gpt-oss:20b", "gpt-5.4"}} =
+               Options.new(%{
+                 model_payload: payload,
+                 model: "gpt-5.4"
+               })
+
+      assert {:error, {:model_payload_conflict, :provider_backend, :oss, :openai}} =
+               Options.new(%{
+                 model_payload: payload,
+                 provider_backend: :openai
+               })
     end
 
     test "does not crash when CODEX_MODEL points at a cross-catalog model under api auth" do

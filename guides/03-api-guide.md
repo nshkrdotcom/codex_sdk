@@ -88,6 +88,10 @@ opts.model_payload.backend_metadata["oss_provider"]
 # => "ollama"
 ```
 
+`gpt-oss:20b` remains the default validated OSS example when no explicit model
+is provided, but other installed Ollama models can be passed through this same
+route.
+
 ---
 
 ## Codex.CLI and Codex.CLI.Session
@@ -203,6 +207,27 @@ Remote connections keep the same pid-compatible request surface as local ones.
 Bearer headers are only attached for `wss://` or loopback `ws://` endpoints.
 Remote OAuth only supports `oauth: [storage: :memory]`; `:file` / `:auto`
 storage is rejected because remote mode does not prepare a child `CODEX_HOME`.
+
+---
+
+## Shared Model Normalization
+
+`Codex.Options.new/1` does not own a second model-resolution pipeline. It now
+delegates mixed raw/payload input normalization to
+`CliSubprocessCore.ModelInput.normalize/3`, then projects `model`,
+`reasoning_effort`, and transport settings from the resulting
+`model_payload`.
+
+That matters most on the local Ollama route:
+
+- raw attrs such as `model`, `provider_backend`, `oss_provider`, and
+  `ollama_base_url` normalize once in the shared core
+- an explicit `model_payload` is authoritative when supplied
+- conflicting raw attrs fail during normalization instead of being silently
+  reinterpreted in the SDK
+- a custom Codex/Ollama base URL is carried inside payload env overrides as
+  `CODEX_OSS_BASE_URL`, so exec and app-server transports can rely on the
+  payload alone after normalization
 
 `connect/2` also accepts `oauth:` for child-auth-aware startup:
 

@@ -112,7 +112,7 @@ defmodule Codex.AppServer.ConnectionTest do
     codex_opts = %Options{
       api_key: nil,
       codex_path_override: System.find_executable("bash") || "/bin/bash",
-      model: "llama3.2",
+      model: "gpt-oss:20b",
       model_payload: %{
         provider_backend: :oss,
         backend_metadata: %{"oss_provider" => "ollama"}
@@ -135,7 +135,7 @@ defmodule Codex.AppServer.ConnectionTest do
              "--config",
              "model_provider=\"ollama\"",
              "--config",
-             "model=\"llama3.2\""
+             "model=\"gpt-oss:20b\""
            ]
   end
 

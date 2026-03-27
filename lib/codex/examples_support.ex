@@ -13,7 +13,7 @@ defmodule Codex.ExamplesSupport do
 
   @spec ollama_model() :: String.t()
   def ollama_model do
-    System.get_env("CODEX_MODEL") || "llama3.2"
+    System.get_env("CODEX_MODEL") || "gpt-oss:20b"
   end
 
   @spec example_model(String.t() | nil) :: String.t()

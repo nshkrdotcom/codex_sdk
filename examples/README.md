@@ -39,6 +39,7 @@ Run the same CLI-backed example set against local Codex OSS + Ollama:
 
 ```bash
 ./examples/run_all.sh --ollama
+./examples/run_all.sh --ollama --ollama-model gpt-oss:20b
 ./examples/run_all.sh --ollama --ollama-model llama3.2
 ```
 
@@ -46,10 +47,15 @@ Run the same CLI-backed example set against local Codex OSS + Ollama:
 
 - `CODEX_PROVIDER_BACKEND=oss`
 - `CODEX_OSS_PROVIDER=ollama`
-- `CODEX_MODEL=llama3.2` by default
+- `CODEX_MODEL=gpt-oss:20b` by default
 
 The runner checks that the requested Ollama model is installed before starting
 the examples.
+
+`gpt-oss:20b` remains the default validated Codex/Ollama example model, but
+the runner also accepts other installed Ollama models such as `llama3.2`.
+Those non-default models may trigger upstream fallback metadata warnings and
+can behave less reliably under the full Codex agent prompt/tool stack.
 
 In `--ollama` mode, the runner:
 

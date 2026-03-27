@@ -6,7 +6,7 @@ defmodule Codex.Options do
   """
 
   require Bitwise
-  alias CliSubprocessCore.ModelRegistry
+  alias CliSubprocessCore.ModelInput
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
@@ -80,22 +80,26 @@ defmodule Codex.Options do
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model_payload} <- resolve_model_payload(attrs, auth_mode_for(api_key)),
+         {:ok, model_input} <- normalize_model_input(attrs),
+         model_payload = model_input.selection,
+         normalized_attrs = model_input.attrs,
          {:ok, model} <- fetch_model(model_payload),
          {:ok, reasoning_effort} <- fetch_reasoning_effort(model_payload),
-         {:ok, model_personality} <- fetch_model_personality(attrs),
-         {:ok, reasoning_summary} <- fetch_reasoning_summary(attrs),
-         {:ok, model_verbosity} <- fetch_model_verbosity(attrs),
-         {:ok, model_context_window} <- fetch_model_context_window(attrs),
-         {:ok, supports_reasoning_summaries} <- fetch_supports_reasoning_summaries(attrs),
-         {:ok, model_auto_compact_token_limit} <- fetch_model_auto_compact_token_limit(attrs),
-         {:ok, review_model} <- fetch_review_model(attrs),
-         {:ok, history_persistence} <- fetch_history_persistence(attrs),
-         {:ok, history_max_bytes} <- fetch_history_max_bytes(attrs),
-         {:ok, hide_agent_reasoning} <- fetch_hide_agent_reasoning(attrs),
-         {:ok, tool_output_token_limit} <- fetch_tool_output_token_limit(attrs),
-         {:ok, agent_max_threads} <- fetch_agent_max_threads(attrs),
-         {:ok, config_overrides} <- fetch_config_overrides(attrs) do
+         {:ok, model_personality} <- fetch_model_personality(normalized_attrs),
+         {:ok, reasoning_summary} <- fetch_reasoning_summary(normalized_attrs),
+         {:ok, model_verbosity} <- fetch_model_verbosity(normalized_attrs),
+         {:ok, model_context_window} <- fetch_model_context_window(normalized_attrs),
+         {:ok, supports_reasoning_summaries} <-
+           fetch_supports_reasoning_summaries(normalized_attrs),
+         {:ok, model_auto_compact_token_limit} <-
+           fetch_model_auto_compact_token_limit(normalized_attrs),
+         {:ok, review_model} <- fetch_review_model(normalized_attrs),
+         {:ok, history_persistence} <- fetch_history_persistence(normalized_attrs),
+         {:ok, history_max_bytes} <- fetch_history_max_bytes(normalized_attrs),
+         {:ok, hide_agent_reasoning} <- fetch_hide_agent_reasoning(normalized_attrs),
+         {:ok, tool_output_token_limit} <- fetch_tool_output_token_limit(normalized_attrs),
+         {:ok, agent_max_threads} <- fetch_agent_max_threads(normalized_attrs),
+         {:ok, config_overrides} <- fetch_config_overrides(normalized_attrs) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
@@ -214,46 +218,34 @@ defmodule Codex.Options do
 
   defp pick(_attrs, [], default), do: default
 
-  defp resolve_model_payload(attrs, _auth_mode) do
-    requested_model = pick(attrs, [:model, "model"])
+  defp normalize_model_input(attrs) do
+    attrs
+    |> apply_model_env_defaults()
+    |> then(&ModelInput.normalize(:codex, &1, []))
+  end
 
-    provider_backend =
-      pick(
-        attrs,
-        [:provider_backend, "provider_backend"],
-        System.get_env("CODEX_PROVIDER_BACKEND")
-      )
+  defp apply_model_env_defaults(attrs) when is_map(attrs) do
+    attrs
+    |> put_missing_attr(
+      :env_model,
+      System.get_env("CODEX_MODEL") ||
+        System.get_env("OPENAI_DEFAULT_MODEL") ||
+        System.get_env("CODEX_MODEL_DEFAULT")
+    )
+    |> put_missing_attr(:provider_backend, System.get_env("CODEX_PROVIDER_BACKEND"))
+    |> put_missing_attr(:oss_provider, System.get_env("CODEX_OSS_PROVIDER"))
+    |> put_missing_attr(:ollama_base_url, System.get_env("CODEX_OLLAMA_BASE_URL"))
+  end
 
-    oss_provider =
-      pick(attrs, [:oss_provider, "oss_provider"], System.get_env("CODEX_OSS_PROVIDER"))
+  defp put_missing_attr(attrs, _key, nil), do: attrs
+  defp put_missing_attr(attrs, _key, ""), do: attrs
 
-    ollama_base_url =
-      pick(attrs, [:ollama_base_url, "ollama_base_url"], System.get_env("CODEX_OLLAMA_BASE_URL"))
-
-    requested_reasoning =
-      pick(attrs, [:reasoning_effort, "reasoning_effort", :reasoning, "reasoning"])
-
-    opts =
-      []
-      |> maybe_put_env_model(
-        System.get_env("CODEX_MODEL") ||
-          System.get_env("OPENAI_DEFAULT_MODEL") ||
-          System.get_env("CODEX_MODEL_DEFAULT")
-      )
-      |> maybe_put_reasoning(requested_reasoning)
-      |> maybe_put_registry_opt(:provider_backend, provider_backend)
-      |> maybe_put_registry_opt(:oss_provider, oss_provider)
-      |> maybe_put_registry_opt(:ollama_base_url, ollama_base_url)
-      |> maybe_put_registry_opt(
-        :ollama_http,
-        pick(attrs, [:ollama_http, "ollama_http"])
-      )
-      |> maybe_put_registry_opt(
-        :ollama_timeout_ms,
-        pick(attrs, [:ollama_timeout_ms, "ollama_timeout_ms"])
-      )
-
-    ModelRegistry.build_arg_payload(:codex, requested_model, opts)
+  defp put_missing_attr(attrs, key, value) when is_map(attrs) and is_atom(key) do
+    cond do
+      Map.has_key?(attrs, key) -> attrs
+      Map.has_key?(attrs, Atom.to_string(key)) -> attrs
+      true -> Map.put(attrs, key, value)
+    end
   end
 
   defp fetch_model(model_payload) when is_map(model_payload) do
@@ -266,16 +258,6 @@ defmodule Codex.Options do
 
     {:ok, normalize_reasoning_atom(reasoning)}
   end
-
-  defp maybe_put_env_model(opts, nil), do: opts
-  defp maybe_put_env_model(opts, env_model), do: Keyword.put(opts, :env_model, env_model)
-
-  defp maybe_put_reasoning(opts, nil), do: opts
-  defp maybe_put_reasoning(opts, reasoning), do: Keyword.put(opts, :reasoning_effort, reasoning)
-
-  defp maybe_put_registry_opt(opts, _key, nil), do: opts
-  defp maybe_put_registry_opt(opts, _key, ""), do: opts
-  defp maybe_put_registry_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp normalize_reasoning_atom(nil), do: nil
   defp normalize_reasoning_atom(value) when is_atom(value), do: value
@@ -422,9 +404,6 @@ defmodule Codex.Options do
     |> pick([:config_overrides, "config_overrides", :config, "config"], [])
     |> Overrides.normalize_config_overrides()
   end
-
-  defp auth_mode_for(api_key) when is_binary(api_key) and api_key != "", do: :api
-  defp auth_mode_for(_), do: Auth.infer_auth_mode()
 
   defp normalize_string(nil), do: nil
 

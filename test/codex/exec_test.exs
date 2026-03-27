@@ -221,7 +221,7 @@ defmodule Codex.ExecTest do
     codex_opts = %Options{
       api_key: nil,
       codex_path_override: script_path,
-      model: "llama3.2",
+      model: "gpt-oss:20b",
       reasoning_effort: :xhigh,
       model_payload: %{
         provider_backend: :oss,
@@ -243,7 +243,7 @@ defmodule Codex.ExecTest do
 
     assert Enum.any?(args, &(&1 == "--oss"))
     assert fetch_flag_value(args, "--local-provider") == "ollama"
-    assert fetch_flag_value(args, "--model") == "llama3.2"
+    assert fetch_flag_value(args, "--model") == "gpt-oss:20b"
   end
 
   test "forwards options-level global config overrides as --config flags" do
