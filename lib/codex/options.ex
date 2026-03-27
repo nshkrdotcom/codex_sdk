@@ -225,16 +225,27 @@ defmodule Codex.Options do
   end
 
   defp apply_model_env_defaults(attrs) when is_map(attrs) do
-    attrs
-    |> put_missing_attr(
-      :env_model,
-      System.get_env("CODEX_MODEL") ||
-        System.get_env("OPENAI_DEFAULT_MODEL") ||
-        System.get_env("CODEX_MODEL_DEFAULT")
-    )
-    |> put_missing_attr(:provider_backend, System.get_env("CODEX_PROVIDER_BACKEND"))
-    |> put_missing_attr(:oss_provider, System.get_env("CODEX_OSS_PROVIDER"))
-    |> put_missing_attr(:ollama_base_url, System.get_env("CODEX_OLLAMA_BASE_URL"))
+    if explicit_model_payload?(attrs) do
+      attrs
+    else
+      attrs
+      |> put_missing_attr(
+        :env_model,
+        System.get_env("CODEX_MODEL") ||
+          System.get_env("OPENAI_DEFAULT_MODEL") ||
+          System.get_env("CODEX_MODEL_DEFAULT")
+      )
+      |> put_missing_attr(:provider_backend, System.get_env("CODEX_PROVIDER_BACKEND"))
+      |> put_missing_attr(:oss_provider, System.get_env("CODEX_OSS_PROVIDER"))
+      |> put_missing_attr(:ollama_base_url, System.get_env("CODEX_OLLAMA_BASE_URL"))
+    end
+  end
+
+  defp explicit_model_payload?(attrs) when is_map(attrs) do
+    case Map.get(attrs, :model_payload, Map.get(attrs, "model_payload")) do
+      nil -> false
+      _payload -> true
+    end
   end
 
   defp put_missing_attr(attrs, _key, nil), do: attrs

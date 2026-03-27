@@ -6,7 +6,17 @@ defmodule Codex.OptionsTest do
   import Codex.Test.ModelFixtures
 
   setup do
-    env_keys = ~w(CODEX_MODEL CODEX_MODEL_DEFAULT CODEX_API_KEY CODEX_HOME OPENAI_BASE_URL)
+    env_keys =
+      ~w(
+        CODEX_MODEL
+        CODEX_MODEL_DEFAULT
+        CODEX_PROVIDER_BACKEND
+        CODEX_OSS_PROVIDER
+        CODEX_OLLAMA_BASE_URL
+        CODEX_API_KEY
+        CODEX_HOME
+        OPENAI_BASE_URL
+      )
 
     original_env =
       env_keys
@@ -191,6 +201,43 @@ defmodule Codex.OptionsTest do
                  model_payload: payload,
                  provider_backend: :openai
                })
+    end
+
+    test "does not treat env defaults as active config when model_payload is explicit" do
+      payload =
+        Selection.new(%{
+          provider: :codex,
+          requested_model: "llama3.2",
+          resolved_model: "llama3.2",
+          resolution_source: :explicit,
+          reasoning: "high",
+          reasoning_effort: nil,
+          normalized_reasoning_effort: nil,
+          model_family: "llama",
+          catalog_version: nil,
+          visibility: :public,
+          provider_backend: :oss,
+          model_source: :external,
+          env_overrides: %{"CODEX_OSS_BASE_URL" => "http://127.0.0.1:22434"},
+          settings_patch: %{},
+          backend_metadata: %{
+            "provider_backend" => "oss",
+            "oss_provider" => "ollama",
+            "external_model" => "llama3.2",
+            "support_tier" => "runtime_validated_only"
+          },
+          errors: []
+        })
+
+      System.put_env("CODEX_MODEL", "gpt-5.4")
+      System.put_env("CODEX_PROVIDER_BACKEND", "openai")
+      System.put_env("CODEX_OSS_PROVIDER", "other")
+      System.put_env("CODEX_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
+      assert {:ok, opts} = Options.new(%{model_payload: payload})
+      assert opts.model_payload == payload
+      assert opts.model == "llama3.2"
+      assert opts.reasoning_effort == :high
     end
 
     test "does not crash when CODEX_MODEL points at a cross-catalog model under api auth" do

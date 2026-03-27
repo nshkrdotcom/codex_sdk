@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ChatGPT plan claims now normalize to the SDK's canonical lowercase strings,
   including `hc -> "enterprise"` and `education -> "edu"`, before auth/status
   structs and app-server external-auth payloads are built.
+- App-server connections no longer live-echo child stderr during healthy
+  operation; retained stderr is still preserved for typed failure reporting.
 
 ## [0.15.0] - 2026-03-19
 

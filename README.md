@@ -148,6 +148,11 @@ and `reasoning_effort` from the authoritative shared `model_payload`.
 `Codex.Models` is now a read-only projection of the shared core catalog. It no
 longer owns a separate catalog or a separate fallback/defaulting path.
 
+If a caller supplies an explicit `model_payload`, that payload stays
+authoritative. Repo-local env defaults such as `CODEX_MODEL`,
+`CODEX_PROVIDER_BACKEND`, and `CODEX_OLLAMA_BASE_URL` are fallback inputs only
+when the payload was not supplied explicitly.
+
 Operationally, that means:
 
 - explicit request wins first

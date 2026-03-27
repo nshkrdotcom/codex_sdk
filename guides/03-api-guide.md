@@ -43,8 +43,8 @@ public API surfaces are projections and consumers of that shared contract.
 
 Primary entrypoints:
 
-- `Codex.Options.new/1` resolves the shared `model_payload` via
-  `CliSubprocessCore.ModelRegistry.build_arg_payload/3`
+- `Codex.Options.new/1` normalizes mixed raw-versus-payload input through
+  `CliSubprocessCore.ModelInput.normalize/3`
 - `Codex.Models.default_model/0` returns the current shared core default
 - `Codex.Models.list_visible/1` returns the shared visible Codex catalog
 - `Codex.Models.default_reasoning_effort/1` projects reasoning defaults from
@@ -57,6 +57,8 @@ Operational notes:
   from the core registry contract
 - runtime CLI rendering consumes resolved state and does not invent fallback
   models locally
+- repo-local env defaults are only consulted when `model_payload` was not
+  supplied explicitly
 
 Example:
 

@@ -287,7 +287,7 @@ defmodule Codex.AppServer.Connection do
         {:codex_io_transport, ref, {:stderr, data}},
         %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
-    Logger.debug("codex app-server stderr: #{String.trim(IO.iodata_to_binary(data))}")
+    _ = data
     {:noreply, state}
   end
 
@@ -344,7 +344,7 @@ defmodule Codex.AppServer.Connection do
         {:stderr, ref, data},
         %State{raw_session: %RawSession{transport_ref: ref}} = state
       ) do
-    Logger.debug("codex app-server stderr: #{String.trim(IO.iodata_to_binary(data))}")
+    _ = data
     {:noreply, state}
   end
 

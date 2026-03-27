@@ -81,8 +81,7 @@ defmodule Codex.Test.MockWebSocket do
   """
   @spec send_frame(GenServer.server(), {:text, String.t()}) :: :ok
   def send_frame(pid, {:text, json}) do
-    GenServer.cast(pid, {:send_to_server, Jason.decode!(json)})
-    :ok
+    GenServer.call(pid, {:send_to_server, Jason.decode!(json)})
   end
 
   @doc """
@@ -118,6 +117,11 @@ defmodule Codex.Test.MockWebSocket do
   end
 
   @impl true
+  def handle_call({:send_to_server, message}, _from, state) do
+    send(state.test_pid, {:websocket_sent, message})
+    {:reply, :ok, %{state | sent_messages: [message | state.sent_messages]}}
+  end
+
   def handle_call(:get_sent_messages, _from, state) do
     {:reply, Enum.reverse(state.sent_messages), state}
   end

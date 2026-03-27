@@ -2,6 +2,8 @@ defmodule Codex.AppServer.ConnectionTest do
   use ExUnit.Case, async: true
   @moduletag capture_log: true
 
+  import ExUnit.CaptureLog
+
   alias CliSubprocessCore.RawSession
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol
@@ -157,6 +159,30 @@ defmodule Codex.AppServer.ConnectionTest do
     assert raw_session.event_tag == :codex_io_transport
     assert raw_session.stdout_mode == :line
     assert raw_session.stdin_mode == :raw
+  end
+
+  test "healthy child stderr does not produce live debug logs", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        transport: {AppServerSubprocess, owner: self()},
+        init_timeout_ms: 200
+      )
+
+    assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    log =
+      capture_log([level: :debug], fn ->
+        send(conn, {:codex_io_transport, transport_ref, {:stderr, "non-fatal child stderr"}})
+        Process.sleep(20)
+      end)
+
+    refute log =~ "codex app-server stderr:"
+    assert Process.alive?(conn)
   end
 
   test "launch options reject invalid child env overrides", %{codex_opts: codex_opts} do
