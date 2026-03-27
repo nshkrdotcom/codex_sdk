@@ -57,6 +57,8 @@ Stable rules enforced locally:
 - manifest component paths such as `skills`, `hooks`, `mcpServers`, `apps`, and
   interface asset paths must start with `./`
 - relative paths cannot escape with `..`
+- `interface.defaultPrompt` accepts at most 3 prompts and each prompt must be
+  128 characters or fewer after whitespace normalization
 - writes are deterministic JSON with a trailing newline
 - scaffold does not generate `mix.exs`, `.formatter.exs`, `build_support/*`, or
   Dialyzer/PLT files in phase 1

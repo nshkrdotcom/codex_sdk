@@ -393,7 +393,9 @@ Use `Codex.Plugins.*` to create and update `.codex-plugin/plugin.json`,
 `.agents/plugins/marketplace.json`, and minimal local plugin trees with normal
 Elixir file IO. Use `Codex.AppServer.plugin_*` later if you want runtime
 verification against a running `codex app-server`. Normal authoring flows do not
-route through app-server `fs/*`.
+route through app-server `fs/*`. Phase-1 scaffold intentionally stops at the
+plugin tree, optional skill stub, and marketplace entry; it does not generate
+`mix.exs`, Dialyzer/PLT helpers, or `build_support/*`.
 
 Raw versus typed plugin calls:
 

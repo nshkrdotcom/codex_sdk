@@ -75,7 +75,7 @@ defmodule Codex.Plugins.Marketplace do
 
   def parse(data) do
     data
-    |> normalize_input()
+    |> Schema.normalize_input(@key_mapping)
     |> then(&Schema.parse(schema(), &1, :invalid_plugin_marketplace))
     |> project()
   end
@@ -95,7 +95,7 @@ defmodule Codex.Plugins.Marketplace do
 
   def parse_plugin(data) do
     data
-    |> normalize_input()
+    |> Schema.normalize_input(@key_mapping)
     |> then(&Schema.parse(plugin_schema(), &1, :invalid_plugin_marketplace_plugin))
     |> case do
       {:ok, parsed} -> {:ok, build_plugin(parsed)}
@@ -126,8 +126,8 @@ defmodule Codex.Plugins.Marketplace do
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = value) do
     %{}
-    |> maybe_put("name", value.name)
-    |> maybe_put("interface", encode_interface(value.interface))
+    |> Schema.put_present("name", value.name)
+    |> Schema.put_present("interface", encode_interface(value.interface))
     |> Map.put("plugins", Enum.map(value.plugins, &encode_plugin/1))
     |> Schema.merge_extra(value.extra)
   end
@@ -142,7 +142,11 @@ defmodule Codex.Plugins.Marketplace do
         {:ok, %{marketplace | plugins: marketplace.plugins ++ [plugin]}}
 
       index when overwrite? ->
-        {:ok, %{marketplace | plugins: List.replace_at(marketplace.plugins, index, plugin)}}
+        existing_plugin = Enum.at(marketplace.plugins, index)
+        merged_plugin = merge_plugin(existing_plugin, plugin)
+
+        {:ok,
+         %{marketplace | plugins: List.replace_at(marketplace.plugins, index, merged_plugin)}}
 
       _index ->
         {:error, {:plugin_conflict, %{plugin_name: plugin.name}}}
@@ -248,23 +252,23 @@ defmodule Codex.Plugins.Marketplace do
 
   defp encode_interface(interface) do
     %{}
-    |> maybe_put("displayName", interface[:display_name])
+    |> Schema.put_present("displayName", interface[:display_name])
     |> Schema.merge_extra(interface[:extra] || %{})
   end
 
   defp encode_plugin(plugin) do
     %{}
-    |> maybe_put("name", plugin[:name])
-    |> maybe_put("source", encode_source(plugin[:source]))
-    |> maybe_put("policy", encode_policy(plugin[:policy]))
-    |> maybe_put("category", plugin[:category])
+    |> Schema.put_present("name", plugin[:name])
+    |> Schema.put_present("source", encode_source(plugin[:source]))
+    |> Schema.put_present("policy", encode_policy(plugin[:policy]))
+    |> Schema.put_present("category", plugin[:category])
     |> Schema.merge_extra(plugin[:extra] || %{})
   end
 
   defp encode_source(source) do
     %{}
     |> Map.put("source", "local")
-    |> maybe_put("path", source[:path])
+    |> Schema.put_present("path", source[:path])
     |> Schema.merge_extra(source[:extra] || %{})
   end
 
@@ -272,7 +276,7 @@ defmodule Codex.Plugins.Marketplace do
     %{}
     |> Map.put("installation", InstallPolicy.to_wire(policy[:installation]))
     |> Map.put("authentication", AuthPolicy.to_wire(policy[:authentication]))
-    |> maybe_put("products", policy[:products])
+    |> Schema.put_present("products", policy[:products])
     |> Schema.merge_extra(policy[:extra] || %{})
   end
 
@@ -329,48 +333,6 @@ defmodule Codex.Plugins.Marketplace do
     )
   end
 
-  defp normalize_input(nil), do: %{}
-
-  defp normalize_input(list) when is_list(list) do
-    if list != [] and Keyword.keyword?(list) do
-      list
-      |> Enum.into(%{})
-      |> normalize_input()
-    else
-      list
-    end
-  end
-
-  defp normalize_input(%{} = value) do
-    value
-    |> Enum.map(fn {key, nested_value} ->
-      {normalize_key(key), normalize_value(nested_value)}
-    end)
-    |> Map.new()
-  end
-
-  defp normalize_input(value), do: value
-
-  defp normalize_key(key) when is_atom(key), do: key |> Atom.to_string() |> normalize_key()
-  defp normalize_key(key) when is_binary(key), do: Map.get(@key_mapping, key, key)
-
-  defp normalize_value(%{} = value), do: normalize_input(value)
-
-  defp normalize_value(values) when is_list(values) do
-    if values != [] and Keyword.keyword?(values) do
-      values
-      |> Enum.into(%{})
-      |> normalize_input()
-    else
-      Enum.map(values, &normalize_value/1)
-    end
-  end
-
-  defp normalize_value(value), do: value
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
   defp merge_interface(nil, interface), do: interface
   defp merge_interface(interface, nil), do: interface
 
@@ -391,6 +353,41 @@ defmodule Codex.Plugins.Marketplace do
           {:halt, {:error, {:plugin_conflict, %{plugin_name: plugin_name}}}}
       end
     end)
+  end
+
+  defp merge_plugin(nil, incoming), do: incoming
+
+  defp merge_plugin(existing, incoming) do
+    %{
+      name: incoming[:name] || existing[:name],
+      source: merge_source(existing[:source], incoming[:source]),
+      policy: merge_policy(existing[:policy], incoming[:policy]),
+      category: incoming[:category] || existing[:category],
+      extra: Map.merge(existing[:extra] || %{}, incoming[:extra] || %{})
+    }
+  end
+
+  defp merge_source(nil, source), do: source
+  defp merge_source(source, nil), do: source
+
+  defp merge_source(existing, incoming) do
+    %{
+      source: incoming[:source] || existing[:source],
+      path: incoming[:path] || existing[:path],
+      extra: Map.merge(existing[:extra] || %{}, incoming[:extra] || %{})
+    }
+  end
+
+  defp merge_policy(nil, policy), do: policy
+  defp merge_policy(policy, nil), do: policy
+
+  defp merge_policy(existing, incoming) do
+    %{
+      installation: incoming[:installation] || existing[:installation],
+      authentication: incoming[:authentication] || existing[:authentication],
+      products: incoming[:products] || existing[:products],
+      extra: Map.merge(existing[:extra] || %{}, incoming[:extra] || %{})
+    }
   end
 
   defp to_plugin_map(plugin) do

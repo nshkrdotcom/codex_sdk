@@ -88,6 +88,76 @@ defmodule Codex.Plugins.WriterTest do
     assert alpha.extra["futurePluginField"] == "kept"
   end
 
+  test "overwrite updates preserve unknown fields on the replaced marketplace entry" do
+    temp_root = temp_root("plugin_writer_overwrite_preserve")
+    repo_root = Path.join(temp_root, "repo")
+    marketplace_path = Path.join(repo_root, ".agents/plugins/marketplace.json")
+
+    File.mkdir_p!(Path.dirname(marketplace_path))
+
+    File.write!(
+      marketplace_path,
+      """
+      {
+        "name": "repo-marketplace",
+        "futureRootField": true,
+        "plugins": [
+          {
+            "name": "alpha",
+            "source": {
+              "source": "local",
+              "path": "./plugins/alpha",
+              "futureSourceField": "kept"
+            },
+            "policy": {
+              "installation": "AVAILABLE",
+              "authentication": "ON_INSTALL",
+              "products": ["CODEx"],
+              "futurePolicyField": true
+            },
+            "category": "Productivity",
+            "futurePluginField": "kept"
+          }
+        ]
+      }
+      """
+    )
+
+    assert {:ok, _metadata} =
+             Plugins.add_marketplace_plugin(
+               marketplace_path,
+               [
+                 name: "alpha",
+                 source: [source: :local, path: "./plugins/alpha-v2"],
+                 policy: [installation: :installed_by_default, authentication: :on_use],
+                 category: "Automation"
+               ],
+               overwrite: true
+             )
+
+    assert {:ok, marketplace} = Plugins.read_marketplace(marketplace_path)
+    assert marketplace.extra["futureRootField"] == true
+
+    assert [
+             %{
+               name: "alpha",
+               category: "Automation",
+               extra: %{"futurePluginField" => "kept"},
+               source: %{
+                 source: :local,
+                 path: "./plugins/alpha-v2",
+                 extra: %{"futureSourceField" => "kept"}
+               },
+               policy: %{
+                 installation: :installed_by_default,
+                 authentication: :on_use,
+                 products: ["CODEx"],
+                 extra: %{"futurePolicyField" => true}
+               }
+             }
+           ] = marketplace.plugins
+  end
+
   defp temp_root(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end

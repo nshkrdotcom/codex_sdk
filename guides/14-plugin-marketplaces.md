@@ -50,7 +50,10 @@ Use `add_marketplace_plugin/3` for read-modify-write updates:
 Behavior:
 
 - preserves unrelated plugin entries
-- preserves unknown forward-compatible keys where possible
+- preserves unknown forward-compatible keys where possible, including overwrite
+  updates on an existing entry
+- preserves optional compatible metadata such as `policy.products` unless you
+  replace it explicitly
 - refuses duplicate plugin names unless `overwrite: true`
 - writes deterministic pretty JSON with a trailing newline
 
@@ -59,8 +62,13 @@ Behavior:
 Marketplace source paths must:
 
 - start with `./`
+- reject traversal segments such as `..`, even when the expanded path would
+  still land under the marketplace root
 - stay within the marketplace root
 - resolve relative to the root owning `.agents/plugins/marketplace.json`
+
+The root-containment check runs on read, write, and update flows when the
+actual marketplace path is known.
 
 For repo scope that means:
 

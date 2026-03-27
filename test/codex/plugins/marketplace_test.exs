@@ -132,6 +132,41 @@ defmodule Codex.Plugins.MarketplaceTest do
              Plugins.read_marketplace(marketplace_path)
   end
 
+  test "marketplace source paths reject traversal segments even when they remain under the root" do
+    temp_root = temp_root("marketplace_traversal")
+    marketplace_path = Path.join([temp_root, "repo", ".agents", "plugins", "marketplace.json"])
+
+    File.mkdir_p!(Path.dirname(marketplace_path))
+
+    File.write!(
+      marketplace_path,
+      """
+      {
+        "name": "repo-marketplace",
+        "plugins": [
+          {
+            "name": "demo-plugin",
+            "source": {
+              "source": "local",
+              "path": "./plugins/demo-plugin/../other-plugin"
+            },
+            "policy": {
+              "installation": "AVAILABLE",
+              "authentication": "ON_INSTALL"
+            },
+            "category": "Productivity"
+          }
+        ]
+      }
+      """
+    )
+
+    assert {:error,
+            {:invalid_marketplace_source_path,
+             %{source_path: "./plugins/demo-plugin/../other-plugin", path: ^marketplace_path}}} =
+             Plugins.read_marketplace(marketplace_path)
+  end
+
   defp temp_root(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end

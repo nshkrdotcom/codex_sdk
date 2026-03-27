@@ -9,6 +9,8 @@ defmodule Codex.Plugins.Manifest do
   alias Codex.Plugins.Paths
   alias Codex.Schema
 
+  @max_default_prompt_count 3
+  @max_default_prompt_length 128
   @key_mapping %{
     "mcp_servers" => "mcpServers",
     "display_name" => "displayName",
@@ -135,7 +137,7 @@ defmodule Codex.Plugins.Manifest do
 
   def parse(data) do
     data
-    |> normalize_input()
+    |> Schema.normalize_input(@key_mapping)
     |> then(&Schema.parse(schema(), &1, :invalid_plugin_manifest))
     |> project()
   end
@@ -163,19 +165,19 @@ defmodule Codex.Plugins.Manifest do
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = value) do
     %{}
-    |> maybe_put("name", value.name)
-    |> maybe_put("version", value.version)
-    |> maybe_put("description", value.description)
-    |> maybe_put("author", encode_author(value.author))
-    |> maybe_put("homepage", value.homepage)
-    |> maybe_put("repository", value.repository)
-    |> maybe_put("license", value.license)
-    |> maybe_put("keywords", value.keywords)
-    |> maybe_put("skills", value.skills)
-    |> maybe_put("hooks", value.hooks)
-    |> maybe_put("mcpServers", value.mcp_servers)
-    |> maybe_put("apps", value.apps)
-    |> maybe_put("interface", encode_interface(value.interface))
+    |> Schema.put_present("name", value.name)
+    |> Schema.put_present("version", value.version)
+    |> Schema.put_present("description", value.description)
+    |> Schema.put_present("author", encode_author(value.author))
+    |> Schema.put_present("homepage", value.homepage)
+    |> Schema.put_present("repository", value.repository)
+    |> Schema.put_present("license", value.license)
+    |> Schema.put_present("keywords", value.keywords)
+    |> Schema.put_present("skills", value.skills)
+    |> Schema.put_present("hooks", value.hooks)
+    |> Schema.put_present("mcpServers", value.mcp_servers)
+    |> Schema.put_present("apps", value.apps)
+    |> Schema.put_present("interface", encode_interface(value.interface))
     |> Schema.merge_extra(value.extra)
   end
 
@@ -209,30 +211,27 @@ defmodule Codex.Plugins.Manifest do
   @spec normalize_default_prompt(term(), keyword()) ::
           {:ok, [String.t()]} | {:error, String.t()}
   def normalize_default_prompt(value, _opts) when is_binary(value) do
-    prompt = String.trim(value)
-
-    if prompt == "" do
-      {:error, "expected a non-empty prompt string"}
-    else
+    with {:ok, prompt} <- normalize_prompt_string(value) do
       {:ok, [prompt]}
     end
   end
 
   def normalize_default_prompt(values, _opts) when is_list(values) do
-    values
-    |> Enum.reduce_while({:ok, []}, fn
-      value, {:ok, acc} when is_binary(value) ->
-        prompt = String.trim(value)
+    if length(values) > @max_default_prompt_count do
+      {:error, "expected at most #{@max_default_prompt_count} prompts"}
+    else
+      values
+      |> Enum.reduce_while({:ok, []}, fn
+        value, {:ok, acc} when is_binary(value) ->
+          case normalize_prompt_string(value) do
+            {:ok, prompt} -> {:cont, {:ok, acc ++ [prompt]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
 
-        if prompt == "" do
-          {:halt, {:error, "expected non-empty prompt strings"}}
-        else
-          {:cont, {:ok, acc ++ [prompt]}}
-        end
-
-      _value, _acc ->
-        {:halt, {:error, "expected a string or a list of strings"}}
-    end)
+        _value, _acc ->
+          {:halt, {:error, "expected a string or a list of strings"}}
+      end)
+    end
   end
 
   def normalize_default_prompt(_value, _opts),
@@ -307,9 +306,9 @@ defmodule Codex.Plugins.Manifest do
 
   defp encode_author(author) do
     %{}
-    |> maybe_put("name", author[:name])
-    |> maybe_put("email", author[:email])
-    |> maybe_put("url", author[:url])
+    |> Schema.put_present("name", author[:name])
+    |> Schema.put_present("email", author[:email])
+    |> Schema.put_present("url", author[:url])
     |> Schema.merge_extra(author[:extra] || %{})
   end
 
@@ -317,20 +316,20 @@ defmodule Codex.Plugins.Manifest do
 
   defp encode_interface(interface) do
     %{}
-    |> maybe_put("displayName", interface[:display_name])
-    |> maybe_put("shortDescription", interface[:short_description])
-    |> maybe_put("longDescription", interface[:long_description])
-    |> maybe_put("developerName", interface[:developer_name])
-    |> maybe_put("category", interface[:category])
-    |> maybe_put("capabilities", interface[:capabilities])
-    |> maybe_put("websiteURL", interface[:website_url])
-    |> maybe_put("privacyPolicyURL", interface[:privacy_policy_url])
-    |> maybe_put("termsOfServiceURL", interface[:terms_of_service_url])
-    |> maybe_put("defaultPrompt", interface[:default_prompt])
-    |> maybe_put("brandColor", interface[:brand_color])
-    |> maybe_put("composerIcon", interface[:composer_icon])
-    |> maybe_put("logo", interface[:logo])
-    |> maybe_put("screenshots", interface[:screenshots])
+    |> Schema.put_present("displayName", interface[:display_name])
+    |> Schema.put_present("shortDescription", interface[:short_description])
+    |> Schema.put_present("longDescription", interface[:long_description])
+    |> Schema.put_present("developerName", interface[:developer_name])
+    |> Schema.put_present("category", interface[:category])
+    |> Schema.put_present("capabilities", interface[:capabilities])
+    |> Schema.put_present("websiteURL", interface[:website_url])
+    |> Schema.put_present("privacyPolicyURL", interface[:privacy_policy_url])
+    |> Schema.put_present("termsOfServiceURL", interface[:terms_of_service_url])
+    |> Schema.put_present("defaultPrompt", interface[:default_prompt])
+    |> Schema.put_present("brandColor", interface[:brand_color])
+    |> Schema.put_present("composerIcon", interface[:composer_icon])
+    |> Schema.put_present("logo", interface[:logo])
+    |> Schema.put_present("screenshots", interface[:screenshots])
     |> Schema.merge_extra(interface[:extra] || %{})
   end
 
@@ -410,47 +409,23 @@ defmodule Codex.Plugins.Manifest do
     )
   end
 
-  defp normalize_input(nil), do: %{}
+  defp normalize_prompt_string(value) when is_binary(value) do
+    prompt =
+      value
+      |> String.split()
+      |> Enum.join(" ")
 
-  defp normalize_input(list) when is_list(list) do
-    if list != [] and Keyword.keyword?(list) do
-      list
-      |> Enum.into(%{})
-      |> normalize_input()
-    else
-      list
+    cond do
+      prompt == "" ->
+        {:error, "expected a non-empty prompt string"}
+
+      String.length(prompt) > @max_default_prompt_length ->
+        {:error, "expected prompts at most #{@max_default_prompt_length} characters"}
+
+      true ->
+        {:ok, prompt}
     end
   end
-
-  defp normalize_input(%{} = value) do
-    value
-    |> Enum.map(fn {key, nested_value} ->
-      {normalize_key(key), normalize_value(nested_value)}
-    end)
-    |> Map.new()
-  end
-
-  defp normalize_input(value), do: value
-
-  defp normalize_key(key) when is_atom(key), do: key |> Atom.to_string() |> normalize_key()
-  defp normalize_key(key) when is_binary(key), do: Map.get(@key_mapping, key, key)
-
-  defp normalize_value(%{} = value), do: normalize_input(value)
-
-  defp normalize_value(values) when is_list(values) do
-    if values != [] and Keyword.keyword?(values) do
-      values
-      |> Enum.into(%{})
-      |> normalize_input()
-    else
-      Enum.map(values, &normalize_value/1)
-    end
-  end
-
-  defp normalize_value(value), do: value
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp author_empty?(author) do
     Enum.all?([author[:name], author[:email], author[:url]], &is_nil/1) and author[:extra] == %{}

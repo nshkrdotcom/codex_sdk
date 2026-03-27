@@ -231,28 +231,38 @@ defmodule Codex.Plugins.Paths do
          {:ok, normalized} <- normalize_marketplace_source_path(source_path) do
       relative = String.replace_prefix(normalized, "./", "")
       expanded_root = Path.expand(root)
-      resolved_path = Path.expand(relative, expanded_root)
-      relative_to_root = Path.relative_to(resolved_path, expanded_root)
 
-      cond do
-        Path.type(relative_to_root) == :absolute ->
-          {:error,
-           Errors.invalid_marketplace_source_path(
-             marketplace_path,
-             source_path,
-             "path must stay within the marketplace root"
-           )}
+      if invalid_component?(relative) do
+        {:error,
+         Errors.invalid_marketplace_source_path(
+           marketplace_path,
+           source_path,
+           "path must stay within the marketplace root"
+         )}
+      else
+        resolved_path = Path.expand(relative, expanded_root)
+        relative_to_root = Path.relative_to(resolved_path, expanded_root)
 
-        relative_to_root == ".." or String.starts_with?(relative_to_root, "../") ->
-          {:error,
-           Errors.invalid_marketplace_source_path(
-             marketplace_path,
-             source_path,
-             "path must stay within the marketplace root"
-           )}
+        cond do
+          Path.type(relative_to_root) == :absolute ->
+            {:error,
+             Errors.invalid_marketplace_source_path(
+               marketplace_path,
+               source_path,
+               "path must stay within the marketplace root"
+             )}
 
-        true ->
-          {:ok, resolved_path}
+          relative_to_root == ".." or String.starts_with?(relative_to_root, "../") ->
+            {:error,
+             Errors.invalid_marketplace_source_path(
+               marketplace_path,
+               source_path,
+               "path must stay within the marketplace root"
+             )}
+
+          true ->
+            {:ok, resolved_path}
+        end
       end
     else
       {:error, message} when is_binary(message) ->

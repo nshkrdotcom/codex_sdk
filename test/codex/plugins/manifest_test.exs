@@ -63,4 +63,37 @@ defmodule Codex.Plugins.ManifestTest do
     assert ["interface", "logo"] in issue_paths
     assert ["interface", "screenshots", 1] in issue_paths
   end
+
+  test "defaultPrompt enforces the upstream stable length and count limits" do
+    too_many_prompts = [
+      "Summarize the inbox",
+      "Draft a reply",
+      "Create follow-up tasks",
+      "One prompt too many"
+    ]
+
+    assert {:error, {:invalid_plugin_manifest, details}} =
+             Manifest.parse(%{
+               "name" => "demo-plugin",
+               "interface" => %{"defaultPrompt" => too_many_prompts}
+             })
+
+    assert Enum.any?(details.issues, fn issue ->
+             issue.path == ["interface", "defaultPrompt"] and
+               String.contains?(issue.message, "at most 3 prompts")
+           end)
+
+    overlong_prompt = String.duplicate("a", 129)
+
+    assert {:error, {:invalid_plugin_manifest, details}} =
+             Manifest.parse(%{
+               "name" => "demo-plugin",
+               "interface" => %{"defaultPrompt" => [overlong_prompt]}
+             })
+
+    assert Enum.any?(details.issues, fn issue ->
+             issue.path == ["interface", "defaultPrompt"] and
+               String.contains?(issue.message, "at most 128 characters")
+           end)
+  end
 end
