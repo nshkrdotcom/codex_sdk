@@ -287,6 +287,26 @@ defmodule Codex.RateLimitTest do
   end
 
   describe "snapshot parsing" do
+    test "parses nested camelCase snapshot fields through the schema boundary" do
+      snapshot =
+        RateLimitSnapshot.Snapshot.from_map(%{
+          "primary" => %{"usedPercent" => 10.0, "windowMinutes" => 5},
+          "credits" => %{"hasCredits" => true, "isUnlimited" => false, "balance" => "$12"}
+        })
+
+      assert %RateLimitSnapshot.Snapshot{
+               primary: %RateLimitSnapshot.Window{
+                 used_percent: 10.0,
+                 window_minutes: 5
+               },
+               credits: %RateLimitSnapshot.CreditsSnapshot{
+                 has_credits: true,
+                 unlimited: false,
+                 balance: "$12"
+               }
+             } = snapshot
+    end
+
     test "parses rate limit snapshots on token usage events" do
       event =
         Events.parse!(%{

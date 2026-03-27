@@ -229,7 +229,16 @@ defmodule Codex.Protocol.RateLimit do
 
     @type plan_type :: :plus | :pro | :team | :enterprise | :api | nil
 
-    @key_mapping %{"planType" => "plan_type"}
+    @key_mapping %{
+      "planType" => "plan_type",
+      "usedPercent" => "used_percent",
+      "windowMinutes" => "window_minutes",
+      "windowDurationMins" => "window_minutes",
+      "window_duration_mins" => "window_minutes",
+      "resetsAt" => "resets_at",
+      "hasCredits" => "has_credits",
+      "isUnlimited" => "unlimited"
+    }
     @known_fields ["primary", "secondary", "credits", "plan_type"]
     @schema Zoi.map(
               %{
