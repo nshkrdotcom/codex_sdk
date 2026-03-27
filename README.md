@@ -188,9 +188,10 @@ The SDK does not infer those flags on its own.
 - CLI argument rendering only emits `--model` from a non-empty resolved value
 
 If `ollama_base_url:` is supplied, that endpoint is carried inside the
-payload-owned env overrides as `CODEX_OSS_BASE_URL`. The exec and app-server
-transports both consume that payload data directly instead of keeping a second
-raw base-url path alive downstream.
+payload-owned env overrides as `CODEX_OSS_BASE_URL`. Raw Ollama roots are
+normalized to the OpenAI-compatible `/v1` base before those env overrides are
+emitted. The exec and app-server transports both consume that payload data
+directly instead of keeping a second raw base-url path alive downstream.
 
 When the chosen local model is outside Codex's built-in model metadata catalog,
 the upstream CLI may warn that it is using fallback metadata. That is an

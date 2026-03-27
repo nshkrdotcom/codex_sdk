@@ -228,8 +228,9 @@ That matters most on the local Ollama route:
 - conflicting raw attrs fail during normalization instead of being silently
   reinterpreted in the SDK
 - a custom Codex/Ollama base URL is carried inside payload env overrides as
-  `CODEX_OSS_BASE_URL`, so exec and app-server transports can rely on the
-  payload alone after normalization
+  `CODEX_OSS_BASE_URL`. Raw Ollama roots are normalized to the
+  OpenAI-compatible `/v1` base, so exec and app-server transports can rely on
+  the payload alone after normalization
 
 `connect/2` also accepts `oauth:` for child-auth-aware startup:
 
