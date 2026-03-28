@@ -9,19 +9,31 @@ defmodule Codex.AppServer.ApiTest do
   alias Codex.TestSupport.AppServerSubprocess
 
   setup do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{api_key: "test"})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(harness),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(harness, conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})
+      )
+
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -49,12 +61,10 @@ defmodule Codex.AppServer.ApiTest do
              %{"type" => "localImage", "path" => "/tmp/a.png"}
            ] = params["input"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -83,12 +93,10 @@ defmodule Codex.AppServer.ApiTest do
              "networkAccess" => true
            } = params["sandboxPolicy"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -111,9 +119,8 @@ defmodule Codex.AppServer.ApiTest do
     assert params["history"] == history
     assert params["path"] == "/tmp/rollout.jsonl"
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(task, 200)
@@ -129,7 +136,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params["personality"] == "none"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
@@ -145,7 +152,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["personality"] == "none"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
@@ -163,7 +170,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert start_params["approvalsReviewer"] == "guardian_subagent"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
 
     resume_task =
@@ -179,7 +186,7 @@ defmodule Codex.AppServer.ApiTest do
     assert resume_params["threadId"] == "thr_1"
     assert resume_params["approvalsReviewer"] == "user"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(resume_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
   end
 
@@ -215,7 +222,7 @@ defmodule Codex.AppServer.ApiTest do
              }
            }
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(thread_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(thread_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(thread_task, 200)
 
     turn_task =
@@ -231,12 +238,10 @@ defmodule Codex.AppServer.ApiTest do
     assert turn_params["threadId"] == "thr_1"
     assert turn_params["approvalPolicy"] == thread_params["approvalPolicy"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(turn_task, 200)
@@ -268,9 +273,8 @@ defmodule Codex.AppServer.ApiTest do
              }
            }
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(req_id, %{"enablement" => params["enablement"]})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{"enablement" => params["enablement"]})
     )
 
     assert {:ok, %{"enablement" => %{"apps" => true, "plugins" => false}}} =
@@ -296,7 +300,7 @@ defmodule Codex.AppServer.ApiTest do
             }} =
              Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"enablement" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"enablement" => %{}}))
 
     assert {:ok, %{"enablement" => %{}}} = Task.await(task, 200)
   end
@@ -327,7 +331,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["path"] == "/tmp/rollout.jsonl"
     assert params["model"] == "gpt-5.1-codex"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
@@ -349,7 +353,7 @@ defmodule Codex.AppServer.ApiTest do
     refute Map.has_key?(params, "baseInstructions")
     refute Map.has_key?(params, "developerInstructions")
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
@@ -373,7 +377,7 @@ defmodule Codex.AppServer.ApiTest do
     assert start_params["serviceName"] == "codex-elixir-tests"
     assert start_params["serviceTier"] == "flex"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
 
     resume_task =
@@ -389,7 +393,7 @@ defmodule Codex.AppServer.ApiTest do
     assert resume_params["threadId"] == "thr_1"
     assert resume_params["serviceTier"] == "priority"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(resume_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
 
     fork_task =
@@ -406,7 +410,7 @@ defmodule Codex.AppServer.ApiTest do
     assert fork_params["ephemeral"] == true
     assert fork_params["serviceTier"] == "auto"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(fork_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(fork_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
   end
 
@@ -421,7 +425,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["numTurns"] == 2
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "ok"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "ok"}))
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
@@ -437,7 +441,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["includeTurns"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
@@ -453,7 +457,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["cursor"] == "cursor"
     assert params["limit"] == 10
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -481,7 +485,7 @@ defmodule Codex.AppServer.ApiTest do
     assert list_params["cwd"] == "/tmp/project"
     assert list_params["searchTerm"] == "checkout"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(list_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(list_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(list_task, 200)
 
     unsubscribe_task = Task.async(fn -> AppServer.thread_unsubscribe(conn, "thr_1") end)
@@ -494,9 +498,8 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1"}
             }} = Jason.decode(unsubscribe_line)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(unsubscribe_id, %{"status" => "unsubscribed"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(unsubscribe_id, %{"status" => "unsubscribed"})
     )
 
     assert {:ok, %{"status" => "unsubscribed"}} = Task.await(unsubscribe_task, 200)
@@ -511,7 +514,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1", "name" => "Renamed"}
             }} = Jason.decode(rename_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(rename_id, %{"status" => "ok"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(rename_id, %{"status" => "ok"}))
     assert {:ok, %{"status" => "ok"}} = Task.await(rename_task, 200)
 
     metadata_task =
@@ -533,9 +536,8 @@ defmodule Codex.AppServer.ApiTest do
     assert metadata_params["threadId"] == "thr_1"
     assert metadata_params["gitInfo"] == %{"sha" => nil, "branch" => "main", "originUrl" => nil}
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(metadata_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(metadata_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(metadata_task, 200)
@@ -550,9 +552,8 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1"}
             }} = Jason.decode(unarchive_line)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(unarchive_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(unarchive_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(unarchive_task, 200)
@@ -569,7 +570,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["path"] == "/tmp/skill"
     assert params["enabled"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "ok"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "ok"}))
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
@@ -582,7 +583,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => req_id, "method" => "configRequirements/read"}} =
              Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -595,7 +596,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => req_id, "method" => "collaborationMode/list"}} =
              Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -611,7 +612,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["cursor"] == "c1"
     assert params["limit"] == 2
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -630,7 +631,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["forceRefetch"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
@@ -649,7 +650,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params["sourceKinds"] == ["appServer", "subAgent", "subAgentThreadSpawn"]
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -666,7 +667,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["sortKey"] == "updated_at"
     assert params["archived"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -705,12 +706,10 @@ defmodule Codex.AppServer.ApiTest do
              }
            } = params["collaborationMode"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -744,12 +743,10 @@ defmodule Codex.AppServer.ApiTest do
            } =
              params["collaborationMode"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -770,12 +767,10 @@ defmodule Codex.AppServer.ApiTest do
              %{"type" => "mention", "name" => "@docs", "path" => "app://docs"}
            ]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(start_task, 200)
@@ -794,7 +789,7 @@ defmodule Codex.AppServer.ApiTest do
     assert steer_params["expectedTurnId"] == "turn_1"
     assert steer_params["input"] == [%{"type" => "text", "text" => "continue"}]
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(steer_id, %{"turnId" => "turn_1"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(steer_id, %{"turnId" => "turn_1"}))
     assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
   end
 
@@ -808,12 +803,10 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params["personality"] == "none"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -830,12 +823,10 @@ defmodule Codex.AppServer.ApiTest do
     assert params["threadId"] == "thr_1"
     assert params["serviceTier"] == "flex"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
@@ -852,7 +843,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["cwds"] == ["/tmp"]
     assert params["forceReload"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
@@ -877,7 +868,7 @@ defmodule Codex.AppServer.ApiTest do
              %{"cwd" => "/tmp/project", "extraUserRoots" => ["/tmp/skills"]}
            ]
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(skills_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(skills_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(skills_task, 200)
 
     remote_list_task =
@@ -904,7 +895,7 @@ defmodule Codex.AppServer.ApiTest do
              "enabled" => true
            }
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(remote_list_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(remote_list_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(remote_list_task, 200)
 
     remote_export_task = Task.async(fn -> AppServer.skills_remote_export(conn, "hz_1") end)
@@ -917,7 +908,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"hazelnutId" => "hz_1"}
             }} = Jason.decode(remote_export_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(remote_export_id, %{"id" => "hz_1"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(remote_export_id, %{"id" => "hz_1"}))
     assert {:ok, %{"id" => "hz_1"}} = Task.await(remote_export_task, 200)
 
     plugin_list_task =
@@ -934,9 +925,8 @@ defmodule Codex.AppServer.ApiTest do
     assert plugin_list_params["cwds"] == ["/tmp/project"]
     assert plugin_list_params["forceRemoteSync"] == true
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})
     )
 
     assert {:ok, %{"marketplaces" => []}} = Task.await(plugin_list_task, 200)
@@ -953,9 +943,8 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"marketplacePath" => "/tmp/market", "pluginName" => "demo-plugin"}
             }} = Jason.decode(install_line)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(install_id, %{"appsNeedingAuth" => []})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(install_id, %{"appsNeedingAuth" => []})
     )
 
     assert {:ok, %{"appsNeedingAuth" => []}} = Task.await(install_task, 200)
@@ -970,7 +959,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"pluginId" => "plugin_1"}
             }} = Jason.decode(uninstall_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(uninstall_id, %{}))
     assert {:ok, %{}} = Task.await(uninstall_task, 200)
 
     install_sync_task =
@@ -991,7 +980,7 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(install_sync_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(install_sync_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(install_sync_id, %{}))
     assert {:ok, %{}} = Task.await(install_sync_task, 200)
 
     uninstall_sync_task =
@@ -1008,7 +997,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"pluginId" => "plugin_1", "forceRemoteSync" => true}
             }} = Jason.decode(uninstall_sync_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_sync_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(uninstall_sync_id, %{}))
     assert {:ok, %{}} = Task.await(uninstall_sync_task, 200)
 
     plugin_read_task =
@@ -1026,7 +1015,7 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(plugin_read_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(plugin_read_id, %{"plugin" => %{}})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(plugin_read_id, %{"plugin" => %{}}))
     assert {:ok, %{"plugin" => %{}}} = Task.await(plugin_read_task, 200)
 
     experimental_task =
@@ -1041,7 +1030,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"cursor" => "cur", "limit" => 5}
             }} = Jason.decode(experimental_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(experimental_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(experimental_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(experimental_task, 200)
   end
 
@@ -1075,27 +1064,25 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(request_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "plugin" => %{
-           "marketplaceName" => "codex-curated",
-           "marketplacePath" => "/tmp/marketplace.json",
-           "summary" => %{
-             "id" => "demo-plugin@codex-curated",
-             "name" => "demo-plugin",
-             "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
-             "installed" => false,
-             "enabled" => false,
-             "installPolicy" => "AVAILABLE",
-             "authPolicy" => "ON_INSTALL"
-           },
-           "skills" => [],
-           "apps" => [],
-           "mcpServers" => []
-         }
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "plugin" => %{
+          "marketplaceName" => "codex-curated",
+          "marketplacePath" => "/tmp/marketplace.json",
+          "summary" => %{
+            "id" => "demo-plugin@codex-curated",
+            "name" => "demo-plugin",
+            "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+            "installed" => false,
+            "enabled" => false,
+            "installPolicy" => "AVAILABLE",
+            "authPolicy" => "ON_INSTALL"
+          },
+          "skills" => [],
+          "apps" => [],
+          "mcpServers" => []
+        }
+      })
     )
 
     assert {:ok, %Plugin.ReadResponse{plugin: %Plugin.Detail{marketplace_name: "codex-curated"}}} =
@@ -1126,7 +1113,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"cursor" => "cur"}
             }} = Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %Plugin.UninstallResponse{extra: %{"data" => []}}} = Task.await(task, 200)
   end
@@ -1150,7 +1137,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert {:ok, %{"id" => req_id, "method" => "plugin/list"}} = Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"marketplaces" => "bad"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"marketplaces" => "bad"}))
 
     assert {:error, {:invalid_plugin_list_response, details}} = Task.await(task, 200)
     assert is_binary(details.message)
@@ -1177,28 +1164,26 @@ defmodule Codex.AppServer.ApiTest do
 
     assert {:ok, %{"id" => req_id, "method" => "plugin/list"}} = Jason.decode(request_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "marketplaces" => [
-           %{
-             "name" => "codex-curated",
-             "path" => "/tmp/marketplace.json",
-             "plugins" => [
-               %{
-                 "id" => "demo-plugin@codex-curated",
-                 "name" => "demo-plugin",
-                 "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
-                 "installed" => "yes",
-                 "enabled" => true,
-                 "installPolicy" => "AVAILABLE",
-                 "authPolicy" => "ON_INSTALL"
-               }
-             ]
-           }
-         ]
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "marketplaces" => [
+          %{
+            "name" => "codex-curated",
+            "path" => "/tmp/marketplace.json",
+            "plugins" => [
+              %{
+                "id" => "demo-plugin@codex-curated",
+                "name" => "demo-plugin",
+                "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+                "installed" => "yes",
+                "enabled" => true,
+                "installPolicy" => "AVAILABLE",
+                "authPolicy" => "ON_INSTALL"
+              }
+            ]
+          }
+        ]
+      })
     )
 
     assert {:error, {:invalid_plugin_list_response, details}} = Task.await(task, 200)
@@ -1225,9 +1210,8 @@ defmodule Codex.AppServer.ApiTest do
     assert plugin_list_params["cwds"] == ["/tmp/project"]
     assert plugin_list_params["forceRemoteSync"] == true
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})
     )
 
     assert {:ok, %Plugin.ListResponse{marketplaces: []}} = Task.await(plugin_list_task, 200)
@@ -1252,13 +1236,11 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(install_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(install_id, %{
-         "authPolicy" => "ON_INSTALL",
-         "appsNeedingAuth" => []
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(install_id, %{
+        "authPolicy" => "ON_INSTALL",
+        "appsNeedingAuth" => []
+      })
     )
 
     assert {:ok, %Plugin.InstallResponse{auth_policy: :on_install, apps_needing_auth: []}} =
@@ -1278,7 +1260,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"pluginId" => "plugin_1", "forceRemoteSync" => true}
             }} = Jason.decode(uninstall_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(uninstall_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(uninstall_id, %{}))
     assert {:ok, %Plugin.UninstallResponse{}} = Task.await(uninstall_task, 200)
 
     plugin_read_task =
@@ -1298,27 +1280,25 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(plugin_read_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(plugin_read_id, %{
-         "plugin" => %{
-           "marketplaceName" => "codex-curated",
-           "marketplacePath" => "/tmp/marketplace.json",
-           "summary" => %{
-             "id" => "demo-plugin@codex-curated",
-             "name" => "demo-plugin",
-             "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
-             "installed" => false,
-             "enabled" => false,
-             "installPolicy" => "AVAILABLE",
-             "authPolicy" => "ON_INSTALL"
-           },
-           "skills" => [],
-           "apps" => [],
-           "mcpServers" => []
-         }
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(plugin_read_id, %{
+        "plugin" => %{
+          "marketplaceName" => "codex-curated",
+          "marketplacePath" => "/tmp/marketplace.json",
+          "summary" => %{
+            "id" => "demo-plugin@codex-curated",
+            "name" => "demo-plugin",
+            "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+            "installed" => false,
+            "enabled" => false,
+            "installPolicy" => "AVAILABLE",
+            "authPolicy" => "ON_INSTALL"
+          },
+          "skills" => [],
+          "apps" => [],
+          "mcpServers" => []
+        }
+      })
     )
 
     assert {:ok, %Plugin.ReadResponse{plugin: %Plugin.Detail{marketplace_name: "codex-curated"}}} =
@@ -1340,7 +1320,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1", "command" => "git status --short"}
             }} = Jason.decode(request_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{}))
     assert {:ok, %{}} = Task.await(task, 200)
   end
 
@@ -1365,7 +1345,7 @@ defmodule Codex.AppServer.ApiTest do
     assert params["roots"] == ["/tmp"]
     assert params["cancellationToken"] == "tok-1"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"files" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"files" => []}))
 
     assert {:ok, %{"files" => []}} = Task.await(task, 200)
   end
@@ -1381,9 +1361,8 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo.txt"}
             }} = Jason.decode(read_line)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(read_id, %{"dataBase64" => "aGVsbG8="})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(read_id, %{"dataBase64" => "aGVsbG8="})
     )
 
     assert {:ok, %{"dataBase64" => "aGVsbG8="}} = Task.await(read_task, 200)
@@ -1400,7 +1379,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo.txt", "dataBase64" => "aGVsbG8="}
             }} = Jason.decode(write_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(write_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(write_id, %{}))
     assert {:ok, %{}} = Task.await(write_task, 200)
 
     create_task =
@@ -1417,7 +1396,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo/nested", "recursive" => true}
             }} = Jason.decode(create_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(create_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(create_id, %{}))
     assert {:ok, %{}} = Task.await(create_task, 200)
 
     metadata_task = Task.async(fn -> AppServer.fs_get_metadata(conn, "/tmp/demo.txt") end)
@@ -1430,15 +1409,13 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo.txt"}
             }} = Jason.decode(metadata_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(metadata_id, %{
-         "isDirectory" => false,
-         "isFile" => true,
-         "createdAtMs" => 1,
-         "modifiedAtMs" => 2
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(metadata_id, %{
+        "isDirectory" => false,
+        "isFile" => true,
+        "createdAtMs" => 1,
+        "modifiedAtMs" => 2
+      })
     )
 
     assert {:ok,
@@ -1459,14 +1436,12 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo"}
             }} = Jason.decode(read_directory_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(read_directory_id, %{
-         "entries" => [
-           %{"fileName" => "demo.txt", "isDirectory" => false, "isFile" => true}
-         ]
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(read_directory_id, %{
+        "entries" => [
+          %{"fileName" => "demo.txt", "isDirectory" => false, "isFile" => true}
+        ]
+      })
     )
 
     assert {:ok,
@@ -1486,7 +1461,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"path" => "/tmp/demo", "recursive" => true, "force" => true}
             }} = Jason.decode(remove_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(remove_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(remove_id, %{}))
     assert {:ok, %{}} = Task.await(remove_task, 200)
 
     copy_task =
@@ -1507,7 +1482,7 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(copy_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(copy_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(copy_id, %{}))
     assert {:ok, %{}} = Task.await(copy_task, 200)
   end
 
@@ -1527,7 +1502,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"sessionId" => "sess_1", "roots" => ["/tmp"]}
             }} = Jason.decode(start_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(start_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{}))
     assert {:ok, %{}} = Task.await(start_task, 200)
 
     update_task =
@@ -1542,7 +1517,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"sessionId" => "sess_1", "query" => "readme"}
             }} = Jason.decode(update_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(update_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(update_id, %{}))
     assert {:ok, %{}} = Task.await(update_task, 200)
 
     stop_task = Task.async(fn -> AppServer.fuzzy_file_search_session_stop(conn, "sess_1") end)
@@ -1555,7 +1530,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"sessionId" => "sess_1"}
             }} = Jason.decode(stop_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(stop_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(stop_id, %{}))
     assert {:ok, %{}} = Task.await(stop_task, 200)
   end
 
@@ -1574,15 +1549,13 @@ defmodule Codex.AppServer.ApiTest do
     assert params["value"] == true
     assert params["mergeStrategy"] == "upsert"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "status" => "ok",
-         "version" => "v1",
-         "filePath" => "/tmp/config.toml",
-         "overriddenMetadata" => nil
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "status" => "ok",
+        "version" => "v1",
+        "filePath" => "/tmp/config.toml",
+        "overriddenMetadata" => nil
+      })
     )
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
@@ -1608,7 +1581,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert batch_params["reloadUserConfig"] == true
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(batch_id, %{"status" => "ok"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(batch_id, %{"status" => "ok"}))
     assert {:ok, %{"status" => "ok"}} = Task.await(batch_task, 200)
 
     detect_task =
@@ -1625,7 +1598,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"includeHome" => true, "cwds" => ["/tmp/project"]}
             }} = Jason.decode(detect_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(detect_id, %{"items" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(detect_id, %{"items" => []}))
     assert {:ok, %{"items" => []}} = Task.await(detect_task, 200)
 
     import_task =
@@ -1648,7 +1621,7 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(import_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(import_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(import_id, %{}))
     assert {:ok, %{}} = Task.await(import_task, 200)
   end
 
@@ -1674,7 +1647,7 @@ defmodule Codex.AppServer.ApiTest do
     refute Map.has_key?(params, "threadId")
     refute Map.has_key?(params, "yieldTimeMs")
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "ok"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "ok"}))
 
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
@@ -1720,10 +1693,8 @@ defmodule Codex.AppServer.ApiTest do
              "writableRoots" => ["/tmp"]
            }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(exec_id, %{"exitCode" => 0, "stdout" => "", "stderr" => ""})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(exec_id, %{"exitCode" => 0, "stdout" => "", "stderr" => ""})
     )
 
     assert {:ok, %{"exitCode" => 0}} = Task.await(exec_task, 200)
@@ -1747,7 +1718,7 @@ defmodule Codex.AppServer.ApiTest do
             }} = Jason.decode(write_line)
 
     assert write_delta == Base.encode64("abc")
-    send(conn, {:stdout, os_pid, Protocol.encode_response(write_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(write_id, %{}))
     assert {:ok, %{}} = Task.await(write_task, 200)
 
     terminate_task = Task.async(fn -> AppServer.command_exec_terminate(conn, "proc_1") end)
@@ -1760,7 +1731,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"processId" => "proc_1"}
             }} = Jason.decode(terminate_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(terminate_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(terminate_id, %{}))
     assert {:ok, %{}} = Task.await(terminate_task, 200)
 
     resize_task =
@@ -1775,7 +1746,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"processId" => "proc_1", "size" => %{"rows" => 40, "cols" => 120}}
             }} = Jason.decode(resize_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(resize_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resize_id, %{}))
     assert {:ok, %{}} = Task.await(resize_task, 200)
   end
 
@@ -1792,7 +1763,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params1 == %{"type" => "apiKey", "apiKey" => "sk-test"}
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id1, %{"type" => "apiKey"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id1, %{"type" => "apiKey"}))
     assert {:ok, %{"type" => "apiKey"}} = Task.await(task1, 200)
 
     task2 = Task.async(fn -> AppServer.Account.login_start(conn, :chatgpt) end)
@@ -1804,14 +1775,12 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params2 == %{"type" => "chatgpt"}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id2, %{
-         "type" => "chatgpt",
-         "loginId" => "login_1",
-         "authUrl" => "https://example.com"
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id2, %{
+        "type" => "chatgpt",
+        "loginId" => "login_1",
+        "authUrl" => "https://example.com"
+      })
     )
 
     assert {:ok, %{"type" => "chatgpt"}} = Task.await(task2, 200)
@@ -1838,9 +1807,8 @@ defmodule Codex.AppServer.ApiTest do
              "chatgptPlanType" => "pro"
            }
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(req_id3, %{"type" => "chatgptAuthTokens"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id3, %{"type" => "chatgptAuthTokens"})
     )
 
     assert {:ok, %{"type" => "chatgptAuthTokens"}} = Task.await(task3, 200)
@@ -1860,7 +1828,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"includeHidden" => true, "limit" => 3}
             }} = Jason.decode(model_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(model_id, %{"data" => []})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(model_id, %{"data" => []}))
     assert {:ok, %{"data" => []}} = Task.await(model_task, 200)
 
     realtime_start_task =
@@ -1877,7 +1845,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1", "prompt" => "Listen", "sessionId" => "rt_1"}
             }} = Jason.decode(realtime_start_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_start_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(realtime_start_id, %{}))
     assert {:ok, %{}} = Task.await(realtime_start_task, 200)
 
     realtime_audio_task =
@@ -1907,7 +1875,7 @@ defmodule Codex.AppServer.ApiTest do
               }
             }} = Jason.decode(realtime_audio_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_audio_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(realtime_audio_id, %{}))
     assert {:ok, %{}} = Task.await(realtime_audio_task, 200)
 
     realtime_text_task =
@@ -1922,7 +1890,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1", "text" => "hello"}
             }} = Jason.decode(realtime_text_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_text_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(realtime_text_id, %{}))
     assert {:ok, %{}} = Task.await(realtime_text_task, 200)
 
     realtime_stop_task = Task.async(fn -> AppServer.thread_realtime_stop(conn, "thr_1") end)
@@ -1935,7 +1903,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"threadId" => "thr_1"}
             }} = Jason.decode(realtime_stop_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(realtime_stop_id, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(realtime_stop_id, %{}))
     assert {:ok, %{}} = Task.await(realtime_stop_task, 200)
 
     windows_task =
@@ -1950,7 +1918,7 @@ defmodule Codex.AppServer.ApiTest do
               "params" => %{"mode" => "unelevated", "cwd" => "/tmp"}
             }} = Jason.decode(windows_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(windows_id, %{"started" => true})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(windows_id, %{"started" => true}))
     assert {:ok, %{"started" => true}} = Task.await(windows_task, 200)
   end
 
@@ -1970,10 +1938,7 @@ defmodule Codex.AppServer.ApiTest do
                 "params" => %{"threadId" => "thr_123"}
               }} = Jason.decode(request_line)
 
-      send(
-        conn,
-        {:stdout, os_pid, Protocol.encode_response(req_id, %{"status" => "started"})}
-      )
+      AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "started"}))
 
       assert {:ok, %{"status" => "started"}} = Task.await(task, 200)
     end

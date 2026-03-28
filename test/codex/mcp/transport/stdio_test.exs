@@ -1,168 +1,128 @@
 defmodule Codex.MCP.Transport.StdioTest do
   use ExUnit.Case, async: false
 
-  alias CliSubprocessCore.RawSession
-  alias CliSubprocessCore.Transport.Info
+  alias CliSubprocessCore.ProtocolSession
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.MCP.Transport.Stdio
+  alias Codex.TestSupport.AppServerSubprocess
 
-  defmodule FakeTransport do
-    @behaviour Codex.IO.Transport
-    use GenServer
+  test "recv waiters are drained when the protocol session exits" do
+    harness = AppServerSubprocess.new!(owner: self())
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
 
-    import Kernel, except: [send: 2]
-
-    @impl true
-    def start(opts), do: GenServer.start(__MODULE__, opts)
-
-    @impl true
-    def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
-
-    @impl true
-    def send(_pid, _message), do: :ok
-
-    @impl true
-    def subscribe(pid, subscriber) when is_pid(subscriber),
-      do: subscribe(pid, subscriber, :legacy)
-
-    @impl true
-    def subscribe(pid, subscriber, tag) when is_pid(subscriber),
-      do: GenServer.call(pid, {:subscribe, subscriber, tag})
-
-    @impl true
-    def close(pid) when is_pid(pid) do
-      GenServer.stop(pid, :normal)
-    catch
-      :exit, _ -> :ok
-    end
-
-    @impl true
-    def force_close(pid) when is_pid(pid) do
-      GenServer.stop(pid, :normal)
-      :ok
-    catch
-      :exit, _ -> :ok
-    end
-
-    @impl true
-    def interrupt(_pid), do: :ok
-
-    @impl true
-    def status(pid) when is_pid(pid) do
-      if Process.alive?(pid), do: :connected, else: :disconnected
-    end
-
-    @impl true
-    def end_input(_pid), do: :ok
-
-    @impl true
-    def stderr(pid) when is_pid(pid), do: GenServer.call(pid, :stderr)
-
-    def info(pid) when is_pid(pid), do: GenServer.call(pid, :info)
-
-    def emit_exit(pid, reason) when is_pid(pid), do: GenServer.cast(pid, {:emit_exit, reason})
-
-    @impl true
-    def init(opts) do
-      owner = Keyword.fetch!(opts, :owner)
-      subscriber = Keyword.fetch!(opts, :subscriber)
-      Kernel.send(owner, {:stdio_fake_started, self(), subscriber})
-      {:ok, %{opts: opts, stderr: Keyword.get(opts, :stderr, ""), subscriber: subscriber}}
-    end
-
-    @impl true
-    def handle_call({:subscribe, pid, tag}, _from, state) do
-      {:reply, :ok, %{state | subscriber: {pid, tag}}}
-    end
-
-    def handle_call(:stderr, _from, state) do
-      {:reply, state.stderr, state}
-    end
-
-    def handle_call(:info, _from, state) do
-      {:reply,
-       %Info{
-         invocation: Keyword.get(state.opts, :command),
-         pid: self(),
-         os_pid: System.unique_integer([:positive]),
-         status: :connected,
-         stdout_mode: Keyword.get(state.opts, :stdout_mode, :line),
-         stdin_mode: Keyword.get(state.opts, :stdin_mode, :line),
-         pty?: Keyword.get(state.opts, :pty?, false),
-         interrupt_mode: Keyword.get(state.opts, :interrupt_mode, :signal),
-         stderr: state.stderr
-       }, state}
-    end
-
-    @impl true
-    def handle_cast({:emit_exit, reason}, %{subscriber: {pid, tag}} = state)
-        when is_reference(tag) do
-      Kernel.send(pid, {:codex_io_transport, tag, {:exit, reason}})
-      {:noreply, state}
-    end
-
-    def handle_cast({:emit_exit, reason}, %{subscriber: pid} = state) do
-      Kernel.send(pid, {:transport_exit, reason})
-      {:noreply, state}
-    end
-  end
-
-  test "recv waiters are drained when transport exits" do
     {:ok, transport} =
       Stdio.start_link(
-        command: "mock",
-        transport: {FakeTransport, owner: self()}
+        command: AppServerSubprocess.command_path(harness),
+        env: AppServerSubprocess.process_env(harness)
       )
 
-    assert_receive {:stdio_fake_started, fake_transport, {^transport, ref}}
-                   when is_pid(fake_transport) and is_reference(ref)
+    :ok = AppServerSubprocess.attach(harness, transport)
 
     waiter = Task.async(fn -> Stdio.recv(transport, 5_000) end)
     wait_for_waiter(transport)
     monitor_ref = Process.monitor(transport)
 
-    FakeTransport.emit_exit(fake_transport, {:exit_status, 9})
+    :ok = AppServerSubprocess.exit(harness, 9)
 
-    assert Task.await(waiter, 500) == {:error, :closed}
-    assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 500
+    assert Task.await(waiter, 1_000) == {:error, :closed}
+    assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 1_000
     refute Process.alive?(transport)
   end
 
-  test "transport start options include the codex event tag contract" do
+  test "runtime is backed by ProtocolSession with line stdout and raw stdin" do
+    harness = AppServerSubprocess.new!(owner: self())
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
     {:ok, transport} =
       Stdio.start_link(
-        command: "mock",
-        transport: {FakeTransport, owner: self()}
+        command: AppServerSubprocess.command_path(harness),
+        env: AppServerSubprocess.process_env(harness)
       )
 
-    assert_receive {:stdio_fake_started, fake_transport, {^transport, _ref}}
-                   when is_pid(fake_transport)
-
-    assert %{opts: start_opts} = :sys.get_state(fake_transport)
-    assert start_opts[:event_tag] == :codex_io_transport
-  end
-
-  test "runtime is backed by a raw session with line stdout and raw stdin" do
-    {:ok, transport} =
-      Stdio.start_link(
-        command: "mock",
-        transport: {FakeTransport, owner: self()}
-      )
-
-    assert_receive {:stdio_fake_started, fake_transport, {^transport, _ref}}
-                   when is_pid(fake_transport)
-
-    assert %{opts: start_opts} = :sys.get_state(fake_transport)
-    assert start_opts[:stdout_mode] == :line
-    assert start_opts[:stdin_mode] == :raw
-
-    assert %{raw_session: %RawSession{} = raw_session} = :sys.get_state(transport)
-    assert raw_session.event_tag == :codex_io_transport
+    assert %{session: session} = :sys.get_state(transport)
+    assert %{phase: :ready, channel: %{raw_session: raw_session}} = ProtocolSession.info(session)
     assert raw_session.stdout_mode == :line
     assert raw_session.stdin_mode == :raw
   end
 
+  test "stdio requests and notifications run over fake SSH" do
+    harness = AppServerSubprocess.new!(owner: self())
+    fake_ssh = FakeSSH.new!()
+
+    on_exit(fn ->
+      AppServerSubprocess.cleanup(harness)
+      FakeSSH.cleanup(fake_ssh)
+    end)
+
+    {:ok, transport} =
+      Stdio.start_link(
+        command: AppServerSubprocess.command_path(harness),
+        env: AppServerSubprocess.process_env(harness),
+        execution_surface: [
+          surface_kind: :static_ssh,
+          transport_options:
+            FakeSSH.transport_options(fake_ssh,
+              destination: "mcp-stdio.test.example",
+              port: 2222
+            )
+        ]
+      )
+
+    :ok = AppServerSubprocess.attach(harness, transport)
+
+    assert :ok =
+             Stdio.send(transport, %{
+               "jsonrpc" => "2.0",
+               "id" => "req-1",
+               "method" => "tools/list",
+               "params" => %{"cursor" => nil}
+             })
+
+    assert_receive {:app_server_subprocess_send, ^transport, request_line}, 1_000
+
+    assert {:ok,
+            %{
+              "jsonrpc" => "2.0",
+              "id" => "req-1",
+              "method" => "tools/list",
+              "params" => %{"cursor" => nil}
+            }} = Jason.decode(request_line)
+
+    :ok =
+      AppServerSubprocess.send_stdout(
+        harness,
+        Jason.encode!(%{
+          "jsonrpc" => "2.0",
+          "id" => "req-1",
+          "result" => %{"data" => []}
+        }) <> "\n"
+      )
+
+    assert {:ok, %{"id" => "req-1", "result" => %{"data" => []}}} = Stdio.recv(transport, 1_000)
+
+    :ok =
+      AppServerSubprocess.send_stdout(
+        harness,
+        Jason.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "notifications/ping",
+          "params" => %{"ts" => 1}
+        }) <> "\n"
+      )
+
+    assert {:ok,
+            %{
+              "jsonrpc" => "2.0",
+              "method" => "notifications/ping",
+              "params" => %{"ts" => 1}
+            }} = Stdio.recv(transport, 1_000)
+
+    assert FakeSSH.wait_until_written(fake_ssh, 1_000) == :ok
+    assert FakeSSH.read_manifest!(fake_ssh) =~ "destination=mcp-stdio.test.example"
+  end
+
   defp wait_for_waiter(transport) do
-    start = System.monotonic_time(:millisecond)
+    started = System.monotonic_time(:millisecond)
 
     wait_until(
       fn ->
@@ -171,21 +131,19 @@ defmodule Codex.MCP.Transport.StdioTest do
           _ -> false
         end
       end,
-      start
+      started
     )
   end
 
-  defp wait_until(fun, start) do
+  defp wait_until(fun, started) do
     if fun.() do
       :ok
     else
-      now = System.monotonic_time(:millisecond)
-
-      if now - start > 500 do
+      if System.monotonic_time(:millisecond) - started > 500 do
         flunk("timed out waiting for waiter registration")
       else
         Process.sleep(10)
-        wait_until(fun, start)
+        wait_until(fun, started)
       end
     end
   end

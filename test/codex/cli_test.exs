@@ -1,6 +1,7 @@
 defmodule Codex.CLITest do
   use ExUnit.Case, async: true
 
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.{CLI, Options}
 
   test "run/2 forwards stdin and environment overrides" do
@@ -224,6 +225,32 @@ defmodule Codex.CLITest do
              "--bearer-token-env-var",
              "MCP_TOKEN"
            ]
+  end
+
+  test "run/2 preserves execution_surface over fake SSH" do
+    fake_ssh = FakeSSH.new!()
+    on_exit(fn -> FakeSSH.cleanup(fake_ssh) end)
+
+    args_path = tmp_path("argv_fake_ssh")
+    script_path = probe_script(args_path, stdout: "ok\n")
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, %{stdout: "ok\n", success: true}} =
+             CLI.run(["features", "list"],
+               codex_opts: codex_opts,
+               execution_surface: [
+                 surface_kind: :static_ssh,
+                 transport_options:
+                   FakeSSH.transport_options(fake_ssh,
+                     destination: "cli-run.test.example",
+                     port: 2222
+                   )
+               ]
+             )
+
+    assert argv(args_path) == ["features", "list"]
+    assert FakeSSH.wait_until_written(fake_ssh, 1_000) == :ok
+    assert FakeSSH.read_manifest!(fake_ssh) =~ "destination=cli-run.test.example"
   end
 
   test "additional mcp wrappers build expected argv" do

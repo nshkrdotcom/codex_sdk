@@ -7,6 +7,7 @@ defmodule Codex.Exec.Options do
 
   @enforce_keys [:codex_opts]
   defstruct codex_opts: nil,
+            execution_surface: %CliSubprocessCore.ExecutionSurface{},
             thread: nil,
             turn_opts: %{},
             continuation_token: nil,
@@ -23,6 +24,7 @@ defmodule Codex.Exec.Options do
 
   @type t :: %__MODULE__{
           codex_opts: Options.t(),
+          execution_surface: CliSubprocessCore.ExecutionSurface.t(),
           thread: Codex.Thread.t() | nil,
           turn_opts: map(),
           continuation_token: String.t() | nil,
@@ -44,6 +46,7 @@ defmodule Codex.Exec.Options do
 
   def new(attrs) when is_map(attrs) do
     codex_opts = Map.get(attrs, :codex_opts, Map.get(attrs, "codex_opts"))
+    execution_surface = Map.get(attrs, :execution_surface, Map.get(attrs, "execution_surface"))
     thread = Map.get(attrs, :thread, Map.get(attrs, "thread"))
     turn_opts = Map.get(attrs, :turn_opts, Map.get(attrs, "turn_opts", %{}))
     continuation_token = Map.get(attrs, :continuation_token, Map.get(attrs, "continuation_token"))
@@ -63,6 +66,7 @@ defmodule Codex.Exec.Options do
       Map.get(attrs, :max_stderr_buffer_bytes, Map.get(attrs, "max_stderr_buffer_bytes"))
 
     with {:ok, codex_opts} <- ensure_codex_opts(codex_opts),
+         {:ok, execution_surface} <- ensure_execution_surface(execution_surface, codex_opts),
          {:ok, turn_opts} <- ensure_map(turn_opts, :turn_opts),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
          {:ok, tool_outputs} <- ensure_list(tool_outputs, :tool_outputs),
@@ -77,6 +81,7 @@ defmodule Codex.Exec.Options do
       {:ok,
        %__MODULE__{
          codex_opts: codex_opts,
+         execution_surface: execution_surface,
          thread: thread,
          turn_opts: turn_opts,
          continuation_token: continuation_token,
@@ -98,6 +103,12 @@ defmodule Codex.Exec.Options do
 
   defp ensure_codex_opts(%Options{} = opts), do: {:ok, opts}
   defp ensure_codex_opts(_), do: {:error, :missing_options}
+
+  defp ensure_execution_surface(nil, %Options{} = codex_opts),
+    do: {:ok, codex_opts.execution_surface}
+
+  defp ensure_execution_surface(value, _codex_opts),
+    do: Options.normalize_execution_surface(value)
 
   defp ensure_map(value, _field) when is_map(value), do: {:ok, value}
   defp ensure_map(nil, _field), do: {:ok, %{}}

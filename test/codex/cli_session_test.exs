@@ -1,7 +1,8 @@
 defmodule Codex.CLISessionTest do
   use ExUnit.Case, async: false
 
-  alias CliSubprocessCore.{RawSession, Transport}
+  alias CliSubprocessCore.Channel
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.{CLI, Options}
   alias Codex.CLI.Session
 
@@ -18,10 +19,7 @@ defmodule Codex.CLISessionTest do
              )
 
     assert %Session{} = session
-    assert %RawSession{} = raw_session = Map.fetch!(session, :raw_session)
-    assert raw_session.transport_api == Transport
-    assert raw_session.pty? == true
-    assert raw_session.stdin? == true
+    assert %{raw_session: %{pty?: true, stdin?: true}} = Channel.info(session.channel)
     assert_receive {:stdout, os_pid, data}, 1_000
     assert os_pid == session.os_pid
     assert data =~ "ready"
@@ -239,6 +237,33 @@ defmodule Codex.CLISessionTest do
              "CODEX_REMOTE_TOKEN",
              "--last"
            ]
+  end
+
+  test "interactive sessions preserve execution_surface over fake SSH" do
+    fake_ssh = FakeSSH.new!()
+    on_exit(fn -> FakeSSH.cleanup(fake_ssh) end)
+
+    args_path = tmp_path("argv_fake_ssh")
+    script_path = interactive_probe_script(args_path, exit_immediately?: true)
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, session} =
+             CLI.start(["resume", "--last"],
+               codex_opts: codex_opts,
+               execution_surface: [
+                 surface_kind: :static_ssh,
+                 transport_options:
+                   FakeSSH.transport_options(fake_ssh,
+                     destination: "cli-session.test.example",
+                     port: 2222
+                   )
+               ]
+             )
+
+    assert {:ok, %{success: true}} = Session.collect(session, 1_000)
+    assert argv(args_path) == ["resume", "--last"]
+    assert FakeSSH.wait_until_written(fake_ssh, 1_000) == :ok
+    assert FakeSSH.read_manifest!(fake_ssh) =~ "destination=cli-session.test.example"
   end
 
   defp argv(path) do

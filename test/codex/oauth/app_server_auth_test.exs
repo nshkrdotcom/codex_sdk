@@ -33,14 +33,21 @@ defmodule Codex.OAuth.AppServerAuthTest do
   end
 
   setup do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{codex_path_override: bash})
-    {:ok, codex_opts: codex_opts}
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
+    {:ok, codex_opts: codex_opts, harness: harness}
   end
 
   test "AppServer.connect with oauth file mode resolves auth against the child CODEX_HOME", %{
     tmp_root: tmp_root,
-    codex_opts: codex_opts
+    codex_opts: codex_opts,
+    harness: harness
   } do
     child_home = Path.join(tmp_root, "child_home_file")
     File.mkdir_p!(child_home)
@@ -51,24 +58,27 @@ defmodule Codex.OAuth.AppServerAuthTest do
         codex_home: child_home
       )
 
-    owner = self()
-
     task =
       Task.async(fn ->
-        AppServer.connect(codex_opts,
-          transport: {AppServerSubprocess, owner: owner},
-          init_timeout_ms: 200,
-          process_env: child_env(child_home),
-          oauth: [storage: :file, interactive?: false]
+        AppServer.connect(
+          codex_opts,
+          AppServerSubprocess.connect_opts(harness,
+            init_timeout_ms: 200,
+            process_env: child_env(child_home),
+            oauth: [storage: :file, interactive?: false]
+          )
         )
       end)
 
-    assert_receive {:app_server_subprocess_started, conn, os_pid}
+    conn = await_supervised_connection!()
+    :ok = AppServerSubprocess.attach(harness, conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, _start_opts}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
 
     assert_receive {:app_server_subprocess_send, ^conn, initialized_line}
     assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
@@ -78,11 +88,16 @@ defmodule Codex.OAuth.AppServerAuthTest do
     assert AppServer.disconnect(conn) == :ok
   end
 
-  test "memory-mode oauth requires experimental_api: true", %{codex_opts: codex_opts} do
+  test "memory-mode oauth requires experimental_api: true", %{
+    codex_opts: codex_opts,
+    harness: harness
+  } do
     assert {:error, :experimental_api_required_for_memory_oauth} =
-             AppServer.connect(codex_opts,
-               transport: {AppServerSubprocess, owner: self()},
-               oauth: [storage: :memory]
+             AppServer.connect(
+               codex_opts,
+               AppServerSubprocess.connect_opts(harness,
+                 oauth: [storage: :memory]
+               )
              )
 
     refute_receive {:app_server_subprocess_started, _, _}
@@ -90,7 +105,8 @@ defmodule Codex.OAuth.AppServerAuthTest do
 
   test "memory-mode oauth forwards canonicalized enterprise chatgptPlanType for hc claims", %{
     tmp_root: tmp_root,
-    codex_opts: codex_opts
+    codex_opts: codex_opts,
+    harness: harness
   } do
     child_home = Path.join(tmp_root, "child_home_hc")
     File.mkdir_p!(child_home)
@@ -98,25 +114,28 @@ defmodule Codex.OAuth.AppServerAuthTest do
     access_token = fake_chatgpt_access_token("acct_hc", "hc")
     write_chatgpt_auth(child_home, access_token, "refresh-token", "acct_hc", "hc")
 
-    owner = self()
-
     task =
       Task.async(fn ->
-        AppServer.connect(codex_opts,
-          transport: {AppServerSubprocess, owner: owner},
-          experimental_api: true,
-          init_timeout_ms: 200,
-          process_env: child_env(child_home),
-          oauth: [storage: :memory, auto_refresh: false, interactive?: false]
+        AppServer.connect(
+          codex_opts,
+          AppServerSubprocess.connect_opts(harness,
+            experimental_api: true,
+            init_timeout_ms: 200,
+            process_env: child_env(child_home),
+            oauth: [storage: :memory, auto_refresh: false, interactive?: false]
+          )
         )
       end)
 
-    assert_receive {:app_server_subprocess_started, conn, os_pid}
+    conn = await_supervised_connection!()
+    :ok = AppServerSubprocess.attach(harness, conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, _start_opts}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
 
     assert_receive {:app_server_subprocess_send, ^conn, initialized_line}
     assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
@@ -128,9 +147,8 @@ defmodule Codex.OAuth.AppServerAuthTest do
 
     assert login_params["chatgptPlanType"] == "enterprise"
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})
     )
 
     assert {:ok, ^conn} = Task.await(task, 200)
@@ -141,7 +159,8 @@ defmodule Codex.OAuth.AppServerAuthTest do
   test "AppServer.connect with oauth memory mode performs external login and auto-refresh without rewriting auth.json",
        %{
          tmp_root: tmp_root,
-         codex_opts: codex_opts
+         codex_opts: codex_opts,
+         harness: harness
        } do
     child_home = Path.join(tmp_root, "child_home_memory")
     File.mkdir_p!(child_home)
@@ -153,26 +172,29 @@ defmodule Codex.OAuth.AppServerAuthTest do
 
     {:ok, issuer, state} = start_mock_issuer(%{"access_token" => refreshed_access_token})
 
-    owner = self()
-
     task =
       Task.async(fn ->
-        AppServer.connect(codex_opts,
-          transport: {AppServerSubprocess, owner: owner},
-          experimental_api: true,
-          init_timeout_ms: 200,
-          process_env: child_env(child_home),
-          oauth: [
-            mode: :auto,
-            storage: :memory,
-            auto_refresh: true,
-            interactive?: false,
-            auth_issuer: issuer
-          ]
+        AppServer.connect(
+          codex_opts,
+          AppServerSubprocess.connect_opts(harness,
+            experimental_api: true,
+            init_timeout_ms: 200,
+            process_env: child_env(child_home),
+            oauth: [
+              mode: :auto,
+              storage: :memory,
+              auto_refresh: true,
+              interactive?: false,
+              auth_issuer: issuer
+            ]
+          )
         )
       end)
 
-    assert_receive {:app_server_subprocess_started, conn, os_pid}
+    conn = await_supervised_connection!()
+    :ok = AppServerSubprocess.attach(harness, conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, _start_opts}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
 
@@ -181,7 +203,7 @@ defmodule Codex.OAuth.AppServerAuthTest do
 
     assert init_params["capabilities"] == %{"experimentalApi" => true}
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
 
     assert_receive {:app_server_subprocess_send, ^conn, initialized_line}
     assert {:ok, %{"method" => "initialized"}} = Jason.decode(initialized_line)
@@ -198,22 +220,19 @@ defmodule Codex.OAuth.AppServerAuthTest do
              "chatgptPlanType" => "pro"
            }
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})
     )
 
     assert {:ok, ^conn} = Task.await(task, 200)
     assert 1 == map_size(:sys.get_state(conn).subscribers)
     assert :ok == AppServer.subscribe(conn, methods: ["account/chatgptAuthTokens/refresh"])
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(91, "account/chatgptAuthTokens/refresh", %{
-         "reason" => "unauthorized",
-         "previousAccountId" => "acct_1"
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(91, "account/chatgptAuthTokens/refresh", %{
+        "reason" => "unauthorized",
+        "previousAccountId" => "acct_1"
+      })
     )
 
     assert_receive {:codex_request, 91, "account/chatgptAuthTokens/refresh",
@@ -250,7 +269,8 @@ defmodule Codex.OAuth.AppServerAuthTest do
   @tag :requires_loopback
   test "auto refresh rejects previousAccountId mismatches", %{
     tmp_root: tmp_root,
-    codex_opts: codex_opts
+    codex_opts: codex_opts,
+    harness: harness
   } do
     child_home = Path.join(tmp_root, "child_home_mismatch")
     File.mkdir_p!(child_home)
@@ -262,24 +282,32 @@ defmodule Codex.OAuth.AppServerAuthTest do
 
     {:ok, issuer, state} = start_mock_issuer(%{"access_token" => mismatched_access_token})
 
-    owner = self()
-
     task =
       Task.async(fn ->
-        AppServer.connect(codex_opts,
-          transport: {AppServerSubprocess, owner: owner},
-          experimental_api: true,
-          init_timeout_ms: 200,
-          process_env: child_env(child_home),
-          oauth: [storage: :memory, auto_refresh: true, interactive?: false, auth_issuer: issuer]
+        AppServer.connect(
+          codex_opts,
+          AppServerSubprocess.connect_opts(harness,
+            experimental_api: true,
+            init_timeout_ms: 200,
+            process_env: child_env(child_home),
+            oauth: [
+              storage: :memory,
+              auto_refresh: true,
+              interactive?: false,
+              auth_issuer: issuer
+            ]
+          )
         )
       end)
 
-    assert_receive {:app_server_subprocess_started, conn, os_pid}
+    conn = await_supervised_connection!()
+    :ok = AppServerSubprocess.attach(harness, conn)
+
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, _start_opts}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
     assert_receive {:app_server_subprocess_send, ^conn, login_line}
@@ -287,22 +315,19 @@ defmodule Codex.OAuth.AppServerAuthTest do
     assert {:ok, %{"id" => login_id, "method" => "account/login/start"}} =
              Jason.decode(login_line)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(login_id, %{"type" => "chatgptAuthTokens"})
     )
 
     assert {:ok, ^conn} = Task.await(task, 200)
     assert 1 == map_size(:sys.get_state(conn).subscribers)
     assert :ok == AppServer.subscribe(conn, methods: ["account/chatgptAuthTokens/refresh"])
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(92, "account/chatgptAuthTokens/refresh", %{
-         "reason" => "unauthorized",
-         "previousAccountId" => "acct_1"
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(92, "account/chatgptAuthTokens/refresh", %{
+        "reason" => "unauthorized",
+        "previousAccountId" => "acct_1"
+      })
     )
 
     assert_receive {:codex_request, 92, "account/chatgptAuthTokens/refresh",
@@ -340,6 +365,26 @@ defmodule Codex.OAuth.AppServerAuthTest do
     end)
 
     {:ok, "http://127.0.0.1:#{port}", state}
+  end
+
+  defp await_supervised_connection! do
+    started = System.monotonic_time(:millisecond)
+    do_await_supervised_connection!(started)
+  end
+
+  defp do_await_supervised_connection!(started) do
+    case DynamicSupervisor.which_children(Codex.AppServer.Supervisor) do
+      [{_id, pid, :worker, [_module]} | _] when is_pid(pid) ->
+        pid
+
+      _other ->
+        if System.monotonic_time(:millisecond) - started > 500 do
+          flunk("timed out waiting for supervised app-server connection")
+        else
+          Process.sleep(10)
+          do_await_supervised_connection!(started)
+        end
+    end
   end
 
   defp write_chatgpt_auth(codex_home, access_token, refresh_token, account_id, plan_type) do

@@ -10,6 +10,15 @@ defmodule Codex.AppServerTransportTest do
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
 
+  setup do
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+    :ok
+  end
+
   defmodule ExecpolicyApprovalHook do
     @behaviour Codex.Approvals.Hook
 
@@ -140,20 +149,20 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "Thread.run_turn/3 via app-server transport collects notifications and returns Turn.Result" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         experimental_api: true,
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -169,10 +178,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -183,12 +190,10 @@ defmodule Codex.AppServerTransportTest do
 
     assert turn_start_params["threadId"] == "thr_1"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     notifications = [
@@ -213,7 +218,7 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, result} = Task.await(task, 500)
     assert result.thread.thread_id == "thr_1"
@@ -221,19 +226,19 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "app-server transport emits request user input events" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -249,10 +254,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -260,12 +263,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     request_params = %{
@@ -284,9 +285,8 @@ defmodule Codex.AppServerTransportTest do
       ]
     }
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_request(5, "item/tool/requestUserInput", request_params)}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(5, "item/tool/requestUserInput", request_params)
     )
 
     notifications = [
@@ -311,7 +311,7 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, result} = Task.await(task, 500)
 
@@ -337,19 +337,19 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "app-server transport emits typed request events for current upstream request methods" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -365,10 +365,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -376,12 +374,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     ignored_tool_call = %{
@@ -463,31 +459,27 @@ defmodule Codex.AppServerTransportTest do
       "previousAccountId" => "acct_1"
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_request(
-           5,
-           "item/commandExecution/requestApproval",
-           command_approval_request
-         ),
-         Protocol.encode_request(6, "item/fileChange/requestApproval", file_approval_request),
-         Protocol.encode_request(7, "item/tool/call", ignored_tool_call),
-         Protocol.encode_request(8, "item/tool/call", dynamic_tool_call),
-         Protocol.encode_request(9, "mcpServer/elicitation/request", elicitation_request),
-         Protocol.encode_request(
-           10,
-           "item/permissions/requestApproval",
-           permissions_request
-         ),
-         Protocol.encode_request(
-           11,
-           "account/chatgptAuthTokens/refresh",
-           auth_refresh_request
-         )
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_request(
+        5,
+        "item/commandExecution/requestApproval",
+        command_approval_request
+      ),
+      Protocol.encode_request(6, "item/fileChange/requestApproval", file_approval_request),
+      Protocol.encode_request(7, "item/tool/call", ignored_tool_call),
+      Protocol.encode_request(8, "item/tool/call", dynamic_tool_call),
+      Protocol.encode_request(9, "mcpServer/elicitation/request", elicitation_request),
+      Protocol.encode_request(
+        10,
+        "item/permissions/requestApproval",
+        permissions_request
+      ),
+      Protocol.encode_request(
+        11,
+        "account/chatgptAuthTokens/refresh",
+        auth_refresh_request
+      )
+    ])
 
     notifications = [
       Protocol.encode_notification("turn/started", %{
@@ -500,7 +492,7 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, result} = Task.await(task, 500)
 
@@ -623,19 +615,19 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "app-server transport forwards approvals reviewer through thread start and resume params" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -668,9 +660,8 @@ defmodule Codex.AppServerTransportTest do
     assert start_params["approvalPolicy"]["granular"]["skill_approval"] == false
     assert start_params["approvalPolicy"]["granular"]["mcp_elicitations"] == false
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_response(start_id, %{"thread" => %{"id" => "thr_start"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(start_id, %{"thread" => %{"id" => "thr_start"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, start_turn_line}
@@ -678,34 +669,28 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => start_turn_id, "method" => "turn/start"}} =
              Jason.decode(start_turn_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(start_turn_id, %{
-         "turn" => %{
-           "id" => "turn_start",
-           "items" => [],
-           "status" => "inProgress",
-           "error" => nil
-         }
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(start_turn_id, %{
+        "turn" => %{
+          "id" => "turn_start",
+          "items" => [],
+          "status" => "inProgress",
+          "error" => nil
+        }
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_start",
-           "turn" => %{
-             "id" => "turn_start",
-             "status" => "completed",
-             "items" => [],
-             "error" => nil
-           }
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_start",
+        "turn" => %{
+          "id" => "turn_start",
+          "status" => "completed",
+          "items" => [],
+          "error" => nil
+        }
+      })
+    ])
 
     assert {:ok, _result} = Task.await(start_task, 500)
 
@@ -735,10 +720,8 @@ defmodule Codex.AppServerTransportTest do
     assert resume_params["approvalsReviewer"] == "user"
     assert resume_params["approvalPolicy"]["granular"]["request_permissions"] == true
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(resume_id, %{"thread" => %{"id" => "thr_resume"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(resume_id, %{"thread" => %{"id" => "thr_resume"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, resume_turn_line}
@@ -746,52 +729,46 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => resume_turn_id, "method" => "turn/start"}} =
              Jason.decode(resume_turn_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(resume_turn_id, %{
-         "turn" => %{
-           "id" => "turn_resume",
-           "items" => [],
-           "status" => "inProgress",
-           "error" => nil
-         }
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(resume_turn_id, %{
+        "turn" => %{
+          "id" => "turn_resume",
+          "items" => [],
+          "status" => "inProgress",
+          "error" => nil
+        }
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_resume",
-           "turn" => %{
-             "id" => "turn_resume",
-             "status" => "completed",
-             "items" => [],
-             "error" => nil
-           }
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_resume",
+        "turn" => %{
+          "id" => "turn_resume",
+          "status" => "completed",
+          "items" => [],
+          "error" => nil
+        }
+      })
+    ])
 
     assert {:ok, _result} = Task.await(resume_task, 500)
   end
 
   test "Thread.run_turn/3 collects guardian review and resolved request notifications in order" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -807,10 +784,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -818,41 +793,35 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("item/autoApprovalReview/started", %{
-           "threadId" => "thr_1",
-           "turnId" => "turn_1",
-           "targetItemId" => "perm_1",
-           "review" => %{"status" => "inProgress", "riskLevel" => "medium"},
-           "action" => %{"type" => "allow"}
-         }),
-         Protocol.encode_notification("serverRequest/resolved", %{
-           "threadId" => "thr_1",
-           "requestId" => 77
-         }),
-         Protocol.encode_notification("item/autoApprovalReview/completed", %{
-           "threadId" => "thr_1",
-           "turnId" => "turn_1",
-           "targetItemId" => "perm_1",
-           "review" => %{"status" => "approved"}
-         }),
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("item/autoApprovalReview/started", %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "targetItemId" => "perm_1",
+        "review" => %{"status" => "inProgress", "riskLevel" => "medium"},
+        "action" => %{"type" => "allow"}
+      }),
+      Protocol.encode_notification("serverRequest/resolved", %{
+        "threadId" => "thr_1",
+        "requestId" => 77
+      }),
+      Protocol.encode_notification("item/autoApprovalReview/completed", %{
+        "threadId" => "thr_1",
+        "turnId" => "turn_1",
+        "targetItemId" => "perm_1",
+        "review" => %{"status" => "approved"}
+      }),
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, result} = Task.await(task, 500)
 
@@ -878,19 +847,19 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "Thread.run/3 via app-server accepts multimodal input blocks" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -911,10 +880,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -927,12 +894,10 @@ defmodule Codex.AppServerTransportTest do
              %{"type" => "localImage", "path" => "/tmp/image.png"}
            ] = params["input"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     notifications = [
@@ -957,26 +922,26 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, result} = Task.await(task, 500)
     assert %Items.AgentMessage{text: "hi"} = result.final_response
   end
 
   test "Thread.run_turn/3 resets threads on structured /new input via app-server" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1001,10 +966,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_new"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_new"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1015,12 +978,10 @@ defmodule Codex.AppServerTransportTest do
 
     assert turn_start_params["threadId"] == "thr_new"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     notifications = [
@@ -1045,7 +1006,7 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, result} = Task.await(task, 500)
     assert result.thread.thread_id == "thr_new"
@@ -1053,19 +1014,19 @@ defmodule Codex.AppServerTransportTest do
   end
 
   test "Thread.run_streamed/3 via app-server accepts multimodal input blocks" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1087,10 +1048,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1103,12 +1062,10 @@ defmodule Codex.AppServerTransportTest do
              %{"type" => "localImage", "path" => "/tmp/image.png"}
            ] = params["input"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     notifications = [
@@ -1127,26 +1084,26 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert events = Task.await(task, 500)
     assert Enum.any?(events, &match?(%Codex.Events.TurnCompleted{}, &1))
   end
 
   test "Thread.run_streamed/3 via app-server subscribes to the active thread only" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1163,10 +1120,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1181,12 +1136,10 @@ defmodule Codex.AppServerTransportTest do
              filters.thread_id == "thr_1"
            end)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     notifications = [
@@ -1200,26 +1153,26 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert [_ | _] = Task.await(task, 500)
     assert %{subscribers: %{}} = :sys.get_state(conn)
   end
 
   test "app-server thread start includes model/provider/config/instructions flags" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1252,10 +1205,8 @@ defmodule Codex.AppServerTransportTest do
     assert params["developerInstructions"] == "dev"
     assert params["experimentalRawEvents"] == true
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1263,42 +1214,36 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport forwards ephemeral and service tier controls" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1323,10 +1268,8 @@ defmodule Codex.AppServerTransportTest do
     assert params["serviceName"] == "codex-elixir-tests"
     assert params["serviceTier"] == "flex"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1340,49 +1283,40 @@ defmodule Codex.AppServerTransportTest do
 
     assert turn_params["serviceTier"] == "priority"
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport applies codex defaults for model and reasoning effort" do
-    bash = System.find_executable("bash") || "/bin/bash"
-
-    {:ok, codex_opts} =
-      Options.new(%{
-        api_key: "test",
-        codex_path_override: bash,
+    codex_opts =
+      new_codex_opts!(%{
         model: "gpt-5.1-codex-mini",
         reasoning_effort: :high
       })
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1400,10 +1334,8 @@ defmodule Codex.AppServerTransportTest do
     assert %{"model_reasoning_effort" => "high"} = params["config"]
     refute Map.has_key?(params, "sandbox")
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1411,42 +1343,36 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server turn start includes sandbox policy overrides" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1469,10 +1395,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1486,42 +1410,36 @@ defmodule Codex.AppServerTransportTest do
              "networkAccess" => true
            } = params["sandboxPolicy"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport auto-responds to command approvals using approval_hook" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1541,10 +1459,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1552,12 +1468,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -1568,14 +1482,12 @@ defmodule Codex.AppServerTransportTest do
       "proposedExecpolicyAmendment" => ["npm", "install"]
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         7,
-         "item/commandExecution/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        7,
+        "item/commandExecution/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -1611,25 +1523,25 @@ defmodule Codex.AppServerTransportTest do
       })
     ]
 
-    send(conn, {:stdout, os_pid, notifications})
+    AppServerSubprocess.send_stdout(notifications)
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server command approval hooks receive additional permissions and network context" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1650,10 +1562,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1661,12 +1571,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -1690,14 +1598,12 @@ defmodule Codex.AppServerTransportTest do
       "availableDecisions" => ["accept", %{"applyNetworkPolicyAmendment" => %{}}]
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         12,
-         "item/commandExecution/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        12,
+        "item/commandExecution/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:captured_command_approval, event}, 200
@@ -1726,34 +1632,30 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => 12, "result" => %{"decision" => "decline"}}} =
              Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport ignores foreign-thread approval requests" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1773,10 +1675,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1784,12 +1684,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     foreign_approval_request = %{
@@ -1799,46 +1697,40 @@ defmodule Codex.AppServerTransportTest do
       "reason" => "needs approval"
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         14,
-         "item/commandExecution/requestApproval",
-         foreign_approval_request
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        14,
+        "item/commandExecution/requestApproval",
+        foreign_approval_request
+      )
     )
 
     refute_receive {:app_server_subprocess_send, ^conn, _approval_response_line}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport ignores mismatched-turn permissions approvals" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1858,10 +1750,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1869,12 +1759,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -1884,46 +1772,40 @@ defmodule Codex.AppServerTransportTest do
       "permissions" => %{"network" => %{"enabled" => true}}
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         18,
-         "item/permissions/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        18,
+        "item/permissions/requestApproval",
+        approval_request_params
+      )
     )
 
     refute_receive {:app_server_subprocess_send, ^conn, _approval_response_line}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport auto-responds to permissions approvals using the requested turn grants" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -1943,10 +1825,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -1954,12 +1834,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -1976,14 +1854,12 @@ defmodule Codex.AppServerTransportTest do
       }
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         15,
-         "item/permissions/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        15,
+        "item/permissions/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2003,34 +1879,30 @@ defmodule Codex.AppServerTransportTest do
               }
             }} = Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport supports partial session permission grants" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -2050,10 +1922,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -2061,12 +1931,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -2082,14 +1950,12 @@ defmodule Codex.AppServerTransportTest do
       }
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         16,
-         "item/permissions/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        16,
+        "item/permissions/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2106,34 +1972,30 @@ defmodule Codex.AppServerTransportTest do
               }
             }} = Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport denies permissions approvals with an empty turn grant profile" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -2153,10 +2015,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -2164,12 +2024,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -2179,14 +2037,12 @@ defmodule Codex.AppServerTransportTest do
       "permissions" => %{"network" => %{"enabled" => true}}
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         17,
-         "item/permissions/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        17,
+        "item/permissions/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2197,34 +2053,30 @@ defmodule Codex.AppServerTransportTest do
               "result" => %{"permissions" => %{}, "scope" => "turn"}
             }} = Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport auto-responds to file change approvals using approval_hook" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -2244,10 +2096,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -2255,12 +2105,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -2271,10 +2119,8 @@ defmodule Codex.AppServerTransportTest do
       "grantRoot" => "/tmp"
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(9, "item/fileChange/requestApproval", approval_request_params)}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(9, "item/fileChange/requestApproval", approval_request_params)
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2282,34 +2128,30 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => 9, "result" => %{"decision" => "accept"}}} =
              Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport supports grant-root approvals" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -2329,10 +2171,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -2340,12 +2180,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -2356,10 +2194,8 @@ defmodule Codex.AppServerTransportTest do
       "grantRoot" => "/tmp"
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(9, "item/fileChange/requestApproval", approval_request_params)}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(9, "item/fileChange/requestApproval", approval_request_params)
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2367,34 +2203,30 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => 9, "result" => %{"decision" => "acceptForSession"}}} =
              Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
   end
 
   test "app-server transport declines when approval_hook times out" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    codex_opts = new_codex_opts!()
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -2414,10 +2246,8 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
@@ -2425,12 +2255,10 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
              Jason.decode(turn_start_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(turn_start_id, %{
-         "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
-       })}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
     )
 
     approval_request_params = %{
@@ -2439,14 +2267,12 @@ defmodule Codex.AppServerTransportTest do
       "itemId" => "item_1"
     }
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_request(
-         13,
-         "item/commandExecution/requestApproval",
-         approval_request_params
-       )}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_request(
+        13,
+        "item/commandExecution/requestApproval",
+        approval_request_params
+      )
     )
 
     assert_receive {:app_server_subprocess_send, ^conn, approval_response_line}, 200
@@ -2454,17 +2280,19 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => 13, "result" => %{"decision" => "decline"}}} =
              Jason.decode(approval_response_line)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Protocol.encode_notification("turn/completed", %{
-           "threadId" => "thr_1",
-           "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-         })
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
 
     assert {:ok, _result} = Task.await(task, 500)
+  end
+
+  defp new_codex_opts!(attrs \\ %{}) do
+    attrs = Map.put_new(Map.new(attrs), :api_key, "test")
+    {:ok, base_opts} = Options.new(attrs)
+    AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
   end
 end

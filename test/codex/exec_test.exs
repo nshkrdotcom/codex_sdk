@@ -5,6 +5,7 @@ defmodule Codex.ExecTest do
 
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
   import Codex.Test.ModelFixtures
@@ -112,6 +113,42 @@ defmodule Codex.ExecTest do
     idx = Enum.find_index(args, &(&1 == "--cancellation-token"))
     assert idx
     assert Enum.at(args, idx + 1) == "cancel-me"
+  end
+
+  test "exec preserves execution_surface over fake SSH" do
+    fake_ssh = FakeSSH.new!()
+
+    capture_path =
+      Path.join(System.tmp_dir!(), "codex_exec_fake_ssh_#{System.unique_integer([:positive])}")
+
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.capture_args(capture_path)
+      |> tap(fn path ->
+        on_exit(fn ->
+          File.rm_rf(path)
+          File.rm_rf(capture_path)
+          FakeSSH.cleanup(fake_ssh)
+        end)
+      end)
+
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, _result} =
+             Exec.run("hello over ssh", %{
+               codex_opts: codex_opts,
+               execution_surface: [
+                 surface_kind: :static_ssh,
+                 transport_options:
+                   FakeSSH.transport_options(fake_ssh,
+                     destination: "exec.test.example",
+                     port: 2222
+                   )
+               ]
+             })
+
+    assert FakeSSH.wait_until_written(fake_ssh, 1_000) == :ok
+    assert FakeSSH.read_manifest!(fake_ssh) =~ "destination=exec.test.example"
   end
 
   test "enriches thread.started metadata with effective model and reasoning effort" do

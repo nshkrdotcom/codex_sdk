@@ -7,28 +7,36 @@ defmodule Codex.AppServerTest do
   alias Codex.TestSupport.AppServerSubprocess
 
   test "connect/2 performs the handshake under the supervisor" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
-    owner = self()
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{api_key: "test"})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
 
     task =
       Task.async(fn ->
         AppServer.connect(codex_opts,
-          subprocess: {AppServerSubprocess, owner: owner},
           client_name: "codex_sdk_test",
           client_version: "0.0.0",
-          init_timeout_ms: 200
+          init_timeout_ms: 200,
+          process_env: AppServerSubprocess.process_env(harness)
         )
       end)
 
-    assert_receive {:app_server_subprocess_started, conn_pid, os_pid}
+    conn_pid = await_supervised_connection!()
+    :ok = AppServerSubprocess.attach(harness, conn_pid)
+
+    assert_receive {:app_server_subprocess_started, ^conn_pid, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn_pid, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
 
-    send(
-      conn_pid,
-      {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})}
-    )
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})
+      )
 
     assert {:ok, conn} = Task.await(task, 200)
     assert conn == conn_pid
@@ -42,8 +50,14 @@ defmodule Codex.AppServerTest do
   end
 
   test "connect/2 fails when app-server supervisor is unavailable" do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{api_key: "test"})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
 
     remove_connection_supervisor()
 
@@ -53,8 +67,8 @@ defmodule Codex.AppServerTest do
 
     assert {:error, :supervisor_unavailable} =
              AppServer.connect(codex_opts,
-               subprocess: {AppServerSubprocess, owner: self()},
-               init_timeout_ms: 200
+               init_timeout_ms: 200,
+               process_env: AppServerSubprocess.process_env(harness)
              )
   end
 
@@ -73,6 +87,26 @@ defmodule Codex.AppServerTest do
 
     if Process.whereis(Codex.Supervisor) && is_nil(Process.whereis(Codex.AppServer.Supervisor)) do
       {:ok, _pid} = Supervisor.start_child(Codex.Supervisor, {Codex.AppServer.Supervisor, []})
+    end
+  end
+
+  defp await_supervised_connection! do
+    started = System.monotonic_time(:millisecond)
+    do_await_supervised_connection!(started)
+  end
+
+  defp do_await_supervised_connection!(started) do
+    case DynamicSupervisor.which_children(Codex.AppServer.Supervisor) do
+      [{_id, pid, :worker, [_module]} | _] when is_pid(pid) ->
+        pid
+
+      _other ->
+        if System.monotonic_time(:millisecond) - started > 500 do
+          flunk("timed out waiting for supervised app-server connection")
+        else
+          Process.sleep(10)
+          do_await_supervised_connection!(started)
+        end
     end
   end
 end

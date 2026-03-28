@@ -65,8 +65,8 @@ defmodule CodexSdk.MixProject do
 
         # Testing
         {:supertester, "~> 0.5.1", only: :test},
-        {:mox, "~> 1.0", only: :test},
-        {:stream_data, "~> 1.0", only: :test},
+        {:mox, "~> 1.2", only: :test},
+        {:stream_data, "~> 1.1", only: :test},
 
         # Development and documentation
         {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},

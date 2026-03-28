@@ -1,24 +1,23 @@
 defmodule Codex.MCP.Transport.Stdio do
   @moduledoc """
-  Runs MCP servers over stdio using a managed subprocess.
-
-  MCP JSON-RPC semantics stay in `codex_sdk`, while the managed subprocess
-  session is backed by `CliSubprocessCore.RawSession`.
+  Runs MCP servers over stdio using the core JSON-RPC protocol session stack.
   """
 
   use GenServer
 
   require Logger
 
-  alias CliSubprocessCore.{Command, RawSession, Transport}
-  alias Codex.IO.Buffer
-  alias Codex.MCP.Protocol
+  alias CliSubprocessCore.{Command, JSONRPC, ProtocolSession}
+  alias Codex.Options
+
+  @default_request_timeout_ms :timer.hours(24)
 
   defmodule State do
     @moduledoc false
 
     defstruct [
-      :raw_session,
+      :session,
+      :session_monitor_ref,
       :messages,
       :waiters
     ]
@@ -46,23 +45,14 @@ defmodule Codex.MCP.Transport.Stdio do
 
   @impl true
   def init(opts) do
-    {transport_mod, transport_opts} = resolve_transport(opts)
-
     with {:ok, invocation} <- build_command(opts),
-         {:ok, raw_session} <-
-           RawSession.start_link(
-             invocation,
-             [
-               receiver: self(),
-               event_tag: :codex_io_transport,
-               transport: transport_mod,
-               stdout_mode: :line,
-               stdin_mode: :raw
-             ] ++ transport_opts
-           ) do
+         {:ok, execution_surface} <-
+           Options.normalize_execution_surface(Keyword.get(opts, :execution_surface)),
+         {:ok, session} <- start_protocol_session(invocation, execution_surface) do
       {:ok,
        %State{
-         raw_session: raw_session,
+         session: session,
+         session_monitor_ref: Process.monitor(session),
          messages: :queue.new(),
          waiters: []
        }}
@@ -73,9 +63,7 @@ defmodule Codex.MCP.Transport.Stdio do
 
   @impl true
   def handle_call({:send, message}, _from, %State{} = state) do
-    encoded = Protocol.encode_message(message)
-
-    case RawSession.send_input(state.raw_session, encoded) do
+    case send_message(state, message) do
       :ok -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -93,48 +81,37 @@ defmodule Codex.MCP.Transport.Stdio do
   end
 
   @impl true
-  def handle_info(
-        {:codex_io_transport, ref, {:message, line}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    state =
-      case Buffer.decode_line(line) do
-        {:ok, msg} ->
-          state
-          |> enqueue_messages([msg])
-          |> flush_waiters()
-
-        {:non_json, raw} ->
-          Logger.debug("Ignoring non-JSON MCP output: #{inspect(raw)}")
-          state
-      end
-
-    {:noreply, state}
+  def handle_info({:jsonrpc_notification, %{} = notification}, %State{} = state) do
+    {:noreply, state |> enqueue_messages([notification]) |> flush_waiters()}
   end
 
-  def handle_info(
-        {:codex_io_transport, ref, {:stderr, chunk}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
+  def handle_info({:jsonrpc_peer_request, %{} = request}, %State{} = state) do
+    {:noreply, state |> enqueue_messages([request]) |> flush_waiters()}
+  end
+
+  def handle_info({:jsonrpc_request_result, id, {:ok, result}}, %State{} = state) do
+    message = %{"id" => id, "result" => result}
+    {:noreply, state |> enqueue_messages([message]) |> flush_waiters()}
+  end
+
+  def handle_info({:jsonrpc_request_result, id, {:error, %{} = error}}, %State{} = state) do
+    message = %{"id" => id, "error" => error}
+    {:noreply, state |> enqueue_messages([message]) |> flush_waiters()}
+  end
+
+  def handle_info({:jsonrpc_stderr, chunk}, %State{} = state) do
     text = IO.iodata_to_binary(chunk)
     Logger.debug("MCP stderr: #{String.trim(text)}")
     {:noreply, state}
   end
 
-  def handle_info(
-        {:codex_io_transport, ref, {:error, reason}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    Logger.debug("MCP transport error: #{inspect(reason)}")
+  def handle_info({:jsonrpc_protocol_error, reason}, %State{} = state) do
+    Logger.debug("MCP protocol error: #{inspect(reason)}")
     {:noreply, state}
   end
 
-  def handle_info(
-        {:codex_io_transport, ref, {:exit, reason}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    Logger.debug("MCP subprocess exited: #{inspect(reason)}")
-
+  def handle_info({:DOWN, ref, :process, pid, _reason}, %State{} = state)
+      when ref == state.session_monitor_ref and pid == state.session do
     state =
       state
       |> drain_waiters({:error, :closed})
@@ -159,9 +136,47 @@ defmodule Codex.MCP.Transport.Stdio do
   @impl true
   def terminate(_reason, %State{} = state) do
     _ = drain_waiters(state, {:error, :closed})
-    _ = force_close_session(state)
+    _ = close_session(state.session)
     :ok
   end
+
+  defp send_message(%State{session: session}, %{} = message) do
+    cond do
+      request_message?(message) ->
+        id = Map.get(message, "id", Map.get(message, :id))
+        owner = self()
+
+        case Task.start(fn ->
+               result =
+                 ProtocolSession.request(session, message,
+                   timeout_ms: @default_request_timeout_ms
+                 )
+
+               send(owner, {:jsonrpc_request_result, id, result})
+             end) do
+          {:ok, _pid} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      notification_message?(message) ->
+        ProtocolSession.notify(session, message)
+
+      true ->
+        {:error, {:unsupported_message, message}}
+    end
+  end
+
+  defp request_message?(%{} = message) do
+    present?(Map.get(message, "id", Map.get(message, :id))) and
+      is_binary(Map.get(message, "method", Map.get(message, :method)))
+  end
+
+  defp notification_message?(%{} = message) do
+    not present?(Map.get(message, "id", Map.get(message, :id))) and
+      is_binary(Map.get(message, "method", Map.get(message, :method)))
+  end
+
+  defp present?(value), do: not is_nil(value)
 
   defp pop_message(%State{} = state) do
     case :queue.out(state.messages) do
@@ -214,6 +229,31 @@ defmodule Codex.MCP.Transport.Stdio do
     {match, rest}
   end
 
+  defp start_protocol_session(invocation, execution_surface) do
+    owner = self()
+
+    JSONRPC.start(
+      Options.execution_surface_options(execution_surface) ++
+        [
+          command: invocation,
+          ready_mode: :immediate,
+          notification_handler: fn notification ->
+            send(owner, {:jsonrpc_notification, notification})
+          end,
+          protocol_error_handler: fn reason ->
+            send(owner, {:jsonrpc_protocol_error, reason})
+          end,
+          stderr_handler: fn chunk ->
+            send(owner, {:jsonrpc_stderr, IO.iodata_to_binary(chunk)})
+          end,
+          peer_request_handler: fn request ->
+            send(owner, {:jsonrpc_peer_request, request})
+            {:error, :unsupported_peer_request}
+          end
+        ]
+    )
+  end
+
   defp build_command(opts) do
     case Keyword.get(opts, :command) do
       nil ->
@@ -235,31 +275,6 @@ defmodule Codex.MCP.Transport.Stdio do
 
           [] ->
             {:error, :missing_command}
-        end
-    end
-  end
-
-  defp resolve_transport(opts) do
-    case Keyword.fetch(opts, :transport) do
-      {:ok, {module, transport_opts}} when is_atom(module) and is_list(transport_opts) ->
-        {module, transport_opts}
-
-      {:ok, module} when is_atom(module) ->
-        {module, []}
-
-      {:ok, other} ->
-        raise ArgumentError, "invalid transport option: #{inspect(other)}"
-
-      :error ->
-        case Keyword.get(opts, :subprocess_mod) do
-          nil ->
-            {Transport, []}
-
-          module when is_atom(module) ->
-            {module, Keyword.get(opts, :subprocess_opts, [])}
-
-          other ->
-            raise ArgumentError, "invalid subprocess_mod option: #{inspect(other)}"
         end
     end
   end
@@ -298,13 +313,13 @@ defmodule Codex.MCP.Transport.Stdio do
     |> Map.merge(extra_env)
   end
 
-  defp force_close_session(%State{raw_session: %RawSession{} = raw_session}) do
-    RawSession.force_close(raw_session)
+  defp close_session(session) when is_pid(session) do
+    JSONRPC.close(session)
   catch
     :exit, _reason -> :ok
   end
 
-  defp force_close_session(%State{}), do: :ok
+  defp close_session(_session), do: :ok
 
   defp default_env_vars do
     case :os.type() do

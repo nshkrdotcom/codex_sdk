@@ -6,7 +6,7 @@ defmodule Codex.Options do
   """
 
   require Bitwise
-  alias CliSubprocessCore.{CommandSpec, ModelInput, ProviderCLI}
+  alias CliSubprocessCore.{CommandSpec, ExecutionSurface, ModelInput, ProviderCLI}
   alias Codex.Auth
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
@@ -17,6 +17,7 @@ defmodule Codex.Options do
   defstruct api_key: nil,
             base_url: BaseURL.default(),
             codex_path_override: nil,
+            execution_surface: %ExecutionSurface{},
             telemetry_prefix: [:codex],
             model_payload: nil,
             model: Models.default_model(),
@@ -45,6 +46,7 @@ defmodule Codex.Options do
           api_key: String.t() | nil,
           base_url: String.t(),
           codex_path_override: String.t() | nil,
+          execution_surface: ExecutionSurface.t(),
           telemetry_prefix: [atom()],
           model_payload: CliSubprocessCore.ModelRegistry.selection() | nil,
           model: String.t() | nil,
@@ -79,6 +81,7 @@ defmodule Codex.Options do
     with {:ok, api_key} <- fetch_api_key(attrs),
          {:ok, base_url} <- fetch_base_url(attrs),
          {:ok, override} <- fetch_codex_path_override(attrs),
+         {:ok, execution_surface} <- fetch_execution_surface(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
          {:ok, model_input} <- normalize_model_input(attrs),
          model_payload = model_input.selection,
@@ -105,6 +108,7 @@ defmodule Codex.Options do
          api_key: api_key,
          base_url: base_url,
          codex_path_override: override,
+         execution_surface: execution_surface,
          telemetry_prefix: telemetry_prefix,
          model_payload: model_payload,
          model: model,
@@ -171,6 +175,39 @@ defmodule Codex.Options do
     end
   end
 
+  @doc false
+  @spec normalize_execution_surface(term()) :: {:ok, ExecutionSurface.t()} | {:error, term()}
+  def normalize_execution_surface(nil), do: {:ok, %ExecutionSurface{}}
+
+  def normalize_execution_surface(%ExecutionSurface{} = execution_surface),
+    do: {:ok, execution_surface}
+
+  def normalize_execution_surface(execution_surface) when is_list(execution_surface) do
+    ExecutionSurface.new(execution_surface)
+  end
+
+  def normalize_execution_surface(%{} = execution_surface) do
+    execution_surface
+    |> execution_surface_attrs()
+    |> ExecutionSurface.new()
+  end
+
+  def normalize_execution_surface(other), do: {:error, {:invalid_execution_surface, other}}
+
+  @doc false
+  @spec execution_surface_options(t() | ExecutionSurface.t() | nil) :: keyword()
+  def execution_surface_options(%__MODULE__{execution_surface: execution_surface}) do
+    execution_surface_options(execution_surface)
+  end
+
+  def execution_surface_options(%ExecutionSurface{} = execution_surface) do
+    execution_surface
+    |> ExecutionSurface.surface_metadata()
+    |> Keyword.put(:transport_options, execution_surface.transport_options)
+  end
+
+  def execution_surface_options(nil), do: []
+
   defp fetch_api_key(attrs) do
     case normalize_string(pick(attrs, [:api_key, "api_key"], Auth.api_key())) do
       nil -> {:ok, nil}
@@ -191,6 +228,12 @@ defmodule Codex.Options do
       "" -> {:error, :invalid_codex_path}
       override -> {:ok, override}
     end
+  end
+
+  defp fetch_execution_surface(attrs) do
+    attrs
+    |> pick([:execution_surface, "execution_surface"])
+    |> normalize_execution_surface()
   end
 
   defp fetch_telemetry_prefix(attrs) do
@@ -258,6 +301,18 @@ defmodule Codex.Options do
       nil -> false
       _payload -> true
     end
+  end
+
+  defp execution_surface_attrs(attrs) when is_map(attrs) do
+    [
+      surface_kind: Map.get(attrs, :surface_kind, Map.get(attrs, "surface_kind")),
+      transport_options: Map.get(attrs, :transport_options, Map.get(attrs, "transport_options")),
+      target_id: Map.get(attrs, :target_id, Map.get(attrs, "target_id")),
+      lease_ref: Map.get(attrs, :lease_ref, Map.get(attrs, "lease_ref")),
+      surface_ref: Map.get(attrs, :surface_ref, Map.get(attrs, "surface_ref")),
+      boundary_class: Map.get(attrs, :boundary_class, Map.get(attrs, "boundary_class")),
+      observability: Map.get(attrs, :observability, Map.get(attrs, "observability", %{}))
+    ]
   end
 
   defp put_missing_attr(attrs, _key, nil), do: attrs

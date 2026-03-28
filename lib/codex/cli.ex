@@ -33,6 +33,7 @@ defmodule Codex.CLI do
     cwd = resolve_cwd(opts)
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
+         {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
          {:ok, result} <-
@@ -42,9 +43,12 @@ defmodule Codex.CLI do
                env: env_spec.env,
                clear_env?: env_spec.clear_env?
              ),
-             stdin: input,
-             timeout: timeout_ms,
-             stderr: :separate
+             Options.execution_surface_options(execution_surface) ++
+               [
+                 stdin: input,
+                 timeout: timeout_ms,
+                 stderr: :separate
+               ]
            ) do
       {:ok, format_run_result(result)}
     end
@@ -58,6 +62,7 @@ defmodule Codex.CLI do
     cwd = resolve_cwd(opts)
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
+         {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
       session_opts = [
@@ -65,7 +70,8 @@ defmodule Codex.CLI do
         stdin: Keyword.get(opts, :stdin, false),
         pty: Keyword.get(opts, :pty, false),
         cwd: cwd,
-        env: build_session_env(env_spec)
+        env: build_session_env(env_spec),
+        execution_surface: execution_surface
       ]
 
       Session.start(command_spec, normalize_args(args), session_opts)
@@ -482,6 +488,7 @@ defmodule Codex.CLI do
         Options.new(%{
           api_key: Keyword.get(opts, :api_key),
           base_url: Keyword.get(opts, :base_url),
+          execution_surface: Keyword.get(opts, :execution_surface),
           codex_path_override:
             Keyword.get(opts, :codex_path_override, Keyword.get(opts, :codex_path))
         })
@@ -491,6 +498,13 @@ defmodule Codex.CLI do
 
       other ->
         {:error, {:invalid_codex_opts, other}}
+    end
+  end
+
+  defp effective_execution_surface(opts, %Options{} = codex_opts) do
+    case Keyword.fetch(opts, :execution_surface) do
+      {:ok, execution_surface} -> Options.normalize_execution_surface(execution_surface)
+      :error -> {:ok, codex_opts.execution_surface}
     end
   end
 

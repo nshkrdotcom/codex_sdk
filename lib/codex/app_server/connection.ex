@@ -5,29 +5,34 @@ defmodule Codex.AppServer.Connection do
 
   require Logger
 
-  alias CliSubprocessCore.{Command, RawSession, Transport}
-  alias Codex.AppServer.Protocol
+  alias CliSubprocessCore.{Command, JSONRPC, TaskSupport}
   alias Codex.Config.Defaults
-  alias Codex.IO.Buffer
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
   @default_request_timeout_ms Defaults.app_server_request_timeout_ms()
   @default_call_timeout_ms 5_000
+  @default_stderr_limit Defaults.transport_max_stderr_buffer_size()
 
   defmodule State do
     @moduledoc false
 
     defstruct [
       :codex_opts,
-      :raw_session,
+      :session,
+      :session_monitor_ref,
       :phase,
-      :next_id,
-      :pending,
+      :init_task_ref,
+      :init_timeout_ms,
       :ready_waiters,
+      :pending_requests,
       :subscribers,
-      :subscriber_refs
+      :subscriber_refs,
+      :pending_peer_requests,
+      :pending_peer_request_refs,
+      :stderr,
+      :stderr_limit
     ]
   end
 
@@ -110,9 +115,7 @@ defmodule Codex.AppServer.Connection do
 
   @impl true
   def init({%Options{} = codex_opts, opts}) do
-    {transport_mod, transport_opts} = resolve_transport(opts)
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
-
     client_name = Keyword.get(opts, :client_name, "codex_sdk")
     client_title = Keyword.get(opts, :client_title)
     client_version = Keyword.get(opts, :client_version, default_client_version())
@@ -124,71 +127,41 @@ defmodule Codex.AppServer.Connection do
     with {:ok, command_spec} <- build_command(codex_opts),
          {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
+         {:ok, execution_surface} <- effective_execution_surface(codex_opts, opts),
          invocation <- Command.new(command_spec, app_server_args(codex_opts), cwd: cwd, env: env),
-         {:ok, raw_session} <-
-           RawSession.start_link(
-             invocation,
-             [
-               receiver: self(),
-               event_tag: :codex_io_transport,
-               transport: transport_mod,
-               stdout_mode: :line,
-               stdin_mode: :raw
-             ] ++ transport_opts
-           ) do
-      initialize_transport(raw_session, codex_opts, init_timeout_ms, init_params)
+         {:ok, session} <- start_protocol_session(invocation, execution_surface) do
+      {:ok,
+       %State{
+         codex_opts: codex_opts,
+         session: session,
+         session_monitor_ref: Process.monitor(session),
+         phase: :initializing,
+         init_task_ref: nil,
+         init_timeout_ms: init_timeout_ms,
+         ready_waiters: [],
+         pending_requests: %{},
+         subscribers: %{},
+         subscriber_refs: %{},
+         pending_peer_requests: %{},
+         pending_peer_request_refs: %{},
+         stderr: "",
+         stderr_limit: @default_stderr_limit
+       }, {:continue, {:initialize, init_timeout_ms, init_params}}}
     else
-      {:error, _} = error -> error
+      {:error, reason} ->
+        {:stop, reason}
     end
   end
 
-  defp initialize_transport(raw_session, codex_opts, init_timeout_ms, init_params) do
-    case RawSession.send_input(
-           raw_session,
-           Protocol.encode_request(
-             0,
-             "initialize",
-             init_params
-           )
-         ) do
-      :ok ->
-        timer_ref = Process.send_after(self(), {:request_timeout, 0}, init_timeout_ms)
+  @impl true
+  def handle_continue({:initialize, init_timeout_ms, init_params}, %State{} = state) do
+    case start_init_task(state, init_timeout_ms, init_params) do
+      {:ok, next_state} ->
+        {:noreply, next_state}
 
-        {:ok,
-         %State{
-           codex_opts: codex_opts,
-           raw_session: raw_session,
-           phase: :initializing,
-           next_id: 1,
-           pending: %{
-             0 => %{
-               from: :init,
-               method: "initialize",
-               timeout_ms: init_timeout_ms,
-               timer_ref: timer_ref
-             }
-           },
-           ready_waiters: [],
-           subscribers: %{},
-           subscriber_refs: %{}
-         }}
-
-      {:error, _} = error ->
-        _ = RawSession.force_close(raw_session)
-        error
+      {:error, reason, next_state} ->
+        {:stop, :normal, fail_init(next_state, {:init_failed, reason})}
     end
-  end
-
-  defp initialize_params(client_name, client_version, client_title, experimental_api) do
-    %{
-      "clientInfo" =>
-        %{"name" => client_name, "version" => client_version}
-        |> put_optional("title", client_title)
-    }
-    |> put_optional(
-      "capabilities",
-      if(experimental_api, do: %{"experimentalApi" => true}, else: nil)
-    )
   end
 
   @impl true
@@ -202,7 +175,6 @@ defmodule Codex.AppServer.Connection do
 
   def handle_call({:subscribe, pid, opts}, _from, %State{} = state) do
     ref = Process.monitor(pid)
-
     filters = normalize_subscriber_filters(opts)
 
     {:reply, :ok,
@@ -229,154 +201,123 @@ defmodule Codex.AppServer.Connection do
      }}
   end
 
-  def handle_call({:respond, id, result}, _from, %State{} = state) do
-    with :ok <- send_iolist(state, Protocol.encode_response(id, result)) do
-      {:reply, :ok, state}
-    end
-  end
-
-  def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
-    with :ok <- send_iolist(state, Protocol.encode_error(id, code, message, data)) do
-      {:reply, :ok, state}
-    end
-  end
-
   def handle_call({:request, _method, _params, _timeout_ms}, _from, %State{phase: phase} = state)
       when phase != :ready do
     {:reply, {:error, :not_ready}, state}
   end
 
   def handle_call({:request, method, params, timeout_ms}, from, %State{} = state) do
-    id = state.next_id
-    timer_ref = Process.send_after(self(), {:request_timeout, id}, timeout_ms)
+    case start_request_task(state, from, method, params, timeout_ms) do
+      {:ok, next_state} ->
+        {:noreply, next_state}
 
-    pending =
-      Map.put(state.pending, id, %{
-        from: from,
-        method: method,
-        timeout_ms: timeout_ms,
-        timer_ref: timer_ref
-      })
+      {:error, reason, next_state} ->
+        {:reply, {:error, reason}, next_state}
+    end
+  end
 
-    case send_iolist(state, Protocol.encode_request(id, method, params)) do
-      :ok ->
-        {:noreply, %State{state | next_id: id + 1, pending: pending}}
+  def handle_call({:respond, id, result}, _from, %State{} = state) do
+    case pop_pending_peer_request(state, id) do
+      {nil, next_state} ->
+        {:reply, missing_peer_request_reply(next_state, id), next_state}
 
-      {:error, reason} ->
-        _ = Process.cancel_timer(timer_ref)
-        {:reply, {:error, reason}, %State{state | pending: state.pending}}
+      {%{task_pid: task_pid, reply_ref: reply_ref}, next_state} ->
+        send(task_pid, {:peer_request_reply, reply_ref, {:ok, result}})
+        {:reply, :ok, next_state}
+    end
+  end
+
+  def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
+    case pop_pending_peer_request(state, id) do
+      {nil, next_state} ->
+        {:reply, missing_peer_request_reply(next_state, id), next_state}
+
+      {%{task_pid: task_pid, reply_ref: reply_ref}, next_state} ->
+        send(
+          task_pid,
+          {:peer_request_reply, reply_ref, {:error, encode_peer_error(code, message, data)}}
+        )
+
+        {:reply, :ok, next_state}
     end
   end
 
   @impl true
-  def handle_info(
-        {:codex_io_transport, ref, {:message, line}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    case Buffer.decode_line(line) do
-      {:ok, msg} ->
-        handle_incoming_result(handle_incoming_message(state, msg))
+  def handle_info({:jsonrpc_notification, notification}, %State{} = state)
+      when is_map(notification) do
+    method = Map.get(notification, "method")
+    params = Map.get(notification, "params") || %{}
+    {:noreply, broadcast_notification(state, method, params)}
+  end
 
-      {:non_json, raw} ->
-        Logger.debug("Ignoring non-JSON app-server output: #{inspect(raw)}")
+  def handle_info({ref, result}, %State{} = state) when is_reference(ref) do
+    cond do
+      ref == state.init_task_ref ->
+        handle_init_task_result(state, ref, result)
+
+      Map.has_key?(state.pending_requests, ref) ->
+        {:noreply, complete_request_task(state, ref, result)}
+
+      true ->
         {:noreply, state}
     end
   end
 
   def handle_info(
-        {:codex_io_transport, ref, {:stderr, data}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
+        {:peer_request_pending, task_pid, reply_ref, %{} = request},
+        %State{} = state
       ) do
-    _ = data
-    {:noreply, state}
-  end
+    id = Map.get(request, "id")
+    method = Map.get(request, "method")
+    params = Map.get(request, "params") || %{}
+    monitor_ref = Process.monitor(task_pid)
 
-  def handle_info(
-        {:codex_io_transport, ref, {:error, reason}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    Logger.debug("Transport error from codex app-server: #{inspect(reason)}")
-    {:noreply, state}
-  end
-
-  def handle_info(
-        {:codex_io_transport, ref, {:exit, reason}},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    failure = app_server_down_failure(state, reason)
-    Logger.warning("codex app-server exited: #{inspect(failure)}")
-    state = fail_transport_waiters(state, failure)
-    {:stop, {:shutdown, failure}, state}
-  end
-
-  # Backward-compatibility for tests that still send legacy subprocess-shaped messages.
-  def handle_info(
-        {:stdout, ref, chunk},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    {messages, _buffer, non_json} = Protocol.decode_lines("", chunk)
-
-    Enum.each(non_json, fn raw ->
-      Logger.debug("Ignoring non-JSON app-server output: #{inspect(raw)}")
-    end)
+    pending_peer_requests =
+      Map.put(state.pending_peer_requests, id, %{
+        task_pid: task_pid,
+        reply_ref: reply_ref,
+        monitor_ref: monitor_ref
+      })
 
     state =
-      Enum.reduce_while(messages, {:ok, state}, fn msg, {:ok, acc} ->
-        case handle_incoming_message(acc, msg) do
-          {:ok, next_state} ->
-            {:cont, {:ok, next_state}}
-
-          {:stop, reason, next_state} ->
-            {:halt, {:stop, reason, next_state}}
-        end
-      end)
-
-    case state do
-      {:ok, next_state} ->
-        {:noreply, next_state}
-
-      {:stop, reason, next_state} ->
-        {:stop, reason, next_state}
-    end
-  end
-
-  def handle_info(
-        {:stderr, ref, data},
-        %State{raw_session: %RawSession{transport_ref: ref}} = state
-      ) do
-    _ = data
-    {:noreply, state}
-  end
-
-  def handle_info({:DOWN, ref, :process, pid, _reason}, %State{} = state) do
-    state =
-      case Map.pop(state.subscriber_refs, ref) do
-        {nil, _refs} ->
-          state
-
-        {^pid, refs} ->
-          %State{state | subscriber_refs: refs, subscribers: Map.delete(state.subscribers, pid)}
-      end
+      %State{
+        state
+        | pending_peer_requests: pending_peer_requests,
+          pending_peer_request_refs: Map.put(state.pending_peer_request_refs, monitor_ref, id)
+      }
+      |> broadcast_request(id, method, params)
 
     {:noreply, state}
   end
 
-  def handle_info({:request_timeout, id}, %State{} = state) do
-    case Map.pop(state.pending, id) do
-      {nil, _pending} ->
-        {:noreply, state}
+  def handle_info({:jsonrpc_stderr, chunk}, %State{} = state) do
+    {:noreply, %{state | stderr: append_stderr(state.stderr, chunk, state.stderr_limit)}}
+  end
 
-      {%{from: :init, timeout_ms: timeout_ms}, pending} ->
-        Enum.each(state.ready_waiters, fn from ->
-          GenServer.reply(from, {:error, {:init_timeout, timeout_ms}})
-        end)
+  def handle_info({:jsonrpc_protocol_error, reason}, %State{} = state) do
+    Logger.debug("Ignoring app-server protocol error: #{inspect(reason)}")
+    {:noreply, state}
+  end
 
-        stop_subprocess(state)
-        {:stop, :normal, %State{state | pending: pending, ready_waiters: []}}
+  def handle_info({:DOWN, ref, :process, pid, reason}, %State{} = state) do
+    cond do
+      ref == state.session_monitor_ref and pid == state.session ->
+        failure = app_server_down_failure(state, reason)
+        Logger.warning("codex app-server exited: #{inspect(failure)}")
+        {:stop, {:shutdown, failure}, fail_transport_waiters(state, failure)}
 
-      {%{from: from, method: method, timeout_ms: timeout_ms}, pending} ->
-        GenServer.reply(from, {:error, {:timeout, method, timeout_ms}})
-        {:noreply, %State{state | pending: pending}}
+      ref == state.init_task_ref ->
+        {:stop, :normal,
+         fail_init(clear_init_task(state, ref), {:init_failed, {:task_exit, reason}})}
+
+      Map.has_key?(state.pending_requests, ref) ->
+        {:noreply, fail_request_task(state, ref, reason)}
+
+      Map.has_key?(state.pending_peer_request_refs, ref) ->
+        {:noreply, drop_pending_peer_request_by_ref(state, ref)}
+
+      true ->
+        {:noreply, drop_subscriber_by_ref(state, ref, pid)}
     end
   end
 
@@ -386,72 +327,30 @@ defmodule Codex.AppServer.Connection do
 
   @impl true
   def terminate(_reason, %State{} = state) do
-    stop_subprocess(state)
+    close_session(state.session)
     :ok
   end
 
-  defp handle_incoming_message(%State{} = state, msg) when is_map(msg) do
-    case Protocol.message_type(msg) do
-      :notification ->
-        method = Map.get(msg, "method")
-        params = Map.get(msg, "params") || %{}
-        {:ok, broadcast_notification(state, method, params)}
-
-      :request ->
-        id = Map.get(msg, "id")
-        method = Map.get(msg, "method")
-        params = Map.get(msg, "params") || %{}
-        {:ok, broadcast_request(state, id, method, params)}
-
-      :response ->
-        handle_response(state, Map.get(msg, "id"), {:ok, Map.get(msg, "result")})
-
-      :error ->
-        handle_response(state, Map.get(msg, "id"), {:error, Map.get(msg, "error")})
-
-      :unknown ->
-        Logger.debug("Ignoring unknown JSON-RPC message: #{inspect(msg)}")
-        {:ok, state}
-    end
+  defp initialize_params(client_name, client_version, client_title, experimental_api) do
+    %{
+      "clientInfo" =>
+        %{"name" => client_name, "version" => client_version}
+        |> put_optional("title", client_title)
+    }
+    |> put_optional(
+      "capabilities",
+      if(experimental_api, do: %{"experimentalApi" => true}, else: nil)
+    )
   end
 
-  defp handle_response(%State{} = state, id, reply) do
-    case Map.pop(state.pending, id) do
-      {nil, _pending} ->
-        Logger.debug("Ignoring response for unknown request id: #{inspect(id)}")
-        {:ok, state}
-
-      {%{from: :init, timer_ref: timer_ref}, pending} ->
-        _ = Process.cancel_timer(timer_ref)
-        handle_init_reply(%State{state | pending: pending}, reply)
-
-      {%{from: from, timer_ref: timer_ref}, pending} ->
-        _ = Process.cancel_timer(timer_ref)
-        GenServer.reply(from, reply)
-        {:ok, %State{state | pending: pending}}
-    end
-  end
-
-  defp handle_init_reply(%State{} = state, {:ok, _result}) do
-    case send_iolist(state, Protocol.encode_notification("initialized")) do
-      :ok ->
-        reply_ready_waiters(state.ready_waiters, :ok)
-        {:ok, %State{state | phase: :ready, ready_waiters: []}}
-
-      {:error, reason} ->
-        fail_init(state, reason)
-    end
-  end
-
-  defp handle_init_reply(%State{} = state, {:error, reason}) do
-    fail_init(state, reason)
+  defp mark_ready(%State{} = state) do
+    reply_ready_waiters(state.ready_waiters, :ok)
+    %State{state | phase: :ready, ready_waiters: []}
   end
 
   defp fail_init(%State{} = state, reason) do
-    failure = {:init_failed, reason}
-    reply_ready_waiters(state.ready_waiters, {:error, failure})
-    stop_subprocess(state)
-    {:stop, :normal, %State{state | ready_waiters: []}}
+    reply_ready_waiters(state.ready_waiters, {:error, reason})
+    %State{state | ready_waiters: []}
   end
 
   defp reply_ready_waiters(waiters, reply) do
@@ -461,20 +360,25 @@ defmodule Codex.AppServer.Connection do
   defp fail_transport_waiters(%State{} = state, failure) do
     reply_ready_waiters(state.ready_waiters, {:error, failure})
 
-    Enum.each(state.pending, fn
-      {_id, %{from: :init, timer_ref: timer_ref}} ->
-        _ = Process.cancel_timer(timer_ref)
-
-      {_id, %{from: from, timer_ref: timer_ref}} ->
-        _ = Process.cancel_timer(timer_ref)
+    Enum.each(state.pending_requests, fn
+      {_ref, %{from: from}} ->
         GenServer.reply(from, {:error, failure})
     end)
 
-    %State{state | pending: %{}, ready_waiters: []}
-  end
+    Enum.each(state.pending_peer_requests, fn
+      {_id, %{task_pid: task_pid, reply_ref: reply_ref}} ->
+        send(task_pid, {:peer_request_reply, reply_ref, {:error, failure}})
+    end)
 
-  defp handle_incoming_result({:ok, %State{} = state}), do: {:noreply, state}
-  defp handle_incoming_result({:stop, reason, %State{} = state}), do: {:stop, reason, state}
+    %State{
+      state
+      | ready_waiters: [],
+        init_task_ref: nil,
+        pending_requests: %{},
+        pending_peer_requests: %{},
+        pending_peer_request_refs: %{}
+    }
+  end
 
   defp broadcast_notification(%State{} = state, method, params) do
     Enum.each(state.subscribers, fn {pid, filters} ->
@@ -558,33 +462,44 @@ defmodule Codex.AppServer.Connection do
 
   defp build_command(%Options{} = opts), do: Options.codex_command_spec(opts)
 
-  defp resolve_transport(opts) do
-    opts
-    |> Keyword.get(:transport)
-    |> normalize_transport_option(opts)
+  defp start_protocol_session(invocation, execution_surface) do
+    owner = self()
+
+    JSONRPC.start(
+      Options.execution_surface_options(execution_surface) ++
+        [
+          command: invocation,
+          ready_mode: :immediate,
+          notification_handler: fn notification ->
+            send(owner, {:jsonrpc_notification, notification})
+          end,
+          protocol_error_handler: fn reason ->
+            send(owner, {:jsonrpc_protocol_error, reason})
+          end,
+          stderr_handler: fn chunk ->
+            send(owner, {:jsonrpc_stderr, IO.iodata_to_binary(chunk)})
+          end,
+          peer_request_handler: fn request ->
+            await_peer_request_reply(owner, request)
+          end
+        ]
+    )
   end
 
-  defp normalize_transport_option(nil, opts) do
-    opts
-    |> Keyword.get(:subprocess)
-    |> normalize_transport_value("subprocess")
+  defp await_peer_request_reply(owner, request) do
+    reply_ref = make_ref()
+    send(owner, {:peer_request_pending, self(), reply_ref, request})
+
+    receive do
+      {:peer_request_reply, ^reply_ref, reply} -> reply
+    end
   end
 
-  defp normalize_transport_option(value, _opts) do
-    normalize_transport_value(value, "transport")
-  end
-
-  defp normalize_transport_value(nil, _source), do: {Transport, []}
-
-  defp normalize_transport_value({module, transport_opts}, _source)
-       when is_atom(module) and is_list(transport_opts) do
-    {module, transport_opts}
-  end
-
-  defp normalize_transport_value(module, _source) when is_atom(module), do: {module, []}
-
-  defp normalize_transport_value(other, source) do
-    raise ArgumentError, "invalid #{source} option: #{inspect(other)}"
+  defp effective_execution_surface(%Options{} = codex_opts, opts) when is_list(opts) do
+    case Keyword.fetch(opts, :execution_surface) do
+      {:ok, execution_surface} -> Options.normalize_execution_surface(execution_surface)
+      :error -> {:ok, codex_opts.execution_surface}
+    end
   end
 
   defp safe_connection_call(conn, message, timeout) do
@@ -603,6 +518,141 @@ defmodule Codex.AppServer.Connection do
   defp normalize_call_exit(:timeout), do: :timeout
   defp normalize_call_exit(reason), do: reason
 
+  defp start_init_task(%State{session: session} = state, init_timeout_ms, init_params) do
+    case TaskSupport.async_nolink(fn -> run_init_task(session, init_timeout_ms, init_params) end) do
+      {:ok, task} ->
+        {:ok, %State{state | init_task_ref: task.ref}}
+
+      {:error, reason} ->
+        {:error, reason, state}
+    end
+  end
+
+  defp run_init_task(session, init_timeout_ms, init_params) do
+    with :ok <- JSONRPC.await_ready(session, init_timeout_ms),
+         {:ok, _result} <-
+           JSONRPC.request(session, "initialize", init_params, timeout_ms: init_timeout_ms),
+         :ok <- JSONRPC.notify(session, "initialized") do
+      :ok
+    end
+  end
+
+  defp start_request_task(%State{session: session} = state, from, method, params, timeout_ms) do
+    case TaskSupport.async_nolink(fn ->
+           JSONRPC.request(session, method, params, timeout_ms: timeout_ms)
+         end) do
+      {:ok, task} ->
+        {:ok,
+         %State{
+           state
+           | pending_requests:
+               Map.put(state.pending_requests, task.ref, %{
+                 from: from,
+                 method: method,
+                 timeout_ms: timeout_ms
+               })
+         }}
+
+      {:error, reason} ->
+        {:error, reason, state}
+    end
+  end
+
+  defp handle_init_task_result(%State{} = state, ref, :ok) do
+    {:noreply, mark_ready(clear_init_task(state, ref))}
+  end
+
+  defp handle_init_task_result(%State{} = state, ref, {:error, :timeout}) do
+    next_state = clear_init_task(state, ref)
+    {:stop, :normal, fail_init(next_state, {:init_timeout, next_state.init_timeout_ms})}
+  end
+
+  defp handle_init_task_result(%State{} = state, ref, {:error, reason}) do
+    next_state = clear_init_task(state, ref)
+    reason = normalize_session_error(next_state, reason)
+
+    case reason do
+      {:app_server_down, _} = failure ->
+        {:stop, {:shutdown, failure}, fail_init(next_state, failure)}
+
+      other ->
+        {:stop, :normal, fail_init(next_state, {:init_failed, other})}
+    end
+  end
+
+  defp complete_request_task(%State{} = state, ref, result) do
+    case pop_pending_request(state, ref) do
+      {nil, next_state} ->
+        next_state
+
+      {%{from: from}, next_state} ->
+        GenServer.reply(from, normalize_request_result(next_state, result))
+        next_state
+    end
+  end
+
+  defp fail_request_task(%State{} = state, ref, reason) do
+    case pop_pending_request(state, ref) do
+      {nil, next_state} ->
+        next_state
+
+      {%{from: from}, next_state} ->
+        GenServer.reply(from, {:error, {:request_task_exit, reason}})
+        next_state
+    end
+  end
+
+  defp normalize_request_result(%State{} = _state, {:ok, _result} = ok), do: ok
+
+  defp normalize_request_result(%State{} = state, {:error, reason}) do
+    {:error, normalize_session_error(state, reason)}
+  end
+
+  defp normalize_request_result(%State{}, other), do: {:ok, other}
+
+  defp normalize_session_error(%State{} = state, reason) do
+    reason = unwrap_session_error(reason)
+
+    case reason do
+      {:channel_exit, _} = channel_exit ->
+        app_server_down_failure(state, channel_exit)
+
+      {:channel_error, _} = channel_error ->
+        app_server_down_failure(state, channel_error)
+
+      {:fatal_protocol_error, _} = fatal ->
+        app_server_down_failure(state, fatal)
+
+      :noproc ->
+        :not_connected
+
+      other ->
+        other
+    end
+  end
+
+  defp unwrap_session_error({reason, {GenServer, :call, _}}), do: unwrap_session_error(reason)
+  defp unwrap_session_error({:shutdown, reason}), do: unwrap_session_error(reason)
+  defp unwrap_session_error(reason), do: reason
+
+  defp clear_init_task(%State{} = state, ref) when ref == state.init_task_ref do
+    Process.demonitor(ref, [:flush])
+    %State{state | init_task_ref: nil}
+  end
+
+  defp clear_init_task(%State{} = state, _ref), do: state
+
+  defp pop_pending_request(%State{} = state, ref) do
+    case Map.pop(state.pending_requests, ref) do
+      {nil, pending_requests} ->
+        {nil, %State{state | pending_requests: pending_requests}}
+
+      {request, pending_requests} ->
+        Process.demonitor(ref, [:flush])
+        {request, %State{state | pending_requests: pending_requests}}
+    end
+  end
+
   defp app_server_down_failure(%State{} = state, reason) do
     details =
       %{reason: failure_reason(reason)}
@@ -613,20 +663,6 @@ defmodule Codex.AppServer.Connection do
 
   defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
   defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)
-
-  defp send_iolist(%State{raw_session: %RawSession{} = raw_session}, data) do
-    RawSession.send_input(raw_session, data)
-  end
-
-  defp send_iolist(%State{}, _data), do: {:error, {:transport, :not_connected}}
-
-  defp stop_subprocess(%State{raw_session: %RawSession{} = raw_session}) do
-    RawSession.force_close(raw_session)
-  catch
-    :exit, _reason -> :ok
-  end
-
-  defp stop_subprocess(%State{}), do: :ok
 
   defp build_env(%Options{} = codex_opts, opts) when is_list(opts) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
@@ -731,21 +767,14 @@ defmodule Codex.AppServer.Connection do
   defp normalize_option_string(value) when is_binary(value) and value != "", do: value
   defp normalize_option_string(_value), do: nil
 
-  defp transport_stderr(%State{raw_session: %RawSession{} = raw_session}) do
-    RawSession.stderr(raw_session)
-  catch
-    :exit, _reason -> ""
-  end
-
-  defp failure_reason(%CliSubprocessCore.ProcessExit{reason: reason}), do: reason
+  defp failure_reason({:channel_exit, %{reason: reason}}), do: reason
+  defp failure_reason({:channel_error, reason}), do: reason
   defp failure_reason(reason), do: reason
 
-  defp failure_stderr(_state, %CliSubprocessCore.ProcessExit{stderr: stderr})
-       when stderr not in [nil, ""] do
-    stderr
-  end
+  defp failure_stderr(_state, {:channel_exit, %{stderr: stderr}}) when stderr not in [nil, ""],
+    do: stderr
 
-  defp failure_stderr(state, _reason), do: transport_stderr(state)
+  defp failure_stderr(%State{stderr: stderr}, _reason), do: stderr
 
   defp default_client_version, do: Defaults.client_version()
 
@@ -759,4 +788,77 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
+
+  defp append_stderr(current, chunk, limit) when is_binary(current) and is_integer(limit) do
+    combined = current <> IO.iodata_to_binary(chunk)
+
+    if byte_size(combined) <= limit do
+      combined
+    else
+      :binary.part(combined, byte_size(combined) - limit, limit)
+    end
+  end
+
+  defp drop_subscriber_by_ref(%State{} = state, ref, pid) do
+    case Map.pop(state.subscriber_refs, ref) do
+      {^pid, refs} ->
+        %State{state | subscriber_refs: refs, subscribers: Map.delete(state.subscribers, pid)}
+
+      _other ->
+        state
+    end
+  end
+
+  defp pop_pending_peer_request(%State{} = state, id) do
+    case Map.pop(state.pending_peer_requests, id) do
+      {nil, rest} ->
+        {nil, %State{state | pending_peer_requests: rest}}
+
+      {%{monitor_ref: monitor_ref} = pending, rest} ->
+        Process.demonitor(monitor_ref, [:flush])
+
+        {pending,
+         %State{
+           state
+           | pending_peer_requests: rest,
+             pending_peer_request_refs: Map.delete(state.pending_peer_request_refs, monitor_ref)
+         }}
+    end
+  end
+
+  defp drop_pending_peer_request_by_ref(%State{} = state, ref) do
+    case Map.pop(state.pending_peer_request_refs, ref) do
+      {nil, refs} ->
+        %State{state | pending_peer_request_refs: refs}
+
+      {id, refs} ->
+        %State{
+          state
+          | pending_peer_request_refs: refs,
+            pending_peer_requests: Map.delete(state.pending_peer_requests, id)
+        }
+    end
+  end
+
+  defp missing_peer_request_reply(%State{session: session}, id) do
+    if is_pid(session) and Process.alive?(session) do
+      {:error, {:unknown_request, id}}
+    else
+      {:error, :not_connected}
+    end
+  end
+
+  defp encode_peer_error(code, message, nil), do: %{"code" => code, "message" => message}
+
+  defp encode_peer_error(code, message, data) do
+    %{"code" => code, "message" => message, "data" => data}
+  end
+
+  defp close_session(session) when is_pid(session) do
+    JSONRPC.close(session)
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp close_session(_session), do: :ok
 end

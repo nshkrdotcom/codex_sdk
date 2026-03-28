@@ -4,7 +4,7 @@ defmodule Codex.AppServer.ConnectionTest do
 
   import ExUnit.CaptureLog
 
-  alias CliSubprocessCore.RawSession
+  alias CliSubprocessCore.ProtocolSession
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Protocol
   alias Codex.Config.Defaults
@@ -12,20 +12,27 @@ defmodule Codex.AppServer.ConnectionTest do
   alias Codex.TestSupport.AppServerSubprocess
 
   setup do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{api_key: "test"})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
     {:ok, codex_opts: codex_opts}
   end
 
   test "handshake: sends initialize then initialized", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         client_name: "codex_sdk_test",
         client_version: "0.0.0",
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
 
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
@@ -36,7 +43,7 @@ defmodule Codex.AppServer.ConnectionTest do
     assert params["clientInfo"]["name"] == "codex_sdk_test"
     assert params["clientInfo"]["version"] == "0.0.0"
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
 
     assert :ok == Connection.await_ready(conn, 200)
 
@@ -47,11 +54,12 @@ defmodule Codex.AppServer.ConnectionTest do
   test "handshake can opt into experimental app-server APIs", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         experimental_api: true,
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
 
@@ -60,25 +68,26 @@ defmodule Codex.AppServer.ConnectionTest do
 
     assert params["capabilities"] == %{"experimentalApi" => true}
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
     assert :ok == Connection.await_ready(conn, 200)
   end
 
   test "launch options forward cwd and merged child env overrides", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
         cwd: "/tmp/codex-app-server-fixture",
         env: [CODEX_HOME: "/tmp/ignored-home"],
-        process_env: [
-          CODEX_HOME: "/tmp/isolated-codex-home",
-          HOME: "/tmp/isolated-codex-home",
-          USERPROFILE: "/tmp/isolated-codex-home",
-          EXTRA_FLAG: 123
-        ],
+        process_env:
+          Map.merge(AppServerSubprocess.process_env(AppServerSubprocess.current!()), %{
+            "CODEX_HOME" => "/tmp/isolated-codex-home",
+            "HOME" => "/tmp/isolated-codex-home",
+            "USERPROFILE" => "/tmp/isolated-codex-home",
+            "EXTRA_FLAG" => 123
+          }),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
 
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
@@ -98,35 +107,38 @@ defmodule Codex.AppServer.ConnectionTest do
     assert env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "codex_sdk_elixir"
   end
 
-  test "transport start options include the codex event tag contract", %{codex_opts: codex_opts} do
+  test "protocol-session launch options keep line stdout and raw stdin", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^transport_ref, start_opts}
-    assert start_opts[:event_tag] == :codex_io_transport
+    assert start_opts[:stdout_mode] == :line
+    assert start_opts[:stdin_mode] == :raw
   end
 
   test "launch args include payload-derived local oss config overrides" do
-    codex_opts = %Options{
-      api_key: nil,
-      codex_path_override: System.find_executable("bash") || "/bin/bash",
-      model: "gpt-oss:20b",
-      model_payload: %{
-        provider_backend: :oss,
-        backend_metadata: %{"oss_provider" => "ollama"}
-      }
-    }
+    codex_opts =
+      new_codex_opts!(%{
+        api_key: nil,
+        model: "gpt-oss:20b",
+        model_payload: %{
+          provider_backend: :oss,
+          backend_metadata: %{"oss_provider" => "ollama"}
+        }
+      })
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
 
@@ -142,7 +154,8 @@ defmodule Codex.AppServer.ConnectionTest do
   end
 
   test "launch command resolves cwd-sensitive asdf shims to stable executables" do
-    {root, shim_path, resolved_path} = build_fake_asdf_codex()
+    {root, shim_path, resolved_path} =
+      build_fake_asdf_codex(AppServerSubprocess.command_path(AppServerSubprocess.current!()))
 
     try do
       previous_asdf_dir = System.get_env("ASDF_DIR")
@@ -159,7 +172,7 @@ defmodule Codex.AppServer.ConnectionTest do
 
       {:ok, conn} =
         Connection.start_link(codex_opts,
-          transport: {AppServerSubprocess, owner: self()},
+          process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
           cwd: "/tmp/codex-app-server-fixture",
           init_timeout_ms: 200
         )
@@ -174,22 +187,23 @@ defmodule Codex.AppServer.ConnectionTest do
     end
   end
 
-  test "runtime is backed by a raw session with line stdout and raw stdin", %{
+  test "runtime is backed by a protocol session with line stdout and raw stdin", %{
     codex_opts: codex_opts
   } do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_start_opts, ^conn, ^transport_ref, start_opts}
     assert start_opts[:stdout_mode] == :line
     assert start_opts[:stdin_mode] == :raw
 
-    assert %{raw_session: %RawSession{} = raw_session} = :sys.get_state(conn)
-    assert raw_session.event_tag == :codex_io_transport
+    assert %{session: session} = :sys.get_state(conn)
+    assert %{phase: :ready, channel: %{raw_session: raw_session}} = ProtocolSession.info(session)
     assert raw_session.stdout_mode == :line
     assert raw_session.stdin_mode == :raw
   end
@@ -197,20 +211,21 @@ defmodule Codex.AppServer.ConnectionTest do
   test "healthy child stderr does not produce live debug logs", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
     log =
       capture_log([level: :debug], fn ->
-        send(conn, {:codex_io_transport, transport_ref, {:stderr, "non-fatal child stderr"}})
+        :ok = AppServerSubprocess.send_stderr("non-fatal child stderr")
         Process.sleep(20)
       end)
 
@@ -221,7 +236,6 @@ defmodule Codex.AppServer.ConnectionTest do
   test "launch options reject invalid child env overrides", %{codex_opts: codex_opts} do
     assert {:error, {:invalid_env, ["/tmp/not-a-keyword"]}} =
              Connection.start_link(codex_opts,
-               transport: {AppServerSubprocess, owner: self()},
                process_env: ["/tmp/not-a-keyword"],
                init_timeout_ms: 200
              )
@@ -232,7 +246,7 @@ defmodule Codex.AppServer.ConnectionTest do
   test "launch options reject invalid cwd overrides", %{codex_opts: codex_opts} do
     assert {:error, {:invalid_cwd, 123}} =
              Connection.start_link(codex_opts,
-               transport: {AppServerSubprocess, owner: self()},
+               process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
                cwd: 123,
                init_timeout_ms: 200
              )
@@ -240,18 +254,25 @@ defmodule Codex.AppServer.ConnectionTest do
     refute_receive {:app_server_subprocess_started, _, _}
   end
 
-  test "init failure stops subprocess when initialize send fails", %{codex_opts: codex_opts} do
-    assert {:error, :send_failed} =
-             Connection.start_link(codex_opts,
-               transport:
-                 {AppServerSubprocess,
-                  owner: self(), send_result: {:error, :send_failed}, notify_stop: true},
-               init_timeout_ms: 200
-             )
+  test "await_ready callers queue while initialize is in flight", %{codex_opts: codex_opts} do
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+        init_timeout_ms: 200
+      )
 
-    assert_receive {:app_server_subprocess_started, _conn, _os_pid}
-    assert_receive {:app_server_subprocess_send, _conn, _init_line}
-    assert_receive {:app_server_subprocess_stopped, _conn, _exec_pid}
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
+
+    ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
+    wait_for_ready_waiter(conn, 1)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
+
+    assert :ok == Task.await(ready_task, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
   end
 
   test "initialize error surfaces via await_ready and shuts down the connection", %{
@@ -259,12 +280,13 @@ defmodule Codex.AppServer.ConnectionTest do
   } do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self(), notify_stop: true},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
@@ -272,17 +294,13 @@ defmodule Codex.AppServer.ConnectionTest do
     ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
     wait_for_ready_waiter(conn, 1)
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       [
-         Jason.encode_to_iodata!(%{
-           "id" => 0,
-           "error" => %{"code" => -32_001, "message" => "initialize failed"}
-         }),
-         "\n"
-       ]}
-    )
+    AppServerSubprocess.send_stdout([
+      Jason.encode_to_iodata!(%{
+        "id" => 0,
+        "error" => %{"code" => -32_001, "message" => "initialize failed"}
+      }),
+      "\n"
+    ])
 
     assert {:error, {:init_failed, %{"code" => -32_001, "message" => "initialize failed"}}} =
              Task.await(ready_task, 200)
@@ -303,12 +321,13 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self(), stderr: "bootstrap stderr"},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
@@ -316,13 +335,15 @@ defmodule Codex.AppServer.ConnectionTest do
     ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
     wait_for_ready_waiter(conn, 1)
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.send_stderr("bootstrap stderr")
+    :ok = AppServerSubprocess.exit(1)
 
-    assert {:error, {:app_server_down, %{reason: :boom, stderr: "bootstrap stderr"}}} =
+    assert {:error, {:app_server_down, %{reason: _reason, stderr: "bootstrap stderr"}}} =
              Task.await(ready_task, 200)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: "bootstrap stderr"}}}},
+                    {:shutdown,
+                     {:app_server_down, %{reason: _reason, stderr: "bootstrap stderr"}}}},
                    200
   end
 
@@ -334,12 +355,13 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self(), stderr: "retained stderr"},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
@@ -347,13 +369,14 @@ defmodule Codex.AppServer.ConnectionTest do
     ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
     wait_for_ready_waiter(conn, 1)
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.send_stderr("retained stderr")
+    :ok = AppServerSubprocess.exit(1)
 
-    assert {:error, {:app_server_down, %{reason: :boom, stderr: "retained stderr"}}} =
+    assert {:error, {:app_server_down, %{reason: _reason, stderr: "retained stderr"}}} =
              Task.await(ready_task, 200)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: "retained stderr"}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason, stderr: "retained stderr"}}}},
                    200
   end
 
@@ -362,14 +385,15 @@ defmodule Codex.AppServer.ConnectionTest do
   } do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -391,7 +415,7 @@ defmodule Codex.AppServer.ConnectionTest do
       Protocol.encode_response(request_id, %{"data" => [], "nextCursor" => nil})
     ]
 
-    send(conn, {:stdout, os_pid, chunk})
+    AppServerSubprocess.send_stdout(chunk)
 
     assert_receive {:codex_notification, "turn/started", %{"threadId" => "thr_1"}}
     assert {:ok, %{"data" => [], "nextCursor" => nil}} = Task.await(task, 200)
@@ -400,14 +424,15 @@ defmodule Codex.AppServer.ConnectionTest do
   test "request timeouts clean up in-flight state", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -424,16 +449,17 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self(), stderr: "request stderr"},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -445,13 +471,14 @@ defmodule Codex.AppServer.ConnectionTest do
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
     assert {:ok, %{"method" => "thread/list"}} = Jason.decode(request_line)
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.send_stderr("request stderr")
+    :ok = AppServerSubprocess.exit(1)
 
-    assert {:error, {:app_server_down, %{reason: :boom, stderr: "request stderr"}}} =
+    assert {:error, {:app_server_down, %{reason: _reason, stderr: "request stderr"}}} =
              Task.await(task, 200)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: "request stderr"}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason, stderr: "request stderr"}}}},
                    200
   end
 
@@ -463,23 +490,24 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.exit(1)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason}}}},
                    200
 
     assert {:error, :not_connected} = Connection.subscribe(conn)
@@ -493,23 +521,24 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.exit(1)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason}}}},
                    200
 
     assert {:error, :not_connected} = Connection.respond(conn, 123, %{"ok" => true})
@@ -521,23 +550,24 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, transport_ref, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.exit(1)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason}}}},
                    200
 
     assert :ok = Connection.unsubscribe(conn)
@@ -552,12 +582,13 @@ defmodule Codex.AppServer.ConnectionTest do
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self(), stderr: retained},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
     monitor_ref = Process.monitor(conn)
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, transport_ref}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
@@ -565,35 +596,36 @@ defmodule Codex.AppServer.ConnectionTest do
     ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
     wait_for_ready_waiter(conn, 1)
 
-    send(conn, {:codex_io_transport, transport_ref, {:exit, :boom}})
+    :ok = AppServerSubprocess.send_stderr(retained)
+    :ok = AppServerSubprocess.exit(1)
 
-    assert {:error, {:app_server_down, %{reason: :boom, stderr: ^retained}}} =
+    assert {:error, {:app_server_down, %{reason: _reason, stderr: ^retained}}} =
              Task.await(ready_task, 200)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
-                    {:shutdown, {:app_server_down, %{reason: :boom, stderr: ^retained}}}},
+                    {:shutdown, {:app_server_down, %{reason: _reason, stderr: ^retained}}}},
                    200
   end
 
   test "ignores invalid subscriber filters without crashing", %{codex_opts: codex_opts} do
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        transport: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{})})
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
     :ok = Connection.subscribe(conn, methods: :bad, thread_id: 123)
 
-    send(
-      conn,
-      {:stdout, os_pid, Protocol.encode_notification("turn/started", %{"threadId" => "thr_1"})}
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_notification("turn/started", %{"threadId" => "thr_1"})
     )
 
     refute_receive {:codex_notification, _, _}, 50
@@ -625,7 +657,7 @@ defmodule Codex.AppServer.ConnectionTest do
     |> length()
   end
 
-  defp build_fake_asdf_codex do
+  defp build_fake_asdf_codex(resolved_path_override \\ nil) do
     root =
       Path.join(System.tmp_dir!(), "codex_app_server_asdf_#{System.unique_integer([:positive])}")
 
@@ -639,12 +671,18 @@ defmodule Codex.AppServer.ConnectionTest do
     File.mkdir_p!(installs_dir)
 
     resolved_path =
-      Path.join(installs_dir, "codex")
-      |> then(fn path ->
-        File.write!(path, "#!/bin/bash\nexit 0\n")
-        File.chmod!(path, 0o755)
-        path
-      end)
+      case resolved_path_override do
+        path when is_binary(path) ->
+          path
+
+        _ ->
+          Path.join(installs_dir, "codex")
+          |> then(fn path ->
+            File.write!(path, "#!/bin/bash\nexit 0\n")
+            File.chmod!(path, 0o755)
+            path
+          end)
+      end
 
     asdf_path =
       Path.join(bin_dir, "asdf")
@@ -683,5 +721,11 @@ defmodule Codex.AppServer.ConnectionTest do
       end)
 
     {root, shim_path, resolved_path}
+  end
+
+  defp new_codex_opts!(attrs \\ %{}) do
+    attrs = Map.put_new(Map.new(attrs), :api_key, "test")
+    {:ok, base_opts} = Options.new(attrs)
+    AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
   end
 end

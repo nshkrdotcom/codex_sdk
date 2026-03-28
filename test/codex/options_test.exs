@@ -1,6 +1,7 @@
 defmodule Codex.OptionsTest do
   use ExUnit.Case, async: false
 
+  alias CliSubprocessCore.ExecutionSurface
   alias CliSubprocessCore.ModelRegistry.Selection
   alias Codex.Options
   import Codex.Test.ModelFixtures
@@ -58,6 +59,28 @@ defmodule Codex.OptionsTest do
       assert opts.telemetry_prefix == [:codex, :test]
       assert opts.model == default_model()
       assert opts.reasoning_effort == :high
+    end
+
+    test "normalizes execution_surface from public attrs" do
+      assert {:ok, %Options{execution_surface: %ExecutionSurface{} = execution_surface}} =
+               Options.new(%{
+                 execution_surface: %{
+                   surface_kind: :static_ssh,
+                   transport_options: [destination: "options.test.example", port: 2222]
+                 }
+               })
+
+      assert execution_surface.surface_kind == :static_ssh
+      assert execution_surface.transport_options[:destination] == "options.test.example"
+      assert execution_surface.transport_options[:port] == 2222
+    end
+
+    test "defaults execution_surface to local_subprocess" do
+      assert {:ok, %Options{execution_surface: %ExecutionSurface{} = execution_surface}} =
+               Options.new(%{})
+
+      assert execution_surface.surface_kind == :local_subprocess
+      assert execution_surface.transport_options == []
     end
 
     test "uses OPENAI_BASE_URL when base_url is not provided" do

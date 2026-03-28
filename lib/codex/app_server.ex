@@ -27,6 +27,7 @@ defmodule Codex.AppServer do
           client_title: String.t(),
           client_version: String.t(),
           experimental_api: boolean(),
+          execution_surface: CliSubprocessCore.ExecutionSurface.t() | map() | keyword(),
           cwd: String.t(),
           process_env: map() | keyword(),
           env: map() | keyword(),

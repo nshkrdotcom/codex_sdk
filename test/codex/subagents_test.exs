@@ -10,19 +10,31 @@ defmodule Codex.SubagentsTest do
   alias Codex.TestSupport.AppServerSubprocess
 
   setup do
-    bash = System.find_executable("bash") || "/bin/bash"
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: bash})
+    harness =
+      AppServerSubprocess.new!(owner: self())
+      |> AppServerSubprocess.put_current!()
+
+    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
+
+    {:ok, base_opts} = Options.new(%{api_key: "test"})
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, harness)
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
-        subprocess: {AppServerSubprocess, owner: self()},
+        process_env: AppServerSubprocess.process_env(harness),
         init_timeout_ms: 200
       )
 
+    :ok = AppServerSubprocess.attach(harness, conn)
     assert_receive {:app_server_subprocess_started, ^conn, os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
-    send(conn, {:stdout, os_pid, Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})})
+
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"})
+      )
+
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
@@ -40,7 +52,7 @@ defmodule Codex.SubagentsTest do
     assert params["limit"] == 5
     assert params["sourceKinds"] == ["subAgent"]
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"data" => []})})
+    :ok = AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, []} = Task.await(task, 200)
   end
@@ -55,38 +67,37 @@ defmodule Codex.SubagentsTest do
 
     assert params["sourceKinds"] == ["subAgentThreadSpawn"]
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "data" => [
-           %{
-             "id" => "thr_child",
-             "source" => %{
-               "subAgent" => %{
-                 "thread_spawn" => %{
-                   "parent_thread_id" => "thr_parent",
-                   "depth" => 1,
-                   "agent_nickname" => "Atlas",
-                   "agent_role" => "explorer"
-                 }
-               }
-             }
-           },
-           %{
-             "id" => "thr_other",
-             "source" => %{
-               "subAgent" => %{
-                 "thread_spawn" => %{
-                   "parent_thread_id" => "thr_elsewhere",
-                   "depth" => 1
-                 }
-               }
-             }
-           }
-         ]
-       })}
-    )
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(req_id, %{
+          "data" => [
+            %{
+              "id" => "thr_child",
+              "source" => %{
+                "subAgent" => %{
+                  "thread_spawn" => %{
+                    "parent_thread_id" => "thr_parent",
+                    "depth" => 1,
+                    "agent_nickname" => "Atlas",
+                    "agent_role" => "explorer"
+                  }
+                }
+              }
+            },
+            %{
+              "id" => "thr_other",
+              "source" => %{
+                "subAgent" => %{
+                  "thread_spawn" => %{
+                    "parent_thread_id" => "thr_elsewhere",
+                    "depth" => 1
+                  }
+                }
+              }
+            }
+          ]
+        })
+      )
 
     assert {:ok, [%{"id" => "thr_child"} = child]} = Task.await(task, 200)
 
@@ -129,7 +140,7 @@ defmodule Codex.SubagentsTest do
       "turns" => [%{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}]
     }
 
-    send(conn, {:stdout, os_pid, Protocol.encode_response(req_id, %{"thread" => thread})})
+    :ok = AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => thread}))
 
     assert {:ok, ^thread} = Task.await(task, 200)
   end
@@ -147,19 +158,18 @@ defmodule Codex.SubagentsTest do
 
     assert first_params == %{"threadId" => "thr_child", "includeTurns" => true}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(first_id, %{
-         "thread" => %{
-           "id" => "thr_child",
-           "status" => %{"type" => "active", "activeFlags" => []},
-           "turns" => [
-             %{"id" => "turn_1", "status" => "inProgress", "items" => [], "error" => nil}
-           ]
-         }
-       })}
-    )
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(first_id, %{
+          "thread" => %{
+            "id" => "thr_child",
+            "status" => %{"type" => "active", "activeFlags" => []},
+            "turns" => [
+              %{"id" => "turn_1", "status" => "inProgress", "items" => [], "error" => nil}
+            ]
+          }
+        })
+      )
 
     assert_receive {:app_server_subprocess_send, ^conn, second_line}
 
@@ -168,19 +178,18 @@ defmodule Codex.SubagentsTest do
 
     assert second_params == %{"threadId" => "thr_child", "includeTurns" => true}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(second_id, %{
-         "thread" => %{
-           "id" => "thr_child",
-           "status" => %{"type" => "notLoaded"},
-           "turns" => [
-             %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-           ]
-         }
-       })}
-    )
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(second_id, %{
+          "thread" => %{
+            "id" => "thr_child",
+            "status" => %{"type" => "notLoaded"},
+            "turns" => [
+              %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+            ]
+          }
+        })
+      )
 
     assert {:ok, :completed} = Task.await(task, 200)
   end
@@ -201,19 +210,18 @@ defmodule Codex.SubagentsTest do
 
     assert params == %{"threadId" => "thr_child", "includeTurns" => true}
 
-    send(
-      conn,
-      {:stdout, os_pid,
-       Protocol.encode_response(req_id, %{
-         "thread" => %{
-           "id" => "thr_child",
-           "status" => %{"type" => "notLoaded"},
-           "turns" => [
-             %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
-           ]
-         }
-       })}
-    )
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(req_id, %{
+          "thread" => %{
+            "id" => "thr_child",
+            "status" => %{"type" => "notLoaded"},
+            "turns" => [
+              %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+            ]
+          }
+        })
+      )
 
     assert {:ok, :completed} = Task.await(task, 200)
   end

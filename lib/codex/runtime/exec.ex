@@ -156,7 +156,7 @@ defmodule Codex.Runtime.Exec do
           session_event_tag: @default_session_event_tag,
           headless_timeout_ms: :infinity,
           max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
-        ]
+        ] ++ Options.execution_surface_options(exec_opts.execution_surface)
 
       {:ok, session_opts}
     else
