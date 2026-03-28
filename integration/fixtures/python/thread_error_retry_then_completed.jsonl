@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread_retry_then_completed"}
+{"type":"turn.started","thread_id":"thread_retry_then_completed","turn_id":"turn_retry_then_completed"}
+{"type":"error","thread_id":"thread_retry_then_completed","turn_id":"turn_retry_then_completed","message":"Reconnecting... 1/5 (stream disconnected before completion: stream closed before response.completed)","will_retry":true}
+{"type":"item.completed","thread_id":"thread_retry_then_completed","turn_id":"turn_retry_then_completed","item":{"id":"item_retry_then_completed","type":"agent_message","text":"Recovered after reconnect."}}
+{"type":"turn.completed","thread_id":"thread_retry_then_completed","turn_id":"turn_retry_then_completed","status":"completed","final_response":{"type":"text","text":"Recovered after reconnect."},"usage":{"input_tokens":8,"cached_input_tokens":0,"output_tokens":5,"total_tokens":13}}

@@ -974,6 +974,7 @@ defmodule Codex.Thread do
   defp extract_turn_failure(events) do
     find_turn_failed_failure(events) ||
       find_turn_completed_failure(events) ||
+      find_completed_turn_success(events) ||
       find_error_failure(events) ||
       :ok
   end
@@ -1005,6 +1006,10 @@ defmodule Codex.Thread do
     end
   end
 
+  defp find_completed_turn_success(events) do
+    if Enum.any?(events, &completed_turn_success?/1), do: :ok, else: nil
+  end
+
   defp error_event_payload(%Events.Error{} = event) do
     %{
       "message" => event.message,
@@ -1021,6 +1026,12 @@ defmodule Codex.Thread do
        do: true
 
   defp failed_turn_completed?(_event), do: false
+
+  defp completed_turn_success?(%Events.TurnCompleted{status: status})
+       when status in [nil, "completed", :completed],
+       do: true
+
+  defp completed_turn_success?(_event), do: false
 
   defp telemetry_result(:ok, true), do: :early_exit
   defp telemetry_result(:ok, false), do: :ok

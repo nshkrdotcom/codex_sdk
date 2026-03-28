@@ -26,6 +26,11 @@ defmodule Codex.ExamplesSupport do
     if ollama_mode?(), do: nil, else: default
   end
 
+  @spec conversation_default_mode() :: :multi_turn | :save_resume
+  def conversation_default_mode do
+    if ollama_mode?(), do: :save_resume, else: :multi_turn
+  end
+
   @spec decode_json_result(Result.t()) :: {:ok, term()} | {:error, term()}
   def decode_json_result(%Result{} = result) do
     case Result.json(result) do

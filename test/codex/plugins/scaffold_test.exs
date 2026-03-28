@@ -60,6 +60,10 @@ defmodule Codex.Plugins.ScaffoldTest do
   end
 
   defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
+    Path.join(System.tmp_dir!(), "#{prefix}_#{unique_suffix()}")
+  end
+
+  defp unique_suffix do
+    Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
   end
 end

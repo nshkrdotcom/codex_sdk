@@ -1,5 +1,4 @@
 Code.require_file("support/contract_case.ex", __DIR__)
-Code.require_file("support/app_server_subprocess.ex", __DIR__)
 Code.require_file("support/auth_env.ex", __DIR__)
 Code.require_file("support/fixture_scripts.ex", __DIR__)
 Code.require_file("support/parity_matrix.ex", __DIR__)

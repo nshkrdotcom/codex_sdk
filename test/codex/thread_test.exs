@@ -892,6 +892,48 @@ defmodule Codex.ThreadTest do
   end
 
   describe "turn failures" do
+    test "does not fail when a retryable error is followed by a completed turn" do
+      codex_path =
+        "thread_error_retry_then_completed.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:ok, result} = Thread.run(thread, "recover after reconnect")
+      assert %Codex.Items.AgentMessage{text: "Recovered after reconnect."} = result.final_response
+      assert result.thread.thread_id == "thread_retry_then_completed"
+    end
+
+    test "still fails when retryable reconnect errors never recover to a completed turn" do
+      codex_path =
+        "thread_error_retry_without_completion.jsonl"
+        |> FixtureScripts.cat_fixture()
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: codex_path
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:turn_failed, %Error{} = error}} =
+               Thread.run(thread, "retry never recovers")
+
+      assert error.message =~ "Reconnecting..."
+      assert get_in(error.details, [:details, "will_retry"]) == true
+    end
+
     test "normalizes rate limit failures into Codex.Error" do
       codex_path =
         "thread_error_rate_limit.jsonl"

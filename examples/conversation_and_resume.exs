@@ -91,5 +91,16 @@ case System.argv() do
     """)
 
   _ ->
-    Examples.Conversation.multi_turn()
+    case ExamplesSupport.conversation_default_mode() do
+      :multi_turn ->
+        Examples.Conversation.multi_turn()
+
+      :save_resume ->
+        IO.puts("""
+        Ollama mode detected. Running the bounded save/resume path instead of the
+        three-turn multi-turn demo for local OSS reliability.
+        """)
+
+        Examples.Conversation.save_and_resume_demo()
+    end
 end
