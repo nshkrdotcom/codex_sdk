@@ -3,9 +3,9 @@ defmodule Codex.ExecTest do
 
   import ExUnit.CaptureLog
 
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
-  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
   import Codex.Test.ModelFixtures

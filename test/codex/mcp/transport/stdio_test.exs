@@ -1,5 +1,6 @@
 defmodule Codex.MCP.Transport.StdioTest do
   use ExUnit.Case, async: false
+  import ExUnit.CaptureLog
 
   alias CliSubprocessCore.ProtocolSession
   alias CliSubprocessCore.TestSupport.FakeSSH
@@ -8,13 +9,17 @@ defmodule Codex.MCP.Transport.StdioTest do
 
   test "recv waiters are drained when the protocol session exits" do
     harness = AppServerSubprocess.new!(owner: self())
-    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
 
     {:ok, transport} =
       Stdio.start_link(
         command: AppServerSubprocess.command_path(harness),
         env: AppServerSubprocess.process_env(harness)
       )
+
+    on_exit(fn ->
+      stop_transport(transport)
+      AppServerSubprocess.cleanup(harness)
+    end)
 
     :ok = AppServerSubprocess.attach(harness, transport)
 
@@ -22,22 +27,32 @@ defmodule Codex.MCP.Transport.StdioTest do
     wait_for_waiter(transport)
     monitor_ref = Process.monitor(transport)
 
-    :ok = AppServerSubprocess.exit(harness, 9)
+    capture_log(fn ->
+      :ok = AppServerSubprocess.exit(harness, 9)
 
-    assert Task.await(waiter, 1_000) == {:error, :closed}
-    assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 1_000
+      assert Task.await(waiter, 1_000) == {:error, :closed}
+      assert_receive {:DOWN, ^monitor_ref, :process, ^transport, _reason}, 1_000
+    end)
+
     refute Process.alive?(transport)
   end
 
   test "runtime is backed by ProtocolSession with line stdout and raw stdin" do
     harness = AppServerSubprocess.new!(owner: self())
-    on_exit(fn -> AppServerSubprocess.cleanup(harness) end)
 
     {:ok, transport} =
       Stdio.start_link(
         command: AppServerSubprocess.command_path(harness),
         env: AppServerSubprocess.process_env(harness)
       )
+
+    on_exit(fn ->
+      stop_transport(transport)
+      AppServerSubprocess.cleanup(harness)
+    end)
+
+    :ok = AppServerSubprocess.attach(harness, transport)
+    assert_receive {:app_server_subprocess_started, ^transport, _os_pid}, 1_000
 
     assert %{session: session} = :sys.get_state(transport)
     assert %{phase: :ready, channel: %{raw_session: raw_session}} = ProtocolSession.info(session)
@@ -48,11 +63,6 @@ defmodule Codex.MCP.Transport.StdioTest do
   test "stdio requests and notifications run over fake SSH" do
     harness = AppServerSubprocess.new!(owner: self())
     fake_ssh = FakeSSH.new!()
-
-    on_exit(fn ->
-      AppServerSubprocess.cleanup(harness)
-      FakeSSH.cleanup(fake_ssh)
-    end)
 
     {:ok, transport} =
       Stdio.start_link(
@@ -67,6 +77,12 @@ defmodule Codex.MCP.Transport.StdioTest do
             )
         ]
       )
+
+    on_exit(fn ->
+      stop_transport(transport)
+      AppServerSubprocess.cleanup(harness)
+      FakeSSH.cleanup(fake_ssh)
+    end)
 
     :ok = AppServerSubprocess.attach(harness, transport)
 
@@ -146,5 +162,13 @@ defmodule Codex.MCP.Transport.StdioTest do
         wait_until(fun, started)
       end
     end
+  end
+
+  defp stop_transport(transport) when is_pid(transport) do
+    if Process.alive?(transport) do
+      GenServer.stop(transport, :normal)
+    end
+
+    :ok
   end
 end

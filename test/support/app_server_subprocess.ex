@@ -160,16 +160,19 @@ defmodule Codex.TestSupport.AppServerSubprocess do
   @spec send_stderr(iodata()) :: :ok
   def send_stderr(data), do: send_stderr(current!(), data)
 
+  @spec exit(t()) :: :ok
+  def exit(%__MODULE__{} = harness), do: exit(harness, 0)
+
+  @spec exit(integer()) :: :ok
+  def exit(status) when is_integer(status), do: exit(current!(), status)
+
   @spec exit(t(), integer()) :: :ok
-  def exit(%__MODULE__{} = harness, status \\ 0) when is_integer(status) do
+  def exit(%__MODULE__{} = harness, status) when is_integer(status) do
     append_control(harness.control_path, %{
       "command" => "exit",
       "status" => status
     })
   end
-
-  @spec exit(integer()) :: :ok
-  def exit(status) when is_integer(status), do: exit(current!(), status)
 
   @impl true
   def init(opts) do
@@ -214,17 +217,38 @@ defmodule Codex.TestSupport.AppServerSubprocess do
       {[], offset}
     else
       chunk = binary_part(contents, offset, byte_size(contents) - offset)
-      lines = String.split(chunk, "\n", trim: true)
+      complete_chunk = complete_event_chunk(chunk)
 
-      events =
-        Enum.flat_map(lines, fn line ->
-          case Jason.decode(line) do
-            {:ok, %{} = event} -> [event]
-            _ -> []
-          end
-        end)
+      if is_nil(complete_chunk) do
+        {[], offset}
+      else
+        {decode_events(complete_chunk), offset + byte_size(complete_chunk)}
+      end
+    end
+  end
 
-      {events, byte_size(contents)}
+  defp complete_event_chunk(chunk) when is_binary(chunk) do
+    case :binary.matches(chunk, "\n") do
+      [] ->
+        nil
+
+      matches ->
+        {newline_offset, 1} = List.last(matches)
+        complete_size = newline_offset + 1
+        binary_part(chunk, 0, complete_size)
+    end
+  end
+
+  defp decode_events(chunk) when is_binary(chunk) do
+    chunk
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(&decode_event_line/1)
+  end
+
+  defp decode_event_line(line) when is_binary(line) do
+    case Jason.decode(line) do
+      {:ok, %{} = event} -> [event]
+      _ -> []
     end
   end
 

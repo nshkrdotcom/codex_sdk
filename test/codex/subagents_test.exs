@@ -26,7 +26,7 @@ defmodule Codex.SubagentsTest do
       )
 
     :ok = AppServerSubprocess.attach(harness, conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
 
@@ -38,10 +38,10 @@ defmodule Codex.SubagentsTest do
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    {:ok, conn: conn, os_pid: os_pid}
+    {:ok, conn: conn}
   end
 
-  test "subagents: list defaults to subagent source filtering", %{conn: conn, os_pid: os_pid} do
+  test "subagents: list defaults to subagent source filtering", %{conn: conn} do
     task = Task.async(fn -> Subagents.list(conn, limit: 5) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -57,7 +57,7 @@ defmodule Codex.SubagentsTest do
     assert {:ok, []} = Task.await(task, 200)
   end
 
-  test "subagents: lists children for parent thread", %{conn: conn, os_pid: os_pid} do
+  test "subagents: lists children for parent thread", %{conn: conn} do
     task = Task.async(fn -> Subagents.children(conn, "thr_parent") end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -116,7 +116,7 @@ defmodule Codex.SubagentsTest do
     assert Subagents.child_thread?(child)
   end
 
-  test "subagents: read returns a known child thread", %{conn: conn, os_pid: os_pid} do
+  test "subagents: read returns a known child thread", %{conn: conn} do
     task = Task.async(fn -> Subagents.read(conn, "thr_child", include_turns: true) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -145,7 +145,7 @@ defmodule Codex.SubagentsTest do
     assert {:ok, ^thread} = Task.await(task, 200)
   end
 
-  test "subagents: await returns completed child status", %{conn: conn, os_pid: os_pid} do
+  test "subagents: await returns completed child status", %{conn: conn} do
     task =
       Task.async(fn ->
         Subagents.await(conn, "thr_child", timeout: 1_000, interval: 0)
@@ -195,8 +195,7 @@ defmodule Codex.SubagentsTest do
   end
 
   test "subagents: await always requests turns even when include_turns is false", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->

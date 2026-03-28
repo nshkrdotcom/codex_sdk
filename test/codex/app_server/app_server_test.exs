@@ -29,7 +29,7 @@ defmodule Codex.AppServerTest do
     conn_pid = await_supervised_connection!()
     :ok = AppServerSubprocess.attach(harness, conn_pid)
 
-    assert_receive {:app_server_subprocess_started, ^conn_pid, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn_pid, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn_pid, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
 

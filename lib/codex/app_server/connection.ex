@@ -217,28 +217,26 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_call({:respond, id, result}, _from, %State{} = state) do
-    case pop_pending_peer_request(state, id) do
-      {nil, next_state} ->
-        {:reply, missing_peer_request_reply(next_state, id), next_state}
-
-      {%{task_pid: task_pid, reply_ref: reply_ref}, next_state} ->
-        send(task_pid, {:peer_request_reply, reply_ref, {:ok, result}})
+    case deliver_or_store_peer_request_reply(state, id, {:ok, result}) do
+      {:ok, next_state} ->
         {:reply, :ok, next_state}
+
+      {:error, reason, next_state} ->
+        {:reply, reason, next_state}
     end
   end
 
   def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
-    case pop_pending_peer_request(state, id) do
-      {nil, next_state} ->
-        {:reply, missing_peer_request_reply(next_state, id), next_state}
-
-      {%{task_pid: task_pid, reply_ref: reply_ref}, next_state} ->
-        send(
-          task_pid,
-          {:peer_request_reply, reply_ref, {:error, encode_peer_error(code, message, data)}}
-        )
-
+    case deliver_or_store_peer_request_reply(
+           state,
+           id,
+           {:error, encode_peer_error(code, message, data)}
+         ) do
+      {:ok, next_state} ->
         {:reply, :ok, next_state}
+
+      {:error, reason, next_state} ->
+        {:reply, reason, next_state}
     end
   end
 
@@ -248,6 +246,19 @@ defmodule Codex.AppServer.Connection do
     method = Map.get(notification, "method")
     params = Map.get(notification, "params") || %{}
     {:noreply, broadcast_notification(state, method, params)}
+  end
+
+  def handle_info({:jsonrpc_peer_request, id, %{} = request}, %State{} = state) do
+    method = Map.get(request, "method")
+    params = Map.get(request, "params") || %{}
+
+    case mark_peer_request_announced(state, id) do
+      {:already_announced, next_state} ->
+        {:noreply, next_state}
+
+      {:announced, next_state} ->
+        {:noreply, broadcast_request(next_state, id, method, params)}
+    end
   end
 
   def handle_info({ref, result}, %State{} = state) when is_reference(ref) do
@@ -268,26 +279,23 @@ defmodule Codex.AppServer.Connection do
         %State{} = state
       ) do
     id = Map.get(request, "id")
-    method = Map.get(request, "method")
-    params = Map.get(request, "params") || %{}
     monitor_ref = Process.monitor(task_pid)
+    entry = Map.get(state.pending_peer_requests, id, new_pending_peer_request())
 
-    pending_peer_requests =
-      Map.put(state.pending_peer_requests, id, %{
-        task_pid: task_pid,
-        reply_ref: reply_ref,
-        monitor_ref: monitor_ref
-      })
-
-    state =
+    next_state =
       %State{
         state
-        | pending_peer_requests: pending_peer_requests,
+        | pending_peer_requests:
+            Map.put(state.pending_peer_requests, id, %{
+              entry
+              | task_pid: task_pid,
+                reply_ref: reply_ref,
+                monitor_ref: monitor_ref
+            }),
           pending_peer_request_refs: Map.put(state.pending_peer_request_refs, monitor_ref, id)
       }
-      |> broadcast_request(id, method, params)
 
-    {:noreply, state}
+    {:noreply, maybe_deliver_pending_peer_reply(next_state, id)}
   end
 
   def handle_info({:jsonrpc_stderr, chunk}, %State{} = state) do
@@ -366,8 +374,12 @@ defmodule Codex.AppServer.Connection do
     end)
 
     Enum.each(state.pending_peer_requests, fn
-      {_id, %{task_pid: task_pid, reply_ref: reply_ref}} ->
+      {_id, %{task_pid: task_pid, reply_ref: reply_ref}}
+      when is_pid(task_pid) and is_reference(reply_ref) ->
         send(task_pid, {:peer_request_reply, reply_ref, {:error, failure}})
+
+      {_id, _pending} ->
+        :ok
     end)
 
     %State{
@@ -473,6 +485,9 @@ defmodule Codex.AppServer.Connection do
           notification_handler: fn notification ->
             send(owner, {:jsonrpc_notification, notification})
           end,
+          peer_request_notifier: fn correlation_key, request ->
+            send(owner, {:jsonrpc_peer_request, correlation_key, request})
+          end,
           protocol_error_handler: fn reason ->
             send(owner, {:jsonrpc_protocol_error, reason})
           end,
@@ -531,9 +546,8 @@ defmodule Codex.AppServer.Connection do
   defp run_init_task(session, init_timeout_ms, init_params) do
     with :ok <- JSONRPC.await_ready(session, init_timeout_ms),
          {:ok, _result} <-
-           JSONRPC.request(session, "initialize", init_params, timeout_ms: init_timeout_ms),
-         :ok <- JSONRPC.notify(session, "initialized") do
-      :ok
+           JSONRPC.request(session, "initialize", init_params, timeout_ms: init_timeout_ms) do
+      JSONRPC.notify(session, "initialized")
     end
   end
 
@@ -585,8 +599,8 @@ defmodule Codex.AppServer.Connection do
       {nil, next_state} ->
         next_state
 
-      {%{from: from}, next_state} ->
-        GenServer.reply(from, normalize_request_result(next_state, result))
+      {%{from: from} = request, next_state} ->
+        GenServer.reply(from, normalize_request_result(next_state, request, result))
         next_state
     end
   end
@@ -602,13 +616,21 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp normalize_request_result(%State{} = _state, {:ok, _result} = ok), do: ok
+  defp normalize_request_result(%State{} = _state, _request, {:ok, _result} = ok), do: ok
 
-  defp normalize_request_result(%State{} = state, {:error, reason}) do
+  defp normalize_request_result(
+         %State{} = _state,
+         %{method: method, timeout_ms: timeout_ms},
+         {:error, :timeout}
+       ) do
+    {:error, {:timeout, method, timeout_ms}}
+  end
+
+  defp normalize_request_result(%State{} = state, _request, {:error, reason}) do
     {:error, normalize_session_error(state, reason)}
   end
 
-  defp normalize_request_result(%State{}, other), do: {:ok, other}
+  defp normalize_request_result(%State{}, _request, other), do: {:ok, other}
 
   defp normalize_session_error(%State{} = state, reason) do
     reason = unwrap_session_error(reason)
@@ -809,23 +831,6 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp pop_pending_peer_request(%State{} = state, id) do
-    case Map.pop(state.pending_peer_requests, id) do
-      {nil, rest} ->
-        {nil, %State{state | pending_peer_requests: rest}}
-
-      {%{monitor_ref: monitor_ref} = pending, rest} ->
-        Process.demonitor(monitor_ref, [:flush])
-
-        {pending,
-         %State{
-           state
-           | pending_peer_requests: rest,
-             pending_peer_request_refs: Map.delete(state.pending_peer_request_refs, monitor_ref)
-         }}
-    end
-  end
-
   defp drop_pending_peer_request_by_ref(%State{} = state, ref) do
     case Map.pop(state.pending_peer_request_refs, ref) do
       {nil, refs} ->
@@ -846,6 +851,96 @@ defmodule Codex.AppServer.Connection do
     else
       {:error, :not_connected}
     end
+  end
+
+  defp mark_peer_request_announced(%State{} = state, id) do
+    case Map.get(state.pending_peer_requests, id) do
+      %{announced?: true} ->
+        {:already_announced, state}
+
+      nil ->
+        {:announced,
+         %State{
+           state
+           | pending_peer_requests:
+               Map.put(state.pending_peer_requests, id, %{
+                 new_pending_peer_request()
+                 | announced?: true
+               })
+         }}
+
+      pending ->
+        {:announced,
+         %State{
+           state
+           | pending_peer_requests:
+               Map.put(state.pending_peer_requests, id, %{pending | announced?: true})
+         }}
+    end
+  end
+
+  defp maybe_deliver_pending_peer_reply(%State{} = state, id) do
+    case Map.get(state.pending_peer_requests, id) do
+      %{pending_reply: reply, task_pid: task_pid, reply_ref: reply_ref}
+      when not is_nil(reply) and is_pid(task_pid) and is_reference(reply_ref) ->
+        deliver_peer_request_reply(state, id, task_pid, reply_ref, reply)
+
+      _other ->
+        state
+    end
+  end
+
+  defp deliver_or_store_peer_request_reply(%State{} = state, id, reply) do
+    case Map.get(state.pending_peer_requests, id) do
+      nil ->
+        {:error, missing_peer_request_reply(state, id), state}
+
+      %{task_pid: task_pid, reply_ref: reply_ref}
+      when is_pid(task_pid) and is_reference(reply_ref) ->
+        {:ok, deliver_peer_request_reply(state, id, task_pid, reply_ref, reply)}
+
+      pending ->
+        {:ok,
+         %State{
+           state
+           | pending_peer_requests:
+               Map.put(state.pending_peer_requests, id, %{pending | pending_reply: reply})
+         }}
+    end
+  end
+
+  defp deliver_peer_request_reply(%State{} = state, id, task_pid, reply_ref, reply) do
+    case Map.pop(state.pending_peer_requests, id) do
+      {nil, _rest} ->
+        state
+
+      {%{monitor_ref: monitor_ref}, rest} ->
+        if is_reference(monitor_ref) do
+          Process.demonitor(monitor_ref, [:flush])
+        end
+
+        send(task_pid, {:peer_request_reply, reply_ref, reply})
+
+        %State{
+          state
+          | pending_peer_requests: rest,
+            pending_peer_request_refs:
+              if(is_reference(monitor_ref),
+                do: Map.delete(state.pending_peer_request_refs, monitor_ref),
+                else: state.pending_peer_request_refs
+              )
+        }
+    end
+  end
+
+  defp new_pending_peer_request do
+    %{
+      announced?: false,
+      task_pid: nil,
+      reply_ref: nil,
+      monitor_ref: nil,
+      pending_reply: nil
+    }
   end
 
   defp encode_peer_error(code, message, nil), do: %{"code" => code, "message" => message}

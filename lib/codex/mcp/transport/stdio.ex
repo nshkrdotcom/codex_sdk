@@ -4,6 +4,7 @@ defmodule Codex.MCP.Transport.Stdio do
   """
 
   use GenServer
+  import Kernel, except: [send: 2]
 
   require Logger
 
@@ -141,29 +142,41 @@ defmodule Codex.MCP.Transport.Stdio do
   end
 
   defp send_message(%State{session: session}, %{} = message) do
-    cond do
-      request_message?(message) ->
-        id = Map.get(message, "id", Map.get(message, :id))
-        owner = self()
+    case message_kind(message) do
+      {:request, id} ->
+        start_request_task(session, message, id, self())
 
-        case Task.start(fn ->
-               result =
-                 ProtocolSession.request(session, message,
-                   timeout_ms: @default_request_timeout_ms
-                 )
-
-               send(owner, {:jsonrpc_request_result, id, result})
-             end) do
-          {:ok, _pid} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      notification_message?(message) ->
+      :notification ->
         ProtocolSession.notify(session, message)
 
-      true ->
+      :unsupported ->
         {:error, {:unsupported_message, message}}
     end
+  end
+
+  defp message_kind(%{} = message) do
+    cond do
+      request_message?(message) ->
+        {:request, Map.get(message, "id", Map.get(message, :id))}
+
+      notification_message?(message) ->
+        :notification
+
+      true ->
+        :unsupported
+    end
+  end
+
+  defp start_request_task(session, message, id, owner) do
+    {:ok, _pid} =
+      Task.start(fn ->
+        result =
+          ProtocolSession.request(session, message, timeout_ms: @default_request_timeout_ms)
+
+        Kernel.send(owner, {:jsonrpc_request_result, id, result})
+      end)
+
+    :ok
   end
 
   defp request_message?(%{} = message) do
@@ -238,16 +251,16 @@ defmodule Codex.MCP.Transport.Stdio do
           command: invocation,
           ready_mode: :immediate,
           notification_handler: fn notification ->
-            send(owner, {:jsonrpc_notification, notification})
+            Kernel.send(owner, {:jsonrpc_notification, notification})
           end,
           protocol_error_handler: fn reason ->
-            send(owner, {:jsonrpc_protocol_error, reason})
+            Kernel.send(owner, {:jsonrpc_protocol_error, reason})
           end,
           stderr_handler: fn chunk ->
-            send(owner, {:jsonrpc_stderr, IO.iodata_to_binary(chunk)})
+            Kernel.send(owner, {:jsonrpc_stderr, IO.iodata_to_binary(chunk)})
           end,
           peer_request_handler: fn request ->
-            send(owner, {:jsonrpc_peer_request, request})
+            Kernel.send(owner, {:jsonrpc_peer_request, request})
             {:error, :unsupported_peer_request}
           end
         ]

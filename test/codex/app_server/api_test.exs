@@ -25,7 +25,7 @@ defmodule Codex.AppServer.ApiTest do
       )
 
     :ok = AppServerSubprocess.attach(harness, conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
 
@@ -37,10 +37,10 @@ defmodule Codex.AppServer.ApiTest do
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    {:ok, conn: conn, os_pid: os_pid}
+    {:ok, conn: conn}
   end
 
-  test "turn_start/4 encodes UserInput blocks", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes UserInput blocks", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.turn_start(conn, "thr_1", [
@@ -70,7 +70,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "turn_start/4 encodes sandbox policy overrides", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes sandbox policy overrides", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.turn_start(conn, "thr_1", "hi",
@@ -102,7 +102,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "thread_resume/3 encodes history and path", %{conn: conn, os_pid: os_pid} do
+  test "thread_resume/3 encodes history and path", %{conn: conn} do
     history = [%{"type" => "ghost_snapshot", "ghost_commit" => %{"id" => "ghost_1"}}]
 
     task =
@@ -126,7 +126,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(task, 200)
   end
 
-  test "thread_start/2 encodes none personality from atom", %{conn: conn, os_pid: os_pid} do
+  test "thread_start/2 encodes none personality from atom", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_start(conn, personality: :none) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -141,7 +141,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
-  test "thread_resume/3 encodes none personality from string", %{conn: conn, os_pid: os_pid} do
+  test "thread_resume/3 encodes none personality from string", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_resume(conn, "thr_1", personality: "none") end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -157,7 +157,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
-  test "thread start and resume encode approvals reviewer", %{conn: conn, os_pid: os_pid} do
+  test "thread start and resume encode approvals reviewer", %{conn: conn} do
     start_task =
       Task.async(fn ->
         AppServer.thread_start(conn, approvals_reviewer: :guardian_subagent)
@@ -192,8 +192,7 @@ defmodule Codex.AppServer.ApiTest do
 
   test "thread and turn start encode granular approval policies with upstream external tagging",
        %{
-         conn: conn,
-         os_pid: os_pid
+         conn: conn
        } do
     approval_policy = %{
       type: :granular,
@@ -248,8 +247,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "experimental_feature_enablement_set/2 uses the upstream method and payload", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -282,8 +280,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "experimental_feature_enablement_set/2 allows an empty enablement map", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -316,7 +313,7 @@ defmodule Codex.AppServer.ApiTest do
     refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 50
   end
 
-  test "thread_fork/3 encodes fork params", %{conn: conn, os_pid: os_pid} do
+  test "thread_fork/3 encodes fork params", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.thread_fork(conn, "thr_1", path: "/tmp/rollout.jsonl", model: "gpt-5.1-codex")
@@ -337,8 +334,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "thread_fork/3 does not inject startup history or duplicate context params", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task = Task.async(fn -> AppServer.thread_fork(conn, "thr_1") end)
 
@@ -358,7 +354,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
-  test "thread start, resume, and fork encode service controls", %{conn: conn, os_pid: os_pid} do
+  test "thread start, resume, and fork encode service controls", %{conn: conn} do
     start_task =
       Task.async(fn ->
         AppServer.thread_start(conn,
@@ -414,7 +410,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
   end
 
-  test "thread_rollback/3 encodes numTurns", %{conn: conn, os_pid: os_pid} do
+  test "thread_rollback/3 encodes numTurns", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_rollback(conn, "thr_1", 2) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -430,7 +426,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
 
-  test "thread_read/3 encodes includeTurns", %{conn: conn, os_pid: os_pid} do
+  test "thread_read/3 encodes includeTurns", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_read(conn, "thr_1", include_turns: true) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -446,7 +442,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
-  test "thread_loaded_list/2 encodes cursor and limit", %{conn: conn, os_pid: os_pid} do
+  test "thread_loaded_list/2 encodes cursor and limit", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_loaded_list(conn, cursor: "cursor", limit: 10) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -462,7 +458,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "thread lifecycle wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+  test "thread lifecycle wrappers encode current upstream params", %{conn: conn} do
     list_task =
       Task.async(fn ->
         AppServer.thread_list(conn,
@@ -559,7 +555,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(unarchive_task, 200)
   end
 
-  test "skills_config_write/3 encodes path and enabled", %{conn: conn, os_pid: os_pid} do
+  test "skills_config_write/3 encodes path and enabled", %{conn: conn} do
     task = Task.async(fn -> AppServer.skills_config_write(conn, "/tmp/skill", true) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -575,7 +571,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
   end
 
-  test "config_requirements/1 encodes request", %{conn: conn, os_pid: os_pid} do
+  test "config_requirements/1 encodes request", %{conn: conn} do
     task = Task.async(fn -> AppServer.config_requirements(conn) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -588,7 +584,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "collaboration_mode_list/1 encodes request", %{conn: conn, os_pid: os_pid} do
+  test "collaboration_mode_list/1 encodes request", %{conn: conn} do
     task = Task.async(fn -> AppServer.collaboration_mode_list(conn) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -601,7 +597,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "apps_list/2 encodes cursor and limit", %{conn: conn, os_pid: os_pid} do
+  test "apps_list/2 encodes cursor and limit", %{conn: conn} do
     task = Task.async(fn -> AppServer.apps_list(conn, cursor: "c1", limit: 2) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -617,7 +613,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "apps_list/2 encodes thread gating and force refetch", %{conn: conn, os_pid: os_pid} do
+  test "apps_list/2 encodes thread gating and force refetch", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.apps_list(conn, thread_id: "thr_1", force_refetch: true)
@@ -635,7 +631,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "thread_list/2 normalizes legacy source kind aliases", %{conn: conn, os_pid: os_pid} do
+  test "thread_list/2 normalizes legacy source kind aliases", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.thread_list(conn,
@@ -655,7 +651,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "thread_list/2 encodes sort key and archived", %{conn: conn, os_pid: os_pid} do
+  test "thread_list/2 encodes sort key and archived", %{conn: conn} do
     task =
       Task.async(fn -> AppServer.thread_list(conn, sort_key: :updated_at, archived: true) end)
 
@@ -672,7 +668,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "turn_start/4 encodes personality and collaboration mode", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes personality and collaboration mode", %{conn: conn} do
     collab = %Codex.Protocol.CollaborationMode{
       mode: :plan,
       model: "gpt-5.1-codex",
@@ -715,7 +711,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "turn_start/4 encodes pair_programming collaboration mode", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes pair_programming collaboration mode", %{conn: conn} do
     collab = %Codex.Protocol.CollaborationMode{
       mode: :pair_programming,
       model: "gpt-5.4",
@@ -752,7 +748,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "turn APIs encode mention input and steering preconditions", %{conn: conn, os_pid: os_pid} do
+  test "turn APIs encode mention input and steering preconditions", %{conn: conn} do
     start_task =
       Task.async(fn ->
         AppServer.turn_start(conn, "thr_1", [%{type: :mention, name: "@docs", path: "app://docs"}])
@@ -793,7 +789,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
   end
 
-  test "turn_start/4 encodes none personality", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes none personality", %{conn: conn} do
     task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", personality: :none) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -812,7 +808,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "turn_start/4 encodes service tier", %{conn: conn, os_pid: os_pid} do
+  test "turn_start/4 encodes service tier", %{conn: conn} do
     task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", service_tier: :flex) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -832,7 +828,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "skills_list/2 encodes force_reload", %{conn: conn, os_pid: os_pid} do
+  test "skills_list/2 encodes force_reload", %{conn: conn} do
     task = Task.async(fn -> AppServer.skills_list(conn, cwds: ["/tmp"], force_reload: true) end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -848,7 +844,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "skills and plugin wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+  test "skills and plugin wrappers encode current upstream params", %{conn: conn} do
     skills_task =
       Task.async(fn ->
         AppServer.skills_list(conn,
@@ -1035,8 +1031,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "request_typed/5 encodes param structs and parses typed responses", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -1090,8 +1085,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "request_typed/5 remains generic for non-plugin methods with plain params", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -1119,8 +1113,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "request_typed/5 returns adapted parse errors for invalid typed payloads", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -1146,8 +1139,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "request_typed/5 returns adapted parse errors for invalid nested typed payloads", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -1193,8 +1185,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "typed plugin wrappers preserve wire parity and return typed structs", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     plugin_list_task =
       Task.async(fn ->
@@ -1305,7 +1296,7 @@ defmodule Codex.AppServer.ApiTest do
              Task.await(plugin_read_task, 200)
   end
 
-  test "thread_shell_command/3 encodes request", %{conn: conn, os_pid: os_pid} do
+  test "thread_shell_command/3 encodes request", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.thread_shell_command(conn, "thr_1", "git status --short")
@@ -1325,8 +1316,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "fuzzy_file_search/3 encodes query roots and cancellation token", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task =
       Task.async(fn ->
@@ -1350,7 +1340,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"files" => []}} = Task.await(task, 200)
   end
 
-  test "filesystem wrappers encode current upstream params", %{conn: conn, os_pid: os_pid} do
+  test "filesystem wrappers encode current upstream params", %{conn: conn} do
     read_task = Task.async(fn -> AppServer.fs_read_file(conn, "/tmp/demo.txt") end)
     assert_receive {:app_server_subprocess_send, ^conn, read_line}
 
@@ -1487,8 +1477,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "fuzzy file search session wrappers encode current upstream params", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     start_task =
       Task.async(fn -> AppServer.fuzzy_file_search_session_start(conn, "sess_1", ["/tmp"]) end)
@@ -1534,7 +1523,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{}} = Task.await(stop_task, 200)
   end
 
-  test "config_write/4 encodes merge strategy and key_path", %{conn: conn, os_pid: os_pid} do
+  test "config_write/4 encodes merge strategy and key_path", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.config_write(conn, "features.web_search_request", true, merge_strategy: :upsert)
@@ -1562,8 +1551,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "config and external-agent wrappers encode reload and import params", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     batch_task =
       Task.async(fn ->
@@ -1625,7 +1613,7 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{}} = Task.await(import_task, 200)
   end
 
-  test "command_write_stdin/4 encodes process and stdin payloads", %{conn: conn, os_pid: os_pid} do
+  test "command_write_stdin/4 encodes process and stdin payloads", %{conn: conn} do
     task =
       Task.async(fn ->
         AppServer.command_write_stdin(conn, "proc_1", "y\n",
@@ -1653,8 +1641,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "command exec wrappers encode streaming fields and follow-up requests", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     exec_task =
       Task.async(fn ->
@@ -1751,8 +1738,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "account login_start encodes apiKey, chatgpt, and chatgptAuthTokens variants", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     task1 = Task.async(fn -> AppServer.Account.login_start(conn, {:api_key, "sk-test"}) end)
 
@@ -1815,8 +1801,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   test "model, realtime, and windows sandbox wrappers encode current params", %{
-    conn: conn,
-    os_pid: os_pid
+    conn: conn
   } do
     model_task = Task.async(fn -> AppServer.model_list(conn, include_hidden: true, limit: 3) end)
     assert_receive {:app_server_subprocess_send, ^conn, model_line}
@@ -1923,7 +1908,7 @@ defmodule Codex.AppServer.ApiTest do
   end
 
   describe "thread_compact/2" do
-    test "encodes thread/compact/start requests", %{conn: conn, os_pid: os_pid} do
+    test "encodes thread/compact/start requests", %{conn: conn} do
       task =
         Task.async(fn ->
           AppServer.thread_compact(conn, "thr_123")

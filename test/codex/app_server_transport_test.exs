@@ -159,7 +159,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -235,7 +235,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -346,7 +346,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -624,7 +624,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -765,7 +765,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -856,7 +856,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -938,7 +938,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1023,7 +1023,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1100,7 +1100,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1169,7 +1169,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1240,7 +1240,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1313,7 +1313,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1369,7 +1369,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1436,7 +1436,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1538,7 +1538,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1652,7 +1652,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1727,7 +1727,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1802,7 +1802,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1899,7 +1899,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -1992,7 +1992,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -2073,7 +2073,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -2148,7 +2148,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
@@ -2223,7 +2223,7 @@ defmodule Codex.AppServerTransportTest do
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))

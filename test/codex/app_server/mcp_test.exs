@@ -24,7 +24,7 @@ defmodule Codex.AppServer.McpTest do
       )
 
     :ok = AppServerSubprocess.attach(harness, conn)
-    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
 
@@ -36,11 +36,11 @@ defmodule Codex.AppServer.McpTest do
     assert :ok == Connection.await_ready(conn, 200)
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
-    {:ok, conn: conn, os_pid: os_pid}
+    {:ok, conn: conn}
   end
 
   describe "list_servers/2" do
-    test "uses new method mcpServerStatus/list on new servers", %{conn: conn, os_pid: os_pid} do
+    test "uses new method mcpServerStatus/list on new servers", %{conn: conn} do
       task = Task.async(fn -> Mcp.list_servers(conn) end)
 
       assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -54,8 +54,7 @@ defmodule Codex.AppServer.McpTest do
     end
 
     test "falls back to mcpServers/list on old servers (-32601 method not found)", %{
-      conn: conn,
-      os_pid: os_pid
+      conn: conn
     } do
       task = Task.async(fn -> Mcp.list_servers(conn) end)
 
@@ -77,8 +76,7 @@ defmodule Codex.AppServer.McpTest do
     end
 
     test "falls back to mcpServers/list on old servers (-32600 unknown variant)", %{
-      conn: conn,
-      os_pid: os_pid
+      conn: conn
     } do
       task = Task.async(fn -> Mcp.list_servers(conn) end)
 
@@ -106,7 +104,7 @@ defmodule Codex.AppServer.McpTest do
       assert {:ok, %{"data" => _}} = Task.await(task, 200)
     end
 
-    test "returns error when both methods fail", %{conn: conn, os_pid: os_pid} do
+    test "returns error when both methods fail", %{conn: conn} do
       task = Task.async(fn -> Mcp.list_servers(conn) end)
 
       assert_receive {:app_server_subprocess_send, ^conn, request_line1}
@@ -128,7 +126,7 @@ defmodule Codex.AppServer.McpTest do
   end
 
   describe "list_server_statuses/2" do
-    test "delegates to list_servers/2", %{conn: conn, os_pid: os_pid} do
+    test "delegates to list_servers/2", %{conn: conn} do
       task = Task.async(fn -> Mcp.list_server_statuses(conn) end)
 
       assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -143,7 +141,7 @@ defmodule Codex.AppServer.McpTest do
   end
 
   describe "reload/1" do
-    test "requests config/mcpServer/reload", %{conn: conn, os_pid: os_pid} do
+    test "requests config/mcpServer/reload", %{conn: conn} do
       task = Task.async(fn -> Mcp.reload(conn) end)
 
       assert_receive {:app_server_subprocess_send, ^conn, request_line}
