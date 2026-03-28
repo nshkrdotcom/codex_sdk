@@ -31,3 +31,4 @@ codex_sdk-*/
 # Dialyzer PLTs
 /priv/plts/
 /logs/
+thread_id.txt
