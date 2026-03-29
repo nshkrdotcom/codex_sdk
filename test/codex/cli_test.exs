@@ -239,7 +239,7 @@ defmodule Codex.CLITest do
              CLI.run(["features", "list"],
                codex_opts: codex_opts,
                execution_surface: [
-                 surface_kind: :static_ssh,
+                 surface_kind: :ssh_exec,
                  transport_options:
                    FakeSSH.transport_options(fake_ssh,
                      destination: "cli-run.test.example",
@@ -292,7 +292,7 @@ defmodule Codex.CLITest do
     assert {:ok, %{stdout: "remote-surface\n", success: true}} =
              CLI.run(["features", "list"],
                execution_surface: [
-                 surface_kind: :static_ssh,
+                 surface_kind: :ssh_exec,
                  transport_options:
                    FakeSSH.transport_options(fake_ssh,
                      destination: "cli-run-effective-surface.example"

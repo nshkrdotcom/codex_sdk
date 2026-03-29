@@ -25,22 +25,22 @@ defmodule Codex.ThreadTransportTest do
     end
 
     test "rejects execution-surface atoms in transport" do
-      assert {:error, {:invalid_transport, :static_ssh}} =
-               ThreadOptions.new(%{transport: :static_ssh})
+      assert {:error, {:invalid_transport, :ssh_exec}} =
+               ThreadOptions.new(%{transport: :ssh_exec})
     end
 
     test "rejects execution-surface maps in transport" do
-      assert {:error, {:invalid_transport, %{surface_kind: :static_ssh}}} =
-               ThreadOptions.new(%{transport: %{surface_kind: :static_ssh}})
+      assert {:error, {:invalid_transport, %{surface_kind: :ssh_exec}}} =
+               ThreadOptions.new(%{transport: %{surface_kind: :ssh_exec}})
     end
 
     test "rejects execution-surface keywords in transport" do
       assert {:error,
               {:invalid_transport,
-               [surface_kind: :static_ssh, transport_options: [destination: "example"]]}} =
+               [surface_kind: :ssh_exec, transport_options: [destination: "example"]]}} =
                ThreadOptions.new(%{
                  transport: [
-                   surface_kind: :static_ssh,
+                   surface_kind: :ssh_exec,
                    transport_options: [destination: "example"]
                  ]
                })

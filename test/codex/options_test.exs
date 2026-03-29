@@ -65,12 +65,12 @@ defmodule Codex.OptionsTest do
       assert {:ok, %Options{execution_surface: %ExecutionSurface{} = execution_surface}} =
                Options.new(%{
                  execution_surface: %{
-                   surface_kind: :static_ssh,
+                   surface_kind: :ssh_exec,
                    transport_options: [destination: "options.test.example", port: 2222]
                  }
                })
 
-      assert execution_surface.surface_kind == :static_ssh
+      assert execution_surface.surface_kind == :ssh_exec
       assert execution_surface.transport_options[:destination] == "options.test.example"
       assert execution_surface.transport_options[:port] == 2222
     end
@@ -109,7 +109,7 @@ defmodule Codex.OptionsTest do
       assert {:ok, %CliSubprocessCore.CommandSpec{program: "codex", argv_prefix: []}} =
                Options.codex_command_spec(
                  opts,
-                 surface_kind: :static_ssh,
+                 surface_kind: :ssh_exec,
                  transport_options: [destination: "ssh.example"]
                )
     end

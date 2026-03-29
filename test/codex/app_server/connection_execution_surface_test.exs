@@ -25,7 +25,7 @@ defmodule Codex.AppServer.ConnectionExecutionSurfaceTest do
         init_timeout_ms: 500,
         process_env: AppServerSubprocess.process_env(harness),
         execution_surface: [
-          surface_kind: :static_ssh,
+          surface_kind: :ssh_exec,
           transport_options:
             FakeSSH.transport_options(fake_ssh,
               destination: "app-server.test.example",

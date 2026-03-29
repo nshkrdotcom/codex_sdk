@@ -251,7 +251,7 @@ defmodule Codex.CLISessionTest do
              CLI.start(["resume", "--last"],
                codex_opts: codex_opts,
                execution_surface: [
-                 surface_kind: :static_ssh,
+                 surface_kind: :ssh_exec,
                  transport_options:
                    FakeSSH.transport_options(fake_ssh,
                      destination: "cli-session.test.example",

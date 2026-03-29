@@ -138,7 +138,7 @@ defmodule Codex.ExecTest do
              Exec.run("hello over ssh", %{
                codex_opts: codex_opts,
                execution_surface: [
-                 surface_kind: :static_ssh,
+                 surface_kind: :ssh_exec,
                  transport_options:
                    FakeSSH.transport_options(fake_ssh,
                      destination: "exec.test.example",
