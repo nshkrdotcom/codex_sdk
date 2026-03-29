@@ -46,6 +46,7 @@ defmodule Codex.ExamplesSupportTest do
                ExamplesSupport.parse_argv([
                  "--cwd",
                  "/srv/codex",
+                 "--danger-full-access",
                  "--ssh-host",
                  "builder@example.internal",
                  "--ssh-port",
@@ -61,6 +62,7 @@ defmodule Codex.ExamplesSupportTest do
       assert context.execution_surface.transport_options[:port] == 2222
       assert context.execution_surface.transport_options[:identity_file] =~ "/tmp/id_ed25519"
       assert context.example_cwd == "/srv/codex"
+      assert context.example_danger_full_access == true
     end
 
     test "rejects orphan ssh flags without --ssh-host" do
@@ -84,6 +86,29 @@ defmodule Codex.ExamplesSupportTest do
       assert options.execution_surface.surface_kind == :ssh_exec
       assert options.execution_surface.transport_options[:destination] == "example.internal"
       assert is_nil(options.codex_path_override)
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+  end
+
+  describe "command_opts/1" do
+    test "injects shared cwd and danger-full-access for command helpers" do
+      assert {:ok, context} =
+               ExamplesSupport.parse_argv([
+                 "--cwd",
+                 "/srv/codex",
+                 "--danger-full-access",
+                 "--ssh-host",
+                 "example.internal"
+               ])
+
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      opts = ExamplesSupport.command_opts([])
+
+      assert opts[:cwd] == "/srv/codex"
+      assert opts[:sandbox] == :danger_full_access
+      assert opts[:execution_surface].surface_kind == :ssh_exec
     after
       Process.delete({ExamplesSupport, :ssh_context})
     end
@@ -135,6 +160,22 @@ defmodule Codex.ExamplesSupportTest do
       assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%Codex.Thread.Options{})
       assert thread_opts.skip_git_repo_check == true
       assert thread_opts.working_directory == "/srv/codex"
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+
+    test "injects danger-full-access when requested for examples" do
+      assert {:ok, context} =
+               ExamplesSupport.parse_argv([
+                 "--danger-full-access",
+                 "--ssh-host",
+                 "example.internal"
+               ])
+
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%{})
+      assert thread_opts.sandbox == :danger_full_access
     after
       Process.delete({ExamplesSupport, :ssh_context})
     end

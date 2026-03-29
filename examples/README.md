@@ -35,6 +35,7 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 ./examples/run_all.sh
 ./examples/run_all.sh --ssh-host example.internal
 ./examples/run_all.sh --ssh-host example.internal --cwd /srv/trusted/repo
+./examples/run_all.sh --ssh-host example.internal --danger-full-access
 ./examples/run_all.sh --ssh-host builder@example.internal --ssh-port 2222
 ```
 
@@ -62,6 +63,7 @@ their existing local default when you omit the flag.
 Supported SSH flags for CLI/app-server examples:
 
 - `--cwd <path>`
+- `--danger-full-access`
 - `--ssh-host <host>` or `--ssh-host <user>@<host>`
 - `--ssh-user <user>`
 - `--ssh-port <port>`
@@ -72,6 +74,13 @@ required for app-server thread demos and raw prompt-mode CLI sessions, because
 those upstream surfaces do not expose `--skip-git-repo-check`. Point it at a
 trusted directory on the remote host when you want those examples to run over
 `execution_surface: :ssh_exec`.
+
+`--danger-full-access` keeps the same transport placement and switches only the
+Codex runtime sandbox mode to `:danger_full_access`. This is the explicit
+example-level escape hatch for remote Linux hosts where sandboxed shell tool
+execution fails before the command runs, for example when the host's userns or
+AppArmor policy blocks the `bwrap` path that the remote Codex CLI is trying to
+use.
 
 `--ssh-host` is mutually exclusive with `--ollama`, because `--ollama` is the
 local OSS route and `--ssh-host` is remote subprocess placement.
@@ -142,6 +151,7 @@ SSH usage for CLI/app-server examples is explicit:
 
 ```bash
 mix run examples/live_cli_demo.exs -- --ssh-host example.internal "What is the capital of France?"
+mix run examples/live_cli_demo.exs -- --ssh-host example.internal --danger-full-access "Run the shell command ls and then say done."
 mix run examples/live_app_server_basic.exs -- --ssh-host builder@example.internal --ssh-port 2222 --cwd /srv/trusted/repo "Reply with exactly ok and nothing else."
 mix run examples/live_cli_session.exs -- --ssh-host example.internal --cwd /srv/trusted/repo "Summarize this repository in three bullets."
 ```

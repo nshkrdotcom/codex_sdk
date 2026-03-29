@@ -15,6 +15,7 @@ defmodule Codex.ExamplesSupport do
     defstruct argv: [],
               execution_surface: nil,
               example_cwd: nil,
+              example_danger_full_access: false,
               ssh_host: nil,
               ssh_user: nil,
               ssh_port: nil,
@@ -24,6 +25,7 @@ defmodule Codex.ExamplesSupport do
             argv: [String.t()],
             execution_surface: ExecutionSurface.t() | nil,
             example_cwd: String.t() | nil,
+            example_danger_full_access: boolean(),
             ssh_host: String.t() | nil,
             ssh_user: String.t() | nil,
             ssh_port: pos_integer() | nil,
@@ -34,6 +36,7 @@ defmodule Codex.ExamplesSupport do
   @context_key {__MODULE__, :ssh_context}
   @ssh_switches [
     cwd: :string,
+    danger_full_access: :boolean,
     ssh_host: :string,
     ssh_identity_file: :string,
     ssh_port: :integer,
@@ -110,21 +113,18 @@ defmodule Codex.ExamplesSupport do
   @spec ssh_enabled?() :: boolean()
   def ssh_enabled?, do: match?(%SSHContext{execution_surface: %ExecutionSurface{}}, context())
 
+  @spec danger_full_access?() :: boolean()
+  def danger_full_access?, do: context().example_danger_full_access == true
+
   @spec execution_surface() :: ExecutionSurface.t() | nil
   def execution_surface, do: context().execution_surface
 
   @spec command_opts(keyword()) :: keyword()
   def command_opts(opts \\ []) when is_list(opts) do
-    opts =
-      case execution_surface() do
-        %ExecutionSurface{} = surface -> Keyword.put(opts, :execution_surface, surface)
-        nil -> opts
-      end
-
-    case example_working_directory() do
-      cwd when is_binary(cwd) and cwd != "" -> Keyword.put_new(opts, :cwd, cwd)
-      _ -> opts
-    end
+    opts
+    |> maybe_put_command_execution_surface()
+    |> maybe_put_command_working_directory()
+    |> maybe_put_command_danger_full_access()
   end
 
   @spec example_working_directory() :: String.t() | nil
@@ -187,6 +187,7 @@ defmodule Codex.ExamplesSupport do
     attrs
     |> maybe_put_example_working_directory()
     |> maybe_put_skip_git_repo_check()
+    |> maybe_put_thread_danger_full_access()
     |> ThreadOptions.new()
   end
 
@@ -309,6 +310,7 @@ defmodule Codex.ExamplesSupport do
 
   defp build_context(parsed, argv) do
     example_cwd = Keyword.get(parsed, :cwd)
+    example_danger_full_access = Keyword.get(parsed, :danger_full_access, false)
     ssh_host = Keyword.get(parsed, :ssh_host)
     ssh_user = Keyword.get(parsed, :ssh_user)
     ssh_port = Keyword.get(parsed, :ssh_port)
@@ -316,22 +318,59 @@ defmodule Codex.ExamplesSupport do
 
     case normalize_example_cwd(example_cwd) do
       {:ok, example_cwd} ->
-        do_build_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file)
+        do_build_context(
+          argv,
+          example_cwd,
+          example_danger_full_access,
+          ssh_host,
+          ssh_user,
+          ssh_port,
+          ssh_identity_file
+        )
 
       {:error, _reason} = error ->
         error
     end
   end
 
-  defp do_build_context(argv, example_cwd, nil, ssh_user, ssh_port, ssh_identity_file) do
+  defp do_build_context(
+         argv,
+         example_cwd,
+         example_danger_full_access,
+         nil,
+         ssh_user,
+         ssh_port,
+         ssh_identity_file
+       ) do
     with :ok <- validate_ssh_flag_dependencies(nil, ssh_user, ssh_port, ssh_identity_file) do
-      {:ok, %SSHContext{argv: argv, example_cwd: example_cwd}}
+      {:ok,
+       %SSHContext{
+         argv: argv,
+         example_cwd: example_cwd,
+         example_danger_full_access: example_danger_full_access
+       }}
     end
   end
 
-  defp do_build_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+  defp do_build_context(
+         argv,
+         example_cwd,
+         example_danger_full_access,
+         ssh_host,
+         ssh_user,
+         ssh_port,
+         ssh_identity_file
+       ) do
     with :ok <- validate_ssh_flag_dependencies(ssh_host, ssh_user, ssh_port, ssh_identity_file) do
-      build_ssh_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file)
+      build_ssh_context(
+        argv,
+        example_cwd,
+        example_danger_full_access,
+        ssh_host,
+        ssh_user,
+        ssh_port,
+        ssh_identity_file
+      )
     end
   end
 
@@ -343,7 +382,15 @@ defmodule Codex.ExamplesSupport do
     end
   end
 
-  defp build_ssh_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+  defp build_ssh_context(
+         argv,
+         example_cwd,
+         example_danger_full_access,
+         ssh_host,
+         ssh_user,
+         ssh_port,
+         ssh_identity_file
+       ) do
     with {:ok, {destination, parsed_user}} <- split_host(ssh_host),
          {:ok, effective_user} <- coalesce_user(parsed_user, ssh_user),
          {:ok, identity_file} <- normalize_identity_file(ssh_identity_file),
@@ -362,6 +409,7 @@ defmodule Codex.ExamplesSupport do
          argv: argv,
          execution_surface: execution_surface,
          example_cwd: example_cwd,
+         example_danger_full_access: example_danger_full_access,
          ssh_host: destination,
          ssh_user: effective_user,
          ssh_port: ssh_port,
@@ -427,6 +475,15 @@ defmodule Codex.ExamplesSupport do
   defp maybe_put_skip_git_repo_check(attrs) when is_map(attrs) do
     if ssh_enabled?() and present_value?(attrs, :skip_git_repo_check) != true do
       Map.put(attrs, :skip_git_repo_check, true)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_thread_danger_full_access(attrs) when is_map(attrs) do
+    if danger_full_access?() and not present?(present_value?(attrs, :sandbox)) and
+         present_value?(attrs, :dangerously_bypass_approvals_and_sandbox) != true do
+      Map.put(attrs, :sandbox, :danger_full_access)
     else
       attrs
     end
@@ -515,9 +572,32 @@ defmodule Codex.ExamplesSupport do
         {name, value} -> "--#{name}=#{value}"
       end)
 
-    "invalid example flags: #{rendered}. Supported flags: --cwd, --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"
+    "invalid example flags: #{rendered}. Supported flags: --cwd, --danger-full-access, --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"
   end
 
   defp maybe_put_kw(opts, _key, nil), do: opts
   defp maybe_put_kw(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp maybe_put_command_execution_surface(opts) when is_list(opts) do
+    case execution_surface() do
+      %ExecutionSurface{} = surface -> Keyword.put(opts, :execution_surface, surface)
+      nil -> opts
+    end
+  end
+
+  defp maybe_put_command_working_directory(opts) when is_list(opts) do
+    case example_working_directory() do
+      cwd when is_binary(cwd) and cwd != "" -> Keyword.put_new(opts, :cwd, cwd)
+      _ -> opts
+    end
+  end
+
+  defp maybe_put_command_danger_full_access(opts) when is_list(opts) do
+    if danger_full_access?() and not Keyword.has_key?(opts, :sandbox) and
+         not Keyword.has_key?(opts, :dangerously_bypass_approvals_and_sandbox) do
+      Keyword.put(opts, :sandbox, :danger_full_access)
+    else
+      opts
+    end
+  end
 end

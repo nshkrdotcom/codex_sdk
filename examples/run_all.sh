@@ -6,12 +6,13 @@ cd "$ROOT"
 
 usage() {
   cat <<'EOF'
-Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--cwd PATH] [--ssh-host HOST] [--ssh-user USER] [--ssh-port PORT] [--ssh-identity-file PATH] [--help]
+Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--cwd PATH] [--danger-full-access] [--ssh-host HOST] [--ssh-user USER] [--ssh-port PORT] [--ssh-identity-file PATH] [--help]
 
 Options:
   --ollama               Run all examples against local Codex OSS + Ollama.
   --ollama-model MODEL   Override the Ollama model. Default: gpt-oss:20b
   --cwd PATH             Working directory override. In SSH mode, app-server thread demos require a trusted remote cwd.
+  --danger-full-access   Run CLI/app-server examples with sandbox=danger_full_access.
   --ssh-host HOST        Run CLI/app-server examples over execution_surface=:ssh_exec.
   --ssh-user USER        Optional SSH user override.
   --ssh-port PORT        Optional SSH port override.
@@ -56,6 +57,10 @@ while [[ $# -gt 0 ]]; do
     --cwd=*)
       example_args+=("$1")
       cwd_configured=true
+      shift
+      ;;
+    --danger-full-access)
+      example_args+=("$1")
       shift
       ;;
     --ssh-host|--ssh-user|--ssh-port|--ssh-identity-file)
@@ -166,6 +171,9 @@ else
     echo "CLI model override: ${CODEX_MODEL}"
   else
     echo "CLI model: shared core default"
+  fi
+  if [[ " ${example_args[*]} " == *" --danger-full-access "* ]]; then
+    echo "CLI/App-server sandbox override: danger_full_access"
   fi
   EXAMPLE_TIMEOUT_SECONDS="${CODEX_EXAMPLES_TIMEOUT_SECONDS:-}"
   echo
