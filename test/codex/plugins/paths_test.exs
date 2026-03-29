@@ -2,9 +2,13 @@ defmodule Codex.Plugins.PathsTest do
   use ExUnit.Case, async: true
 
   alias Codex.Plugins.Paths
+  alias Codex.TestSupport.TempDir
 
   test "repo and personal scopes resolve the correct roots and canonical file paths" do
-    temp_root = temp_root("plugin_paths")
+    temp_root =
+      TempDir.create!("plugin_paths")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     repo_root = Path.join(temp_root, "repo")
     nested = Path.join(repo_root, "apps/demo")
     home_root = Path.join(temp_root, "home")
@@ -32,9 +36,5 @@ defmodule Codex.Plugins.PathsTest do
 
     assert {:ok, ^expected_personal_marketplace_path} =
              Paths.marketplace_path(:personal, home: home_root)
-  end
-
-  defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
 end

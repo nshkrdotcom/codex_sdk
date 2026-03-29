@@ -2,9 +2,13 @@ defmodule Codex.Plugins.WriterTest do
   use ExUnit.Case, async: true
 
   alias Codex.Plugins
+  alias Codex.TestSupport.TempDir
 
   test "manifest writes are deterministic, pretty, and newline terminated" do
-    temp_root = temp_root("plugin_writer_manifest")
+    temp_root =
+      TempDir.create!("plugin_writer_manifest")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     manifest_path = Path.join([temp_root, "demo-plugin", ".codex-plugin", "plugin.json"])
 
     {:ok, manifest} =
@@ -27,7 +31,10 @@ defmodule Codex.Plugins.WriterTest do
   end
 
   test "overwrite protection prevents silent clobbering" do
-    temp_root = temp_root("plugin_writer_overwrite")
+    temp_root =
+      TempDir.create!("plugin_writer_overwrite")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     manifest_path = Path.join([temp_root, "demo-plugin", ".codex-plugin", "plugin.json"])
 
     File.mkdir_p!(Path.dirname(manifest_path))
@@ -40,7 +47,10 @@ defmodule Codex.Plugins.WriterTest do
   end
 
   test "marketplace updates merge new plugins without erasing unrelated entries" do
-    temp_root = temp_root("plugin_writer_marketplace")
+    temp_root =
+      TempDir.create!("plugin_writer_marketplace")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     repo_root = Path.join(temp_root, "repo")
     marketplace_path = Path.join(repo_root, ".agents/plugins/marketplace.json")
 
@@ -89,7 +99,10 @@ defmodule Codex.Plugins.WriterTest do
   end
 
   test "overwrite updates preserve unknown fields on the replaced marketplace entry" do
-    temp_root = temp_root("plugin_writer_overwrite_preserve")
+    temp_root =
+      TempDir.create!("plugin_writer_overwrite_preserve")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     repo_root = Path.join(temp_root, "repo")
     marketplace_path = Path.join(repo_root, ".agents/plugins/marketplace.json")
 
@@ -156,13 +169,5 @@ defmodule Codex.Plugins.WriterTest do
                }
              }
            ] = marketplace.plugins
-  end
-
-  defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{unique_suffix()}")
-  end
-
-  defp unique_suffix do
-    Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
   end
 end

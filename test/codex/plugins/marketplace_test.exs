@@ -3,6 +3,7 @@ defmodule Codex.Plugins.MarketplaceTest do
 
   alias Codex.Plugins
   alias Codex.Plugins.Marketplace
+  alias Codex.TestSupport.TempDir
 
   test "minimal valid marketplace parses nested policy fields and preserves unknown fields" do
     payload = %{
@@ -98,7 +99,10 @@ defmodule Codex.Plugins.MarketplaceTest do
   end
 
   test "marketplace source paths must stay inside the marketplace root" do
-    temp_root = temp_root("marketplace_containment")
+    temp_root =
+      TempDir.create!("marketplace_containment")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     marketplace_path = Path.join([temp_root, "repo", ".agents", "plugins", "marketplace.json"])
 
     File.mkdir_p!(Path.dirname(marketplace_path))
@@ -133,7 +137,10 @@ defmodule Codex.Plugins.MarketplaceTest do
   end
 
   test "marketplace source paths reject traversal segments even when they remain under the root" do
-    temp_root = temp_root("marketplace_traversal")
+    temp_root =
+      TempDir.create!("marketplace_traversal")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     marketplace_path = Path.join([temp_root, "repo", ".agents", "plugins", "marketplace.json"])
 
     File.mkdir_p!(Path.dirname(marketplace_path))
@@ -165,9 +172,5 @@ defmodule Codex.Plugins.MarketplaceTest do
             {:invalid_marketplace_source_path,
              %{source_path: "./plugins/demo-plugin/../other-plugin", path: ^marketplace_path}}} =
              Plugins.read_marketplace(marketplace_path)
-  end
-
-  defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
 end

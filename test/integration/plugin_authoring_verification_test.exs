@@ -6,6 +6,7 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
   alias Codex.Options
   alias Codex.Plugins
   alias Codex.Protocol.Plugin
+  alias Codex.TestSupport.TempDir
 
   @moduletag :integration
 
@@ -15,7 +16,10 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
         :ok
 
       {:ok, codex_opts} ->
-        temp_root = temp_root("plugin_authoring_verification")
+        temp_root =
+          TempDir.create!("plugin_authoring_verification")
+          |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
         repo_root = Path.join(temp_root, "repo")
         home_root = Path.join(temp_root, "home")
         codex_home = Path.join(home_root, ".codex")
@@ -95,10 +99,6 @@ defmodule Codex.Integration.PluginAuthoringVerificationTest do
       {:error, reason} ->
         {:skip, "codex CLI is not runnable: #{inspect(reason)}"}
     end
-  end
-
-  defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
 
   defp run_command_spec(%CommandSpec{} = spec, args) when is_list(args) do

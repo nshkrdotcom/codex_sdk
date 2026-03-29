@@ -2,9 +2,13 @@ defmodule Codex.Plugins.ScaffoldTest do
   use ExUnit.Case, async: true
 
   alias Codex.Plugins
+  alias Codex.TestSupport.TempDir
 
   test "repo-scope scaffold creates the minimal plugin tree and optional marketplace entry" do
-    temp_root = temp_root("plugin_scaffold_repo")
+    temp_root =
+      TempDir.create!("plugin_scaffold_repo")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     repo_root = Path.join(temp_root, "repo")
 
     File.mkdir_p!(Path.join(repo_root, ".git"))
@@ -41,7 +45,10 @@ defmodule Codex.Plugins.ScaffoldTest do
   end
 
   test "personal-scope scaffold resolves to the home-local plugin and marketplace roots" do
-    temp_root = temp_root("plugin_scaffold_personal")
+    temp_root =
+      TempDir.create!("plugin_scaffold_personal")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
     home_root = Path.join(temp_root, "home")
     File.mkdir_p!(home_root)
 
@@ -57,13 +64,5 @@ defmodule Codex.Plugins.ScaffoldTest do
     assert result.marketplace_path == Path.join(home_root, ".agents/plugins/marketplace.json")
     assert File.regular?(result.manifest_path)
     assert File.regular?(result.marketplace_path)
-  end
-
-  defp temp_root(prefix) do
-    Path.join(System.tmp_dir!(), "#{prefix}_#{unique_suffix()}")
-  end
-
-  defp unique_suffix do
-    Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
   end
 end
