@@ -34,7 +34,7 @@ defmodule Codex.CLI do
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
-         {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
+         {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
          {:ok, result} <-
            Command.run(
@@ -63,7 +63,7 @@ defmodule Codex.CLI do
 
     with {:ok, codex_opts} <- normalize_codex_opts(opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
-         {:ok, command_spec} <- Options.codex_command_spec(codex_opts),
+         {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
       session_opts = [
         receiver: Keyword.get(opts, :receiver, self()),

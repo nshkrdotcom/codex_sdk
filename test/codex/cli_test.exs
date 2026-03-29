@@ -253,6 +253,63 @@ defmodule Codex.CLITest do
     assert FakeSSH.read_manifest!(fake_ssh) =~ "destination=cli-run.test.example"
   end
 
+  test "run/2 resolves codex against the effective SSH execution_surface instead of local CODEX_PATH" do
+    fake_ssh = FakeSSH.new!()
+    remote_dir = tmp_path("remote_codex_dir")
+    remote_args_path = tmp_path("argv_remote_effective_surface")
+    local_args_path = tmp_path("argv_local_effective_surface")
+    previous = System.get_env("CODEX_PATH")
+
+    File.mkdir_p!(remote_dir)
+
+    remote_script_path =
+      Path.join(remote_dir, "codex")
+      |> tap(fn path ->
+        body = """
+        #!/bin/sh
+        printf '%s\\n' "$@" > #{inspect(remote_args_path)}
+        printf 'remote-surface\\n'
+        """
+
+        File.write!(path, body)
+        File.chmod!(path, 0o755)
+      end)
+
+    local_script_path = probe_script(local_args_path, stdout: "local-path\n")
+
+    System.put_env("CODEX_PATH", local_script_path)
+
+    on_exit(fn ->
+      case previous do
+        nil -> System.delete_env("CODEX_PATH")
+        value -> System.put_env("CODEX_PATH", value)
+      end
+
+      File.rm_rf(remote_dir)
+      FakeSSH.cleanup(fake_ssh)
+    end)
+
+    assert {:ok, %{stdout: "remote-surface\n", success: true}} =
+             CLI.run(["features", "list"],
+               execution_surface: [
+                 surface_kind: :static_ssh,
+                 transport_options:
+                   FakeSSH.transport_options(fake_ssh,
+                     destination: "cli-run-effective-surface.example"
+                   )
+               ],
+               env: %{"PATH" => remote_dir}
+             )
+
+    assert remote_args_path |> File.read!() |> String.split("\n", trim: true) == [
+             "features",
+             "list"
+           ]
+
+    refute File.exists?(local_args_path)
+    assert remote_script_path == Path.join(remote_dir, "codex")
+  end
+
   test "additional mcp wrappers build expected argv" do
     cases = [
       {"get", fn opts -> CLI.mcp_get("docs", codex_opts: opts, json: true) end,

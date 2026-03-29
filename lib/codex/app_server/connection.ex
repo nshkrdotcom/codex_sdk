@@ -124,10 +124,10 @@ defmodule Codex.AppServer.Connection do
     init_params =
       initialize_params(client_name, client_version, client_title, experimental_api)
 
-    with {:ok, command_spec} <- build_command(codex_opts),
-         {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
+    with {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
          {:ok, execution_surface} <- effective_execution_surface(codex_opts, opts),
+         {:ok, command_spec} <- build_command(codex_opts, execution_surface),
          invocation <- Command.new(command_spec, app_server_args(codex_opts), cwd: cwd, env: env),
          {:ok, session} <- start_protocol_session(invocation, execution_surface) do
       {:ok,
@@ -472,7 +472,9 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
-  defp build_command(%Options{} = opts), do: Options.codex_command_spec(opts)
+  defp build_command(%Options{} = opts, execution_surface) do
+    Options.codex_command_spec(opts, execution_surface)
+  end
 
   defp start_protocol_session(invocation, execution_surface) do
     owner = self()

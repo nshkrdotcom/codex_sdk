@@ -83,6 +83,37 @@ defmodule Codex.OptionsTest do
       assert execution_surface.transport_options == []
     end
 
+    test "codex_command_spec/2 falls back to the remote provider command instead of leaking local CODEX_PATH" do
+      dir =
+        Path.join(System.tmp_dir!(), "codex_options_remote_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(dir)
+      local_path = Path.join(dir, "codex")
+      File.write!(local_path, "#!/usr/bin/env bash\nexit 0\n")
+      File.chmod!(local_path, 0o755)
+      previous = System.get_env("CODEX_PATH")
+
+      System.put_env("CODEX_PATH", local_path)
+
+      on_exit(fn ->
+        case previous do
+          nil -> System.delete_env("CODEX_PATH")
+          value -> System.put_env("CODEX_PATH", value)
+        end
+
+        File.rm_rf(dir)
+      end)
+
+      assert {:ok, opts} = Options.new(%{})
+
+      assert {:ok, %CliSubprocessCore.CommandSpec{program: "codex", argv_prefix: []}} =
+               Options.codex_command_spec(
+                 opts,
+                 surface_kind: :static_ssh,
+                 transport_options: [destination: "ssh.example"]
+               )
+    end
+
     test "uses OPENAI_BASE_URL when base_url is not provided" do
       System.put_env("OPENAI_BASE_URL", "https://gateway.example.com/v1")
 

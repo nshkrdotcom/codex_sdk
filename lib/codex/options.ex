@@ -5,7 +5,6 @@ defmodule Codex.Options do
   Options are built from caller-supplied values merged with environment defaults.
   """
 
-  require Bitwise
   alias CliSubprocessCore.{CommandSpec, ExecutionSurface, ModelInput, ProviderCLI}
   alias Codex.Auth
   alias Codex.Config.BaseURL
@@ -133,31 +132,48 @@ defmodule Codex.Options do
   @doc """
   Determines a stable command spec for launching `codex`.
 
-  Order of precedence:
+  Local execution surfaces honor the shared core discovery policy:
+
   1. Explicit override on the struct.
-  2. `CODEX_PATH` environment variable.
-  3. `System.find_executable("codex")`.
+  2. `CODEX_PATH`.
+  3. Shared local discovery through `CliSubprocessCore.ProviderCLI`.
+
+  Remote execution surfaces intentionally avoid local-path discovery. They use
+  an explicit override when supplied, otherwise they fall back to the remote
+  provider command name (`codex`).
   """
-  @spec codex_command_spec(t()) :: {:ok, CommandSpec.t()} | {:error, term()}
-  def codex_command_spec(%__MODULE__{codex_path_override: override}) when is_binary(override) do
-    with {:ok, path} <- validate_executable(override) do
-      ProviderCLI.resolve(:codex, command: path)
+  @spec codex_command_spec(t(), ExecutionSurface.t() | map() | keyword() | nil) ::
+          {:ok, CommandSpec.t()} | {:error, term()}
+  def codex_command_spec(%__MODULE__{} = opts, execution_surface_override \\ nil) do
+    with {:ok, execution_surface} <-
+           effective_command_execution_surface(opts, execution_surface_override) do
+      resolve_codex_command_spec(opts, execution_surface)
     end
   end
 
-  def codex_command_spec(%__MODULE__{} = _opts) do
-    env_path = System.get_env("CODEX_PATH")
+  defp resolve_codex_command_spec(
+         %__MODULE__{codex_path_override: override},
+         %ExecutionSurface{} = execution_surface
+       )
+       when is_binary(override) do
+    resolve_provider_cli([command: override], execution_surface)
+  end
 
-    if is_binary(env_path) and env_path != "" do
-      with {:ok, path} <- validate_executable(env_path) do
-        ProviderCLI.resolve(:codex, command: path)
-      end
-    else
-      case ProviderCLI.resolve(:codex) do
-        {:ok, spec} -> {:ok, spec}
-        {:error, %ProviderCLI.Error{kind: :cli_not_found}} -> {:error, :codex_binary_not_found}
-        {:error, reason} -> {:error, reason}
-      end
+  defp resolve_codex_command_spec(%__MODULE__{}, %ExecutionSurface{} = execution_surface) do
+    resolve_provider_cli([], execution_surface)
+  end
+
+  defp resolve_provider_cli(provider_opts, %ExecutionSurface{} = execution_surface)
+       when is_list(provider_opts) do
+    case ProviderCLI.resolve(:codex, provider_opts, execution_surface: execution_surface) do
+      {:ok, %CommandSpec{} = spec} ->
+        {:ok, spec}
+
+      {:error, %ProviderCLI.Error{kind: :cli_not_found}} ->
+        {:error, :codex_binary_not_found}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -250,17 +266,14 @@ defmodule Codex.Options do
     end
   end
 
-  defp validate_executable(path) do
-    with true <- File.exists?(path) || {:error, {:codex_binary_missing, path}},
-         {:ok, stat} <- File.stat(path),
-         true <- stat.type == :regular || {:error, {:codex_binary_not_regular, path}},
-         true <-
-           Bitwise.band(stat.mode, 0o111) > 0 || {:error, {:codex_binary_not_executable, path}} do
-      {:ok, path}
-    else
-      {:error, _} = error -> error
-    end
-  end
+  defp effective_command_execution_surface(
+         %__MODULE__{execution_surface: %ExecutionSurface{} = execution_surface},
+         nil
+       ),
+       do: {:ok, execution_surface}
+
+  defp effective_command_execution_surface(%__MODULE__{}, execution_surface_override),
+    do: normalize_execution_surface(execution_surface_override)
 
   defp pick(attrs, keys, default \\ nil)
 

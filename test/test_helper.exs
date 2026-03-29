@@ -17,9 +17,9 @@ loopback_available? =
 
 exclude =
   if loopback_available? do
-    [:pending, :live]
+    [:pending, :live, :live_ssh]
   else
-    [:pending, :live, :requires_loopback]
+    [:pending, :live, :live_ssh, :requires_loopback]
   end
 
 ExUnit.configure(

@@ -119,7 +119,8 @@ defmodule Codex.Runtime.Exec do
     subscriber = Keyword.get(opts, :subscriber)
 
     with %ExecOptions{} = exec_opts <- exec_opts,
-         {:ok, command_spec} <- Options.codex_command_spec(exec_opts.codex_opts),
+         {:ok, command_spec} <-
+           Options.codex_command_spec(exec_opts.codex_opts, exec_opts.execution_surface),
          {:ok, config_values} <- config_values(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
 
