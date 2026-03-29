@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule CodexExamples.LiveOAuthLogin do
   @moduledoc false
 
@@ -161,12 +167,8 @@ defmodule CodexExamples.LiveOAuthLogin do
   defp maybe_run_memory_app_server(%{app_server_memory?: false}, _process_env), do: :ok
 
   defp maybe_run_memory_app_server(%{interactive?: interactive?}, process_env) do
-    with {:ok, codex_path} <- fetch_codex_path(),
-         :ok <- ensure_app_server_supported(codex_path),
-         {:ok, codex_opts} <-
-           Codex.Options.new(%{
-             codex_path_override: codex_path
-           }),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+         :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, conn} <-
            Codex.AppServer.connect(codex_opts,
              experimental_api: true,

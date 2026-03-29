@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.RunResultStreaming
 alias Codex.Events
 alias Codex.Items
@@ -16,13 +22,8 @@ defmodule CodexExamples.LiveAppServerStreaming do
         values -> Enum.join(values, " ")
       end
 
-    codex_path = fetch_codex_path!()
-    ensure_app_server_supported!(codex_path)
-
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: codex_path
-      })
+    codex_opts = Support.codex_options!()
+    :ok = Support.ensure_app_server_supported(codex_opts)
 
     {:ok, conn} = Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000)
 

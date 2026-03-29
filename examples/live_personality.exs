@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{AppServer, Items, Options, Thread}
 
 defmodule LivePersonality do
@@ -10,10 +16,8 @@ defmodule LivePersonality do
   def main(argv) do
     prompt = parse_prompt(argv)
 
-    codex_path = fetch_codex_path!()
-    ensure_app_server_supported!(codex_path)
-
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
+    codex_opts = Support.codex_options!()
+    :ok = Support.ensure_app_server_supported(codex_opts)
     {:ok, conn} = AppServer.connect(codex_opts, init_timeout_ms: 30_000)
 
     try do

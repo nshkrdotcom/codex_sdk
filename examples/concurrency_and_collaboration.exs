@@ -1,5 +1,11 @@
 #!/usr/bin/env mix run
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.Items
 
 defmodule Examples.Concurrency do
@@ -13,7 +19,7 @@ defmodule Examples.Concurrency do
     tasks =
       Enum.map(files, fn file ->
         Task.Supervisor.async_nolink(supervisor, fn ->
-          {:ok, thread} = Codex.start_thread(%{})
+          {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
           prompt =
             "Give 2 quick risk notes you'd flag for a module like #{file} based only on its path/name. " <>
@@ -40,7 +46,7 @@ defmodule Examples.Concurrency do
       items
       |> Enum.map(fn item ->
         Task.Supervisor.async_nolink(supervisor, fn ->
-          {:ok, thread} = Codex.start_thread(%{})
+          {:ok, thread} = Codex.start_thread(Support.codex_options!())
           prompt = "Process #{item} and summarise it succinctly (1-2 sentences)."
 
           case Codex.Thread.run(thread, prompt, %{timeout_ms: timeout_ms, max_turns: 1}) do
@@ -51,7 +57,7 @@ defmodule Examples.Concurrency do
       end)
       |> await_many_with_progress(timeout_ms: 60_000, tick_ms: 5_000, label: "map-reduce")
 
-    {:ok, thread} = Codex.start_thread(%{})
+    {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
     prompt = """
     Summarise these analyses into a concise checklist:
@@ -65,7 +71,7 @@ defmodule Examples.Concurrency do
 
   def collaboration(file) do
     timeout_ms = 20_000
-    {:ok, analyzer} = Codex.start_thread(%{})
+    {:ok, analyzer} = Codex.start_thread(Support.codex_options!())
 
     {:ok, analysis} =
       Codex.Thread.run(
@@ -75,7 +81,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, security} = Codex.start_thread(%{})
+    {:ok, security} = Codex.start_thread(Support.codex_options!())
 
     {:ok, security_review} =
       Codex.Thread.run(
@@ -88,7 +94,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, performance} = Codex.start_thread(%{})
+    {:ok, performance} = Codex.start_thread(Support.codex_options!())
 
     {:ok, perf_review} =
       Codex.Thread.run(
@@ -101,7 +107,7 @@ defmodule Examples.Concurrency do
         %{timeout_ms: timeout_ms, max_turns: 1}
       )
 
-    {:ok, synthesizer} = Codex.start_thread(%{})
+    {:ok, synthesizer} = Codex.start_thread(Support.codex_options!())
 
     prompt = """
     Synthesize these reviews into actionable recommendations:

@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule CodexExamples.LiveExecControls do
   @moduledoc """
   Demonstrates live codex execution with per-turn env injection, cancellation tokens,
@@ -33,10 +39,8 @@ defmodule CodexExamples.LiveExecControls do
 
     timeout_ms = opts[:timeout_ms] || @default_timeout_ms
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     {:ok, thread_opts} =
       Codex.Thread.Options.new(%{

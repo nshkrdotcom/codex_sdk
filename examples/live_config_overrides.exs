@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Options, Thread}
 alias Codex.Config.LayerStack
 
@@ -8,9 +14,8 @@ defmodule LiveConfigOverrides do
 
   def main do
     demo_layered_provider_config()
-    codex_path = fetch_codex_path!()
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
+    codex_opts = Support.codex_options!()
 
     # Demonstrate nested map auto-flattening for config overrides.
     # These nested maps are flattened to dotted-path keys before being

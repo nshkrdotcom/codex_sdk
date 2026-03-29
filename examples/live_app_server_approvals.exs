@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.AppServer.ApprovalDecision
 alias Codex.Auth
 alias Codex.Config.LayerStack
@@ -43,17 +49,13 @@ defmodule CodexExamples.LiveAppServerApprovals do
         values -> Enum.join(values, " ")
       end
 
-    with {:ok, codex_path} <- fetch_codex_path(),
-         :ok <- ensure_app_server_supported(codex_path),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+         :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, fixture} <- build_demo_fixture() do
       try do
         permissions_prompt = permissions_prompt(fixture)
 
-        with {:ok, codex_opts} <-
-               Codex.Options.new(%{
-                 codex_path_override: codex_path
-               }),
-             {:ok, conn, experimental_api?, init_fallback_reason} <-
+        with {:ok, conn, experimental_api?, init_fallback_reason} <-
                connect_for_approvals_demo(codex_opts, fixture) do
           try do
             parent = self()

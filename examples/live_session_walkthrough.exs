@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.ExamplesSupport
 
 defmodule CodexExamples.LiveSessionWalkthrough do
@@ -14,11 +20,9 @@ defmodule CodexExamples.LiveSessionWalkthrough do
       end
 
     codex_opts =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!(),
+      Support.codex_options!(%{
         model: ExamplesSupport.example_model()
       })
-      |> unwrap!("codex options")
 
     thread_opts =
       Codex.Thread.Options.new(%{

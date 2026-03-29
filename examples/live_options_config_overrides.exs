@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Options, Thread}
 alias Codex.Config.LayerStack
 
@@ -11,11 +17,9 @@ defmodule LiveOptionsConfigOverrides do
   def main(argv) do
     demo_layered_provider_config()
     prompt = parse_prompt(argv)
-    codex_path = fetch_codex_path!()
 
-    {:ok, codex_opts} =
-      Options.new(%{
-        codex_path_override: codex_path,
+    codex_opts =
+      Support.codex_options!(%{
         config: %{
           "approval_policy" => "never",
           "model_reasoning_summary" => "concise"

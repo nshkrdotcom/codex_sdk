@@ -1,6 +1,12 @@
 # Covers ADR-002, ADR-003, ADR-011 (tool behaviors, guardrails, approvals)
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Agent, AgentRunner, Guardrail, Handoff, RunConfig, ToolGuardrail, Tools}
 alias Codex.FunctionTool
 alias Codex.Items.AgentMessage
@@ -127,10 +133,8 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
         trace_id: "guardrails-#{System.unique_integer([:positive])}"
       })
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     {:ok, thread_opts} =
       Codex.Thread.Options.new(%{

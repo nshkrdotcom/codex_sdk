@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule CodexExamples.LiveCLISession do
   @moduledoc """
   Demonstrates a root `codex` session launched through `Codex.CLI`.
@@ -18,10 +24,8 @@ defmodule CodexExamples.LiveCLISession do
         values -> Enum.join(values, " ")
       end
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     IO.puts("Launching prompt-mode `codex` session via PTY...")
     IO.puts("Prompt: #{prompt}\n")

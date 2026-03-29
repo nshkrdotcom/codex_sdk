@@ -1,9 +1,40 @@
 defmodule Codex.ExamplesSupport do
   @moduledoc false
 
+  alias CliSubprocessCore.ExecutionSurface
   alias Codex.Items
   alias Codex.Models
+  alias Codex.Options
   alias Codex.Turn.Result
+
+  defmodule SSHContext do
+    @moduledoc false
+
+    @enforce_keys [:argv]
+    defstruct argv: [],
+              execution_surface: nil,
+              ssh_host: nil,
+              ssh_user: nil,
+              ssh_port: nil,
+              ssh_identity_file: nil
+
+    @type t :: %__MODULE__{
+            argv: [String.t()],
+            execution_surface: ExecutionSurface.t() | nil,
+            ssh_host: String.t() | nil,
+            ssh_user: String.t() | nil,
+            ssh_port: pos_integer() | nil,
+            ssh_identity_file: String.t() | nil
+          }
+  end
+
+  @context_key {__MODULE__, :ssh_context}
+  @ssh_switches [
+    ssh_host: :string,
+    ssh_identity_file: :string,
+    ssh_port: :integer,
+    ssh_user: :string
+  ]
 
   @spec ollama_mode?() :: boolean()
   def ollama_mode? do
@@ -29,6 +60,112 @@ defmodule Codex.ExamplesSupport do
   @spec conversation_default_mode() :: :multi_turn | :save_resume
   def conversation_default_mode do
     if ollama_mode?(), do: :save_resume, else: :multi_turn
+  end
+
+  @spec init_example!([String.t()]) :: SSHContext.t()
+  def init_example!(argv \\ System.argv()) when is_list(argv) do
+    case Process.get(@context_key) do
+      %SSHContext{} = context ->
+        context
+
+      nil ->
+        case parse_argv(argv) do
+          {:ok, %SSHContext{} = context} ->
+            System.argv(context.argv)
+            Process.put(@context_key, context)
+            context
+
+          {:error, message} ->
+            raise ArgumentError, message
+        end
+    end
+  end
+
+  @spec context() :: SSHContext.t()
+  def context do
+    case Process.get(@context_key) do
+      %SSHContext{} = context -> context
+      _ -> init_example!()
+    end
+  end
+
+  @spec parse_argv([String.t()]) :: {:ok, SSHContext.t()} | {:error, String.t()}
+  def parse_argv(argv) when is_list(argv) do
+    {parsed, remaining, invalid} =
+      argv
+      |> Enum.reject(&(&1 == "--"))
+      |> OptionParser.parse(strict: @ssh_switches)
+
+    if invalid != [] do
+      {:error, invalid_options_message(invalid)}
+    else
+      build_context(parsed, remaining)
+    end
+  end
+
+  @spec ssh_enabled?() :: boolean()
+  def ssh_enabled?, do: match?(%SSHContext{execution_surface: %ExecutionSurface{}}, context())
+
+  @spec execution_surface() :: ExecutionSurface.t() | nil
+  def execution_surface, do: context().execution_surface
+
+  @spec command_opts(keyword()) :: keyword()
+  def command_opts(opts \\ []) when is_list(opts) do
+    case execution_surface() do
+      %ExecutionSurface{} = surface -> Keyword.put(opts, :execution_surface, surface)
+      nil -> opts
+    end
+  end
+
+  @spec codex_options!(map() | keyword(), keyword()) :: Options.t()
+  def codex_options!(attrs \\ %{}, opts \\ []) do
+    case codex_options(attrs, opts) do
+      {:ok, %Options{} = options} ->
+        options
+
+      {:skip, reason} ->
+        raise ArgumentError, reason
+
+      {:error, reason} ->
+        raise ArgumentError, "invalid Codex example options: #{inspect(reason)}"
+    end
+  end
+
+  @spec codex_options(map() | keyword(), keyword()) ::
+          {:ok, Options.t()} | {:skip, String.t()} | {:error, term()}
+  def codex_options(attrs \\ %{}, opts \\ [])
+      when (is_map(attrs) or is_list(attrs)) and is_list(opts) do
+    attrs = Map.new(attrs)
+
+    with {:ok, attrs} <-
+           maybe_put_local_codex_path(attrs, Keyword.get(opts, :missing_cli, :raise)),
+         {:ok, %Options{} = options} <- Options.new(maybe_put_execution_surface(attrs)) do
+      {:ok, options}
+    end
+  end
+
+  @spec auth_available?() :: boolean()
+  def auth_available? do
+    ssh_enabled?() or not is_nil(Codex.Auth.api_key()) or
+      not is_nil(Codex.Auth.chatgpt_access_token())
+  end
+
+  @spec ensure_auth_available(String.t()) :: :ok | {:skip, String.t()}
+  def ensure_auth_available(
+        message \\ "authenticate with `codex login` or set CODEX_API_KEY before running this example"
+      ) do
+    if auth_available?(), do: :ok, else: {:skip, message}
+  end
+
+  @spec ensure_app_server_supported(Options.t()) :: :ok | {:skip, String.t()}
+  def ensure_app_server_supported(%Options{} = codex_opts) do
+    case Codex.CLI.run(["app-server", "--help"], codex_opts: codex_opts, timeout_ms: 30_000) do
+      {:ok, _result} ->
+        :ok
+
+      {:error, _reason} ->
+        {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
+    end
   end
 
   @spec decode_json_result(Result.t()) :: {:ok, term()} | {:error, term()}
@@ -96,4 +233,158 @@ defmodule Codex.ExamplesSupport do
         end
     end
   end
+
+  defp build_context(parsed, argv) do
+    ssh_host = Keyword.get(parsed, :ssh_host)
+    ssh_user = Keyword.get(parsed, :ssh_user)
+    ssh_port = Keyword.get(parsed, :ssh_port)
+    ssh_identity_file = Keyword.get(parsed, :ssh_identity_file)
+
+    cond do
+      is_nil(ssh_host) and Enum.any?([ssh_user, ssh_port, ssh_identity_file], &present?/1) ->
+        {:error, "SSH example flags require --ssh-host when any other --ssh-* flag is set."}
+
+      is_nil(ssh_host) ->
+        {:ok, %SSHContext{argv: argv}}
+
+      true ->
+        with {:ok, {destination, parsed_user}} <- split_host(ssh_host),
+             {:ok, effective_user} <- coalesce_user(parsed_user, ssh_user),
+             {:ok, identity_file} <- normalize_identity_file(ssh_identity_file),
+             {:ok, %ExecutionSurface{} = execution_surface} <-
+               ExecutionSurface.new(
+                 surface_kind: :ssh_exec,
+                 transport_options:
+                   []
+                   |> Keyword.put(:destination, destination)
+                   |> maybe_put_kw(:ssh_user, effective_user)
+                   |> maybe_put_kw(:port, ssh_port)
+                   |> maybe_put_kw(:identity_file, identity_file)
+               ) do
+          {:ok,
+           %SSHContext{
+             argv: argv,
+             execution_surface: execution_surface,
+             ssh_host: destination,
+             ssh_user: effective_user,
+             ssh_port: ssh_port,
+             ssh_identity_file: identity_file
+           }}
+        else
+          {:error, reason} when is_binary(reason) -> {:error, reason}
+          {:error, reason} -> {:error, "invalid SSH example flags: #{inspect(reason)}"}
+        end
+    end
+  end
+
+  defp maybe_put_local_codex_path(attrs, mode) do
+    cond do
+      ssh_enabled?() ->
+        {:ok, maybe_put_execution_surface(attrs)}
+
+      local_codex_override?(attrs) ->
+        {:ok, attrs}
+
+      true ->
+        resolve_local_codex_path(attrs, mode)
+    end
+  end
+
+  defp local_codex_override?(attrs) do
+    present?(Map.get(attrs, :codex_path_override)) or
+      present?(Map.get(attrs, "codex_path_override"))
+  end
+
+  defp resolve_local_codex_path(attrs, mode) do
+    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
+      path when is_binary(path) and path != "" ->
+        {:ok, Map.put(attrs, :codex_path_override, path)}
+
+      _ ->
+        reason = "install the `codex` CLI or set CODEX_PATH before running this example"
+
+        case mode do
+          :skip -> {:skip, reason}
+          _ -> {:error, reason}
+        end
+    end
+  end
+
+  defp maybe_put_execution_surface(attrs) when is_map(attrs) do
+    case execution_surface() do
+      %ExecutionSurface{} = surface -> Map.put(attrs, :execution_surface, surface)
+      nil -> attrs
+    end
+  end
+
+  defp present?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present?(nil), do: false
+  defp present?(_value), do: true
+
+  defp split_host(ssh_host) when is_binary(ssh_host) do
+    case String.trim(ssh_host) do
+      "" ->
+        {:error, "--ssh-host must be a non-empty host name"}
+
+      trimmed ->
+        case String.split(trimmed, "@", parts: 2) do
+          [destination] ->
+            {:ok, {destination, nil}}
+
+          [inline_user, destination] when inline_user != "" and destination != "" ->
+            {:ok, {destination, inline_user}}
+
+          _other ->
+            {:error, "--ssh-host must be either <host> or <user>@<host>"}
+        end
+    end
+  end
+
+  defp coalesce_user(nil, nil), do: {:ok, nil}
+  defp coalesce_user(inline_user, nil), do: {:ok, inline_user}
+
+  defp coalesce_user(nil, ssh_user) when is_binary(ssh_user) do
+    case String.trim(ssh_user) do
+      "" -> {:error, "--ssh-user must be a non-empty string"}
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  defp coalesce_user(inline_user, ssh_user) when is_binary(ssh_user) do
+    normalized = String.trim(ssh_user)
+
+    cond do
+      normalized == "" ->
+        {:error, "--ssh-user must be a non-empty string"}
+
+      normalized == inline_user ->
+        {:ok, inline_user}
+
+      true ->
+        {:error,
+         "--ssh-host already contains #{inspect(inline_user)}; omit --ssh-user or make it match"}
+    end
+  end
+
+  defp normalize_identity_file(nil), do: {:ok, nil}
+
+  defp normalize_identity_file(path) when is_binary(path) do
+    case String.trim(path) do
+      "" -> {:error, "--ssh-identity-file must be a non-empty path"}
+      trimmed -> {:ok, Path.expand(trimmed)}
+    end
+  end
+
+  defp invalid_options_message(invalid) when is_list(invalid) do
+    rendered =
+      Enum.map_join(invalid, ", ", fn
+        {name, nil} -> "--#{name}"
+        {name, value} -> "--#{name}=#{value}"
+      end)
+
+    "invalid example SSH flags: #{rendered}. Supported flags: --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"
+  end
+
+  defp maybe_put_kw(opts, _key, nil), do: opts
+  defp maybe_put_kw(opts, key, value), do: Keyword.put(opts, key, value)
 end

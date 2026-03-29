@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.Items.AgentMessage
 
 defmodule CodexExamples.LiveAppServerBasic do
@@ -24,13 +30,9 @@ defmodule CodexExamples.LiveAppServerBasic do
         values -> Enum.join(values, " ")
       end
 
-    with {:ok, codex_path} <- fetch_codex_path(),
-         :ok <- ensure_app_server_supported(codex_path),
-         :ok <- ensure_auth_available(),
-         {:ok, codex_opts} <-
-           Codex.Options.new(%{
-             codex_path_override: codex_path
-           }),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+         :ok <- Support.ensure_auth_available(),
+         :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
       try do
         personality = :friendly

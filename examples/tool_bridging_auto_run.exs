@@ -1,5 +1,11 @@
 #!/usr/bin/env mix run
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule Examples.ToolBridging do
   @moduledoc false
 
@@ -18,7 +24,7 @@ defmodule Examples.ToolBridging do
     {:ok, _handle} = Codex.Tools.register(MathTool)
 
     {:ok, thread} =
-      Codex.start_thread(%{}, %{approval_policy: StaticPolicy.allow()})
+      Codex.start_thread(Support.codex_options!(), %{approval_policy: StaticPolicy.allow()})
 
     {:ok, result} =
       Codex.Thread.run_auto(thread, "Ask the math tool to add 4 and 5", max_attempts: 2)

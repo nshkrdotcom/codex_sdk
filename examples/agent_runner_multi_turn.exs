@@ -1,10 +1,16 @@
 #!/usr/bin/env mix run
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule Examples.AgentRunner do
   @moduledoc false
 
   def run do
-    {:ok, thread} = Codex.start_thread(%{})
+    {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
     {:ok, result} =
       Codex.AgentRunner.run(thread, "Plan a short checklist",

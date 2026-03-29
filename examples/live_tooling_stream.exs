@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Events, Items, Options, RunResultStreaming, Thread}
 
 defmodule CodexExamples.LiveToolingStream do
@@ -14,7 +20,7 @@ defmodule CodexExamples.LiveToolingStream do
     prompt = parse_prompt(argv)
 
     codex_opts =
-      Options.new(%{codex_path_override: fetch_codex_path!()})
+      Support.codex_options(%{})
       |> unwrap!("codex options")
 
     thread_opts =

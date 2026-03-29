@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Error, Events, Items, Options, RunResultStreaming, Thread, TransportError}
 alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
@@ -10,9 +16,8 @@ defmodule LiveRateLimits do
 
   def main(argv) do
     prompt = parse_prompt(argv)
-    codex_path = fetch_codex_path!()
 
-    {:ok, codex_opts} = Options.new(%{codex_path_override: codex_path})
+    codex_opts = Support.codex_options!()
     {:ok, thread} = Codex.start_thread(codex_opts, %{working_directory: File.cwd!()})
 
     case Thread.run_streamed(thread, prompt) do

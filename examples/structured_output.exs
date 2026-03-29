@@ -1,5 +1,11 @@
 #!/usr/bin/env mix run
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.ExamplesSupport
 alias Codex.Turn.Result, as: TurnResult
 
@@ -13,7 +19,7 @@ defmodule Examples.StructuredOutput do
       IO.puts("Running a host-side structured fallback example instead.")
       print_schema_data(fallback_schema_data())
     else
-      {:ok, thread} = Codex.start_thread(%{})
+      {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
       case schema_result(thread) do
         {:ok, result} ->
@@ -43,7 +49,7 @@ defmodule Examples.StructuredOutput do
         IO.inspect(summary, label: "parsed struct")
       end
     else
-      {:ok, thread} = Codex.start_thread(%{})
+      {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
       case struct_result(thread) do
         {:ok, result} ->

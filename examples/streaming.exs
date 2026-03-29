@@ -1,5 +1,11 @@
 #!/usr/bin/env mix run
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.Items
 alias Codex.Events
 alias Codex.RunResultStreaming
@@ -8,7 +14,7 @@ defmodule Examples.Streaming do
   @moduledoc false
 
   def realtime_stream do
-    {:ok, thread} = Codex.start_thread(%{})
+    {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(
@@ -22,7 +28,7 @@ defmodule Examples.Streaming do
   end
 
   def progressive_story do
-    {:ok, thread} = Codex.start_thread(%{})
+    {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(thread, "Write a short story about a robot learning Elixir")
@@ -46,7 +52,7 @@ defmodule Examples.Streaming do
   end
 
   def stateful_stream do
-    {:ok, thread} = Codex.start_thread(%{})
+    {:ok, thread} = Codex.start_thread(Support.codex_options!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(thread, "Implement a new feature across the codebase")

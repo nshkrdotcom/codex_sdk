@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.ExamplesSupport
 alias Codex.{AppServer, Items, Models, Options, Thread}
 alias Codex.Protocol.CollaborationMode
@@ -29,11 +35,9 @@ defmodule LiveCollaborationModes do
 
   defp run(argv) do
     prompt = parse_prompt(argv)
-    codex_path = fetch_codex_path!()
-    ensure_app_server_supported!(codex_path)
 
-    with {:ok, codex_opts} <-
-           Options.new(%{codex_path_override: codex_path}),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+         :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, conn, experimental_api?, fallback_reason} <-
            connect_for_collaboration_modes(codex_opts) do
       try do

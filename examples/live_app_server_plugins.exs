@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule CodexExamples.LiveAppServerPlugins do
   @moduledoc false
 
@@ -19,15 +25,11 @@ defmodule CodexExamples.LiveAppServerPlugins do
   end
 
   defp run do
-    with {:ok, codex_path} <- fetch_codex_path(),
-         :ok <- ensure_app_server_supported(codex_path),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+         :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, fixture} <- build_demo_plugin_fixture() do
       try do
-        with {:ok, codex_opts} <-
-               Codex.Options.new(%{
-                 codex_path_override: codex_path
-               }),
-             {:ok, conn} <-
+        with {:ok, conn} <-
                Codex.AppServer.connect(codex_opts,
                  cwd: fixture.repo_root,
                  process_env: isolated_process_env(fixture),

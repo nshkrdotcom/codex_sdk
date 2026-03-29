@@ -1,3 +1,11 @@
+Mix.Task.run("app.start")
+
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Error, Models, Options, RunResultStreaming, Thread, TransportError}
 alias Codex.ExamplesSupport
 
@@ -46,12 +54,10 @@ defmodule LiveTelemetryStream do
 
   defp run(prompt, model, reasoning) do
     codex_opts =
-      Options.new(%{
+      Support.codex_options!(%{
         model: model,
-        reasoning_effort: reasoning,
-        codex_path_override: fetch_codex_path!()
+        reasoning_effort: reasoning
       })
-      |> unwrap!("codex options")
 
     thread_opts =
       Thread.Options.new(%{})

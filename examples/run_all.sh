@@ -6,14 +6,21 @@ cd "$ROOT"
 
 usage() {
   cat <<'EOF'
-Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--help]
+Usage: bash examples/run_all.sh [--ollama] [--ollama-model MODEL] [--ssh-host HOST] [--ssh-user USER] [--ssh-port PORT] [--ssh-identity-file PATH] [--help]
 
 Options:
   --ollama               Run all examples against local Codex OSS + Ollama.
   --ollama-model MODEL   Override the Ollama model. Default: gpt-oss:20b
+  --ssh-host HOST        Run CLI/app-server examples over execution_surface=:ssh_exec.
+  --ssh-user USER        Optional SSH user override.
+  --ssh-port PORT        Optional SSH port override.
+  --ssh-identity-file P  Optional SSH identity file.
   --help                 Show this help text.
 EOF
 }
+
+ssh_args=()
+ssh_enabled=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +40,21 @@ while [[ $# -gt 0 ]]; do
       export CODEX_MODEL="$2"
       shift 2
       ;;
+    --ssh-host|--ssh-user|--ssh-port|--ssh-identity-file)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value." >&2
+        exit 1
+      fi
+
+      ssh_args+=("$1" "$2")
+      [[ "$1" == "--ssh-host" ]] && ssh_enabled=true
+      shift 2
+      ;;
+    --ssh-host=*|--ssh-user=*|--ssh-port=*|--ssh-identity-file=*)
+      ssh_args+=("$1")
+      [[ "$1" == --ssh-host=* ]] && ssh_enabled=true
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -46,13 +68,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$ssh_enabled" == true && "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+  echo "ERROR: --ssh-host cannot be combined with --ollama/--ollama-model." >&2
+  exit 1
+fi
+
+if [[ "$ssh_enabled" != true && ${#ssh_args[@]} -gt 0 ]]; then
+  echo "ERROR: --ssh-user/--ssh-port/--ssh-identity-file require --ssh-host." >&2
+  exit 1
+fi
+
+ollama_enabled=false
+if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+  ollama_enabled=true
+fi
+
 if [[ -n "${CODEX_MODEL:-}" ]]; then
   echo "Using model override: ${CODEX_MODEL}"
 else
   echo "Using shared core default model from cli_subprocess_core"
 fi
 
-if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+if [[ "$ollama_enabled" == true ]]; then
   OLLAMA_MODEL="${CODEX_MODEL:-gpt-oss:20b}"
   export CODEX_MODEL="${OLLAMA_MODEL}"
 
@@ -78,7 +115,7 @@ fi
 
 echo
 
-if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
+if [[ "$ollama_enabled" == true ]]; then
   echo "CLI backend: Ollama via Codex OSS"
   echo "CLI model: ${CODEX_MODEL}"
   echo "CLI route: codex --oss --local-provider ollama --model ${CODEX_MODEL}"
@@ -88,6 +125,11 @@ if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ol
   echo
 else
   echo "CLI backend: standard Codex CLI"
+  if [[ "$ssh_enabled" == true ]]; then
+    echo "CLI execution surface: ssh_exec (${ssh_args[*]})"
+  else
+    echo "CLI execution surface: local_subprocess"
+  fi
   if [[ -n "${CODEX_MODEL:-}" ]]; then
     echo "CLI model override: ${CODEX_MODEL}"
   else
@@ -97,22 +139,22 @@ else
   echo
 fi
 
-if [[ "${CODEX_PROVIDER_BACKEND:-}" != "oss" || "${CODEX_OSS_PROVIDER:-}" != "ollama" ]] && [[ -z "${CODEX_API_KEY:-}" ]]; then
+if [[ "$ssh_enabled" != true && "$ollama_enabled" != true && -z "${CODEX_API_KEY:-}" ]]; then
   echo "Warning: No CODEX_API_KEY set (CLI examples require codex login or CODEX_API_KEY)"
   echo
 fi
 
-if [[ -n "${CODEX_PATH:-}" ]]; then
+if [[ "$ssh_enabled" != true && -n "${CODEX_PATH:-}" ]]; then
   if [[ ! -x "${CODEX_PATH}" ]]; then
     echo "CODEX_PATH is set but is not executable: ${CODEX_PATH}"
     exit 1
   fi
-elif ! command -v codex >/dev/null 2>&1; then
+elif [[ "$ssh_enabled" != true ]] && ! command -v codex >/dev/null 2>&1; then
   echo "codex binary not found - skipping examples"
   exit 0
 fi
 
-cli_examples=(
+ssh_capable_cli_examples=(
   "examples/basic_usage.exs"
   "examples/streaming.exs"
   "examples/structured_output.exs"
@@ -120,7 +162,6 @@ cli_examples=(
   "examples/concurrency_and_collaboration.exs"
   "examples/tool_bridging_auto_run.exs"
   "examples/sandbox_warnings_and_approval_bypass.exs"
-  "examples/live_oauth_login.exs"
   "examples/live_app_server_basic.exs"
   "examples/live_app_server_filesystem.exs"
   "examples/live_app_server_plugins.exs"
@@ -148,6 +189,10 @@ cli_examples=(
   "examples/live_config_overrides.exs"
   "examples/live_options_config_overrides.exs"
   "examples/live_parity_and_status.exs"
+)
+
+local_only_cli_examples=(
+  "examples/live_oauth_login.exs"
 )
 
 direct_api_examples=(
@@ -183,14 +228,27 @@ run_example_group() {
 
   echo "==> Running ${group_name}"
   for ex in "$@"; do
-    echo "==> mix run ${ex}"
+    if [[ ${#ssh_args[@]} -gt 0 ]]; then
+      echo "==> mix run ${ex} -- ${ssh_args[*]}"
+    else
+      echo "==> mix run ${ex}"
+    fi
 
     rc=0
 
     if [[ -n "${EXAMPLE_TIMEOUT_SECONDS:-}" ]] && command -v timeout >/dev/null 2>&1; then
-      timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" || rc=$?
+      if [[ ${#ssh_args[@]} -gt 0 ]]; then
+        timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" -- "${ssh_args[@]}" ||
+          rc=$?
+      else
+        timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" || rc=$?
+      fi
     else
-      mix run "${ex}" || rc=$?
+      if [[ ${#ssh_args[@]} -gt 0 ]]; then
+        mix run "${ex}" -- "${ssh_args[@]}" || rc=$?
+      else
+        mix run "${ex}" || rc=$?
+      fi
     fi
 
     if [[ "$rc" -ne 0 ]]; then
@@ -207,7 +265,18 @@ run_example_group() {
   done
 }
 
-run_example_group "CLI/Auth examples" "${cli_examples[@]}"
+run_example_group "CLI/App-server examples" "${ssh_capable_cli_examples[@]}"
+
+if [[ "$ssh_enabled" == true ]]; then
+  echo "==> Skipping local-only OAuth example in SSH mode"
+  for ex in "${local_only_cli_examples[@]}"; do
+    skipped+=("${ex}")
+    echo "SKIPPED: ${ex} (local OAuth/browser/device flow is not execution_surface-based)"
+  done
+  echo
+else
+  run_example_group "Local-only OAuth example" "${local_only_cli_examples[@]}"
+fi
 
 if [[ "${CODEX_PROVIDER_BACKEND:-}" == "oss" && "${CODEX_OSS_PROVIDER:-}" == "ollama" ]]; then
   echo "==> Skipping Direct OpenAI API examples in --ollama mode"

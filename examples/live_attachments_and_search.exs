@@ -1,6 +1,12 @@
 # Covers ADR-012 (attachments, structured file outputs, file_search)
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Agent, AgentRunner, FileSearch, RunConfig, Tools}
 alias Codex.Items.AgentMessage
 alias Codex.ToolOutput
@@ -71,10 +77,8 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
         file_search: file_search
       })
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     {:ok, thread_opts} =
       Codex.Thread.Options.new(%{

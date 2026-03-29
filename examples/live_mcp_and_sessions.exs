@@ -1,6 +1,12 @@
 # Covers ADR-006, ADR-007 (MCP hosted tool + session resume)
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{AgentRunner, Events, RunConfig, Tools}
 alias Codex.Agent, as: CodexAgent
 alias Codex.ExamplesSupport
@@ -173,9 +179,8 @@ defmodule CodexExamples.LiveMcpAndSessions do
 
     {:ok, session_pid} = CodexExamples.MemorySession.start_link()
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!(),
+    codex_opts =
+      Support.codex_options!(%{
         model: ExamplesSupport.example_model()
       })
 

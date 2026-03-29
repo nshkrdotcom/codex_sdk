@@ -1,6 +1,12 @@
 # Covers ADR-001, ADR-002, ADR-009, ADR-010 (multi-turn runner, tool behavior, usage/tracing)
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Agent, AgentRunner, Handoff, RunConfig, Tools}
 alias Codex.Events
 alias Codex.FunctionTool
@@ -77,10 +83,8 @@ defmodule CodexExamples.LiveMultiTurnRunner do
         trace_include_sensitive_data: false
       })
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     {:ok, thread} = Codex.start_thread(codex_opts)
 

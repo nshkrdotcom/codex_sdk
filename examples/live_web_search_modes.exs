@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Error, Events, Items, Options, RunResultStreaming, Thread, TransportError}
 alias Codex.ExamplesSupport
 
@@ -17,7 +23,6 @@ defmodule LiveWebSearchModes do
 
   def main(args) do
     {modes, prompt} = parse_args(args)
-    codex_path = fetch_codex_path!()
 
     if ExamplesSupport.ollama_mode?() do
       IO.puts("""
@@ -26,7 +31,7 @@ defmodule LiveWebSearchModes do
       """)
     end
 
-    failures = Enum.flat_map(modes, &run_mode(&1, prompt, codex_path))
+    failures = Enum.flat_map(modes, &run_mode(&1, prompt))
 
     if failures != [] do
       IO.puts("\nWeb search mode validation failures:")
@@ -35,14 +40,14 @@ defmodule LiveWebSearchModes do
     end
   end
 
-  defp run_mode(mode, prompt, codex_path) do
+  defp run_mode(mode, prompt) do
     IO.puts("\n--- web_search_mode=#{mode} ---")
 
     if mode == :disabled do
       IO.puts("Disabled mode is passed explicitly (web_search=\"disabled\").")
     end
 
-    case run_mode_once(mode, prompt, codex_path) do
+    case run_mode_once(mode, prompt) do
       {:ok, final_state} ->
         report_final_state(mode, final_state)
         []
@@ -52,7 +57,7 @@ defmodule LiveWebSearchModes do
         IO.puts("Retrying with stricter prompt due to missing web search events.")
         IO.puts("Retry reason: #{inspect(reason)}")
 
-        case run_mode_once(mode, retry_prompt, codex_path) do
+        case run_mode_once(mode, retry_prompt) do
           {:ok, final_state} ->
             report_final_state(mode, final_state)
             []
@@ -69,9 +74,8 @@ defmodule LiveWebSearchModes do
     end
   end
 
-  defp run_mode_once(mode, prompt, codex_path) do
-    with {:ok, codex_opts} <-
-           Options.new(%{codex_path_override: codex_path}),
+  defp run_mode_once(mode, prompt) do
+    with {:ok, codex_opts} <- Support.codex_options(%{}),
          {:ok, thread_opts} <- Codex.Thread.Options.new(%{web_search_mode: mode}),
          {:ok, thread} <- Codex.start_thread(codex_opts, thread_opts),
          {:ok, result} <- Thread.run_streamed(thread, prompt),

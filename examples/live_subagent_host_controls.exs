@@ -1,5 +1,11 @@
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{AppServer, Events, Items, Options, RunResultStreaming, Subagents, Thread}
 alias Codex.ExamplesSupport
 
@@ -28,27 +34,25 @@ defmodule CodexExamples.LiveSubagentHostControls do
   def main(argv) do
     prompt = parse_prompt(argv)
     cwd = File.cwd!()
-    codex_path = fetch_codex_path!()
     model = ExamplesSupport.example_model(System.get_env("CODEX_MODEL"))
 
     reasoning_effort =
       ExamplesSupport.example_reasoning(Codex.Models.default_reasoning_effort(model))
 
-    ensure_app_server_supported!(codex_path)
+    codex_opts =
+      Support.codex_options!(%{
+        model: model
+      })
+
+    :ok = Support.ensure_app_server_supported(codex_opts)
 
     IO.puts("""
     Starting live subagent host-controls example.
       model: #{model}
       reasoning_effort: #{reasoning_effort || "none"}
       working_directory: #{cwd}
-      codex_path: #{codex_path}
+      execution_surface: #{if(Support.ssh_enabled?(), do: ":ssh_exec", else: ":local_subprocess")}
     """)
-
-    {:ok, codex_opts} =
-      Options.new(%{
-        codex_path_override: codex_path,
-        model: model
-      })
 
     IO.puts("Connecting to codex app-server with experimental API enabled...")
 

@@ -1,6 +1,12 @@
 # Covers ADR-008, ADR-009, ADR-010 (model settings, streaming cancel, tracing/usage)
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 alias Codex.{Agent, AgentRunner, ModelSettings, RunConfig}
 alias Codex.Items.AgentMessage
 alias Codex.StreamEvent
@@ -44,10 +50,8 @@ defmodule CodexExamples.LiveModelStreamingTracing do
         instructions: "Stream a brief answer and mention the workflow id if present."
       })
 
-    {:ok, codex_opts} =
-      Codex.Options.new(%{
-        codex_path_override: fetch_codex_path!()
-      })
+    codex_opts =
+      Support.codex_options!(%{})
 
     {:ok, thread} = Codex.start_thread(codex_opts)
 

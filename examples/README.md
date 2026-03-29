@@ -33,6 +33,8 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 
 ```bash
 ./examples/run_all.sh
+./examples/run_all.sh --ssh-host example.internal
+./examples/run_all.sh --ssh-host builder@example.internal --ssh-port 2222
 ```
 
 Run the same CLI-backed example set against local Codex OSS + Ollama:
@@ -51,6 +53,27 @@ Run the same CLI-backed example set against local Codex OSS + Ollama:
 
 The runner checks that the requested Ollama model is installed before starting
 the examples.
+
+SSH routing is explicit and flag-driven. When you pass `--ssh-host`, the
+CLI/app-server examples switch to `execution_surface: :ssh_exec` while keeping
+their existing local default when you omit the flag.
+
+Supported SSH flags for CLI/app-server examples:
+
+- `--ssh-host <host>` or `--ssh-host <user>@<host>`
+- `--ssh-user <user>`
+- `--ssh-port <port>`
+- `--ssh-identity-file <path>`
+
+`--ssh-host` is mutually exclusive with `--ollama`, because `--ollama` is the
+local OSS route and `--ssh-host` is remote subprocess placement.
+
+`./examples/run_all.sh --ssh-host ...` applies only to examples that actually
+run through the Codex CLI execution surface. It does not apply to the direct
+Realtime/Voice examples, and it intentionally skips
+`examples/live_oauth_login.exs` because that example demonstrates local OAuth
+session storage and local browser/device login flow rather than subprocess
+placement.
 
 `gpt-oss:20b` remains the default validated Codex/Ollama example model, but
 the runner also accepts other installed Ollama models such as `llama3.2`.
@@ -91,6 +114,21 @@ Prereqs:
 
 The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you are authenticated via `codex login`).
 
+Default local usage stays unchanged:
+
+```bash
+mix run examples/live_cli_demo.exs "What is the capital of France?"
+mix run examples/live_app_server_basic.exs "Reply with exactly ok and nothing else."
+```
+
+SSH usage for CLI/app-server examples is explicit:
+
+```bash
+mix run examples/live_cli_demo.exs -- --ssh-host example.internal "What is the capital of France?"
+mix run examples/live_app_server_basic.exs -- --ssh-host builder@example.internal --ssh-port 2222 "Reply with exactly ok and nothing else."
+mix run examples/live_cli_session.exs -- --ssh-host example.internal "Summarize this repository in three bullets."
+```
+
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
 - `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
@@ -122,6 +160,11 @@ The `live_*.exs` scripts hit the live Codex CLI (no OPENAI_API_KEY needed if you
 - `examples/live_config_overrides.exs` — nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, runtime validation, and reserved-provider notes
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
+
+`examples/live_oauth_login.exs` remains local-only for its primary flow. The
+OAuth session storage, browser launch, and device-code UX are local host
+concerns, not `execution_surface` concerns, so `--ssh-host` is not documented
+for that script.
 
 ## Realtime Voice Examples (OpenAI Agents SDK)
 

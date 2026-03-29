@@ -9,6 +9,12 @@
 
 Mix.Task.run("app.start")
 
+Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
+
+alias CodexExamples.Support
+
+Support.init!()
+
 defmodule SandboxDemoTool do
   use Codex.Tool, name: "sandbox_demo", description: "Echo args while surfacing sandbox warnings"
 
@@ -86,8 +92,7 @@ defmodule SandboxWarningsAndApprovalBypass do
   defp live_demo do
     IO.puts("\n-- optional live Codex run (CLI auth or API key) --")
 
-    with {:ok, codex_opts} <- Codex.Options.new(%{}),
-         {:ok, _path} <- Codex.Options.codex_path(codex_opts),
+    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
          {:ok, thread_opts} <- Codex.Thread.Options.new(%{sandbox: :strict}),
          thread <- Codex.Thread.build(codex_opts, thread_opts),
          {:ok, result} <-
@@ -107,6 +112,9 @@ defmodule SandboxWarningsAndApprovalBypass do
 
       IO.puts("Live sandbox warnings: #{inspect(live_warnings)}")
     else
+      {:skip, reason} ->
+        IO.puts("Live run skipped: #{reason}")
+
       {:error, reason} ->
         IO.puts("Live run failed: #{inspect(reason)}")
         IO.puts("Ensure the `codex` CLI is installed and authenticated (`codex auth login`).")
