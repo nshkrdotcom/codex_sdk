@@ -32,8 +32,17 @@ defmodule CodexExamples.LiveSubagentHostControls do
   """
 
   def main(argv) do
+    case Support.ensure_remote_working_directory() do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+        System.halt(0)
+    end
+
     prompt = parse_prompt(argv)
-    cwd = File.cwd!()
+    cwd = Support.example_working_directory()
     model = ExamplesSupport.example_model(System.get_env("CODEX_MODEL"))
 
     reasoning_effort =
@@ -66,11 +75,14 @@ defmodule CodexExamples.LiveSubagentHostControls do
       IO.puts("Starting parent thread...")
 
       {:ok, parent} =
-        Codex.start_thread(codex_opts, %{
-          transport: {:app_server, conn},
-          working_directory: cwd,
-          model: model
-        })
+        Codex.start_thread(
+          codex_opts,
+          Support.thread_opts!(%{
+            transport: {:app_server, conn},
+            working_directory: cwd,
+            model: model
+          })
+        )
 
       IO.puts("Running parent turn with a one-parent -> one-child prompt.")
       IO.puts(@stream_wait_note)
@@ -189,11 +201,15 @@ defmodule CodexExamples.LiveSubagentHostControls do
                 IO.puts("Resuming the known child thread for a direct host-side follow-up...")
 
                 {:ok, child_thread} =
-                  Codex.resume_thread(child_thread_id, codex_opts, %{
-                    transport: {:app_server, child_conn},
-                    working_directory: cwd,
-                    model: model
-                  })
+                  Codex.resume_thread(
+                    child_thread_id,
+                    codex_opts,
+                    Support.thread_opts!(%{
+                      transport: {:app_server, child_conn},
+                      working_directory: cwd,
+                      model: model
+                    })
+                  )
 
                 IO.puts(@stream_wait_note)
 
@@ -303,11 +319,15 @@ defmodule CodexExamples.LiveSubagentHostControls do
       IO.puts(banner)
 
       {:ok, parent_thread} =
-        Codex.resume_thread(parent_thread_id, codex_opts, %{
-          transport: {:app_server, parent_conn},
-          working_directory: cwd,
-          model: model
-        })
+        Codex.resume_thread(
+          parent_thread_id,
+          codex_opts,
+          Support.thread_opts!(%{
+            transport: {:app_server, parent_conn},
+            working_directory: cwd,
+            model: model
+          })
+        )
 
       IO.puts(@stream_wait_note)
 
@@ -672,26 +692,6 @@ defmodule CodexExamples.LiveSubagentHostControls do
 
       {:error, reason} ->
         Mix.raise("#{label} failed: #{inspect(reason)}")
-    end
-  end
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
-
-  defp ensure_app_server_supported!(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      Mix.raise("""
-      Your `codex` CLI does not appear to support `codex app-server`.
-      Upgrade via `npm install -g @openai/codex` and retry.
-      """)
     end
   end
 end

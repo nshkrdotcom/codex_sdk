@@ -22,18 +22,20 @@ defmodule CodexExamples.LiveCLIPassthrough do
     codex_opts =
       Support.codex_options!(%{})
 
+    cli_opts = Support.command_opts(codex_opts: codex_opts)
+
     case argv do
       ["completion", shell] ->
-        run_and_print(fn -> Codex.CLI.completion(shell, codex_opts: codex_opts) end)
+        run_and_print(fn -> Codex.CLI.completion(shell, cli_opts) end)
 
       ["features-list"] ->
-        run_and_print(fn -> Codex.CLI.features_list(codex_opts: codex_opts) end)
+        run_and_print(fn -> Codex.CLI.features_list(cli_opts) end)
 
       ["login-status"] ->
-        run_and_print(fn -> Codex.CLI.login_status(codex_opts: codex_opts) end)
+        run_and_print(fn -> Codex.CLI.login_status(cli_opts) end)
 
       ["raw" | args] when args != [] ->
-        run_and_print(fn -> Codex.CLI.run(args, codex_opts: codex_opts) end)
+        run_and_print(fn -> Codex.CLI.run(args, cli_opts) end)
 
       _ ->
         IO.puts("""
@@ -62,15 +64,6 @@ defmodule CodexExamples.LiveCLIPassthrough do
       {:error, reason} ->
         Mix.raise("CLI passthrough failed: #{inspect(reason)}")
     end
-  end
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
   end
 end
 

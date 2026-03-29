@@ -25,7 +25,11 @@ defmodule CodexExamples.LiveAppServerPlugins do
   end
 
   defp run do
-    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+    with :ok <-
+           Support.ensure_local_execution_surface(
+             "this example provisions host-local plugin fixtures and does not support --ssh-host"
+           ),
+         {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
          :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, fixture} <- build_demo_plugin_fixture() do
       try do
@@ -297,26 +301,6 @@ defmodule CodexExamples.LiveAppServerPlugins do
       IO.puts("  (none)")
     else
       Enum.each(mcp_servers, &IO.puts("  - #{&1}"))
-    end
-  end
-
-  defp fetch_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      nil ->
-        {:skip, "install the `codex` CLI or set CODEX_PATH before running this example"}
-
-      path ->
-        {:ok, path}
-    end
-  end
-
-  defp ensure_app_server_supported(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
-    else
-      :ok
     end
   end
 

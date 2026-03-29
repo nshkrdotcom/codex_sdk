@@ -33,16 +33,20 @@ defmodule CodexExamples.LiveAppServerBasic do
     with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
          :ok <- Support.ensure_auth_available(),
          :ok <- Support.ensure_app_server_supported(codex_opts),
+         :ok <- Support.ensure_remote_working_directory(),
          {:ok, conn} <- Codex.AppServer.connect(codex_opts, init_timeout_ms: 30_000) do
       try do
         personality = :friendly
 
         {:ok, thread} =
-          Codex.start_thread(codex_opts, %{
-            transport: {:app_server, conn},
-            working_directory: File.cwd!(),
-            personality: personality
-          })
+          Codex.start_thread(
+            codex_opts,
+            Support.thread_opts!(%{
+              transport: {:app_server, conn},
+              working_directory: Support.example_working_directory(),
+              personality: personality
+            })
+          )
 
         {:ok, result} = Codex.Thread.run(thread, prompt, %{timeout_ms: 120_000})
 
@@ -61,7 +65,14 @@ defmodule CodexExamples.LiveAppServerBasic do
         """)
 
         IO.puts("\nskills/list:")
-        skills_result = Codex.AppServer.skills_list(conn, cwds: [File.cwd!()])
+
+        skills_opts =
+          case Support.example_working_directory() do
+            cwd when is_binary(cwd) and cwd != "" -> [cwds: [cwd]]
+            _ -> []
+          end
+
+        skills_result = Codex.AppServer.skills_list(conn, skills_opts)
 
         case skills_result do
           {:error, %{"code" => -32600, "message" => message}} ->
@@ -92,34 +103,6 @@ defmodule CodexExamples.LiveAppServerBasic do
       after
         :ok = Codex.AppServer.disconnect(conn)
       end
-    end
-  end
-
-  defp fetch_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      nil ->
-        {:skip, "install the `codex` CLI or set CODEX_PATH before running this example"}
-
-      path ->
-        {:ok, path}
-    end
-  end
-
-  defp ensure_app_server_supported(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
-    else
-      :ok
-    end
-  end
-
-  defp ensure_auth_available do
-    if Codex.Auth.api_key() || Codex.Auth.chatgpt_access_token() do
-      :ok
-    else
-      {:skip, "authenticate with `codex login` or set CODEX_API_KEY before running this example"}
     end
   end
 

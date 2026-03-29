@@ -16,7 +16,7 @@ defmodule CodexExamples.LiveCLIDemo do
 
     opts = Support.codex_options!()
 
-    with {:ok, thread} <- Codex.start_thread(opts),
+    with {:ok, thread} <- Codex.start_thread(opts, Support.thread_opts!()),
          {:ok, result} <- Codex.Thread.run(thread, question) do
       answer =
         case result.final_response do

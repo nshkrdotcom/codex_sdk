@@ -12,6 +12,17 @@ defmodule CodexExamples.LiveOAuthLogin do
   alias Codex.OAuth.Session.{PendingDeviceLogin, PendingLogin}
 
   def main(argv) do
+    case Support.ensure_local_execution_surface(
+           "this example manages local OAuth/browser/device login state and does not support --ssh-host"
+         ) do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+        System.halt(0)
+    end
+
     config = parse_args(argv)
     {codex_home, cleanup?} = resolve_codex_home(config)
     process_env = child_env(codex_home)
@@ -242,23 +253,6 @@ defmodule CodexExamples.LiveOAuthLogin do
 
         File.mkdir_p!(codex_home)
         {codex_home, not config.keep_home?}
-    end
-  end
-
-  defp fetch_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      nil -> {:skip, "install the `codex` CLI or set CODEX_PATH"}
-      path -> {:ok, path}
-    end
-  end
-
-  defp ensure_app_server_supported(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status == 0 do
-      :ok
-    else
-      {:skip, "your `codex` CLI does not support `codex app-server`"}
     end
   end
 

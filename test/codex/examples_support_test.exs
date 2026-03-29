@@ -38,11 +38,14 @@ defmodule Codex.ExamplesSupportTest do
 
       assert context.argv == ["hello"]
       assert context.execution_surface == nil
+      assert context.example_cwd == nil
     end
 
     test "builds ssh execution_surface from shared flags" do
       assert {:ok, context} =
                ExamplesSupport.parse_argv([
+                 "--cwd",
+                 "/srv/codex",
                  "--ssh-host",
                  "builder@example.internal",
                  "--ssh-port",
@@ -57,11 +60,17 @@ defmodule Codex.ExamplesSupportTest do
       assert context.execution_surface.transport_options[:ssh_user] == "builder"
       assert context.execution_surface.transport_options[:port] == 2222
       assert context.execution_surface.transport_options[:identity_file] =~ "/tmp/id_ed25519"
+      assert context.example_cwd == "/srv/codex"
     end
 
     test "rejects orphan ssh flags without --ssh-host" do
       assert {:error, message} = ExamplesSupport.parse_argv(["--ssh-user", "builder"])
       assert message =~ "require --ssh-host"
+    end
+
+    test "rejects blank cwd values" do
+      assert {:error, message} = ExamplesSupport.parse_argv(["--cwd", "   "])
+      assert message =~ "--cwd"
     end
   end
 
@@ -75,6 +84,69 @@ defmodule Codex.ExamplesSupportTest do
       assert options.execution_surface.surface_kind == :ssh_exec
       assert options.execution_surface.transport_options[:destination] == "example.internal"
       assert is_nil(options.codex_path_override)
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+  end
+
+  describe "thread_opts/1" do
+    test "injects skip_git_repo_check in ssh mode" do
+      assert {:ok, context} = ExamplesSupport.parse_argv(["--ssh-host", "example.internal"])
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%{})
+      assert thread_opts.skip_git_repo_check == true
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+
+    test "forces skip_git_repo_check in ssh mode for example safety" do
+      assert {:ok, context} = ExamplesSupport.parse_argv(["--ssh-host", "example.internal"])
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%{skip_git_repo_check: false})
+      assert thread_opts.skip_git_repo_check == true
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+
+    test "injects shared cwd when explicitly configured" do
+      assert {:ok, context} = ExamplesSupport.parse_argv(["--cwd", "/srv/codex"])
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%{})
+      assert thread_opts.working_directory == "/srv/codex"
+      assert ExamplesSupport.example_working_directory() == "/srv/codex"
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+
+    test "injects ssh defaults for prebuilt Thread.Options structs" do
+      assert {:ok, context} =
+               ExamplesSupport.parse_argv([
+                 "--ssh-host",
+                 "example.internal",
+                 "--cwd",
+                 "/srv/codex"
+               ])
+
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:ok, thread_opts} = ExamplesSupport.thread_opts(%Codex.Thread.Options{})
+      assert thread_opts.skip_git_repo_check == true
+      assert thread_opts.working_directory == "/srv/codex"
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+  end
+
+  describe "ensure_remote_working_directory/1" do
+    test "skips ssh examples that need a remote cwd when none is configured" do
+      assert {:ok, context} = ExamplesSupport.parse_argv(["--ssh-host", "example.internal"])
+      Process.put({ExamplesSupport, :ssh_context}, context)
+
+      assert {:skip, reason} = ExamplesSupport.ensure_remote_working_directory("need cwd")
+      assert reason == "need cwd"
     after
       Process.delete({ExamplesSupport, :ssh_context})
     end

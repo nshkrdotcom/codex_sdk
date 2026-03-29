@@ -24,16 +24,30 @@ defmodule CodexExamples.LiveCLISession do
         values -> Enum.join(values, " ")
       end
 
+    case Support.ensure_remote_working_directory(
+           "this SSH CLI session example requires --cwd <remote trusted directory> because raw prompt-mode codex sessions do not expose --skip-git-repo-check"
+         ) do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+        System.halt(0)
+    end
+
     codex_opts =
       Support.codex_options!(%{})
+
+    cli_opts =
+      Support.command_opts(codex_opts: codex_opts)
 
     IO.puts("Launching prompt-mode `codex` session via PTY...")
     IO.puts("Prompt: #{prompt}\n")
 
     with {:ok, session} <-
-           Codex.CLI.interactive(prompt,
-             codex_opts: codex_opts,
-             config_overrides: %{"model_reasoning_effort" => "low"}
+           Codex.CLI.interactive(
+             prompt,
+             Keyword.merge(cli_opts, config_overrides: %{"model_reasoning_effort" => "low"})
            ),
          :ok <- close_input(session),
          {:ok, result} <- Codex.CLI.Session.collect(session, 120_000) do
@@ -58,15 +72,6 @@ defmodule CodexExamples.LiveCLISession do
       {:error, :stdin_unavailable} -> :ok
       {:error, reason} -> {:error, reason}
     end
-  end
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
   end
 end
 

@@ -142,7 +142,7 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
         approval_timeout_ms: 500
       })
 
-    {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!(thread_opts))
 
     IO.puts("""
     Streaming live Codex run with guardrails + approvals
@@ -331,15 +331,6 @@ defmodule CodexExamples.LiveToolingGuardrailsApprovals do
 
   defp build_prompt(values, _command, _tripwire?) do
     Enum.join(values, " ")
-  end
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
   end
 end
 

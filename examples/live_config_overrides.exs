@@ -32,7 +32,7 @@ defmodule LiveConfigOverrides do
         }
       })
 
-    {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!(thread_opts))
 
     IO.puts("Running turn with nested config overrides (features.web_search_request=true)...")
 
@@ -98,15 +98,6 @@ defmodule LiveConfigOverrides do
     after
       File.rm_rf(tmp_home)
     end
-  end
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
   end
 
   defp extract_text(%Codex.Items.AgentMessage{text: text}) when is_binary(text), do: text

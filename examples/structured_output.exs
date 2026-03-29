@@ -6,6 +6,17 @@ alias CodexExamples.Support
 
 Support.init!()
 
+case Support.ensure_local_execution_surface(
+       "this example writes host-local output schema files and does not support --ssh-host"
+     ) do
+  :ok ->
+    :ok
+
+  {:skip, reason} ->
+    IO.puts("SKIPPED: #{reason}")
+    System.halt(0)
+end
+
 alias Codex.ExamplesSupport
 alias Codex.Turn.Result, as: TurnResult
 
@@ -19,7 +30,7 @@ defmodule Examples.StructuredOutput do
       IO.puts("Running a host-side structured fallback example instead.")
       print_schema_data(fallback_schema_data())
     else
-      {:ok, thread} = Codex.start_thread(Support.codex_options!())
+      {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
       case schema_result(thread) do
         {:ok, result} ->
@@ -49,7 +60,7 @@ defmodule Examples.StructuredOutput do
         IO.inspect(summary, label: "parsed struct")
       end
     else
-      {:ok, thread} = Codex.start_thread(Support.codex_options!())
+      {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
       case struct_result(thread) do
         {:ok, result} ->

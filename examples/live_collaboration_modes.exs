@@ -38,6 +38,7 @@ defmodule LiveCollaborationModes do
 
     with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
          :ok <- Support.ensure_app_server_supported(codex_opts),
+         :ok <- Support.ensure_remote_working_directory(),
          {:ok, conn, experimental_api?, fallback_reason} <-
            connect_for_collaboration_modes(codex_opts) do
       try do
@@ -101,10 +102,13 @@ defmodule LiveCollaborationModes do
     """)
 
     with {:ok, thread} <-
-           Codex.start_thread(codex_opts, %{
-             transport: {:app_server, conn},
-             working_directory: File.cwd!()
-           }),
+           Codex.start_thread(
+             codex_opts,
+             Support.thread_opts!(%{
+               transport: {:app_server, conn},
+               working_directory: Support.example_working_directory()
+             })
+           ),
          {:ok, result} <-
            Thread.run(thread, prompt, %{collaboration_mode: mode, timeout_ms: 120_000}) do
       IO.puts("""
@@ -339,26 +343,6 @@ defmodule LiveCollaborationModes do
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_argv), do: @default_prompt
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
-
-  defp ensure_app_server_supported!(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      Mix.raise("""
-      Your `codex` CLI does not appear to support `codex app-server`.
-      Upgrade via `npm install -g @openai/codex` and retry.
-      """)
-    end
-  end
 
   defp extract_text(%Items.AgentMessage{text: text}) when is_binary(text), do: text
   defp extract_text(%{"type" => "text", "text" => text}) when is_binary(text), do: text

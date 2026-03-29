@@ -16,7 +16,7 @@ defmodule Examples.Conversation do
     codex_opts =
       Support.codex_options!(%{model: ExamplesSupport.example_model()})
 
-    {:ok, thread} = Codex.start_thread(codex_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!())
 
     {:ok, result1} =
       Codex.Thread.run(thread, "I have a GenServer that crashes when I call {:stop, reason}.")
@@ -45,7 +45,7 @@ defmodule Examples.Conversation do
     codex_opts =
       Support.codex_options!(%{model: ExamplesSupport.example_model()})
 
-    {:ok, thread} = Codex.resume_thread(thread_id, codex_opts)
+    {:ok, thread} = Codex.resume_thread(thread_id, codex_opts, Support.thread_opts!())
 
     {:ok, result} =
       Codex.Thread.run(thread, "Can you remind me what we were discussing?")
@@ -57,7 +57,7 @@ defmodule Examples.Conversation do
     codex_opts =
       Support.codex_options!(%{model: ExamplesSupport.example_model()})
 
-    {:ok, thread} = Codex.start_thread(codex_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!())
     {:ok, result1} = Codex.Thread.run(thread, "Remember the number 42 for me.")
     thread = result1.thread
 
@@ -66,7 +66,7 @@ defmodule Examples.Conversation do
     File.write!("thread_id.txt", thread.thread_id)
 
     saved_id = File.read!("thread_id.txt") |> String.trim()
-    {:ok, resumed} = Codex.resume_thread(saved_id, codex_opts)
+    {:ok, resumed} = Codex.resume_thread(saved_id, codex_opts, Support.thread_opts!())
 
     {:ok, result2} = Codex.Thread.run(resumed, "What number should I remember?")
     IO.puts("Agent (after resume): #{render(result2.final_response)}")

@@ -184,7 +184,7 @@ defmodule CodexExamples.LiveMcpAndSessions do
         model: ExamplesSupport.example_model()
       })
 
-    {:ok, thread} = Codex.start_thread(codex_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!())
 
     run_config =
       RunConfig.new(%{
@@ -255,15 +255,6 @@ defmodule CodexExamples.LiveMcpAndSessions do
 
   defp unwrap!({:error, reason}, label),
     do: Mix.raise("Failed to build #{label}: #{inspect(reason)}")
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 end
 
 CodexExamples.LiveMcpAndSessions.main(System.argv())

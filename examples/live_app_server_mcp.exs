@@ -77,26 +77,6 @@ defmodule CodexExamples.LiveAppServerMcp do
   end
 
   defp tool_names(_server), do: []
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
-
-  defp ensure_app_server_supported!(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      Mix.raise("""
-      Your `codex` CLI does not appear to support `codex app-server`.
-      Upgrade via `npm install -g @openai/codex` and retry.
-      """)
-    end
-  end
 end
 
 CodexExamples.LiveAppServerMcp.main(System.argv())

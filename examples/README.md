@@ -34,6 +34,7 @@ applies to Codex CLI subprocesses and MCP HTTP/OAuth flows.
 ```bash
 ./examples/run_all.sh
 ./examples/run_all.sh --ssh-host example.internal
+./examples/run_all.sh --ssh-host example.internal --cwd /srv/trusted/repo
 ./examples/run_all.sh --ssh-host builder@example.internal --ssh-port 2222
 ```
 
@@ -60,10 +61,17 @@ their existing local default when you omit the flag.
 
 Supported SSH flags for CLI/app-server examples:
 
+- `--cwd <path>`
 - `--ssh-host <host>` or `--ssh-host <user>@<host>`
 - `--ssh-user <user>`
 - `--ssh-port <port>`
 - `--ssh-identity-file <path>`
+
+`--cwd` is optional for the exec-backed examples. In SSH mode it becomes
+required for app-server thread demos and raw prompt-mode CLI sessions, because
+those upstream surfaces do not expose `--skip-git-repo-check`. Point it at a
+trusted directory on the remote host when you want those examples to run over
+`execution_surface: :ssh_exec`.
 
 `--ssh-host` is mutually exclusive with `--ollama`, because `--ollama` is the
 local OSS route and `--ssh-host` is remote subprocess placement.
@@ -74,6 +82,15 @@ Realtime/Voice examples, and it intentionally skips
 `examples/live_oauth_login.exs` because that example demonstrates local OAuth
 session storage and local browser/device login flow rather than subprocess
 placement.
+
+In SSH mode, the runner also skips examples that depend on host-local fixtures
+or staged local file paths rather than pure subprocess placement. Today that
+includes:
+
+- `examples/structured_output.exs`
+- `examples/live_app_server_plugins.exs`
+- `examples/live_app_server_approvals.exs`
+- `examples/live_attachments_and_search.exs`
 
 `gpt-oss:20b` remains the default validated Codex/Ollama example model, but
 the runner also accepts other installed Ollama models such as `llama3.2`.
@@ -125,25 +142,25 @@ SSH usage for CLI/app-server examples is explicit:
 
 ```bash
 mix run examples/live_cli_demo.exs -- --ssh-host example.internal "What is the capital of France?"
-mix run examples/live_app_server_basic.exs -- --ssh-host builder@example.internal --ssh-port 2222 "Reply with exactly ok and nothing else."
-mix run examples/live_cli_session.exs -- --ssh-host example.internal "Summarize this repository in three bullets."
+mix run examples/live_app_server_basic.exs -- --ssh-host builder@example.internal --ssh-port 2222 --cwd /srv/trusted/repo "Reply with exactly ok and nothing else."
+mix run examples/live_cli_session.exs -- --ssh-host example.internal --cwd /srv/trusted/repo "Summarize this repository in three bullets."
 ```
 
 - `examples/live_cli_demo.exs` — minimal Q&A against the live CLI
 - `examples/live_cli_passthrough.exs` — direct wrappers for `completion`, `features`, `login status`, and arbitrary raw `codex` argv
-- `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
+- `examples/live_cli_session.exs` — PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`; in SSH mode, pass `--cwd <remote trusted dir>`
 - `examples/live_oauth_login.exs` — native OAuth status/login/refresh demo using an isolated temporary `CODEX_HOME` by default; prints the browser URL before waiting, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth via `--app-server-memory`
-- `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`
+- `examples/live_app_server_basic.exs` — minimal turn + skills/models/thread list over `codex app-server`; in SSH mode, pass `--cwd <remote trusted dir>`
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
 - `examples/plugin_scaffold.exs` — local plugin authoring walkthrough using `Codex.Plugins.scaffold/1`; writes a disposable manifest, optional skill, and marketplace entry under the system temp directory and prints the resulting paths
-- `examples/live_app_server_plugins.exs` — provisions a disposable local plugin fixture through `Codex.Plugins.scaffold/1`, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises the typed `plugin_list_typed/2` + `plugin_read_typed/3` wrappers without mutating your real `$CODEX_HOME` or requiring a preinstalled plugin; prints derived `needs_auth` state from typed app summaries and self-skips when the connected CLI build does not advertise `plugin/read`
-- `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion)
-- `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi`, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the under-development approval feature flags only inside that isolated home, and prints a structured-grant fallback plus guardian/request-resolution events when live permissions requests still do not appear
+- `examples/live_app_server_plugins.exs` — provisions a disposable local plugin fixture through `Codex.Plugins.scaffold/1`, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises the typed `plugin_list_typed/2` + `plugin_read_typed/3` wrappers without mutating your real `$CODEX_HOME` or requiring a preinstalled plugin; prints derived `needs_auth` state from typed app summaries and self-skips when the connected CLI build does not advertise `plugin/read`. This example is local-only and does not support `--ssh-host`.
+- `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion); in SSH mode, pass `--cwd <remote trusted dir>`
+- `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi`, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the under-development approval feature flags only inside that isolated home, and prints a structured-grant fallback plus guardian/request-resolution events when live permissions requests still do not appear. This example is local-only and does not support `--ssh-host`.
 - `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
-- `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration mode presets, and runs a turn with the server-advertised preset settings plus built-in preset instructions (or skips when the connected CLI build rejects that capability or omits `collaborationMode/list`)
-- `examples/live_subagent_host_controls.exs` — one parent -> one child subagent workflow that explicitly enables the current runtime's `features.multi_agent` flag, sets thread/depth limits, exercises the full `Codex.Subagents` helper surface, and then reuses/resumes the child to drive `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent` through live parent turns
-- `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides
-- `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows
+- `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration mode presets, and runs a turn with the server-advertised preset settings plus built-in preset instructions (or skips when the connected CLI build rejects that capability or omits `collaborationMode/list`). In SSH mode, pass `--cwd <remote trusted dir>`.
+- `examples/live_subagent_host_controls.exs` — one parent -> one child subagent workflow that explicitly enables the current runtime's `features.multi_agent` flag, sets thread/depth limits, exercises the full `Codex.Subagents` helper surface, and then reuses/resumes the child to drive `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent` through live parent turns. In SSH mode, pass `--cwd <remote trusted dir>`.
+- `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides; in SSH mode, pass `--cwd <remote trusted dir>`
+- `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows; in SSH mode, pass `--cwd <remote trusted dir>`
 - `examples/live_web_search_modes.exs` — demonstrates `web_search_mode` toggles, validates disabled/live behavior, and reports cached-mode search events when available
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels
@@ -156,7 +173,7 @@ mix run examples/live_cli_session.exs -- --ssh-host example.internal "Summarize 
 - `examples/live_structured_hosted_tools.exs` — structured function tool outputs plus hosted shell/apply_patch/computer/file_search/image
 - `examples/live_mcp_and_sessions.exs` — hosted MCP stub with retries/filters, sanitized qualified names, and a resumable session flow
 - `examples/live_model_streaming_tracing.exs` — model/model_settings override with streaming, cancel modes, and tracing metadata
-- `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search
+- `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search. This example is local-only and does not support `--ssh-host`.
 - `examples/live_config_overrides.exs` — nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, runtime validation, and reserved-provider notes
 - `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability

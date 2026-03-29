@@ -86,7 +86,7 @@ defmodule CodexExamples.LiveMultiTurnRunner do
     codex_opts =
       Support.codex_options!(%{})
 
-    {:ok, thread} = Codex.start_thread(codex_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!())
 
     IO.puts("""
     Running multi-turn loop against live Codex CLI.
@@ -145,15 +145,6 @@ defmodule CodexExamples.LiveMultiTurnRunner do
 
   defp parse_prompt([]), do: String.trim(@default_prompt)
   defp parse_prompt(values), do: Enum.join(values, " ")
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 end
 
 CodexExamples.LiveMultiTurnRunner.main(System.argv())

@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Error, Events, Items, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.{Error, Events, Items, RunResultStreaming, Thread, TransportError}
 alias Codex.ExamplesSupport
 
 defmodule LiveWebSearchModes do
@@ -77,7 +77,7 @@ defmodule LiveWebSearchModes do
   defp run_mode_once(mode, prompt) do
     with {:ok, codex_opts} <- Support.codex_options(%{}),
          {:ok, thread_opts} <- Codex.Thread.Options.new(%{web_search_mode: mode}),
-         {:ok, thread} <- Codex.start_thread(codex_opts, thread_opts),
+         {:ok, thread} <- Codex.start_thread(codex_opts, Support.thread_opts!(thread_opts)),
          {:ok, result} <- Thread.run_streamed(thread, prompt),
          {:ok, final_state} <- consume_result(result) do
       validate_mode_expectation(mode, final_state)
@@ -199,15 +199,6 @@ defmodule LiveWebSearchModes do
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_args), do: @default_prompt
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 
   defp render_transport_error(%Error{} = error) do
     status = error.details[:exit_status]

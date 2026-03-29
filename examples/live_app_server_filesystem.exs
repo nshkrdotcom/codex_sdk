@@ -124,34 +124,6 @@ defmodule CodexExamples.LiveAppServerFilesystem do
   end
 
   defp request_or_skip({:error, reason}, _feature), do: {:error, reason}
-
-  defp fetch_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      nil ->
-        {:skip, "install the `codex` CLI or set CODEX_PATH before running this example"}
-
-      path ->
-        {:ok, path}
-    end
-  end
-
-  defp ensure_app_server_supported(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
-    else
-      :ok
-    end
-  end
-
-  defp ensure_auth_available do
-    if Codex.Auth.api_key() || Codex.Auth.chatgpt_access_token() do
-      :ok
-    else
-      {:skip, "authenticate with `codex login` or set CODEX_API_KEY before running this example"}
-    end
-  end
 end
 
 CodexExamples.LiveAppServerFilesystem.main(System.argv())

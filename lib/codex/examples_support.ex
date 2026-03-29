@@ -5,6 +5,7 @@ defmodule Codex.ExamplesSupport do
   alias Codex.Items
   alias Codex.Models
   alias Codex.Options
+  alias Codex.Thread.Options, as: ThreadOptions
   alias Codex.Turn.Result
 
   defmodule SSHContext do
@@ -13,6 +14,7 @@ defmodule Codex.ExamplesSupport do
     @enforce_keys [:argv]
     defstruct argv: [],
               execution_surface: nil,
+              example_cwd: nil,
               ssh_host: nil,
               ssh_user: nil,
               ssh_port: nil,
@@ -21,6 +23,7 @@ defmodule Codex.ExamplesSupport do
     @type t :: %__MODULE__{
             argv: [String.t()],
             execution_surface: ExecutionSurface.t() | nil,
+            example_cwd: String.t() | nil,
             ssh_host: String.t() | nil,
             ssh_user: String.t() | nil,
             ssh_port: pos_integer() | nil,
@@ -30,6 +33,7 @@ defmodule Codex.ExamplesSupport do
 
   @context_key {__MODULE__, :ssh_context}
   @ssh_switches [
+    cwd: :string,
     ssh_host: :string,
     ssh_identity_file: :string,
     ssh_port: :integer,
@@ -111,10 +115,79 @@ defmodule Codex.ExamplesSupport do
 
   @spec command_opts(keyword()) :: keyword()
   def command_opts(opts \\ []) when is_list(opts) do
-    case execution_surface() do
-      %ExecutionSurface{} = surface -> Keyword.put(opts, :execution_surface, surface)
-      nil -> opts
+    opts =
+      case execution_surface() do
+        %ExecutionSurface{} = surface -> Keyword.put(opts, :execution_surface, surface)
+        nil -> opts
+      end
+
+    case example_working_directory() do
+      cwd when is_binary(cwd) and cwd != "" -> Keyword.put_new(opts, :cwd, cwd)
+      _ -> opts
     end
+  end
+
+  @spec example_working_directory() :: String.t() | nil
+  def example_working_directory do
+    case context().example_cwd do
+      cwd when is_binary(cwd) and cwd != "" ->
+        cwd
+
+      _ ->
+        if ssh_enabled?(), do: nil, else: File.cwd!()
+    end
+  end
+
+  @spec remote_working_directory_configured?() :: boolean()
+  def remote_working_directory_configured? do
+    case context().example_cwd do
+      cwd when is_binary(cwd) -> String.trim(cwd) != ""
+      _ -> false
+    end
+  end
+
+  @spec ensure_remote_working_directory(String.t()) :: :ok | {:skip, String.t()}
+  def ensure_remote_working_directory(
+        message \\ "this SSH app-server example requires --cwd <remote trusted directory> because app-server thread start does not expose --skip-git-repo-check"
+      ) do
+    if ssh_enabled?() and not remote_working_directory_configured?(),
+      do: {:skip, message},
+      else: :ok
+  end
+
+  @spec ensure_local_execution_surface(String.t()) :: :ok | {:skip, String.t()}
+  def ensure_local_execution_surface(
+        message \\ "this example uses local host resources and does not support --ssh-host"
+      ) do
+    if ssh_enabled?(), do: {:skip, message}, else: :ok
+  end
+
+  @spec thread_opts!(map() | keyword() | ThreadOptions.t()) :: ThreadOptions.t()
+  def thread_opts!(attrs \\ %{}) do
+    case thread_opts(attrs) do
+      {:ok, %ThreadOptions{} = options} ->
+        options
+
+      {:error, reason} ->
+        raise ArgumentError, "invalid Codex example thread options: #{inspect(reason)}"
+    end
+  end
+
+  @spec thread_opts(map() | keyword() | ThreadOptions.t()) ::
+          {:ok, ThreadOptions.t()} | {:error, term()}
+  def thread_opts(%ThreadOptions{} = attrs) do
+    attrs
+    |> Map.from_struct()
+    |> thread_opts()
+  end
+
+  def thread_opts(attrs) when is_list(attrs), do: attrs |> Map.new() |> thread_opts()
+
+  def thread_opts(attrs) when is_map(attrs) do
+    attrs
+    |> maybe_put_example_working_directory()
+    |> maybe_put_skip_git_repo_check()
+    |> ThreadOptions.new()
   end
 
   @spec codex_options!(map() | keyword(), keyword()) :: Options.t()
@@ -235,45 +308,68 @@ defmodule Codex.ExamplesSupport do
   end
 
   defp build_context(parsed, argv) do
+    example_cwd = Keyword.get(parsed, :cwd)
     ssh_host = Keyword.get(parsed, :ssh_host)
     ssh_user = Keyword.get(parsed, :ssh_user)
     ssh_port = Keyword.get(parsed, :ssh_port)
     ssh_identity_file = Keyword.get(parsed, :ssh_identity_file)
 
-    cond do
-      is_nil(ssh_host) and Enum.any?([ssh_user, ssh_port, ssh_identity_file], &present?/1) ->
-        {:error, "SSH example flags require --ssh-host when any other --ssh-* flag is set."}
+    case normalize_example_cwd(example_cwd) do
+      {:ok, example_cwd} ->
+        do_build_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file)
 
-      is_nil(ssh_host) ->
-        {:ok, %SSHContext{argv: argv}}
+      {:error, _reason} = error ->
+        error
+    end
+  end
 
-      true ->
-        with {:ok, {destination, parsed_user}} <- split_host(ssh_host),
-             {:ok, effective_user} <- coalesce_user(parsed_user, ssh_user),
-             {:ok, identity_file} <- normalize_identity_file(ssh_identity_file),
-             {:ok, %ExecutionSurface{} = execution_surface} <-
-               ExecutionSurface.new(
-                 surface_kind: :ssh_exec,
-                 transport_options:
-                   []
-                   |> Keyword.put(:destination, destination)
-                   |> maybe_put_kw(:ssh_user, effective_user)
-                   |> maybe_put_kw(:port, ssh_port)
-                   |> maybe_put_kw(:identity_file, identity_file)
-               ) do
-          {:ok,
-           %SSHContext{
-             argv: argv,
-             execution_surface: execution_surface,
-             ssh_host: destination,
-             ssh_user: effective_user,
-             ssh_port: ssh_port,
-             ssh_identity_file: identity_file
-           }}
-        else
-          {:error, reason} when is_binary(reason) -> {:error, reason}
-          {:error, reason} -> {:error, "invalid SSH example flags: #{inspect(reason)}"}
-        end
+  defp do_build_context(argv, example_cwd, nil, ssh_user, ssh_port, ssh_identity_file) do
+    with :ok <- validate_ssh_flag_dependencies(nil, ssh_user, ssh_port, ssh_identity_file) do
+      {:ok, %SSHContext{argv: argv, example_cwd: example_cwd}}
+    end
+  end
+
+  defp do_build_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+    with :ok <- validate_ssh_flag_dependencies(ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+      build_ssh_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file)
+    end
+  end
+
+  defp validate_ssh_flag_dependencies(ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+    if is_nil(ssh_host) and Enum.any?([ssh_user, ssh_port, ssh_identity_file], &present?/1) do
+      {:error, "SSH example flags require --ssh-host when any other --ssh-* flag is set."}
+    else
+      :ok
+    end
+  end
+
+  defp build_ssh_context(argv, example_cwd, ssh_host, ssh_user, ssh_port, ssh_identity_file) do
+    with {:ok, {destination, parsed_user}} <- split_host(ssh_host),
+         {:ok, effective_user} <- coalesce_user(parsed_user, ssh_user),
+         {:ok, identity_file} <- normalize_identity_file(ssh_identity_file),
+         {:ok, %ExecutionSurface{} = execution_surface} <-
+           ExecutionSurface.new(
+             surface_kind: :ssh_exec,
+             transport_options:
+               []
+               |> Keyword.put(:destination, destination)
+               |> maybe_put_kw(:ssh_user, effective_user)
+               |> maybe_put_kw(:port, ssh_port)
+               |> maybe_put_kw(:identity_file, identity_file)
+           ) do
+      {:ok,
+       %SSHContext{
+         argv: argv,
+         execution_surface: execution_surface,
+         example_cwd: example_cwd,
+         ssh_host: destination,
+         ssh_user: effective_user,
+         ssh_port: ssh_port,
+         ssh_identity_file: identity_file
+       }}
+    else
+      {:error, reason} when is_binary(reason) -> {:error, reason}
+      {:error, reason} -> {:error, "invalid SSH example flags: #{inspect(reason)}"}
     end
   end
 
@@ -317,9 +413,46 @@ defmodule Codex.ExamplesSupport do
     end
   end
 
+  defp maybe_put_example_working_directory(attrs) when is_map(attrs) do
+    if present?(present_value?(attrs, :working_directory)) || present?(present_value?(attrs, :cd)) do
+      attrs
+    else
+      case context().example_cwd do
+        cwd when is_binary(cwd) and cwd != "" -> Map.put(attrs, :working_directory, cwd)
+        _ -> attrs
+      end
+    end
+  end
+
+  defp maybe_put_skip_git_repo_check(attrs) when is_map(attrs) do
+    if ssh_enabled?() and present_value?(attrs, :skip_git_repo_check) != true do
+      Map.put(attrs, :skip_git_repo_check, true)
+    else
+      attrs
+    end
+  end
+
+  defp present_value?(attrs, key) when is_map(attrs) and is_atom(key) do
+    case {Map.get(attrs, key), Map.get(attrs, Atom.to_string(key))} do
+      {nil, nil} -> nil
+      {value, nil} -> value
+      {nil, value} -> value
+      {value, _other} -> value
+    end
+  end
+
   defp present?(value) when is_binary(value), do: String.trim(value) != ""
   defp present?(nil), do: false
   defp present?(_value), do: true
+
+  defp normalize_example_cwd(nil), do: {:ok, nil}
+
+  defp normalize_example_cwd(path) when is_binary(path) do
+    case String.trim(path) do
+      "" -> {:error, "--cwd must be a non-empty path"}
+      trimmed -> {:ok, trimmed}
+    end
+  end
 
   defp split_host(ssh_host) when is_binary(ssh_host) do
     case String.trim(ssh_host) do
@@ -382,7 +515,7 @@ defmodule Codex.ExamplesSupport do
         {name, value} -> "--#{name}=#{value}"
       end)
 
-    "invalid example SSH flags: #{rendered}. Supported flags: --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"
+    "invalid example flags: #{rendered}. Supported flags: --cwd, --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"
   end
 
   defp maybe_put_kw(opts, _key, nil), do: opts

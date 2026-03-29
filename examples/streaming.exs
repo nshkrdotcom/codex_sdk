@@ -14,7 +14,7 @@ defmodule Examples.Streaming do
   @moduledoc false
 
   def realtime_stream do
-    {:ok, thread} = Codex.start_thread(Support.codex_options!())
+    {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(
@@ -28,7 +28,7 @@ defmodule Examples.Streaming do
   end
 
   def progressive_story do
-    {:ok, thread} = Codex.start_thread(Support.codex_options!())
+    {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(thread, "Write a short story about a robot learning Elixir")
@@ -52,7 +52,7 @@ defmodule Examples.Streaming do
   end
 
   def stateful_stream do
-    {:ok, thread} = Codex.start_thread(Support.codex_options!())
+    {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
     {:ok, result} =
       Codex.Thread.run_streamed(thread, "Implement a new feature across the codebase")

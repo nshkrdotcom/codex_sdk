@@ -35,7 +35,7 @@ defmodule CodexExamples.LiveToolingStream do
     Prompt: #{prompt}
     """)
 
-    with {:ok, thread} <- Codex.start_thread(codex_opts, thread_opts),
+    with {:ok, thread} <- Codex.start_thread(codex_opts, Support.thread_opts!(thread_opts)),
          {:ok, result} <- Thread.run_streamed(thread, prompt) do
       state =
         result
@@ -141,15 +141,6 @@ defmodule CodexExamples.LiveToolingStream do
   end
 
   defp parse_prompt(_), do: String.trim(@default_prompt)
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 
   defp unwrap!({:ok, value}, _label), do: value
 

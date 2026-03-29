@@ -24,7 +24,10 @@ defmodule Examples.ToolBridging do
     {:ok, _handle} = Codex.Tools.register(MathTool)
 
     {:ok, thread} =
-      Codex.start_thread(Support.codex_options!(), %{approval_policy: StaticPolicy.allow()})
+      Codex.start_thread(
+        Support.codex_options!(),
+        Support.thread_opts!(%{approval_policy: StaticPolicy.allow()})
+      )
 
     {:ok, result} =
       Codex.Thread.run_auto(thread, "Ask the math tool to add 4 and 5", max_attempts: 2)

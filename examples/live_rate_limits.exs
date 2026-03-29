@@ -18,7 +18,12 @@ defmodule LiveRateLimits do
     prompt = parse_prompt(argv)
 
     codex_opts = Support.codex_options!()
-    {:ok, thread} = Codex.start_thread(codex_opts, %{working_directory: File.cwd!()})
+
+    {:ok, thread} =
+      Codex.start_thread(
+        codex_opts,
+        Support.thread_opts!(%{working_directory: Support.example_working_directory()})
+      )
 
     case Thread.run_streamed(thread, prompt) do
       {:ok, result} ->
@@ -81,15 +86,6 @@ defmodule LiveRateLimits do
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_argv), do: @default_prompt
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 
   defp render_transport_error(%Error{} = error) do
     status = error.details[:exit_status]

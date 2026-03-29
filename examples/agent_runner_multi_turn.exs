@@ -10,7 +10,7 @@ defmodule Examples.AgentRunner do
   @moduledoc false
 
   def run do
-    {:ok, thread} = Codex.start_thread(Support.codex_options!())
+    {:ok, thread} = Codex.start_thread(Support.codex_options!(), Support.thread_opts!())
 
     {:ok, result} =
       Codex.AgentRunner.run(thread, "Plan a short checklist",

@@ -49,7 +49,11 @@ defmodule CodexExamples.LiveAppServerApprovals do
         values -> Enum.join(values, " ")
       end
 
-    with {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
+    with :ok <-
+           Support.ensure_local_execution_surface(
+             "this example provisions host-local approval fixtures and does not support --ssh-host"
+           ),
+         {:ok, codex_opts} <- Support.codex_options(%{}, missing_cli: :skip),
          :ok <- Support.ensure_app_server_supported(codex_opts),
          {:ok, fixture} <- build_demo_fixture() do
       try do
@@ -181,6 +185,7 @@ defmodule CodexExamples.LiveAppServerApprovals do
       sandbox: :workspace_write
     }
     |> maybe_put(:approvals_reviewer, approvals_reviewer)
+    |> Support.thread_opts!()
     |> then(&Codex.start_thread(codex_opts, &1))
   end
 
@@ -824,26 +829,6 @@ defmodule CodexExamples.LiveAppServerApprovals do
       IO.puts(
         "  note: no live permissions approval was observed even after the supplemental turn; see [permissions.fallback] above for the exact structured response payload."
       )
-    end
-  end
-
-  defp fetch_codex_path do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
-      nil ->
-        {:skip, "install the `codex` CLI or set CODEX_PATH before running this example"}
-
-      path ->
-        {:ok, path}
-    end
-  end
-
-  defp ensure_app_server_supported(codex_path) do
-    {_output, status} = System.cmd(codex_path, ["app-server", "--help"], stderr_to_stdout: true)
-
-    if status != 0 do
-      {:skip, "your `codex` CLI does not support `codex app-server`; upgrade it and retry"}
-    else
-      :ok
     end
   end
 

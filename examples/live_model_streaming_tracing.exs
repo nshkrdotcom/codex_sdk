@@ -53,7 +53,7 @@ defmodule CodexExamples.LiveModelStreamingTracing do
     codex_opts =
       Support.codex_options!(%{})
 
-    {:ok, thread} = Codex.start_thread(codex_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!())
 
     IO.puts("""
     Streaming with model #{run_config.model || "<default>"} (provider=#{settings.provider})
@@ -127,15 +127,6 @@ defmodule CodexExamples.LiveModelStreamingTracing do
       "Stream a two-sentence update on tracing and usage compaction. Mention that we may cancel mid-stream."
 
   defp parse_prompt(values), do: Enum.join(values, " ")
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 end
 
 CodexExamples.LiveModelStreamingTracing.main(System.argv())

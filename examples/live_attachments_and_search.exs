@@ -34,6 +34,17 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
   @moduledoc false
 
   def main(argv) do
+    case Support.ensure_local_execution_surface(
+           "this example stages host-local attachment paths and does not support --ssh-host"
+         ) do
+      :ok ->
+        :ok
+
+      {:skip, reason} ->
+        IO.puts("SKIPPED: #{reason}")
+        System.halt(0)
+    end
+
     prompt =
       case argv do
         [] ->
@@ -86,7 +97,7 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
         file_search: file_search
       })
 
-    {:ok, thread} = Codex.start_thread(codex_opts, thread_opts)
+    {:ok, thread} = Codex.start_thread(codex_opts, Support.thread_opts!(thread_opts))
 
     IO.puts("""
     Attachments + search demo (live Codex CLI)
@@ -165,15 +176,6 @@ defmodule CodexExamples.LiveAttachmentsAndSearch do
   defp render_response(%{"text" => text}), do: text
   defp render_response(nil), do: "<no response>"
   defp render_response(other), do: inspect(other)
-
-  defp fetch_codex_path! do
-    System.get_env("CODEX_PATH") ||
-      System.find_executable("codex") ||
-      Mix.raise("""
-      Unable to locate the `codex` CLI.
-      Install the Codex CLI and ensure it is on your PATH or set CODEX_PATH.
-      """)
-  end
 end
 
 CodexExamples.LiveAttachmentsAndSearch.main(System.argv())
