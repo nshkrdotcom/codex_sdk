@@ -89,16 +89,21 @@ defmodule Codex.Runtime.Exec do
 
   @spec session_error(CoreEvent.t(), binary(), boolean()) :: {:error, term()} | nil
   def session_error(
-        %CoreEvent{kind: :error, raw: %{exit: %CoreProcessExit{} = exit}},
+        %CoreEvent{
+          kind: :error,
+          raw: %{exit: %CoreProcessExit{} = exit},
+          payload: %Payload.Error{} = payload
+        },
         stderr,
         stderr_truncated?
       ) do
     {:error,
      Codex.TransportError.new(exit_code(exit),
-       message: exit_message(exit),
+       message: payload.message || exit_message(exit),
        stderr: stderr,
        stderr_truncated?: stderr_truncated?,
-       retryable?: retryable_exit?(exit)
+       retryable?: retryable_exit?(exit),
+       reason_code: normalize_reason_code(payload.code)
      )}
   end
 
@@ -543,6 +548,16 @@ defmodule Codex.Runtime.Exec do
 
   defp exit_message(%CoreProcessExit{reason: reason}) do
     "codex executable exited: #{inspect(reason)}"
+  end
+
+  defp normalize_reason_code(nil), do: nil
+  defp normalize_reason_code(code) when is_atom(code), do: code
+
+  defp normalize_reason_code(code) when is_binary(code) do
+    code
+    |> String.downcase()
+    |> String.replace("-", "_")
+    |> String.to_atom()
   end
 
   defp retryable_exit?(%CoreProcessExit{} = exit),

@@ -60,7 +60,8 @@ defmodule Codex.Error do
         exit_status: error.exit_status,
         stderr: error.stderr,
         stderr_truncated?: error.stderr_truncated?,
-        retryable?: error.retryable?
+        retryable?: error.retryable?,
+        reason_code: error.reason_code
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()

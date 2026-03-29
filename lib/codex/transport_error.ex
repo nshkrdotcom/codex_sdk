@@ -7,14 +7,15 @@ defmodule Codex.TransportError do
   whether to attempt automatic retries.
   """
 
-  defexception [:message, :exit_status, :stderr, :stderr_truncated?, :retryable?]
+  defexception [:message, :exit_status, :stderr, :stderr_truncated?, :retryable?, :reason_code]
 
   @type t :: %__MODULE__{
           message: String.t(),
           exit_status: integer(),
           stderr: String.t() | nil,
           stderr_truncated?: boolean(),
-          retryable?: boolean()
+          retryable?: boolean(),
+          reason_code: atom() | nil
         }
 
   @doc """
@@ -39,7 +40,8 @@ defmodule Codex.TransportError do
       stderr: stderr,
       stderr_truncated?: stderr_truncated?,
       message: message,
-      retryable?: retryable?
+      retryable?: retryable?,
+      reason_code: Keyword.get(opts, :reason_code)
     }
   end
 

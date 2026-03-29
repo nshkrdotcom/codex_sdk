@@ -1,7 +1,7 @@
 defmodule Codex.ErrorTest do
   use ExUnit.Case, async: true
 
-  alias Codex.{Error, Options, Thread}
+  alias Codex.{Error, Options, Thread, TransportError}
   alias Codex.Thread.Options, as: ThreadOptions
 
   test "non-zero codex exit normalizes into Codex.Error" do
@@ -35,6 +35,20 @@ defmodule Codex.ErrorTest do
     assert error.message == "stream failed"
     assert error.details.additional_details == "upstream timeout"
     assert error.details.codex_error_info == %{"code" => "rate_limit"}
+  end
+
+  test "normalize/1 preserves transport reason codes" do
+    error =
+      TransportError.new(127,
+        message: "Codex CLI not found on remote target ssh-target.example",
+        stderr: "env: 'codex': No such file or directory",
+        reason_code: :cli_not_found
+      )
+      |> Error.normalize()
+
+    assert error.message =~ "Codex CLI not found"
+    assert error.details.reason_code == :cli_not_found
+    assert error.details.exit_status == 127
   end
 
   defp temp_script(contents) do
