@@ -181,6 +181,26 @@ defmodule Codex.ExamplesSupportTest do
     end
   end
 
+  describe "path semantics readiness" do
+    test "guest-path execution surfaces suppress local example cwd defaults and local codex resolution" do
+      Process.put(
+        {ExamplesSupport, :ssh_context},
+        %ExamplesSupport.SSHContext{
+          argv: [],
+          execution_surface: %ExecutionSurface{surface_kind: :test_guest_local}
+        }
+      )
+
+      assert ExamplesSupport.nonlocal_path_execution_surface?() == true
+      assert ExamplesSupport.example_working_directory() == nil
+      assert {:ok, options} = ExamplesSupport.codex_options(%{})
+      assert options.codex_path_override == nil
+      assert options.execution_surface.surface_kind == :test_guest_local
+    after
+      Process.delete({ExamplesSupport, :ssh_context})
+    end
+  end
+
   describe "ensure_remote_working_directory/1" do
     test "skips ssh examples that need a remote cwd when none is configured" do
       assert {:ok, context} = ExamplesSupport.parse_argv(["--ssh-host", "example.internal"])

@@ -113,6 +113,11 @@ defmodule Codex.ExamplesSupport do
   @spec ssh_enabled?() :: boolean()
   def ssh_enabled?, do: match?(%SSHContext{execution_surface: %ExecutionSurface{}}, context())
 
+  @spec nonlocal_path_execution_surface?() :: boolean()
+  def nonlocal_path_execution_surface? do
+    ExecutionSurface.nonlocal_path_surface?(execution_surface())
+  end
+
   @spec danger_full_access?() :: boolean()
   def danger_full_access?, do: context().example_danger_full_access == true
 
@@ -134,7 +139,7 @@ defmodule Codex.ExamplesSupport do
         cwd
 
       _ ->
-        if ssh_enabled?(), do: nil, else: File.cwd!()
+        if nonlocal_path_execution_surface?(), do: nil, else: File.cwd!()
     end
   end
 
@@ -423,7 +428,7 @@ defmodule Codex.ExamplesSupport do
 
   defp maybe_put_local_codex_path(attrs, mode) do
     cond do
-      ssh_enabled?() ->
+      nonlocal_path_execution_surface?() ->
         {:ok, maybe_put_execution_surface(attrs)}
 
       local_codex_override?(attrs) ->
