@@ -13,13 +13,13 @@ defmodule Codex.Exec do
   require Logger
 
   alias CliSubprocessCore.Event, as: CoreEvent
-  alias CliSubprocessCore.Transport.Error, as: CoreTransportError
   alias Codex.Config.Defaults
   alias Codex.Exec.CancellationRegistry
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
   alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TransportError
+  alias ExternalRuntimeTransport.Transport.Error, as: CoreTransportError
 
   @type exec_opts :: %{
           optional(:codex_opts) => Codex.Options.t(),

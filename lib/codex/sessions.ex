@@ -378,11 +378,12 @@ defmodule Codex.Sessions do
   end
 
   defp apply_patch(patch, opts) do
-    timeout_ms = Keyword.get(opts, :timeout_ms, @default_apply_timeout_ms)
-    cwd = Keyword.get(opts, :cwd, File.cwd!())
     args = apply_git_args(opts)
 
-    with {:ok, git_path} <- resolve_git_path(),
+    with {:ok, timeout_ms} <-
+           normalize_run_timeout(Keyword.get(opts, :timeout_ms, @default_apply_timeout_ms)),
+         {:ok, cwd} <- normalize_run_cwd(Keyword.get(opts, :cwd, File.cwd!())),
+         {:ok, git_path} <- resolve_git_path(),
          {:ok, stdout, stderr, exit_code} <-
            run_exec_command([git_path | args], patch, cwd, timeout_ms) do
       format_apply_result(stdout, stderr, exit_code)
@@ -419,9 +420,17 @@ defmodule Codex.Sessions do
     end
   end
 
+  @spec run_exec_command(
+          [binary(), ...],
+          binary(),
+          String.t() | nil,
+          timeout()
+        ) ::
+          {:ok, binary(), binary(), integer()}
+          | {:error, :timeout | {:exec_start_failed, CliSubprocessCore.Command.Error.t()}}
   defp run_exec_command([command | command_args], input, cwd, timeout_ms)
-       when is_binary(command) do
-    invocation = Command.new(command, command_args, cwd: normalize_run_cwd(cwd))
+       when is_binary(command) and is_list(command_args) do
+    invocation = Command.new(command, command_args, cwd: cwd)
 
     case Command.run(invocation,
            stdin: input,
@@ -436,12 +445,23 @@ defmodule Codex.Sessions do
     end
   end
 
-  defp normalize_run_cwd(nil), do: nil
-  defp normalize_run_cwd(""), do: nil
-  defp normalize_run_cwd(cwd), do: cwd
+  @spec normalize_run_cwd(term()) :: {:ok, String.t() | nil} | {:error, {:invalid_cwd, term()}}
+  defp normalize_run_cwd(nil), do: {:ok, nil}
+  defp normalize_run_cwd(""), do: {:ok, nil}
+  defp normalize_run_cwd(cwd) when is_binary(cwd), do: {:ok, cwd}
+  defp normalize_run_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
+
+  @spec normalize_run_timeout(term()) ::
+          {:ok, non_neg_integer() | :infinity} | {:error, {:invalid_timeout_ms, term()}}
+  defp normalize_run_timeout(:infinity), do: {:ok, :infinity}
+
+  defp normalize_run_timeout(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0,
+    do: {:ok, timeout_ms}
+
+  defp normalize_run_timeout(timeout_ms), do: {:error, {:invalid_timeout_ms, timeout_ms}}
 
   defp normalize_run_error(%CliSubprocessCore.Command.Error{
-         reason: {:transport, %CliSubprocessCore.Transport.Error{reason: :timeout}}
+         reason: {:transport, %ExternalRuntimeTransport.Transport.Error{reason: :timeout}}
        }),
        do: {:error, :timeout}
 

@@ -182,12 +182,12 @@ defmodule Codex.ExamplesSupportTest do
   end
 
   describe "path semantics readiness" do
-    test "guest-path execution surfaces suppress local example cwd defaults and local codex resolution" do
+    test "guest-bridge execution surfaces suppress local example cwd defaults and local codex resolution" do
       Process.put(
         {ExamplesSupport, :ssh_context},
         %ExamplesSupport.SSHContext{
           argv: [],
-          execution_surface: %ExecutionSurface{surface_kind: :test_guest_local}
+          execution_surface: %ExecutionSurface{surface_kind: :guest_bridge}
         }
       )
 
@@ -195,7 +195,7 @@ defmodule Codex.ExamplesSupportTest do
       assert ExamplesSupport.example_working_directory() == nil
       assert {:ok, options} = ExamplesSupport.codex_options(%{})
       assert options.codex_path_override == nil
-      assert options.execution_surface.surface_kind == :test_guest_local
+      assert options.execution_surface.surface_kind == :guest_bridge
     after
       Process.delete({ExamplesSupport, :ssh_context})
     end

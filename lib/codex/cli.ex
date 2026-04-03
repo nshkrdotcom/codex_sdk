@@ -13,7 +13,7 @@ defmodule Codex.CLI do
   """
 
   alias CliSubprocessCore.Command
-  alias CliSubprocessCore.Transport.RunResult
+  alias CliSubprocessCore.Command.RunResult
   alias Codex.CLI.Session
   alias Codex.Config.Defaults
   alias Codex.Config.Overrides
@@ -29,10 +29,11 @@ defmodule Codex.CLI do
   @spec run([String.t()], keyword()) :: {:ok, result()} | {:error, term()}
   def run(args, opts \\ []) when is_list(args) and is_list(opts) do
     input = Keyword.get(opts, :stdin)
-    timeout_ms = Keyword.get(opts, :timeout_ms, Defaults.exec_timeout_ms())
-    cwd = resolve_cwd(opts)
 
-    with {:ok, codex_opts} <- normalize_codex_opts(opts),
+    with {:ok, timeout_ms} <-
+           normalize_timeout_ms(Keyword.get(opts, :timeout_ms, Defaults.exec_timeout_ms())),
+         {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
+         {:ok, codex_opts} <- normalize_codex_opts(opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
@@ -59,9 +60,8 @@ defmodule Codex.CLI do
   """
   @spec start([String.t()], keyword()) :: {:ok, Session.t()} | {:error, term()}
   def start(args, opts \\ []) when is_list(args) and is_list(opts) do
-    cwd = resolve_cwd(opts)
-
-    with {:ok, codex_opts} <- normalize_codex_opts(opts),
+    with {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
+         {:ok, codex_opts} <- normalize_codex_opts(opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
@@ -588,7 +588,20 @@ defmodule Codex.CLI do
     end
   end
 
-  defp resolve_cwd(opts), do: Keyword.get(opts, :cwd)
+  @spec normalize_cwd(term()) :: {:ok, String.t() | nil} | {:error, {:invalid_cwd, term()}}
+  defp normalize_cwd(nil), do: {:ok, nil}
+  defp normalize_cwd(""), do: {:ok, nil}
+  defp normalize_cwd(cwd) when is_binary(cwd), do: {:ok, cwd}
+  defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
+
+  @spec normalize_timeout_ms(term()) ::
+          {:ok, non_neg_integer() | :infinity} | {:error, {:invalid_timeout_ms, term()}}
+  defp normalize_timeout_ms(:infinity), do: {:ok, :infinity}
+
+  defp normalize_timeout_ms(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0,
+    do: {:ok, timeout_ms}
+
+  defp normalize_timeout_ms(timeout_ms), do: {:error, {:invalid_timeout_ms, timeout_ms}}
 
   defp format_run_result(%RunResult{} = result) do
     exit_code =

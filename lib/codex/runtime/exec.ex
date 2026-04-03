@@ -9,7 +9,6 @@ defmodule Codex.Runtime.Exec do
 
   alias CliSubprocessCore.Event, as: CoreEvent
   alias CliSubprocessCore.Payload
-  alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.Session
   alias Codex.ApprovalPolicy
@@ -21,6 +20,7 @@ defmodule Codex.Runtime.Exec do
   alias Codex.Options
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
+  alias ExternalRuntimeTransport.ProcessExit, as: CoreProcessExit
 
   @default_session_event_tag :codex_sdk_exec_session
 

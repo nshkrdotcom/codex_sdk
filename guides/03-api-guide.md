@@ -26,7 +26,7 @@ Complete API documentation for all modules in the Elixir Codex SDK.
 | `Codex.Options` | Configuration structs |
 | `Codex.Protocol.*` | Protocol enums and payload helpers (collaboration modes, session/subagent sources, collab agent metadata, request_user_input, request_permissions, rate limits) |
 | `Codex.Config.Overrides` | Config override serialization, nested map flattening, and TOML value validation |
-| `Codex.IO.Transport` | Codex-branded subprocess transport backed by `CliSubprocessCore.Transport` |
+| `Codex.IO.Transport` | Codex-branded subprocess transport backed by `ExternalRuntimeTransport.Transport` |
 | `Codex.Runtime.Env` | Subprocess environment construction (originator override, API key forwarding, CA env forwarding) |
 | `Codex.Config.BaseURL` | Base URL resolution with option/config → env → default precedence |
 | `Codex.Net.CA` | Shared CA bundle resolution for subprocesses, Req, `:httpc`, and websockets |

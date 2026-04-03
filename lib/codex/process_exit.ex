@@ -1,7 +1,7 @@
 defmodule Codex.ProcessExit do
   @moduledoc false
 
-  alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
+  alias ExternalRuntimeTransport.ProcessExit, as: CoreProcessExit
 
   @spec exit_status(term()) :: {:ok, integer()} | :unknown
   def exit_status(reason)

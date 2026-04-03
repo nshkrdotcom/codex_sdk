@@ -234,31 +234,83 @@ defmodule Codex.Tools.ShellTool do
   defp handle_executor_result(other, _max_bytes), do: {:ok, other}
 
   @doc false
+  @spec default_executor(term(), String.t() | nil, non_neg_integer() | :infinity) ::
+          {:ok, binary(), integer()} | {:error, term()}
   def default_executor(command, cwd, timeout_ms) do
-    command
-    |> build_command_invocation(cwd)
-    |> Command.run(timeout: timeout_ms, stderr: :stdout)
-    |> case do
-      {:ok, result} ->
-        {:ok, result.output, exit_code(result.exit)}
-
-      {:error, error} ->
+    with {:ok, invocation} <- build_command_invocation(command, cwd),
+         {:ok, timeout_ms} <- normalize_timeout_ms(timeout_ms),
+         {:ok, result} <- Command.run(invocation, timeout: timeout_ms, stderr: :stdout) do
+      {:ok, result.output, exit_code(result.exit)}
+    else
+      {:error, %CliSubprocessCore.Command.Error{} = error} ->
         normalize_executor_error(error)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp build_command_invocation(command, cwd) when is_list(command) do
-    [exe | rest] = Enum.map(command, &to_string/1)
-    Command.new(exe, rest, cwd: normalize_cwd(cwd))
+  defp build_command_invocation(command, cwd) do
+    with {:ok, cwd} <- normalize_cwd(cwd) do
+      do_build_command_invocation(command, cwd)
+    end
   end
 
-  defp build_command_invocation(command, cwd) when is_binary(command) do
+  defp do_build_command_invocation(command, cwd) when is_list(command) do
+    with {:ok, normalized} <- normalize_command(command),
+         [exe | rest] <- normalized do
+      {:ok, Command.new(exe, rest, cwd: cwd)}
+    end
+  end
+
+  defp do_build_command_invocation(command, cwd) when is_binary(command) and command != "" do
     shell = System.find_executable("sh") || "/bin/sh"
-    Command.new(shell, ["-c", command], cwd: normalize_cwd(cwd))
+    {:ok, Command.new(shell, ["-c", command], cwd: cwd)}
   end
 
-  defp build_command_invocation(command, cwd),
-    do: build_command_invocation(to_string(command), cwd)
+  defp do_build_command_invocation(command, _cwd) when is_binary(command) do
+    {:error, {:invalid_argument, :command}}
+  end
+
+  defp do_build_command_invocation(command, cwd) do
+    case normalize_command(command) do
+      {:ok, normalized} when is_list(normalized) ->
+        do_build_command_invocation(normalized, cwd)
+
+      {:ok, normalized} when is_binary(normalized) ->
+        do_build_command_invocation(normalized, cwd)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp normalize_timeout_ms(:infinity), do: {:ok, :infinity}
+
+  defp normalize_timeout_ms(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0,
+    do: {:ok, timeout_ms}
+
+  defp normalize_timeout_ms(timeout_ms), do: {:error, {:invalid_timeout_ms, timeout_ms}}
+
+  defp normalize_cwd(nil), do: {:ok, nil}
+  defp normalize_cwd(""), do: {:ok, nil}
+  defp normalize_cwd(cwd) when is_binary(cwd), do: {:ok, cwd}
+  defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
+
+  defp normalize_executor_error(%CliSubprocessCore.Command.Error{
+         reason: {:transport, %ExternalRuntimeTransport.Transport.Error{reason: :timeout}}
+       }),
+       do: {:error, :timeout}
+
+  defp normalize_executor_error(%CliSubprocessCore.Command.Error{} = error),
+    do: {:error, {:exec_start_failed, error}}
+
+  defp exit_code(exit) do
+    case ProcessExit.exit_status(exit) do
+      {:ok, status} -> status
+      :unknown -> 1
+    end
+  end
 
   defp normalize_command(command) when is_list(command) do
     normalized =
@@ -300,24 +352,5 @@ defmodule Codex.Tools.ShellTool do
 
   defp maybe_truncate(output, max_bytes) do
     String.slice(output, 0, max_bytes) <> "\n... (truncated)"
-  end
-
-  defp normalize_cwd(nil), do: nil
-  defp normalize_cwd(""), do: nil
-  defp normalize_cwd(cwd), do: cwd
-
-  defp normalize_executor_error(%CliSubprocessCore.Command.Error{
-         reason: {:transport, %CliSubprocessCore.Transport.Error{reason: :timeout}}
-       }),
-       do: {:error, :timeout}
-
-  defp normalize_executor_error(%CliSubprocessCore.Command.Error{} = error),
-    do: {:error, {:exec_start_failed, error}}
-
-  defp exit_code(exit) do
-    case ProcessExit.exit_status(exit) do
-      {:ok, status} -> status
-      :unknown -> 1
-    end
   end
 end

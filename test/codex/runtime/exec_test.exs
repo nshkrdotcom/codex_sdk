@@ -3,11 +3,12 @@ defmodule Codex.Runtime.ExecTest do
 
   import ExUnit.CaptureLog
 
-  alias CliSubprocessCore.{Event, Payload, ProcessExit}
+  alias CliSubprocessCore.{Event, Payload}
   alias Codex.{Events, Options}
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
   alias Codex.TestSupport.FixtureScripts
+  alias ExternalRuntimeTransport.ProcessExit
 
   import Codex.Test.ModelFixtures
 

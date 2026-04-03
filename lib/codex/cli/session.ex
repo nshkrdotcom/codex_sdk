@@ -23,10 +23,10 @@ defmodule Codex.CLI.Session do
   """
 
   alias CliSubprocessCore.{Channel, Command, CommandSpec}
-  alias CliSubprocessCore.Transport.Info
   alias Codex.Config.Defaults
   alias Codex.Options
   alias Codex.ProcessExit
+  alias ExternalRuntimeTransport.Transport.Info
 
   @enforce_keys [:args, :channel, :command, :os_pid, :pid, :receiver]
   defstruct [:args, :channel, :command, :os_pid, :pid, :receiver, pty?: false, stdin?: false]
