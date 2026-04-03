@@ -18,6 +18,10 @@ Options:
   --ssh-port PORT        Optional SSH port override.
   --ssh-identity-file P  Optional SSH identity file.
   --help                 Show this help text.
+
+Recovery-oriented demos already included in the standard run list:
+  - examples/conversation_and_resume.exs
+  - examples/live_session_walkthrough.exs
 EOF
 }
 

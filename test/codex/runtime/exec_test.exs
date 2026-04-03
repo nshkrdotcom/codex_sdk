@@ -96,4 +96,41 @@ defmodule Codex.Runtime.ExecTest do
     assert Keyword.fetch!(session_opts, :metadata) == %{lane: :codex_sdk}
     assert Keyword.fetch!(session_opts, :headless_timeout_ms) == :infinity
   end
+
+  test "capabilities publish session control support" do
+    assert :session_history in Exec.capabilities()
+    assert :session_resume in Exec.capabilities()
+    assert :session_pause in Exec.capabilities()
+    assert :session_intervene in Exec.capabilities()
+  end
+
+  test "list_provider_sessions/1 projects persisted Codex sessions into runtime entries" do
+    sessions_dir =
+      Path.join(System.tmp_dir!(), "codex_runtime_sessions_#{System.unique_integer([:positive])}")
+
+    session_path = Path.join(sessions_dir, "2026/04/02/session-123.jsonl")
+
+    File.mkdir_p!(Path.dirname(session_path))
+
+    File.write!(
+      session_path,
+      Jason.encode!(%{
+        "payload" => %{
+          "id" => "session-123",
+          "cwd" => "/tmp/codex-demo",
+          "originator" => "Continue refactor",
+          "timestamp" => "2026-04-02T18:00:00Z"
+        }
+      }) <> "\n"
+    )
+
+    on_exit(fn -> File.rm_rf(sessions_dir) end)
+
+    assert {:ok, [entry]} = Exec.list_provider_sessions(sessions_dir: sessions_dir)
+    assert entry.id == "session-123"
+    assert entry.label == "Continue refactor"
+    assert entry.cwd == "/tmp/codex-demo"
+    assert entry.source_kind == :thread_history
+    assert entry.metadata.originator == "Continue refactor"
+  end
 end

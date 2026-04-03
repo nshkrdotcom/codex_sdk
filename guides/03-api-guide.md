@@ -1979,3 +1979,15 @@ For developers familiar with the TypeScript SDK:
 ## Model Selection API Update
 
 Model selection now resolves in `/home/home/p/g/n/cli_subprocess_core` before command rendering. `/home/home/p/g/n/codex_sdk` treats model values and reasoning metadata as payload inputs, not policy inputs. Callers should expect hard failures from the core error contract for unknown models, invalid reasoning effort, unavailable provider policy, or empty/placeholder model input.
+## Standardized Session-Control Surface
+
+If you are integrating Codex into a runtime-neutral orchestration layer, use the runtime surface
+instead of scraping CLI history yourself:
+
+- the `Codex.Runtime.Exec` runtime capability list tells you whether
+  session-history/resume/pause/intervention are actually published
+- `Codex.Runtime.Exec.list_provider_sessions/1` returns standardized session entries derived from
+  persisted thread history
+
+That split keeps the rich native Codex session model intact while still giving higher layers a
+stable contract for recovery flows such as “resume the same session and send `Continue`”.

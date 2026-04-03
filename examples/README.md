@@ -267,3 +267,13 @@ sox -t raw -r 24000 -b 16 -c 1 -e signed-integer /tmp/codex_voice_response.pcm /
 ### Audio Test Fixture
 
 The audio fixture `test/fixtures/audio/voice_sample.wav` is sourced from Google's genai Python SDK (Apache 2.0 license). It contains ~2 seconds of speech at 24kHz, matching OpenAI's native audio format.
+## Recovery-Oriented Examples
+
+For the emergency hardening lane, the most relevant examples are:
+
+- `examples/conversation_and_resume.exs`
+- `examples/live_session_walkthrough.exs`
+- `examples/live_mcp_and_sessions.exs`
+
+Those examples exercise the same persisted-thread surfaces that now back the standardized
+`list_provider_sessions/1` runtime projection used by upper orchestration layers.

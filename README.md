@@ -1479,3 +1479,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 `/home/home/p/g/n/codex_sdk` no longer owns active model-selection policy. The only authoritative resolver/defaulting/validation path is `/home/home/p/g/n/cli_subprocess_core` through `CliSubprocessCore.ModelRegistry.resolve/3`, `CliSubprocessCore.ModelRegistry.validate/2`, and `CliSubprocessCore.ModelRegistry.default_model/2`.
 
 `Codex.Options` and the runtime execution path now consume the resolved payload returned by core and only render transport arguments from that payload. Any older references in this document to local bundled catalogs such as `priv/models.json` should be treated as historical packaging details, not policy authority.
+## Session History And Recovery
+
+The runtime-facing Codex lane now publishes explicit session-control capabilities instead of making
+orchestration layers infer them from ad hoc behavior.
+
+- the `Codex.Runtime.Exec` runtime capability list includes `:session_history`,
+  `:session_resume`, `:session_pause`, and `:session_intervene`
+- `Codex.Runtime.Exec.list_provider_sessions/1` projects persisted Codex thread history into a
+  standardized list shape for upper layers such as `agent_session_manager` and `prompt_runner_sdk`
+
+The intended recovery posture is to prefer exact thread resumption when a concrete provider session
+id is available, and only fall back to looser “latest session” continuation when the caller
+explicitly chooses that behavior.

@@ -23,6 +23,12 @@ defmodule Codex.Runtime.Exec do
   alias ExternalRuntimeTransport.ProcessExit, as: CoreProcessExit
 
   @default_session_event_tag :codex_sdk_exec_session
+  @session_control_capabilities [
+    :session_history,
+    :session_resume,
+    :session_pause,
+    :session_intervene
+  ]
 
   @impl true
   def start_session(opts) when is_list(opts) do
@@ -54,7 +60,37 @@ defmodule Codex.Runtime.Exec do
   def info(session) when is_pid(session), do: Session.info(session)
 
   @impl true
-  def capabilities, do: CoreCodex.capabilities()
+  def capabilities do
+    (CoreCodex.capabilities() ++ @session_control_capabilities)
+    |> Enum.uniq()
+  end
+
+  @spec list_provider_sessions(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_provider_sessions(opts \\ []) when is_list(opts) do
+    with {:ok, sessions} <- Codex.list_sessions(opts) do
+      {:ok,
+       Enum.map(sessions, fn session ->
+         %{
+           id: session.id,
+           label:
+             session.originator ||
+               session.metadata["title"] ||
+               session.metadata[:title] ||
+               session.id,
+           cwd: session.cwd,
+           updated_at: session.updated_at,
+           source_kind: :thread_history,
+           metadata: %{
+             path: session.path,
+             started_at: session.started_at,
+             originator: session.originator,
+             cli_version: session.cli_version
+           },
+           raw: session
+         }
+       end)}
+    end
+  end
 
   @doc false
   @spec session_event_tag() :: :codex_sdk_exec_session
