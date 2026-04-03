@@ -835,6 +835,42 @@ turn_options = %{
   )
 ```
 
+### Thread Option Boundary
+
+`codex_sdk` is the layer that owns real Codex thread and execution options.
+
+That includes:
+
+- `sandbox`
+- `sandbox_policy`
+- `ask_for_approval`
+- `full_auto`
+- `dangerously_bypass_approvals_and_sandbox`
+
+If you are coming from a higher-level runner or orchestration layer, keep the
+distinction clear:
+
+- shared knobs such as a generic `permission_mode` belong to that higher layer
+- Codex-specific controls such as `ask_for_approval` and `sandbox` belong here
+  in `Codex.Thread.Options`
+
+In other words:
+
+- use `permission_mode` in a higher layer when you want a normalized approval
+  posture across multiple providers
+- use `Codex.Thread.Options` when you need actual Codex runtime behavior
+
+Example:
+
+```elixir
+{:ok, thread_options} =
+  Codex.Thread.Options.new(
+    sandbox: :workspace_write,
+    ask_for_approval: :never,
+    reasoning_effort: :xhigh
+  )
+```
+
 ### Config Overrides
 
 Options-level, thread-level, and turn-level config overrides are forwarded as
@@ -908,6 +944,22 @@ end
 
 Hooks can be synchronous or async (see `Codex.Approvals.Hook` for callback semantics), and all
 decisions emit telemetry so you can audit approvals externally.
+
+## Approval, Sandbox, And Auto-Run Cheatsheet
+
+These settings are related but distinct:
+
+- `ask_for_approval`
+  - approval policy for thread execution
+- `sandbox`
+  - filesystem and environment sandbox mode
+- `full_auto`
+  - Codex convenience flag for a more autonomous mode
+- `dangerously_bypass_approvals_and_sandbox`
+  - explicit bypass of both approval prompts and sandbox restrictions
+
+Use the explicit knobs when you need precise behavior. Treat the convenience
+flags as shortcuts, not as the clearest onboarding path.
 
 Codex respects upstream safe-command markers: tool events flagged with `requires_approval: false`
 bypass approval gating automatically, keeping low-risk workspace actions fast while still blocking
