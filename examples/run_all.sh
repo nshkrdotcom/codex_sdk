@@ -149,7 +149,7 @@ echo
 if [[ "$ollama_enabled" == true ]]; then
   echo "CLI backend: Ollama via Codex OSS"
   echo "CLI model: ${CODEX_MODEL}"
-  echo "CLI route: codex --oss --local-provider ollama --model ${CODEX_MODEL}"
+  echo "CLI route: codex exec --json --config model_provider=\"ollama\" --config model=\"${CODEX_MODEL}\""
   echo "Direct API examples: skipped in --ollama mode because they are OpenAI-only"
   EXAMPLE_TIMEOUT_SECONDS="${CODEX_EXAMPLES_TIMEOUT_SECONDS:-120}"
   echo "Per-example timeout: ${EXAMPLE_TIMEOUT_SECONDS}s"

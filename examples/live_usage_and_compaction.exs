@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Error, Events, Items, Models, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.{Error, Events, Items, Models, RunResultStreaming, Thread, TransportError}
 alias Codex.ExamplesSupport
 
 defmodule LiveUsageAndCompaction do

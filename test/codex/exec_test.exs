@@ -225,9 +225,7 @@ defmodule Codex.ExecTest do
 
     assert fetch_flag_value(args, "--profile") == "team"
 
-    assert Enum.any?(args, &(&1 == "--oss"))
-
-    assert fetch_flag_value(args, "--local-provider") == "ollama"
+    assert ~s(model_provider="ollama") in flag_values(args, "--config")
 
     assert Enum.any?(args, &(&1 == "--full-auto"))
 
@@ -279,9 +277,8 @@ defmodule Codex.ExecTest do
       |> String.trim()
       |> String.split(~r/\s+/, trim: true)
 
-    assert Enum.any?(args, &(&1 == "--oss"))
-    assert fetch_flag_value(args, "--local-provider") == "ollama"
-    assert fetch_flag_value(args, "--model") == "gpt-oss:20b"
+    assert ~s(model_provider="ollama") in flag_values(args, "--config")
+    assert ~s(model="gpt-oss:20b") in flag_values(args, "--config")
   end
 
   test "forwards options-level global config overrides as --config flags" do

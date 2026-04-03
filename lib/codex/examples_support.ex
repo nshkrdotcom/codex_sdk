@@ -34,6 +34,10 @@ defmodule Codex.ExamplesSupport do
   end
 
   @context_key {__MODULE__, :ssh_context}
+  @example_ssh_options %{
+    "BatchMode" => "yes",
+    "ConnectTimeout" => 10
+  }
   @ssh_switches [
     cwd: :string,
     danger_full_access: :boolean,
@@ -415,6 +419,7 @@ defmodule Codex.ExamplesSupport do
                |> maybe_put_kw(:ssh_user, effective_user)
                |> maybe_put_kw(:port, ssh_port)
                |> maybe_put_kw(:identity_file, identity_file)
+               |> Keyword.put(:ssh_options, @example_ssh_options)
            ) do
       {:ok,
        %SSHContext{

@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Options, Thread}
+alias Codex.Thread
 alias Codex.Config.LayerStack
 
 defmodule LiveConfigOverrides do

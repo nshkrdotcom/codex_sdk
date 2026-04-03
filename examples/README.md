@@ -70,6 +70,10 @@ Supported SSH flags for CLI/app-server examples:
 - `--ssh-port <port>`
 - `--ssh-identity-file <path>`
 
+Example SSH runs are intentionally noninteractive. The shared execution surface
+adds `BatchMode=yes` and `ConnectTimeout=10` so unattended example runs fail
+fast instead of hanging on password or connection prompts.
+
 `--cwd` is optional for the exec-backed examples. In SSH mode it becomes
 required for app-server thread demos and raw prompt-mode CLI sessions, because
 those upstream surfaces do not expose `--skip-git-repo-check`. Point it at a
@@ -110,6 +114,8 @@ can behave less reliably under the full Codex agent prompt/tool stack.
 In `--ollama` mode, the runner:
 
 - executes the full CLI-backed example suite against the local Ollama-backed Codex route
+- uses the same config-driven `model_provider="ollama"` / `model="..."` route
+  that current upstream Codex expects for exec/app-server local-model startup
 - keeps app-server examples enabled by configuring `codex app-server` with supported
   `--config` overrides instead of unsupported OSS argv flags
 - uses deterministic local fallbacks where upstream features are not reliable on the

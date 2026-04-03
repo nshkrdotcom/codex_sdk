@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Events, Items, Options, RunResultStreaming, Thread}
+alias Codex.{Events, Items, RunResultStreaming, Thread}
 
 defmodule CodexExamples.LiveToolingStream do
   @moduledoc false

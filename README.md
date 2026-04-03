@@ -190,10 +190,14 @@ That causes the shared core registry to:
 - validate the local model id
 - keep `gpt-oss:20b` as the default validated OSS model when no explicit model
   is supplied
-- return a payload that renders `--oss --local-provider ollama --model llama3.2`
+- return a payload that renders exec/app-server startup through config-driven
+  model-provider routing such as `--config 'model_provider="ollama"' --config
+  'model="llama3.2"'`
 
 The SDK does not infer those flags on its own.
-- CLI argument rendering only emits `--model` from a non-empty resolved value
+- exec-mode startup also closes stdin on start for one-shot argv-prompt runs so
+  the upstream Codex CLI does not wait for EOF after printing
+  `Reading additional input from stdin...`
 
 If `ollama_base_url:` is supplied, that endpoint is carried inside the
 payload-owned env overrides as `CODEX_OSS_BASE_URL`. Raw Ollama roots are

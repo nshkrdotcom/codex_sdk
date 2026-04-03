@@ -78,6 +78,8 @@ defmodule Codex.ExamplesSupportTest do
       assert context.execution_surface.transport_options[:ssh_user] == "builder"
       assert context.execution_surface.transport_options[:port] == 2222
       assert context.execution_surface.transport_options[:identity_file] =~ "/tmp/id_ed25519"
+      assert context.execution_surface.transport_options[:ssh_options]["BatchMode"] == "yes"
+      assert context.execution_surface.transport_options[:ssh_options]["ConnectTimeout"] == 10
       assert context.example_cwd == "/srv/codex"
       assert context.example_danger_full_access == true
     end

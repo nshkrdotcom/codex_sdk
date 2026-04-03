@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Error, Events, Items, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.{Error, Events, Items, RunResultStreaming, Thread, TransportError}
 alias Codex.Protocol.RateLimit, as: RateLimitSnapshot
 
 defmodule LiveRateLimits do

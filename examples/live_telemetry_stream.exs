@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{Error, Models, Options, RunResultStreaming, Thread, TransportError}
+alias Codex.{Error, Models, RunResultStreaming, Thread, TransportError}
 alias Codex.ExamplesSupport
 
 defmodule LiveTelemetryStream do
