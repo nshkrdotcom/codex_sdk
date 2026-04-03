@@ -32,6 +32,23 @@ defmodule Codex.ExamplesSupportTest do
     end
   end
 
+  describe "auth availability" do
+    test "treats ollama mode as example-auth-ready" do
+      restore = capture_env()
+
+      on_exit(fn ->
+        restore_env(restore)
+      end)
+
+      System.put_env("CODEX_PROVIDER_BACKEND", "oss")
+      System.put_env("CODEX_OSS_PROVIDER", "ollama")
+
+      assert ExamplesSupport.auth_available?() == true
+      assert ExamplesSupport.ensure_auth_available() == :ok
+      assert ExamplesSupport.default_auth_message() =~ "local Codex OSS + Ollama"
+    end
+  end
+
   describe "parse_argv/1" do
     test "keeps local defaults when ssh flags are absent" do
       assert {:ok, context} = ExamplesSupport.parse_argv(["--", "hello"])

@@ -31,11 +31,7 @@ defmodule CodexExamples.Support do
   def codex_options(attrs \\ %{}, opts \\ []), do: ExamplesSupport.codex_options(attrs, opts)
 
   def ensure_auth_available(message \\ nil),
-    do:
-      ExamplesSupport.ensure_auth_available(
-        message ||
-          "authenticate with `codex login` or set CODEX_API_KEY before running this example"
-      )
+    do: ExamplesSupport.ensure_auth_available(message || ExamplesSupport.default_auth_message())
 
   def ensure_app_server_supported(codex_opts),
     do: ExamplesSupport.ensure_app_server_supported(codex_opts)

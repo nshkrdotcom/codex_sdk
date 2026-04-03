@@ -225,15 +225,22 @@ defmodule Codex.ExamplesSupport do
 
   @spec auth_available?() :: boolean()
   def auth_available? do
-    ssh_enabled?() or not is_nil(Codex.Auth.api_key()) or
+    ollama_mode?() or ssh_enabled?() or not is_nil(Codex.Auth.api_key()) or
       not is_nil(Codex.Auth.chatgpt_access_token())
   end
 
   @spec ensure_auth_available(String.t()) :: :ok | {:skip, String.t()}
-  def ensure_auth_available(
-        message \\ "authenticate with `codex login` or set CODEX_API_KEY before running this example"
-      ) do
+  def ensure_auth_available(message \\ default_auth_message()) do
     if auth_available?(), do: :ok, else: {:skip, message}
+  end
+
+  @spec default_auth_message() :: String.t()
+  def default_auth_message do
+    if ollama_mode?() do
+      "configure local Codex OSS + Ollama and ensure the selected local model is installed before running this example"
+    else
+      "authenticate with `codex login` or set CODEX_API_KEY before running this example"
+    end
   end
 
   @spec ensure_app_server_supported(Options.t()) :: :ok | {:skip, String.t()}

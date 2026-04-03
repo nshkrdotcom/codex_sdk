@@ -54,7 +54,8 @@ Run the same CLI-backed example set against local Codex OSS + Ollama:
 - `CODEX_MODEL=gpt-oss:20b` by default
 
 The runner checks that the requested Ollama model is installed before starting
-the examples.
+the examples. In `--ollama` mode, CLI-backed examples use the local OSS route
+and do not require `codex login` or `CODEX_API_KEY`.
 
 SSH routing is explicit and flag-driven. When you pass `--ssh-host`, the
 CLI/app-server examples switch to `execution_surface: :ssh_exec` while keeping
