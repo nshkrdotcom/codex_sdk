@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-06
+
+### Added
+
+- Managed remote websocket app-server connections via
+  `Codex.AppServer.connect_remote/2`, including auth-token transport policy
+  checks and pid-compatible reuse of the existing request/helper surface.
+- Local plugin authoring helpers plus typed plugin app-server APIs, so package
+  workflows no longer depend on raw `fs/*` access or ad hoc marketplace writes.
+- Local Ollama coverage across both exec and app-server examples, plus session
+  recovery helpers for resuming existing Codex work with the shared runtime.
+
+### Changed
+
+- The common Codex exec/session lane now runs on `cli_subprocess_core` end to
+  end, including generic execution surfaces, `ssh_exec` routing, shared
+  transport ownership, and the final package boundary between common runtime
+  work and Codex-native features.
+- Model selection, reasoning defaults, and model payload normalization now come
+  from the shared core registry instead of repo-local fallback policy, and the
+  README/guides/examples were refreshed to document that ownership split.
+- App-server and CLI parity now cover the current upstream shell-command,
+  websocket auth, remote-root, plugin, collaboration, and service-tier surface.
+
+### Fixed
+
+- Runtime/path handling now stabilizes version-manager shims, remote binary
+  discovery, guest-path handling, and approval/sandbox example behavior across
+  local and SSH-backed execution.
+- App-server stderr retention, auth/status projection, and realtime sequencing
+  were hardened so healthy sessions stay quiet while typed failures remain
+  inspectable.
+
+## [0.15.0] - 2026-03-19
+
 ### Added
 
 - `Codex.AppServer.connect_remote/2` for managed remote websocket app-server
@@ -34,25 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   structs and app-server external-auth payloads are built.
 - App-server connections no longer live-echo child stderr during healthy
   operation; retained stderr is still preserved for typed failure reporting.
-
-## [0.15.0] - 2026-03-19
-
-### Added
-
-- App-server parity for `thread/shellCommand` plus typed event adaptation for `mcpServer/startupStatus/updated`.
-- Thread/app-server option coverage for current upstream service controls: `ephemeral`, `service_name`, `service_tier`, and plugin install/uninstall `force_remote_sync`.
-- A 2026-03-19 upstream parity implementation doc at `~/b/projects/codex_sdk/20260319/upstream-rust-python-parity-impl.md`.
-
-### Changed
-
-- Session discovery now resolves the default sessions directory from the effective `CODEX_HOME`, so listing/resume docs and examples no longer assume a fixed `~/.codex/sessions` path.
-- App-server docs, guides, and examples now document the current upstream routing/sync/auth metadata surface, including `needsAuth`, `service_tier`, and the thread-bound shell-command flow.
-- The release version is now `0.15.0`.
-
-### Fixed
-
-- `Codex.Sessions.list_sessions/1` no longer freezes the default sessions directory at compile time.
-- High-level app-server transport now forwards the latest upstream thread/turn lifecycle params instead of dropping them on the floor.
 
 ## [0.14.0] - 2026-03-17
 
@@ -829,6 +845,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.16.0
 [0.15.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.12.0...v0.13.0

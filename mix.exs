@@ -1,17 +1,10 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.15.0"
-  @source_url "https://github.com/nshkrdotcom/codex_sdk"
-  @homepage_url "https://hex.pm/packages/codex_sdk"
-  @docs_url "https://hexdocs.pm/codex_sdk"
-  @app :codex_sdk
-  @cli_subprocess_core_requirement "~> 0.1.1"
-  @cli_subprocess_core_repo "nshkrdotcom/cli_subprocess_core"
   def project do
     [
-      app: @app,
-      version: @version,
+      app: :codex_sdk,
+      version: "0.16.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -19,8 +12,8 @@ defmodule CodexSdk.MixProject do
       description: description(),
       package: package(),
       name: "Codex SDK",
-      source_url: @source_url,
-      homepage_url: @homepage_url,
+      source_url: "https://github.com/nshkrdotcom/codex_sdk",
+      homepage_url: "https://hex.pm/packages/codex_sdk",
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
         coveralls: :test,
@@ -32,8 +25,6 @@ defmodule CodexSdk.MixProject do
         plt_add_apps: [:mix],
         plt_core_path: "priv/plts/core",
         plt_local_path: "priv/plts",
-        plt_ignore_apps: workspace_apps(),
-        paths: [project_ebin_path() | workspace_dialyzer_paths()],
         flags: [:error_handling, :underspecs]
       ]
     ]
@@ -47,64 +38,28 @@ defmodule CodexSdk.MixProject do
   end
 
   defp deps do
-    workspace_deps() ++
-      [
-        # Core dependencies
-        {:jason, "~> 1.4"},
-        {:zoi, "~> 0.17"},
-        {:typed_struct, "~> 0.3.0"},
-        {:telemetry, "~> 1.3"},
-        {:opentelemetry, "~> 1.3"},
-        {:opentelemetry_exporter, "~> 1.6"},
-        {:req, "~> 0.4"},
-        {:oauth2, "~> 2.1"},
-        {:plug, "~> 1.16"},
-        {:bandit, "~> 1.5"},
-        {:websockex, "~> 0.5.1"},
-        {:toml, "~> 0.7"},
-
-        # Testing
-        {:supertester, "~> 0.5.1", only: :test},
-        {:mox, "~> 1.2", only: :test},
-        {:stream_data, "~> 1.1", only: :test},
-
-        # Development and documentation
-        {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
-        {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-        {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
-        {:excoveralls, "~> 0.18", only: :test}
-      ]
-  end
-
-  defp workspace_deps do
-    Enum.map(workspace_dep_specs(), fn {app, path, requirement, opts} ->
-      workspace_dep(app, path, requirement, opts)
-    end)
-  end
-
-  defp workspace_dep_specs do
     [
-      {:cli_subprocess_core, "../cli_subprocess_core", @cli_subprocess_core_requirement,
-       github: @cli_subprocess_core_repo, branch: "main"}
+      {:cli_subprocess_core, "~> 0.1.0"},
+      {:jason, "~> 1.4"},
+      {:zoi, "~> 0.17"},
+      {:typed_struct, "~> 0.3.0"},
+      {:telemetry, "~> 1.3"},
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_exporter, "~> 1.6"},
+      {:req, "~> 0.4"},
+      {:oauth2, "~> 2.1"},
+      {:plug, "~> 1.16"},
+      {:bandit, "~> 1.5"},
+      {:websockex, "~> 0.5.1"},
+      {:toml, "~> 0.7"},
+      {:supertester, "~> 0.5.1", only: :test},
+      {:mox, "~> 1.2", only: :test},
+      {:stream_data, "~> 1.1", only: :test},
+      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
+      {:excoveralls, "~> 0.18", only: :test}
     ]
-  end
-
-  defp workspace_apps do
-    Enum.map(workspace_dep_specs(), &elem(&1, 0))
-  end
-
-  defp workspace_dialyzer_paths do
-    Enum.map(workspace_apps(), fn app ->
-      build_ebin_path(app)
-    end)
-  end
-
-  defp project_ebin_path do
-    build_ebin_path(@app)
-  end
-
-  defp build_ebin_path(app) when is_atom(app) do
-    Path.join(["_build", Atom.to_string(Mix.env()), "lib", Atom.to_string(app), "ebin"])
   end
 
   defp description do
@@ -118,9 +73,9 @@ defmodule CodexSdk.MixProject do
     [
       main: "readme",
       name: "Codex SDK",
-      source_ref: "v#{@version}",
-      source_url: @source_url,
-      homepage_url: @homepage_url,
+      source_ref: "v0.16.0",
+      source_url: "https://github.com/nshkrdotcom/codex_sdk",
+      homepage_url: "https://hex.pm/packages/codex_sdk",
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
       extras: [
@@ -284,13 +239,15 @@ defmodule CodexSdk.MixProject do
     [
       name: "codex_sdk",
       description: description(),
-      files: ~w(lib config priv guides assets mix.exs README.md CHANGELOG.md LICENSE VERSION),
+      readme: "README.md",
+      files:
+        ~w(lib config priv/models.json assets mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
-        "GitHub" => @source_url,
-        "Hex" => @homepage_url,
-        "HexDocs" => @docs_url,
-        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
+        "GitHub" => "https://github.com/nshkrdotcom/codex_sdk",
+        "Hex" => "https://hex.pm/packages/codex_sdk",
+        "HexDocs" => "https://hexdocs.pm/codex_sdk",
+        "Changelog" => "https://github.com/nshkrdotcom/codex_sdk/blob/main/CHANGELOG.md",
         "OpenAI Codex" => "https://github.com/openai/codex"
       },
       maintainers: ["nshkrdotcom"],
@@ -299,29 +256,5 @@ defmodule CodexSdk.MixProject do
         ".DS_Store"
       ]
     ]
-  end
-
-  defp workspace_dep(app, path, requirement, opts) do
-    {release_opts, dep_opts} = Keyword.split(opts, [:github, :git, :branch, :tag, :ref])
-    expanded_path = Path.expand(path, __DIR__)
-
-    cond do
-      hex_packaging?() ->
-        {app, requirement, dep_opts}
-
-      workspace_checkout?() and File.dir?(expanded_path) ->
-        {app, Keyword.put(dep_opts, :path, path)}
-
-      true ->
-        {app, Keyword.merge(dep_opts, release_opts)}
-    end
-  end
-
-  defp hex_packaging? do
-    Enum.any?(System.argv(), &String.starts_with?(&1, "hex."))
-  end
-
-  defp workspace_checkout? do
-    not Enum.member?(Path.split(Path.expand(__DIR__)), "deps")
   end
 end
