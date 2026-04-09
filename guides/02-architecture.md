@@ -457,7 +457,7 @@ Application Supervisor
             │
             └─── CliSubprocessCore.Session (per turn)
                     │
-                    └─── ExternalRuntimeTransport.Transport
+                    └─── ExecutionPlane.Process.Transport
                             │
                             └─── codex-rs
 ```
@@ -759,7 +759,7 @@ end)
 
 Extracted from duplicated patterns across the codebase, these modules centralize cross-cutting concerns:
 
-- **`Codex.IO.Transport`**: Codex-branded transport surface backed by `ExternalRuntimeTransport.Transport`; preserves the historical Codex event contract for app-server and MCP while leaving subprocess ownership in the shared substrate
+- **`Codex.IO.Transport`**: Codex-branded transport surface backed by `ExecutionPlane.Process.Transport`; preserves the historical Codex event contract for app-server and MCP while leaving subprocess ownership in the shared substrate
 - **`Codex.Runtime.Env`**: Subprocess environment construction shared between Exec and AppServer.Connection; sets `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_sdk_elixir` by default
 - **`Codex.Runtime.KeyringWarning`**: Deduplicated warn-once logic from Auth and MCP.OAuth
 - **`Codex.Config.BaseURL`**: `OPENAI_BASE_URL` env fallback with explicit option precedence (option → env → default)
