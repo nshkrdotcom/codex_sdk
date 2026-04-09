@@ -39,7 +39,7 @@ defmodule CodexSdk.MixProject do
 
   defp deps do
     [
-      {:cli_subprocess_core, "~> 0.1.0"},
+      {:cli_subprocess_core, path: "../cli_subprocess_core"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
       {:typed_struct, "~> 0.3.0"},

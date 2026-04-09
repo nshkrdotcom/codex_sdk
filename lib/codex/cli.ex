@@ -6,10 +6,11 @@ defmodule Codex.CLI do
   including commands that do not fit the SDK's structured `Codex.Exec` or
   `Codex.AppServer` APIs.
 
-  One-shot non-PTY commands run through `CliSubprocessCore.Command`, while
-  `start/2` and the helpers that return `%Codex.CLI.Session{}` remain the raw
-  local path for interactive PTY sessions and long-lived provider-native
-  control surfaces such as `codex app-server` and `codex mcp-server`.
+  One-shot non-PTY commands run through the execution-plane-backed
+  `CliSubprocessCore.Command` lane, while `start/2` and the helpers that return
+  `%Codex.CLI.Session{}` remain the raw local path for interactive PTY sessions
+  and long-lived provider-native control surfaces such as `codex app-server`
+  and `codex mcp-server`.
   """
 
   alias CliSubprocessCore.Command

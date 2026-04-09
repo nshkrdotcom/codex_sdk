@@ -12,8 +12,10 @@ Separate from thread/turn execution, the SDK also exposes a thin command-surface
 passthrough layer (`Codex.CLI` and `Codex.CLI.Session`) for CLI-only workflows
 such as `codex completion`, `codex cloud`, `codex features`, `codex mcp-server`,
 and the root interactive client. One-shot non-PTY passthrough goes through the
-shared `CliSubprocessCore.Command` lane, while `Codex.CLI.Session` preserves the
-historical mailbox-facing session API on top of `CliSubprocessCore.RawSession`.
+shared `CliSubprocessCore.Command` lane, which now delegates the covered local
+one-shot process path and minimal unary JSON-RPC substrate through
+`execution_plane`, while `Codex.CLI.Session` preserves the historical
+mailbox-facing session API on top of `CliSubprocessCore.RawSession`.
 
 ## Transports
 
@@ -57,7 +59,7 @@ environment injection, Req clients, `:httpc`, and realtime websocket SSL options
 Shared core ownership:
 
 - `Codex.Exec` on `CliSubprocessCore.Session`
-- `Codex.CLI.run/2` and the synchronous CLI wrappers on `CliSubprocessCore.Command`
+- `Codex.CLI.run/2` and the synchronous CLI wrappers on the execution-plane-backed `CliSubprocessCore.Command` lane
 - `Codex.CLI.Session` on `CliSubprocessCore.RawSession`
 - the subprocess lifecycle behind `Codex.AppServer.connect/2` and
   `Codex.MCP.Transport.Stdio` on `CliSubprocessCore.RawSession`
@@ -72,8 +74,10 @@ Codex-owned semantics above the core:
 
 The publication boundary on that split is now:
 
-- `cli_subprocess_core` owns every Codex subprocess-backed lifecycle and the
-  only native subprocess dependency in the stack
+- `cli_subprocess_core` owns the shared CLI family-kit semantics and public
+  command/session lanes that Codex consumes
+- `execution_plane` owns the covered minimal local subprocess and unary
+  JSON-RPC substrate beneath that lane
 - `codex_sdk` remains the home of app-server, MCP, realtime, voice, and other
   Codex-native semantics
 - optional ASM integration may exist only as an explicit bridge above the

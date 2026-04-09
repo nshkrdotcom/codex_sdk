@@ -451,15 +451,19 @@ current supported keys.
 Use `Codex.CLI.run/2` when you want literal command-surface parity with the upstream terminal client, and `Codex.CLI.interactive/2` or `Codex.CLI.start/2` when you need a long-running or PTY-backed session.
 
 Under the hood, `Codex.CLI.run/2` and the synchronous wrapper functions ride
-the shared `CliSubprocessCore.Command` lane. `Codex.CLI.Session`,
-`Codex.AppServer`, and `Codex.MCP.Transport.Stdio` preserve their public Codex
-entrypoints while mapping raw PTY, stdio transport, stdin, stderr, interrupt,
-and exit lifecycle onto `CliSubprocessCore.RawSession`.
+the shared `CliSubprocessCore.Command` lane, which now delegates the covered
+minimal local one-shot process path through `execution_plane`.
+`Codex.CLI.Session`, `Codex.AppServer`, and `Codex.MCP.Transport.Stdio`
+preserve their public Codex entrypoints while mapping raw PTY, stdio
+transport, stdin, stderr, interrupt, and exit lifecycle onto
+`CliSubprocessCore.RawSession`.
 
 The ownership line is now:
 
-- `cli_subprocess_core` owns all Codex subprocess lifecycle, transport, and
-  native subprocess interaction
+- `cli_subprocess_core` owns the shared CLI family-kit semantics and the public
+  command/session lanes consumed by `codex_sdk`
+- `execution_plane` owns the covered minimal local process and unary JSON-RPC
+  substrate beneath that command lane
 - `codex_sdk` owns Codex-native semantics, typed events, request/response
   mapping, app-server APIs, MCP helpers, realtime, and voice
 - realtime and voice remain provider-owned because they call OpenAI APIs
