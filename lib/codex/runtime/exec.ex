@@ -170,7 +170,7 @@ defmodule Codex.Runtime.Exec do
           provider: :codex,
           profile: Codex.Runtime.Exec.Profile,
           subscriber: subscriber,
-          metadata: %{lane: :codex_sdk},
+          metadata: session_metadata(opts, exec_opts),
           command_spec: command_spec,
           prompt: normalize_prompt(input),
           cli_profile: exec_opt(exec_opts, :profile),
@@ -209,6 +209,22 @@ defmodule Codex.Runtime.Exec do
         {:error, :invalid_exec_options}
     end
   end
+
+  defp session_metadata(opts, %ExecOptions{codex_opts: %Options{} = codex_opts}) do
+    model = normalize_option_string(codex_opts.model)
+    reasoning_effort = normalize_reasoning_value(codex_opts.reasoning_effort)
+
+    opts
+    |> Keyword.get(:metadata, %{})
+    |> normalize_session_metadata()
+    |> Map.put_new(:lane, :codex_sdk)
+    |> put_if_missing("model", model)
+    |> put_reasoning_if_missing(reasoning_effort)
+    |> put_reasoning_config_if_missing(reasoning_effort)
+  end
+
+  defp normalize_session_metadata(metadata) when is_map(metadata), do: metadata
+  defp normalize_session_metadata(_metadata), do: %{}
 
   defp decode_public_event(raw, state) do
     event = Events.parse!(raw)

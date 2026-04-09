@@ -50,7 +50,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.16.0"}
+    {:codex_sdk, "~> 0.16.1"}
   ]
 end
 ```

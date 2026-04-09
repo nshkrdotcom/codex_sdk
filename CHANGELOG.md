@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-04-09
+
+### Fixed
+
+- Direct exec-runtime session metadata now carries the effective model and
+  reasoning configuration, so downstream consumers that audit launched Codex
+  runs can confirm the actual runtime settings without depending on later event
+  enrichment.
+- Runtime metadata projection now preserves caller-supplied session metadata
+  while still attaching the Codex lane marker and normalized reasoning config.
+
 ## [0.16.0] - 2026-04-06
 
 ### Added
@@ -845,7 +856,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.16.0
 [0.15.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.13.0...v0.14.0

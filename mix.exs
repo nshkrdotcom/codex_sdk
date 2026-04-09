@@ -4,7 +4,7 @@ defmodule CodexSdk.MixProject do
   def project do
     [
       app: :codex_sdk,
-      version: "0.16.0",
+      version: "0.16.1",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -73,7 +73,7 @@ defmodule CodexSdk.MixProject do
     [
       main: "readme",
       name: "Codex SDK",
-      source_ref: "v0.16.0",
+      source_ref: "v0.16.1",
       source_url: "https://github.com/nshkrdotcom/codex_sdk",
       homepage_url: "https://hex.pm/packages/codex_sdk",
       assets: %{"assets" => "assets"},

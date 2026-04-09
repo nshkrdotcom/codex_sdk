@@ -81,20 +81,36 @@ defmodule Codex.Runtime.ExecTest do
     assert log =~ "<<255>>"
   end
 
-  test "build_session_options preserves the default Codex core lane metadata" do
+  test "build_session_options preserves runtime metadata and includes effective model and reasoning" do
     script_path =
       "thread_basic.jsonl"
       |> FixtureScripts.cat_fixture()
       |> tap(&on_exit(fn -> File.rm_rf(&1) end))
 
-    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path,
+        model: default_model(),
+        reasoning_effort: :medium
+      })
+
     {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts})
 
-    assert {:ok, session_opts} = Exec.build_session_options(exec_opts: exec_opts)
+    assert {:ok, session_opts} =
+             Exec.build_session_options(exec_opts: exec_opts, metadata: %{asm_provider: :codex})
+
     assert Keyword.fetch!(session_opts, :provider) == :codex
     assert Keyword.fetch!(session_opts, :profile) == Codex.Runtime.Exec.Profile
-    assert Keyword.fetch!(session_opts, :metadata) == %{lane: :codex_sdk}
     assert Keyword.fetch!(session_opts, :headless_timeout_ms) == :infinity
+
+    assert Keyword.fetch!(session_opts, :metadata) == %{
+             "config" => %{"model_reasoning_effort" => "medium"},
+             "model" => default_model(),
+             "reasoning_effort" => "medium",
+             asm_provider: :codex,
+             lane: :codex_sdk
+           }
   end
 
   test "capabilities publish session control support" do
