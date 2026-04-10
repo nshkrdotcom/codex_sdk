@@ -8,7 +8,7 @@ defmodule Codex.Runtime.ExecTest do
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
   alias Codex.TestSupport.FixtureScripts
-  alias ExternalRuntimeTransport.ProcessExit
+  alias ExecutionPlane.ProcessExit
 
   import Codex.Test.ModelFixtures
 

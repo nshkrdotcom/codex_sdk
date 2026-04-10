@@ -19,7 +19,7 @@ defmodule Codex.Exec do
   alias Codex.Files.Attachment
   alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TransportError
-  alias ExternalRuntimeTransport.Transport.Error, as: CoreTransportError
+  alias ExecutionPlane.Process.Transport.Error, as: CoreTransportError
 
   @type exec_opts :: %{
           optional(:codex_opts) => Codex.Options.t(),

@@ -9,6 +9,7 @@ defmodule Codex.Sessions do
   alias CliSubprocessCore.Command
   alias Codex.Config.Defaults
   alias Codex.Items
+  alias ExecutionPlane.Process.Transport.Error, as: CoreTransportError
 
   @default_apply_timeout_ms Defaults.sessions_apply_timeout_ms()
 
@@ -461,7 +462,7 @@ defmodule Codex.Sessions do
   defp normalize_run_timeout(timeout_ms), do: {:error, {:invalid_timeout_ms, timeout_ms}}
 
   defp normalize_run_error(%CliSubprocessCore.Command.Error{
-         reason: {:transport, %ExternalRuntimeTransport.Transport.Error{reason: :timeout}}
+         reason: {:transport, %CoreTransportError{reason: :timeout}}
        }),
        do: {:error, :timeout}
 

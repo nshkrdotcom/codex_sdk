@@ -67,6 +67,7 @@ defmodule Codex.Tools.ShellTool do
   alias Codex.Config.Defaults
   alias Codex.ProcessExit
   alias Codex.Tools.Hosted
+  alias ExecutionPlane.Process.Transport.Error, as: CoreTransportError
 
   @default_timeout_ms Defaults.shell_timeout_ms()
   @default_max_output_bytes Defaults.shell_max_output_bytes()
@@ -298,7 +299,7 @@ defmodule Codex.Tools.ShellTool do
   defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
 
   defp normalize_executor_error(%CliSubprocessCore.Command.Error{
-         reason: {:transport, %ExternalRuntimeTransport.Transport.Error{reason: :timeout}}
+         reason: {:transport, %CoreTransportError{reason: :timeout}}
        }),
        do: {:error, :timeout}
 

@@ -2,20 +2,29 @@ defmodule Codex.ForbiddenTokensTest do
   use ExUnit.Case, async: true
 
   @project_root Path.expand("../..", __DIR__)
-  @legacy_backend Enum.join(["erl", "exec"])
+  @forbidden_tokens [
+    "ExternalRuntimeTransport",
+    "external_runtime_transport"
+  ]
   @paths [
     "lib",
     "test",
+    "examples",
+    "docs",
     "README.md",
-    "guides",
-    "docs"
+    "mix.exs",
+    "mix.lock"
   ]
 
-  test "shared CLI surfaces do not mention the legacy backend token" do
+  test "repo contains no external runtime transport references" do
     Enum.each(expanded_files(), fn path ->
       if path != __ENV__.file do
-        refute File.read!(path) =~ @legacy_backend,
-               "unexpected legacy backend token in #{Path.relative_to(path, @project_root)}"
+        contents = File.read!(path)
+
+        Enum.each(@forbidden_tokens, fn token ->
+          refute contents =~ token,
+                 "unexpected forbidden token #{inspect(token)} in #{Path.relative_to(path, @project_root)}"
+        end)
       end
     end)
   end
