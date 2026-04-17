@@ -152,6 +152,13 @@ defmodule Codex.SubagentsTest do
     assert {:ok, ^thread} = Task.await(task, 200)
   end
 
+  test "subagents: read passes thread/read timeout overrides through to app-server", %{
+    conn: conn
+  } do
+    assert {:error, {:timeout, "thread/read", 10}} =
+             Subagents.read(conn, "thr_child", timeout_ms: 10)
+  end
+
   test "subagents: await returns completed child status", %{conn: conn} do
     task =
       Task.async(fn ->
@@ -199,6 +206,42 @@ defmodule Codex.SubagentsTest do
       )
 
     assert {:ok, :completed} = Task.await(task, 200)
+  end
+
+  test "subagents: await retries thread/read timeouts until a later poll succeeds", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        Subagents.await(conn, "thr_child", timeout: 1_000, interval: 0, read_timeout_ms: 100)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, first_line}
+
+    assert {:ok, %{"method" => "thread/read", "params" => first_params}} =
+             Jason.decode(first_line)
+
+    assert first_params == %{"threadId" => "thr_child", "includeTurns" => true}
+
+    assert_receive {:app_server_subprocess_send, ^conn, second_line}, 500
+
+    assert {:ok, %{"id" => second_id, "method" => "thread/read", "params" => second_params}} =
+             Jason.decode(second_line)
+
+    assert second_params == %{"threadId" => "thr_child", "includeTurns" => true}
+
+    :ok =
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(second_id, %{
+          "thread" => %{
+            "id" => "thr_child",
+            "status" => %{"type" => "notLoaded"},
+            "turns" => [
+              %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+            ]
+          }
+        })
+      )
+
+    assert {:ok, :completed} = Task.await(task, 1_000)
   end
 
   test "subagents: await always requests turns even when include_turns is false", %{

@@ -16,6 +16,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
   Waiting for streamed events. If the model stays quiet briefly, Codex is still working.
   """
   @thread_list_opts [sort_key: :updated_at, limit: 20, timeout_ms: 120_000]
+  @thread_list_snapshot_opts [sort_key: :updated_at, limit: 20, timeout_ms: 5_000]
   @discovery_attempts 10
   @discovery_delay_ms 500
   @prompt_tool_kinds [:spawn_agent, :send_input, :resume_agent, :wait, :close_agent]
@@ -97,50 +98,55 @@ defmodule CodexExamples.LiveSubagentHostControls do
 
       with_app_server_connection!(codex_opts, fn host_conn ->
         list_opts = Keyword.put(@thread_list_opts, :cwd, cwd)
+        snapshot_list_opts = Keyword.put(@thread_list_snapshot_opts, :cwd, cwd)
 
-        children =
-          if parent_state.spawn_observed? do
-            retry_until!(
-              "child thread discovery",
-              fn ->
-                with {:ok, child_threads} <-
-                       Subagents.children(host_conn, parent_thread_id, list_opts) do
-                  cond do
-                    child_threads == [] and is_binary(parent_state.child_thread_id) ->
-                      {:retry, {:missing_child, parent_state.child_thread_id}}
-
-                    child_threads == [] ->
-                      {:retry, :no_children_yet}
-
-                    true ->
-                      {:ok, child_threads}
-                  end
-                end
-              end
-            )
+        {recent_subagent_snapshot, child_listing_snapshot} =
+          if is_binary(parent_state.child_thread_id) do
+            {
+              {:skipped, :streamed_receiver_thread_id},
+              {:skipped, :streamed_receiver_thread_id}
+            }
           else
-            retry_ok!("thread/list for child discovery", fn ->
-              Subagents.children(host_conn, parent_thread_id, list_opts)
-            end)
+            {
+              best_effort_snapshot(
+                "thread/list for recent subagents",
+                fn -> Subagents.list(host_conn, snapshot_list_opts) end
+              ),
+              best_effort_snapshot(
+                "thread/list for child discovery",
+                fn -> Subagents.children(host_conn, parent_thread_id, snapshot_list_opts) end
+              )
+            }
           end
 
-        all_subagents =
-          retry_ok!(
-            "thread/list for recent subagents",
-            fn -> Subagents.list(host_conn, list_opts) end
+        child =
+          resolve_child_thread!(
+            host_conn,
+            parent_thread_id,
+            parent_state,
+            list_opts,
+            child_listing_snapshot
           )
 
-        case children do
-          [%{"id" => child_thread_id} = child | _] ->
-            child_source = Subagents.source(child)
+        case child do
+          %{"id" => child_thread_id} ->
+            child_metadata_snapshot =
+              best_effort_snapshot(
+                "thread/read for child metadata",
+                fn -> Subagents.read(host_conn, child_thread_id, timeout_ms: 5_000) end
+              )
+
+            child_details = snapshot_value(child_metadata_snapshot, child)
+            child_source = Subagents.source(child_details)
             child_parent_thread_id = Subagents.parent_thread_id(child_source)
-            child_thread? = Subagents.child_thread?(child)
-            listed_child_ids = Enum.map(all_subagents, & &1["id"])
+            child_thread? = Subagents.child_thread?(child_details)
+            listed_child_ids = snapshot_ids(recent_subagent_snapshot)
 
             IO.puts("""
             Child thread discovered.
               parent_thread_id: #{parent_thread_id}
               child_thread_id: #{child_thread_id}
+              discovery_method: #{inspect(child_discovery_method(parent_state, child_listing_snapshot))}
               child_thread?: #{inspect(child_thread?)}
               source_parent_thread_id: #{inspect(child_parent_thread_id)}
               source_kind: #{inspect(Codex.Protocol.SessionSource.source_kind(child_source))}
@@ -150,14 +156,6 @@ defmodule CodexExamples.LiveSubagentHostControls do
               listed_subagent_thread_ids: #{inspect(listed_child_ids)}
             """)
 
-            IO.puts("Reading child thread state via thread/read(include_turns: true)...")
-
-            child_read =
-              retry_ok!(
-                "thread/read for child thread",
-                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
-              )
-
             require_observed_tool_kinds!(
               parent_state,
               [:spawn_agent, :wait],
@@ -166,8 +164,31 @@ defmodule CodexExamples.LiveSubagentHostControls do
 
             IO.puts("Awaiting the child thread's latest turn status via thread/read polling...")
 
-            {:ok, child_status} =
-              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+            child_status_snapshot =
+              best_effort_snapshot(
+                "await for child thread status",
+                fn ->
+                  Subagents.await(
+                    host_conn,
+                    child_thread_id,
+                    timeout: 30_000,
+                    interval: 250,
+                    read_timeout_ms: 5_000
+                  )
+                end
+              )
+
+            child_status = snapshot_value(child_status_snapshot, {:error, :timeout})
+
+            child_read_snapshot =
+              best_effort_snapshot(
+                "thread/read for child thread",
+                fn ->
+                  Subagents.read(host_conn, child_thread_id, include_turns: true, timeout_ms: 5_000)
+                end
+              )
+
+            child_read = snapshot_value(child_read_snapshot)
 
             resumed_parent_state =
               run_parent_turn!(
@@ -185,14 +206,32 @@ defmodule CodexExamples.LiveSubagentHostControls do
               "second parent turn"
             )
 
-            post_close_child_read =
-              retry_ok!(
+            post_close_child_read_snapshot =
+              best_effort_snapshot(
                 "thread/read for child thread after close",
-                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
+                fn ->
+                  Subagents.read(host_conn, child_thread_id, include_turns: true, timeout_ms: 5_000)
+                end
               )
 
-            {:ok, post_close_child_status} =
-              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+            post_close_child_read = snapshot_value(post_close_child_read_snapshot)
+
+            post_close_child_status_snapshot =
+              best_effort_snapshot(
+                "await for child thread status after close",
+                fn ->
+                  Subagents.await(
+                    host_conn,
+                    child_thread_id,
+                    timeout: 30_000,
+                    interval: 250,
+                    read_timeout_ms: 5_000
+                  )
+                end
+              )
+
+            post_close_child_status =
+              snapshot_value(post_close_child_status_snapshot, {:error, :timeout})
 
             IO.puts("Opening a fresh child-turn connection for a direct host-side follow-up...")
 
@@ -224,14 +263,31 @@ defmodule CodexExamples.LiveSubagentHostControls do
                 %{child_state | usage: RunResultStreaming.usage(child_stream)}
               end)
 
-            resumed_child_read =
-              retry_ok!(
+            resumed_child_read_snapshot =
+              best_effort_snapshot(
                 "thread/read for child thread after host-side follow-up",
-                fn -> Subagents.read(host_conn, child_thread_id, include_turns: true) end
+                fn ->
+                  Subagents.read(host_conn, child_thread_id, include_turns: true, timeout_ms: 5_000)
+                end
               )
 
-            {:ok, resumed_child_status} =
-              Subagents.await(host_conn, child_thread_id, timeout: 30_000, interval: 250)
+            resumed_child_read = snapshot_value(resumed_child_read_snapshot)
+
+            resumed_child_status_snapshot =
+              best_effort_snapshot(
+                "await for child thread status after host-side follow-up",
+                fn ->
+                  Subagents.await(
+                    host_conn,
+                    child_thread_id,
+                    timeout: 30_000,
+                    interval: 250,
+                    read_timeout_ms: 5_000
+                  )
+                end
+              )
+
+            resumed_child_status = snapshot_value(resumed_child_status_snapshot, {:error, :timeout})
 
             observed_tool_kinds =
               merge_observed_tool_kinds([parent_state, resumed_parent_state])
@@ -246,7 +302,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
               child_role: child_role(child_source),
               child_nickname: child_nickname(child_source),
               listed_subagent_thread_ids: listed_child_ids,
-              subagent_thread_count: length(all_subagents),
+              subagent_thread_count: snapshot_count(recent_subagent_snapshot),
+              subagent_snapshot_status: snapshot_status(recent_subagent_snapshot),
+              child_listing_snapshot_status: snapshot_status(child_listing_snapshot),
               used_multi_agent?: true,
               spawn_observed?: parent_state.spawn_observed?,
               child_turn_count: count_turns(child_read),
@@ -280,8 +338,10 @@ defmodule CodexExamples.LiveSubagentHostControls do
               child_depth: nil,
               child_role: nil,
               child_nickname: nil,
-              listed_subagent_thread_ids: Enum.map(all_subagents, & &1["id"]),
-              subagent_thread_count: length(all_subagents),
+              listed_subagent_thread_ids: snapshot_ids(recent_subagent_snapshot),
+              subagent_thread_count: snapshot_count(recent_subagent_snapshot),
+              subagent_snapshot_status: snapshot_status(recent_subagent_snapshot),
+              child_listing_snapshot_status: snapshot_status(child_listing_snapshot),
               used_multi_agent?: false,
               spawn_observed?: parent_state.spawn_observed?,
               parent_summary: parent_state.parent_summary,
@@ -435,7 +495,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
     |> close_text_block()
     |> then(fn next_state ->
       IO.puts("Parent is waiting on child threads: #{Enum.join(ids, ", ")}")
-      mark_tool_kind(next_state, :wait)
+      next_state
+      |> mark_tool_kind(:wait)
+      |> capture_child_thread_id(ids)
     end)
   end
 
@@ -459,7 +521,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
     |> close_text_block()
     |> then(fn next_state ->
       IO.puts("Parent resumed child thread #{inspect(thread_id)}.")
-      mark_tool_kind(next_state, :resume_agent)
+      next_state
+      |> mark_tool_kind(:resume_agent)
+      |> capture_child_thread_id(List.wrap(thread_id))
     end)
   end
 
@@ -471,7 +535,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
         "Collab tool started: #{item.tool} kind=#{inspect(item.tool_kind)} receivers=#{inspect(item.receiver_thread_ids)}"
       )
 
-      mark_tool_kind(next_state, item.tool_kind)
+      next_state
+      |> mark_tool_kind(item.tool_kind)
+      |> capture_child_thread_id(item.receiver_thread_ids)
     end)
   end
 
@@ -486,7 +552,9 @@ defmodule CodexExamples.LiveSubagentHostControls do
         "Collab tool completed: #{item.tool} kind=#{inspect(item.tool_kind)} status=#{inspect(item.status)} receivers=#{inspect(item.receiver_thread_ids)}"
       )
 
-      mark_tool_kind(next_state, item.tool_kind)
+      next_state
+      |> mark_tool_kind(item.tool_kind)
+      |> capture_child_thread_id(item.receiver_thread_ids)
     end)
   end
 
@@ -598,6 +666,94 @@ defmodule CodexExamples.LiveSubagentHostControls do
   defp count_turns(%{turns: turns}) when is_list(turns), do: length(turns)
   defp count_turns(_), do: 0
 
+  defp resolve_child_thread!(
+         _host_conn,
+         _parent_thread_id,
+         %{child_thread_id: child_thread_id},
+         _list_opts,
+         _child_listing_snapshot
+       )
+       when is_binary(child_thread_id) do
+    IO.puts(
+      "Using child thread id observed directly from streamed collaboration events: #{child_thread_id}"
+    )
+
+    %{"id" => child_thread_id}
+  end
+
+  defp resolve_child_thread!(
+         host_conn,
+         parent_thread_id,
+         parent_state,
+         list_opts,
+         _child_listing_snapshot
+       ) do
+    children =
+      if parent_state.spawn_observed? do
+        retry_until!(
+          "child thread discovery",
+          fn ->
+            with {:ok, child_threads} <-
+                   Subagents.children(host_conn, parent_thread_id, list_opts) do
+              case child_threads do
+                [] -> {:retry, :no_children_yet}
+                _ -> {:ok, child_threads}
+              end
+            end
+          end
+        )
+      else
+        []
+      end
+
+    List.first(children) || []
+  end
+
+  defp child_discovery_method(%{child_thread_id: child_thread_id}, _snapshot)
+       when is_binary(child_thread_id),
+       do: :streamed_receiver_thread_id
+
+  defp child_discovery_method(_state, {:ok, _snapshot}), do: :thread_list
+  defp child_discovery_method(_state, _snapshot), do: :none
+
+  defp capture_child_thread_id(%{child_thread_id: existing} = state, _receiver_ids)
+       when is_binary(existing),
+       do: state
+
+  defp capture_child_thread_id(state, receiver_ids) do
+    case Enum.find(List.wrap(receiver_ids), &is_binary/1) do
+      nil -> state
+      thread_id -> %{state | child_thread_id: thread_id}
+    end
+  end
+
+  defp best_effort_snapshot(label, fun) when is_binary(label) and is_function(fun, 0) do
+    case fun.() do
+      {:ok, value} ->
+        {:ok, value}
+
+      {:error, reason} ->
+        IO.puts("#{label} skipped: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp snapshot_ids({:ok, entries}) when is_list(entries), do: Enum.map(entries, & &1["id"])
+  defp snapshot_ids(_snapshot), do: []
+
+  defp snapshot_count({:ok, entries}) when is_list(entries), do: length(entries)
+  defp snapshot_count(_snapshot), do: 0
+
+  defp snapshot_status({:ok, _entries}), do: :ok
+  defp snapshot_status({:skipped, reason}), do: {:skipped, reason}
+  defp snapshot_status({:error, reason}), do: {:error, reason}
+  defp snapshot_status(_snapshot), do: :unknown
+
+  defp snapshot_value({:ok, value}, _default), do: value
+  defp snapshot_value(_snapshot, default), do: default
+
+  defp snapshot_value(snapshot), do: snapshot_value(snapshot, %{})
+
   defp require_observed_tool_kinds!(state, expected, label) when is_list(expected) do
     expected_set = MapSet.new(expected)
     observed = Map.get(state, :observed_tool_kinds, MapSet.new())
@@ -652,22 +808,6 @@ defmodule CodexExamples.LiveSubagentHostControls do
       fun.(conn)
     after
       :ok = AppServer.disconnect(conn)
-    end
-  end
-
-  defp retry_ok!(label, fun, attempts \\ @discovery_attempts, delay_ms \\ @discovery_delay_ms)
-       when is_binary(label) and is_function(fun, 0) and attempts >= 1 and delay_ms >= 0 do
-    case fun.() do
-      {:ok, value} ->
-        value
-
-      {:error, reason} when attempts > 1 ->
-        IO.puts("#{label} not ready yet: #{inspect(reason)}. Retrying...")
-        Process.sleep(delay_ms)
-        retry_ok!(label, fun, attempts - 1, delay_ms)
-
-      {:error, reason} ->
-        Mix.raise("#{label} failed: #{inspect(reason)}")
     end
   end
 

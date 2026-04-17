@@ -480,12 +480,14 @@ defmodule Codex.AppServer do
   @spec thread_read(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def thread_read(conn, thread_id, opts \\ [])
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+
     params = %{
       "threadId" => thread_id,
       "includeTurns" => !!Keyword.get(opts, :include_turns, false)
     }
 
-    Connection.request(conn, "thread/read", params, timeout_ms: 30_000)
+    Connection.request(conn, "thread/read", params, timeout_ms: timeout_ms)
   end
 
   @spec thread_inject_items(connection(), String.t(), [map()]) :: {:ok, map()} | {:error, term()}

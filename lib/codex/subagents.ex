@@ -100,34 +100,75 @@ defmodule Codex.Subagents do
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
     timeout_ms = Keyword.get(opts, :timeout, 30_000)
     interval_ms = max(Keyword.get(opts, :interval, 250), 0)
+    read_timeout_ms = max(Keyword.get(opts, :read_timeout_ms, 5_000), 1)
     deadline_ms = System.monotonic_time(:millisecond) + timeout_ms
 
-    do_await(conn, thread_id, true, interval_ms, deadline_ms)
+    do_await(conn, thread_id, true, interval_ms, deadline_ms, read_timeout_ms)
   end
 
-  defp do_await(conn, thread_id, include_turns, interval_ms, deadline_ms) do
-    case read(conn, thread_id, include_turns: include_turns) do
-      {:ok, thread} ->
-        maybe_finish_await(thread, conn, thread_id, include_turns, interval_ms, deadline_ms)
+  defp do_await(conn, thread_id, include_turns, interval_ms, deadline_ms, read_timeout_ms) do
+    remaining_ms = deadline_ms - System.monotonic_time(:millisecond)
 
-      {:error, _} = error ->
-        error
+    if remaining_ms <= 0 do
+      {:error, :timeout}
+    else
+      request_timeout_ms = min(read_timeout_ms, remaining_ms)
+
+      case read(conn, thread_id,
+             include_turns: include_turns,
+             timeout_ms: request_timeout_ms
+           ) do
+        {:ok, thread} ->
+          maybe_finish_await(
+            thread,
+            conn,
+            thread_id,
+            include_turns,
+            interval_ms,
+            deadline_ms,
+            read_timeout_ms
+          )
+
+        {:error, {:timeout, "thread/read", _timeout_ms}} ->
+          continue_await(
+            conn,
+            thread_id,
+            include_turns,
+            interval_ms,
+            deadline_ms,
+            read_timeout_ms
+          )
+
+        {:error, _} = error ->
+          error
+      end
     end
   end
 
-  defp maybe_finish_await(thread, conn, thread_id, include_turns, interval_ms, deadline_ms) do
+  defp maybe_finish_await(
+         thread,
+         conn,
+         thread_id,
+         include_turns,
+         interval_ms,
+         deadline_ms,
+         read_timeout_ms
+       ) do
     case latest_turn_status(thread) do
-      {:ok, status} when status in [:completed, :failed, :interrupted] -> {:ok, status}
-      _ -> continue_await(conn, thread_id, include_turns, interval_ms, deadline_ms)
+      {:ok, status} when status in [:completed, :failed, :interrupted] ->
+        {:ok, status}
+
+      _ ->
+        continue_await(conn, thread_id, include_turns, interval_ms, deadline_ms, read_timeout_ms)
     end
   end
 
-  defp continue_await(conn, thread_id, include_turns, interval_ms, deadline_ms) do
+  defp continue_await(conn, thread_id, include_turns, interval_ms, deadline_ms, read_timeout_ms) do
     if System.monotonic_time(:millisecond) >= deadline_ms do
       {:error, :timeout}
     else
       Process.sleep(interval_ms)
-      do_await(conn, thread_id, include_turns, interval_ms, deadline_ms)
+      do_await(conn, thread_id, include_turns, interval_ms, deadline_ms, read_timeout_ms)
     end
   end
 
