@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-16
+
+### Added
+
+- App-server parity wrappers for `marketplace/add`, `thread/inject_items`,
+  `thread/memoryMode/set`, `memory/reset`, `fs/watch`, `fs/unwatch`,
+  `mcpServer/resource/read`, and `mcpServer/tool/call`, plus MCP server-status
+  `detail` support.
+- `Codex.CLI.marketplace_add/2` for the upstream `codex marketplace add`
+  command surface.
+- A new operational workflows guide and a real marketplace-management example
+  covering isolated `CODEX_HOME` marketplace acquisition flows.
+
+### Changed
+
+- Local plugin path handling now accepts alternate discoverable
+  `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
+  while preserving Codex-native scaffold and write defaults.
+- README, guides, examples, and the example runner now document and exercise
+  the expanded app-server, marketplace, MCP, and thread-management surface.
+- HexDocs/package metadata now includes the guides and examples directories so
+  published docs can keep the guide menu intact.
+
 ## [0.16.1] - 2026-04-09
 
 ### Fixed
@@ -856,7 +879,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.16.0
 [0.15.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.15.0

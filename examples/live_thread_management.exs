@@ -28,7 +28,7 @@ defmodule LiveThreadManagement do
 
     codex_opts = Support.codex_options!()
     :ok = Support.ensure_app_server_supported(codex_opts)
-    {:ok, conn} = AppServer.connect(codex_opts, init_timeout_ms: 30_000)
+    {:ok, conn} = AppServer.connect(codex_opts, experimental_api: true, init_timeout_ms: 30_000)
 
     try do
       {:ok, thread} =
@@ -50,6 +50,33 @@ defmodule LiveThreadManagement do
 
       IO.puts("thread/read:")
       IO.inspect(AppServer.thread_read(conn, thread_id, include_turns: true))
+
+      IO.puts("\nthread/inject_items:")
+
+      inject_items = [
+        %{
+          "type" => "message",
+          "role" => "assistant",
+          "content" => [
+            %{
+              "type" => "output_text",
+              "text" => "Synthetic checkpoint from the SDK example."
+            }
+          ]
+        }
+      ]
+
+      print_result_or_warning(
+        AppServer.thread_inject_items(conn, thread_id, inject_items),
+        "thread/inject_items"
+      )
+
+      IO.puts("\nthread/memoryMode/set disabled:")
+
+      print_result_or_warning(
+        AppServer.thread_memory_mode_set(conn, thread_id, :disabled),
+        "thread/memoryMode/set"
+      )
 
       IO.puts("\nthread/fork:")
 

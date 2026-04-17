@@ -8,6 +8,12 @@ Use it when you want to create or maintain:
 - `.agents/plugins/marketplace.json`
 - minimal local plugin directory trees
 
+The local authoring defaults stay Codex-native, but the reader/path helpers now
+also accept the discoverable Claude-compatible locations:
+
+- `.claude-plugin/plugin.json`
+- `.claude-plugin/marketplace.json`
+
 This namespace is intentionally separate from `Codex.AppServer.plugin_*`.
 Authoring uses normal Elixir file IO and does not require a running Codex
 subprocess.
@@ -80,6 +86,17 @@ Personal scope:
 
 You can override either path explicitly with `root:` or `marketplace_path:`.
 
+## Compatibility Discovery
+
+Write and scaffold flows still default to:
+
+- `.codex-plugin/plugin.json`
+- `.agents/plugins/marketplace.json`
+
+Read and validation flows now accept either the Codex-native paths above or the
+discoverable Claude-compatible paths when you pass those files explicitly, or
+when a plugin root already contains only the alternate manifest location.
+
 ## Authoring Versus Runtime
 
 Normal authoring flows should stay local:
@@ -95,5 +112,10 @@ Runtime verification stays on app-server:
 - `Codex.AppServer.plugin_read_typed/3`
 - `Codex.AppServer.plugin_install_typed/4`
 - `Codex.AppServer.plugin_uninstall_typed/3`
+- `Codex.AppServer.marketplace_add/3` when you want runtime marketplace import
+  rather than local file authoring
+
+If you need the literal CLI marketplace surface instead of JSON-RPC, use
+`Codex.CLI.marketplace_add/2`.
 
 The SDK does not route normal local authoring through app-server `fs/*`.

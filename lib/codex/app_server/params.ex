@@ -135,6 +135,25 @@ defmodule Codex.AppServer.Params do
   def thread_sort_key(value) when is_binary(value), do: value
   def thread_sort_key(_), do: nil
 
+  @spec thread_memory_mode(atom() | String.t() | nil) :: String.t() | nil
+  def thread_memory_mode(nil), do: nil
+  def thread_memory_mode(:enabled), do: "enabled"
+  def thread_memory_mode(:disabled), do: "disabled"
+  def thread_memory_mode("enabled"), do: "enabled"
+  def thread_memory_mode("disabled"), do: "disabled"
+  def thread_memory_mode(value) when is_binary(value), do: value
+  def thread_memory_mode(_), do: nil
+
+  @spec mcp_server_status_detail(atom() | String.t() | nil) :: String.t() | nil
+  def mcp_server_status_detail(nil), do: nil
+  def mcp_server_status_detail(:full), do: "full"
+  def mcp_server_status_detail(:tools_and_auth_only), do: "toolsAndAuthOnly"
+  def mcp_server_status_detail("full"), do: "full"
+  def mcp_server_status_detail("toolsAndAuthOnly"), do: "toolsAndAuthOnly"
+  def mcp_server_status_detail("tools_and_auth_only"), do: "toolsAndAuthOnly"
+  def mcp_server_status_detail(value) when is_binary(value), do: value
+  def mcp_server_status_detail(_), do: nil
+
   @spec thread_source_kind(atom() | String.t() | nil) :: String.t() | nil
   def thread_source_kind(nil), do: nil
   def thread_source_kind(:cli), do: "cli"

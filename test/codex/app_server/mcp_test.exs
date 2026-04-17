@@ -123,6 +123,22 @@ defmodule Codex.AppServer.McpTest do
 
       assert {:error, %{"code" => -32_601}} = Task.await(task, 200)
     end
+
+    test "encodes detail on new servers", %{conn: conn} do
+      task = Task.async(fn -> Mcp.list_servers(conn, detail: :tools_and_auth_only) end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "mcpServerStatus/list",
+                "params" => %{"detail" => "toolsAndAuthOnly"}
+              }} = Jason.decode(request_line)
+
+      :ok = AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
+      assert {:ok, %{"data" => []}} = Task.await(task, 200)
+    end
   end
 
   describe "list_server_statuses/2" do
@@ -152,6 +168,82 @@ defmodule Codex.AppServer.McpTest do
       :ok = AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{}))
 
       assert {:ok, %{}} = Task.await(task, 200)
+    end
+  end
+
+  describe "resource_read/4" do
+    test "requests mcpServer/resource/read", %{conn: conn} do
+      task =
+        Task.async(fn -> Mcp.resource_read(conn, "thr_1", "codex_apps", "test://resource") end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "mcpServer/resource/read",
+                "params" => %{
+                  "threadId" => "thr_1",
+                  "server" => "codex_apps",
+                  "uri" => "test://resource"
+                }
+              }} = Jason.decode(request_line)
+
+      :ok =
+        AppServerSubprocess.send_stdout(
+          Protocol.encode_response(req_id, %{
+            "contents" => [
+              %{"uri" => "test://resource", "mimeType" => "text/plain", "text" => "ok"}
+            ]
+          })
+        )
+
+      assert {:ok, %{"contents" => [%{"text" => "ok"}]}} = Task.await(task, 200)
+    end
+  end
+
+  describe "tool_call/5" do
+    test "requests mcpServer/tool/call with optional arguments and meta", %{conn: conn} do
+      task =
+        Task.async(fn ->
+          Mcp.tool_call(conn, "thr_1", "tool_server", "echo_tool",
+            arguments: %{"message" => "hello"},
+            meta: %{"source" => "mcp-app"}
+          )
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "mcpServer/tool/call",
+                "params" => %{
+                  "threadId" => "thr_1",
+                  "server" => "tool_server",
+                  "tool" => "echo_tool",
+                  "arguments" => %{"message" => "hello"},
+                  "_meta" => %{"source" => "mcp-app"}
+                }
+              }} = Jason.decode(request_line)
+
+      :ok =
+        AppServerSubprocess.send_stdout(
+          Protocol.encode_response(req_id, %{
+            "content" => [%{"type" => "text", "text" => "echo: hello"}],
+            "structuredContent" => %{"echoed" => "hello"},
+            "isError" => false,
+            "_meta" => %{"calledBy" => "mcp-app"}
+          })
+        )
+
+      assert {:ok,
+              %{
+                "content" => [%{"text" => "echo: hello"}],
+                "structuredContent" => %{"echoed" => "hello"},
+                "isError" => false,
+                "_meta" => %{"calledBy" => "mcp-app"}
+              }} = Task.await(task, 200)
     end
   end
 

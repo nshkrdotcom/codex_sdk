@@ -103,6 +103,7 @@ includes:
 
 - `examples/structured_output.exs`
 - `examples/live_app_server_plugins.exs`
+- `examples/live_marketplace_management.exs`
 - `examples/live_app_server_approvals.exs`
 - `examples/live_attachments_and_search.exs`
 
@@ -171,13 +172,14 @@ mix run examples/live_cli_session.exs -- --ssh-host example.internal --cwd /srv/
 - `examples/live_app_server_filesystem.exs` — end-to-end `fs/*` app-server demo (write/read/list/metadata/copy/remove); self-skips when the connected CLI build does not advertise those legacy parity methods
 - `examples/plugin_scaffold.exs` — local plugin authoring walkthrough using `Codex.Plugins.scaffold/1`; writes a disposable manifest, optional skill, and marketplace entry under the system temp directory and prints the resulting paths
 - `examples/live_app_server_plugins.exs` — provisions a disposable local plugin fixture through `Codex.Plugins.scaffold/1`, launches `codex app-server` with an isolated temporary `CODEX_HOME`, then exercises the typed `plugin_list_typed/2` + `plugin_read_typed/3` wrappers without mutating your real `$CODEX_HOME` or requiring a preinstalled plugin; prints derived `needs_auth` state from typed app summaries and self-skips when the connected CLI build does not advertise `plugin/read`. This example is local-only and does not support `--ssh-host`.
+- `examples/live_marketplace_management.exs` — provisions a disposable local marketplace root, then exercises the new `Codex.CLI.marketplace_add/2` wrapper and the matching `Codex.AppServer.marketplace_add/3` helper against isolated temporary `CODEX_HOME` directories so it never mutates your real marketplace state. This example is local-only and does not support `--ssh-host`.
 - `examples/live_app_server_streaming.exs` — streamed turn over app-server (prints deltas + completion); in SSH mode, pass `--cwd <remote trusted dir>`
 - `examples/live_app_server_approvals.exs` — demonstrates command/file approvals, opts into app-server `experimentalApi`, provisions a disposable temp workspace plus temporary `CODEX_HOME`, enables the under-development approval feature flags only inside that isolated home, and prints a structured-grant fallback plus guardian/request-resolution events when live permissions requests still do not appear. This example is local-only and does not support `--ssh-host`.
-- `examples/live_app_server_mcp.exs` — lists MCP servers and prints original vs sanitized qualified tool names
+- `examples/live_app_server_mcp.exs` — lists MCP servers with `detail: :tools_and_auth_only`, prints original vs sanitized qualified tool names, and points at the thread-scoped `resource_read/4` and `tool_call/5` helpers for trusted MCP surfaces
 - `examples/live_collaboration_modes.exs` — opts into app-server `experimentalApi`, lists collaboration mode presets, and runs a turn with the server-advertised preset settings plus built-in preset instructions (or skips when the connected CLI build rejects that capability or omits `collaborationMode/list`). In SSH mode, pass `--cwd <remote trusted dir>`.
 - `examples/live_subagent_host_controls.exs` — one parent -> one child subagent workflow that explicitly enables the current runtime's `features.multi_agent` flag, sets thread/depth limits, exercises the full `Codex.Subagents` helper surface, and then reuses/resumes the child to drive `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent` through live parent turns. In SSH mode, pass `--cwd <remote trusted dir>`.
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides; in SSH mode, pass `--cwd <remote trusted dir>`
-- `examples/live_thread_management.exs` — thread read/fork/rollback/loaded list workflows; in SSH mode, pass `--cwd <remote trusted dir>`
+- `examples/live_thread_management.exs` — thread read/inject/fork/rollback/memory-mode/loaded list workflows; in SSH mode, pass `--cwd <remote trusted dir>`
 - `examples/live_web_search_modes.exs` — demonstrates `web_search_mode` toggles, validates disabled/live behavior, and reports cached-mode search events when available
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels

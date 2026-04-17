@@ -6,7 +6,9 @@ defmodule Codex.Plugins.Paths do
   alias Codex.Plugins.Errors
 
   @marketplace_relative_path Path.join([".agents", "plugins", "marketplace.json"])
+  @alternate_marketplace_relative_path Path.join([".claude-plugin", "marketplace.json"])
   @manifest_relative_path Path.join([".codex-plugin", "plugin.json"])
+  @alternate_manifest_relative_path Path.join([".claude-plugin", "plugin.json"])
 
   @type scope :: :repo | :personal
 
@@ -72,11 +74,18 @@ defmodule Codex.Plugins.Paths do
   def manifest_path(path) when is_binary(path) do
     expanded = Path.expand(path)
 
-    if Path.basename(expanded) == "plugin.json" and
-         Path.basename(Path.dirname(expanded)) == ".codex-plugin" do
-      expanded
-    else
-      Path.join(expanded, @manifest_relative_path)
+    cond do
+      discoverable_manifest_path?(expanded) ->
+        expanded
+
+      File.exists?(Path.join(expanded, @manifest_relative_path)) ->
+        Path.join(expanded, @manifest_relative_path)
+
+      File.exists?(Path.join(expanded, @alternate_manifest_relative_path)) ->
+        Path.join(expanded, @alternate_manifest_relative_path)
+
+      true ->
+        Path.join(expanded, @manifest_relative_path)
     end
   end
 
@@ -95,18 +104,21 @@ defmodule Codex.Plugins.Paths do
         {:error,
          Errors.invalid_marketplace_path(
            expanded,
-           "marketplace file must live under `<root>/.agents/plugins/marketplace.json`"
+           invalid_marketplace_path_message()
          )}
 
-      Path.basename(plugins_dir) != "plugins" or Path.basename(dot_agents_dir) != ".agents" ->
+      Path.basename(plugins_dir) == "plugins" and Path.basename(dot_agents_dir) == ".agents" ->
+        {:ok, root_dir}
+
+      Path.basename(plugins_dir) == ".claude-plugin" ->
+        {:ok, dot_agents_dir}
+
+      true ->
         {:error,
          Errors.invalid_marketplace_path(
            expanded,
-           "marketplace file must live under `<root>/.agents/plugins/marketplace.json`"
+           invalid_marketplace_path_message()
          )}
-
-      true ->
-        {:ok, root_dir}
     end
   end
 
@@ -304,5 +316,14 @@ defmodule Codex.Plugins.Paths do
     else
       :ok
     end
+  end
+
+  defp discoverable_manifest_path?(path) do
+    Path.basename(path) == "plugin.json" and
+      Path.basename(Path.dirname(path)) in [".codex-plugin", ".claude-plugin"]
+  end
+
+  defp invalid_marketplace_path_message do
+    "marketplace file must live under `<root>/#{@marketplace_relative_path}` or `<root>/#{@alternate_marketplace_relative_path}`"
   end
 end

@@ -21,6 +21,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - `guides/03-api-guide.md` - public modules and common call patterns
 - `guides/05-app-server-transport.md` - direct app-server requests and host controls
 - `guides/11-typed-plugin-api.md` - typed plugin params, responses, and migration notes
+- `guides/12-operational-workflows.md` - marketplace add, MCP runtime helpers, memory controls, and filesystem watches
 - `guides/13-plugin-authoring.md` - local manifest writes, scaffold helpers, and scope rules
 - `guides/14-plugin-marketplaces.md` - local marketplace modeling, merge behavior, and verification workflows
 - `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
@@ -30,7 +31,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 - **End-to-End Codex Lifecycle**: Spawn, resume, and manage full Codex threads with rich turn instrumentation.
 - **Multi-Transport Support**: Default `:exec` compatibility selector for the core-backed exec JSONL lane (`codex exec --json`) plus stateful app-server JSON-RPC via managed local stdio children or managed remote websockets.
-- **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly, including remote-root and websocket-auth app-server flags.
+- **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `marketplace`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly, including remote-root and websocket-auth app-server flags.
 - **Native OAuth**: `Codex.OAuth` provides SDK-managed browser/device login, refresh, status, and logout with upstream-compatible `auth.json` persistence or memory-only sessions.
 - **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
@@ -38,7 +39,7 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
 - **Collaboration & Personality Controls**: Collaboration modes, personality overrides, and web search mode toggles.
 - **Tooling & MCP Integration**: Built-in registry for Codex tool manifests, MCP client helpers, and elicitation handling.
-- **Local Plugin Authoring**: Schema-backed local manifest and marketplace models, deterministic JSON writers, and scaffold helpers that do not depend on app-server `fs/*`.
+- **Local Plugin Authoring**: Schema-backed local manifest and marketplace models, deterministic JSON writers, scaffold helpers, and alternate-path discovery support that do not depend on app-server `fs/*`.
 - **Observability-Ready**: Telemetry spans, OTLP exporters gated by environment flags, usage stats, and rate limit snapshots.
 - **Realtime API Support**: Full integration with OpenAI Realtime API for bidirectional voice interactions with WebSocket streaming.
 - **Voice Pipeline**: Non-realtime STT -> Workflow -> TTS pipeline with streaming audio support and multi-turn conversations.
@@ -50,7 +51,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.16.1"}
+    {:codex_sdk, "~> 0.17.0"}
   ]
 end
 ```
@@ -398,11 +399,13 @@ Local plugin authoring is a separate surface from those runtime wrappers:
 
 Use `Codex.Plugins.*` to create and update `.codex-plugin/plugin.json`,
 `.agents/plugins/marketplace.json`, and minimal local plugin trees with normal
-Elixir file IO. Use `Codex.AppServer.plugin_*` later if you want runtime
-verification against a running `codex app-server`. Normal authoring flows do not
-route through app-server `fs/*`. Phase-1 scaffold intentionally stops at the
-plugin tree, optional skill stub, and marketplace entry; it does not generate
-`mix.exs`, Dialyzer/PLT helpers, or `build_support/*`.
+Elixir file IO. Read/discovery helpers also accept `.claude-plugin/plugin.json`
+and `.claude-plugin/marketplace.json` when those are the discoverable paths
+already present on disk. Use `Codex.AppServer.plugin_*` later if you want
+runtime verification against a running `codex app-server`. Normal authoring
+flows do not route through app-server `fs/*`. Phase-1 scaffold intentionally
+stops at the plugin tree, optional skill stub, and marketplace entry; it does
+not generate `mix.exs`, Dialyzer/PLT helpers, or `build_support/*`.
 
 Raw versus typed plugin calls:
 
@@ -641,6 +644,9 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 # Live app-server plugin verification against a disposable local scaffold
 mix run examples/live_app_server_plugins.exs
+
+# Live marketplace add via CLI plus app-server against isolated CODEX_HOME roots
+mix run examples/live_marketplace_management.exs
 
 # Live Codex CLI passthrough helpers
 mix run examples/live_cli_passthrough.exs completion zsh
@@ -1432,7 +1438,8 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes
-- **`live_thread_management.exs`** - Thread read/fork/rollback/loaded list workflows
+- **`live_thread_management.exs`** - Thread read/inject/fork/rollback/memory-mode/loaded list workflows
+- **`live_marketplace_management.exs`** - Disposable marketplace-add flow via both `Codex.CLI.marketplace_add/2` and `Codex.AppServer.marketplace_add/3`
 - **`live_web_search_modes.exs`** - Web search mode toggles with disabled/live validation and cached-mode event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows

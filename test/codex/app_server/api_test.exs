@@ -555,6 +555,56 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(unarchive_task, 200)
   end
 
+  test "thread_inject_items/3 encodes raw response items", %{conn: conn} do
+    items = [
+      %{
+        "type" => "message",
+        "role" => "assistant",
+        "content" => [%{"type" => "output_text", "text" => "Recovered context"}]
+      }
+    ]
+
+    task = Task.async(fn -> AppServer.thread_inject_items(conn, "thr_1", items) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "thread/inject_items",
+              "params" => %{"threadId" => "thr_1", "items" => ^items}
+            }} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{}))
+    assert {:ok, %{}} = Task.await(task, 200)
+  end
+
+  test "thread_memory_mode_set/3 normalizes atom modes", %{conn: conn} do
+    task = Task.async(fn -> AppServer.thread_memory_mode_set(conn, "thr_1", :disabled) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "thread/memoryMode/set",
+              "params" => %{"threadId" => "thr_1", "mode" => "disabled"}
+            }} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{}))
+    assert {:ok, %{}} = Task.await(task, 200)
+  end
+
+  test "memory_reset/1 encodes the upstream method", %{conn: conn} do
+    task = Task.async(fn -> AppServer.memory_reset(conn) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+    assert {:ok, %{"id" => req_id, "method" => "memory/reset"}} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{}))
+    assert {:ok, %{}} = Task.await(task, 200)
+  end
+
   test "skills_config_write/3 encodes path and enabled", %{conn: conn} do
     task = Task.async(fn -> AppServer.skills_config_write(conn, "/tmp/skill", true) end)
 
@@ -1030,6 +1080,40 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(experimental_task, 200)
   end
 
+  test "marketplace_add/3 encodes source, ref, and sparse paths", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.marketplace_add(conn, "./marketplace",
+          ref_name: "main",
+          sparse_paths: ["plugins/foo", "skills/bar"]
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "marketplace/add",
+              "params" => %{
+                "source" => "./marketplace",
+                "refName" => "main",
+                "sparsePaths" => ["plugins/foo", "skills/bar"]
+              }
+            }} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "marketplaceName" => "debug",
+        "installedRoot" => "/tmp/marketplace",
+        "alreadyAdded" => false
+      })
+    )
+
+    assert {:ok, %{"marketplaceName" => "debug", "alreadyAdded" => false}} =
+             Task.await(task, 200)
+  end
+
   test "request_typed/5 encodes param structs and parses typed responses", %{
     conn: conn
   } do
@@ -1474,6 +1558,37 @@ defmodule Codex.AppServer.ApiTest do
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(copy_id, %{}))
     assert {:ok, %{}} = Task.await(copy_task, 200)
+  end
+
+  test "filesystem watch wrappers encode watch ids", %{conn: conn} do
+    watch_task = Task.async(fn -> AppServer.fs_watch(conn, "watch_1", "/tmp/demo.txt") end)
+    assert_receive {:app_server_subprocess_send, ^conn, watch_line}
+
+    assert {:ok,
+            %{
+              "id" => watch_id,
+              "method" => "fs/watch",
+              "params" => %{"watchId" => "watch_1", "path" => "/tmp/demo.txt"}
+            }} = Jason.decode(watch_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(watch_id, %{"path" => "/private/tmp/demo.txt"})
+    )
+
+    assert {:ok, %{"path" => "/private/tmp/demo.txt"}} = Task.await(watch_task, 200)
+
+    unwatch_task = Task.async(fn -> AppServer.fs_unwatch(conn, "watch_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, unwatch_line}
+
+    assert {:ok,
+            %{
+              "id" => unwatch_id,
+              "method" => "fs/unwatch",
+              "params" => %{"watchId" => "watch_1"}
+            }} = Jason.decode(unwatch_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(unwatch_id, %{}))
+    assert {:ok, %{}} = Task.await(unwatch_task, 200)
   end
 
   test "fuzzy file search session wrappers encode current upstream params", %{

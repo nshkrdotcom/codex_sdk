@@ -421,6 +421,23 @@ defmodule Codex.CLI do
   end
 
   @doc """
+  Runs `codex marketplace add`.
+  """
+  @spec marketplace_add(String.t(), keyword()) :: {:ok, result()} | {:error, term()}
+  def marketplace_add(source, opts \\ []) when is_binary(source) and is_list(opts) do
+    with {:ok, global_args} <- global_args(opts) do
+      args =
+        ["marketplace", "add"] ++
+          global_args ++
+          [source] ++
+          optional_flag("--ref", Keyword.get(opts, :ref_name)) ++
+          repeat_flag("--sparse", Keyword.get(opts, :sparse_paths))
+
+      run(args, opts)
+    end
+  end
+
+  @doc """
   Launches `codex resume`.
   """
   @spec resume(String.t() | :last | keyword() | nil, keyword()) ::

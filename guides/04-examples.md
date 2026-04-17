@@ -1443,7 +1443,8 @@ mix run examples/plugin_scaffold.exs
 - `examples/live_personality.exs` — compares friendly, pragmatic, and none personality overrides (including app-server `:none`)
 - `examples/live_config_overrides.exs` — nested config override auto-flattening (thread and turn level)
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, and validation
-- `examples/live_thread_management.exs` — demonstrates thread read/fork/rollback/loaded list
+- `examples/live_thread_management.exs` — demonstrates thread read/inject/fork/rollback/memory-mode/loaded list
+- `examples/live_marketplace_management.exs` — provisions a disposable local marketplace root and exercises both CLI and app-server marketplace-add flows against isolated temporary `CODEX_HOME` directories
 - `examples/live_web_search_modes.exs` — toggles web search modes and reports web search items (explicit disable emits `web_search="disabled"`)
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage events
 
@@ -1457,6 +1458,7 @@ See `guides/05-app-server-transport.md` for the complete guide, and run the live
 mix run examples/live_app_server_basic.exs
 mix run examples/live_app_server_filesystem.exs
 mix run examples/live_app_server_plugins.exs
+mix run examples/live_marketplace_management.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
 mix run examples/live_app_server_approvals.exs
 mix run examples/live_cli_passthrough.exs completion zsh
@@ -1483,7 +1485,8 @@ under-development approval feature flags only inside that isolated home, retries
 experimental fields when the connected build rejects them, and falls back to printing the exact
 structured grant payload when live permissions events are unavailable. It also surfaces typed
 command/file approval request events, guardian review, and `serverRequest/resolved` events without
-writing inside this repository. `live_app_server_mcp.exs` and
+writing inside this repository. `live_marketplace_management.exs` provisions the same kind of
+isolated temporary home pattern for marketplace acquisition, while `live_app_server_mcp.exs` and
 `live_mcp_and_sessions.exs` print original MCP tool names alongside sanitized qualified names.
 
 Minimal usage with existing thread APIs:

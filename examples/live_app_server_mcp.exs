@@ -18,7 +18,7 @@ defmodule CodexExamples.LiveAppServerMcp do
     try do
       IO.puts("Listing MCP servers via app-server:")
 
-      case Codex.AppServer.Mcp.list_servers(conn) do
+      case Codex.AppServer.Mcp.list_servers(conn, detail: :tools_and_auth_only) do
         {:ok, %{"data" => servers} = response} when is_list(servers) ->
           IO.puts("Found #{length(servers)} MCP server(s).")
 
@@ -31,6 +31,17 @@ defmodule CodexExamples.LiveAppServerMcp do
         other ->
           IO.inspect(other)
       end
+
+      IO.puts("""
+
+      Additional MCP helpers now available in the SDK:
+        - Codex.AppServer.Mcp.resource_read/4
+        - Codex.AppServer.Mcp.tool_call/5
+
+      Those calls are thread-scoped and should only be used against resources or
+      tools you trust. This example lists inventory only and avoids auto-running
+      mutable MCP tools.
+      """)
     after
       :ok = Codex.AppServer.disconnect(conn)
     end

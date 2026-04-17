@@ -336,6 +336,31 @@ defmodule Codex.CLITest do
     end)
   end
 
+  test "marketplace_add/2 builds expected argv" do
+    args_path = tmp_path("argv_marketplace_add")
+    script_path = probe_script(args_path, stdout: "ok\n")
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, %{success: true}} =
+             CLI.marketplace_add("owner/repo",
+               codex_opts: codex_opts,
+               ref_name: "main",
+               sparse_paths: ["plugins/foo", "skills/bar"]
+             )
+
+    assert argv(args_path) == [
+             "marketplace",
+             "add",
+             "owner/repo",
+             "--ref",
+             "main",
+             "--sparse",
+             "plugins/foo",
+             "--sparse",
+             "skills/bar"
+           ]
+  end
+
   defp argv(path) do
     path
     |> File.read!()

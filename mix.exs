@@ -4,7 +4,7 @@ defmodule CodexSdk.MixProject do
   def project do
     [
       app: :codex_sdk,
-      version: "0.16.1",
+      version: "0.17.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -73,7 +73,7 @@ defmodule CodexSdk.MixProject do
     [
       main: "readme",
       name: "Codex SDK",
-      source_ref: "v0.16.1",
+      source_ref: "v0.17.0",
       source_url: "https://github.com/nshkrdotcom/codex_sdk",
       homepage_url: "https://hex.pm/packages/codex_sdk",
       assets: %{"assets" => "assets"},
@@ -91,6 +91,7 @@ defmodule CodexSdk.MixProject do
         "guides/09-oauth-and-login.md": [title: "OAuth And Login"],
         "guides/10-subagents.md": [title: "Subagents"],
         "guides/11-typed-plugin-api.md": [title: "Typed Plugin API"],
+        "guides/12-operational-workflows.md": [title: "Operational Workflows"],
         "guides/13-plugin-authoring.md": [title: "Plugin Authoring"],
         "guides/14-plugin-marketplaces.md": [title: "Plugin Marketplaces"],
         "CHANGELOG.md": [title: "Changelog"],
@@ -109,6 +110,7 @@ defmodule CodexSdk.MixProject do
           "guides/06-realtime-and-voice.md",
           "guides/10-subagents.md",
           "guides/11-typed-plugin-api.md",
+          "guides/12-operational-workflows.md",
           "guides/13-plugin-authoring.md",
           "guides/14-plugin-marketplaces.md"
         ],
@@ -241,7 +243,7 @@ defmodule CodexSdk.MixProject do
       description: description(),
       readme: "README.md",
       files:
-        ~w(lib config priv/models.json assets mix.exs README.md CHANGELOG.md LICENSE VERSION),
+        ~w(lib config priv/models.json assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/nshkrdotcom/codex_sdk",

@@ -260,14 +260,16 @@ alias Codex.Protocol.Plugin
 Additional v2 APIs include:
 
 - `Codex.AppServer.experimental_feature_list/2` and `experimental_feature_enablement_set/2`
-- `Codex.AppServer.thread_read/3`, `thread_fork/3`, `thread_shell_command/3`, `thread_rollback/3`, `thread_loaded_list/2`
-- `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
+- `Codex.AppServer.thread_read/3`, `thread_inject_items/3`, `thread_fork/3`, `thread_shell_command/3`, `thread_rollback/3`, `thread_loaded_list/2`, `thread_memory_mode_set/3`, and `memory_reset/1`
+- `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`, `fs_watch/3`, and `fs_unwatch/2`
+- `Codex.AppServer.marketplace_add/3`
 - raw plugin wrappers: `Codex.AppServer.plugin_list/2`, `plugin_read/3`, `plugin_install/4`, `plugin_uninstall/3`
 - typed plugin wrappers: `Codex.AppServer.plugin_list_typed/2`, `plugin_read_typed/3`, `plugin_install_typed/4`, `plugin_uninstall_typed/3`
 - `Codex.AppServer.request_typed/5` for `Codex.Protocol.Plugin.*` request/response structs
 - local authoring remains on `Codex.Plugins.*`; app-server plugin wrappers are not file-authoring helpers
 - `Codex.AppServer.collaboration_mode_list/1` and `Codex.AppServer.apps_list/2`
 - `Codex.AppServer.config_requirements/1` and `Codex.AppServer.skills_config_write/3`
+- `Codex.AppServer.Mcp.list_servers/2`, `resource_read/4`, and `tool_call/5`
 
 Current upstream routing and sync controls are also covered:
 
@@ -306,9 +308,46 @@ Common thread-history operations are exposed via:
 - `Codex.AppServer.thread_unarchive/2`
 - `Codex.AppServer.thread_compact/2` (uses upstream `thread/compact/start`)
 - `Codex.AppServer.thread_read/3` (with optional `include_turns`)
+- `Codex.AppServer.thread_inject_items/3` for raw response-item injection
 - `Codex.AppServer.thread_fork/3` and `Codex.AppServer.thread_rollback/3`
 - `Codex.AppServer.thread_loaded_list/2`
+- `Codex.AppServer.thread_memory_mode_set/3` for experimental per-thread memory control
 - `Codex.AppServer.thread_resume/3` accepts optional `history`, `path`, and `service_tier` overrides
+
+`thread_memory_mode_set/3` and `memory_reset/1` are experimental. Connect with
+`experimental_api: true` and prefer an isolated `CODEX_HOME` when you are
+testing or demonstrating global memory resets.
+
+## Marketplace, MCP, and filesystem runtime controls
+
+Recent upstream builds also expose:
+
+- `Codex.AppServer.marketplace_add/3` for marketplace acquisition from a local
+  or Git-backed source
+- `Codex.AppServer.Mcp.list_servers/2` `detail: :tools_and_auth_only` for
+  lighter MCP inventory reads
+- `Codex.AppServer.Mcp.resource_read/4` and `tool_call/5` for thread-scoped MCP
+  access
+- `Codex.AppServer.fs_watch/3` and `fs_unwatch/2` for `fs/changed`
+  notification workflows
+
+Example:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    cwd: "/tmp/workspace",
+    process_env: %{"CODEX_HOME" => "/tmp/codex-home"}
+  )
+
+{:ok, _} = Codex.AppServer.marketplace_add(conn, "./source-marketplace")
+{:ok, %{"data" => servers}} = Codex.AppServer.Mcp.list_servers(conn, detail: :tools_and_auth_only)
+{:ok, %{"path" => watched}} = Codex.AppServer.fs_watch(conn, "watch_1", "/tmp/demo.txt")
+```
+
+For a dedicated walkthrough of these newer parity surfaces, see
+`guides/12-operational-workflows.md`.
 
 ## Subagent host controls
 

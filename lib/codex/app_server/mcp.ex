@@ -33,23 +33,34 @@ defmodule Codex.AppServer.Mcp do
       %{}
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional(
+        "detail",
+        opts
+        |> Keyword.get(:detail)
+        |> Params.mcp_server_status_detail()
+      )
+
+    legacy_params =
+      %{}
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
 
     case Connection.request(conn, "mcpServerStatus/list", params,
            timeout_ms: Defaults.mcp_server_request_timeout_ms()
          ) do
       {:error, %{"code" => -32_601}} ->
-        Connection.request(conn, "mcpServers/list", params,
+        Connection.request(conn, "mcpServers/list", legacy_params,
           timeout_ms: Defaults.mcp_server_request_timeout_ms()
         )
 
       {:error, %{code: -32_601}} ->
-        Connection.request(conn, "mcpServers/list", params,
+        Connection.request(conn, "mcpServers/list", legacy_params,
           timeout_ms: Defaults.mcp_server_request_timeout_ms()
         )
 
       {:error, error} ->
         if unknown_variant_mcp_server_status_list?(error) do
-          Connection.request(conn, "mcpServers/list", params,
+          Connection.request(conn, "mcpServers/list", legacy_params,
             timeout_ms: Defaults.mcp_server_request_timeout_ms()
           )
         else
@@ -66,6 +77,39 @@ defmodule Codex.AppServer.Mcp do
   """
   @spec list_server_statuses(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def list_server_statuses(conn, opts \\ []), do: list_servers(conn, opts)
+
+  @doc """
+  Reads an MCP resource within the context of a thread.
+  """
+  @spec resource_read(connection(), String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def resource_read(conn, thread_id, server, uri)
+      when is_pid(conn) and is_binary(thread_id) and is_binary(server) and is_binary(uri) do
+    Connection.request(
+      conn,
+      "mcpServer/resource/read",
+      %{"threadId" => thread_id, "server" => server, "uri" => uri},
+      timeout_ms: Defaults.mcp_server_request_timeout_ms()
+    )
+  end
+
+  @doc """
+  Calls a tool on a configured MCP server within the context of a thread.
+  """
+  @spec tool_call(connection(), String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def tool_call(conn, thread_id, server, tool, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_binary(server) and is_binary(tool) and
+             is_list(opts) do
+    params =
+      %{"threadId" => thread_id, "server" => server, "tool" => tool}
+      |> Params.put_optional("arguments", normalize_json_value(Keyword.get(opts, :arguments)))
+      |> Params.put_optional("_meta", normalize_json_value(Keyword.get(opts, :meta)))
+
+    Connection.request(conn, "mcpServer/tool/call", params,
+      timeout_ms: Defaults.mcp_server_request_timeout_ms()
+    )
+  end
 
   @doc """
   Starts an OAuth login flow for a streamable HTTP MCP server.
@@ -161,4 +205,10 @@ defmodule Codex.AppServer.Mcp do
   defp fetch_server_url(%{} = server) do
     Map.get(server, "url") || Map.get(server, :url)
   end
+
+  defp normalize_json_value(value) when is_list(value) do
+    if Keyword.keyword?(value), do: Map.new(value), else: value
+  end
+
+  defp normalize_json_value(value), do: value
 end

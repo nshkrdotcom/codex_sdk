@@ -1,6 +1,7 @@
 defmodule Codex.Plugins.PathsTest do
   use ExUnit.Case, async: true
 
+  alias Codex.Plugins
   alias Codex.Plugins.Paths
   alias Codex.TestSupport.TempDir
 
@@ -36,5 +37,58 @@ defmodule Codex.Plugins.PathsTest do
 
     assert {:ok, ^expected_personal_marketplace_path} =
              Paths.marketplace_path(:personal, home: home_root)
+  end
+
+  test "alternate claude-compatible manifest and marketplace paths are discoverable" do
+    temp_root =
+      TempDir.create!("plugin_paths_alternate")
+      |> tap(&on_exit(fn -> File.rm_rf!(&1) end))
+
+    plugin_root = Path.join(temp_root, "plugins/demo-plugin")
+    manifest_path = Path.join(plugin_root, ".claude-plugin/plugin.json")
+    marketplace_path = Path.join(temp_root, ".claude-plugin/marketplace.json")
+
+    File.mkdir_p!(Path.dirname(manifest_path))
+    File.mkdir_p!(Path.dirname(marketplace_path))
+
+    File.write!(
+      manifest_path,
+      """
+      {
+        "name": "demo-plugin"
+      }
+      """
+    )
+
+    File.write!(
+      marketplace_path,
+      """
+      {
+        "name": "claude-marketplace",
+        "plugins": [
+          {
+            "name": "demo-plugin",
+            "source": {
+              "source": "local",
+              "path": "./plugins/demo-plugin"
+            },
+            "policy": {
+              "installation": "AVAILABLE",
+              "authentication": "ON_INSTALL"
+            },
+            "category": "Productivity"
+          }
+        ]
+      }
+      """
+    )
+
+    assert Paths.manifest_path(plugin_root) == Path.expand(manifest_path)
+    assert Paths.manifest_path(manifest_path) == Path.expand(manifest_path)
+    assert {:ok, ^temp_root} = Paths.marketplace_root(marketplace_path)
+    assert {:ok, manifest} = Plugins.read_manifest(manifest_path)
+    assert manifest.name == "demo-plugin"
+    assert {:ok, marketplace} = Plugins.read_marketplace(marketplace_path)
+    assert Enum.map(marketplace.plugins, & &1.name) == ["demo-plugin"]
   end
 end

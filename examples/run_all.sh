@@ -237,6 +237,7 @@ ssh_requires_cwd_cli_examples=(
 local_only_cli_examples=(
   "examples/structured_output.exs"
   "examples/live_app_server_plugins.exs"
+  "examples/live_marketplace_management.exs"
   "examples/live_app_server_approvals.exs"
   "examples/live_attachments_and_search.exs"
   "examples/live_oauth_login.exs"
@@ -337,6 +338,9 @@ if [[ "$ssh_enabled" == true ]]; then
         ;;
       "examples/live_app_server_plugins.exs")
         echo "SKIPPED: ${ex} (provisions host-local plugin fixtures that do not exist on the remote host)"
+        ;;
+      "examples/live_marketplace_management.exs")
+        echo "SKIPPED: ${ex} (provisions a host-local marketplace fixture and isolated CODEX_HOME state)"
         ;;
       "examples/live_app_server_approvals.exs")
         echo "SKIPPED: ${ex} (provisions host-local approval fixtures and isolated CODEX_HOME state)"

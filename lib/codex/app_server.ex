@@ -474,6 +474,17 @@ defmodule Codex.AppServer do
     Connection.request(conn, "thread/read", params, timeout_ms: 30_000)
   end
 
+  @spec thread_inject_items(connection(), String.t(), [map()]) :: {:ok, map()} | {:error, term()}
+  def thread_inject_items(conn, thread_id, items)
+      when is_pid(conn) and is_binary(thread_id) and is_list(items) do
+    Connection.request(
+      conn,
+      "thread/inject_items",
+      %{"threadId" => thread_id, "items" => items},
+      timeout_ms: 30_000
+    )
+  end
+
   @spec thread_loaded_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def thread_loaded_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
     params =
@@ -513,9 +524,26 @@ defmodule Codex.AppServer do
     Connection.request(conn, "thread/metadata/update", wire_params, timeout_ms: 30_000)
   end
 
+  @spec thread_memory_mode_set(connection(), String.t(), atom() | String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_memory_mode_set(conn, thread_id, mode)
+      when is_pid(conn) and is_binary(thread_id) do
+    Connection.request(
+      conn,
+      "thread/memoryMode/set",
+      %{"threadId" => thread_id, "mode" => Params.thread_memory_mode(mode)},
+      timeout_ms: 30_000
+    )
+  end
+
   @spec thread_unarchive(connection(), String.t()) :: {:ok, map()} | {:error, term()}
   def thread_unarchive(conn, thread_id) when is_pid(conn) and is_binary(thread_id) do
     Connection.request(conn, "thread/unarchive", %{"threadId" => thread_id}, timeout_ms: 30_000)
+  end
+
+  @spec memory_reset(connection()) :: {:ok, map()} | {:error, term()}
+  def memory_reset(conn) when is_pid(conn) do
+    Connection.request(conn, "memory/reset", %{}, timeout_ms: 30_000)
   end
 
   @doc """
@@ -882,6 +910,45 @@ defmodule Codex.AppServer do
       |> Params.put_optional("recursive", Keyword.get(opts, :recursive))
 
     Connection.request(conn, "fs/copy", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Starts filesystem change notifications for an absolute file or directory path.
+  """
+  @spec fs_watch(connection(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_watch(conn, watch_id, path)
+      when is_pid(conn) and is_binary(watch_id) and is_binary(path) do
+    Connection.request(
+      conn,
+      "fs/watch",
+      %{"watchId" => watch_id, "path" => path},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Stops a prior filesystem watch.
+  """
+  @spec fs_unwatch(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fs_unwatch(conn, watch_id) when is_pid(conn) and is_binary(watch_id) do
+    Connection.request(conn, "fs/unwatch", %{"watchId" => watch_id}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Adds a marketplace source through the app-server marketplace API.
+  """
+  @spec marketplace_add(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def marketplace_add(conn, source, opts \\ [])
+      when is_pid(conn) and is_binary(source) and is_list(opts) do
+    params =
+      %{"source" => source}
+      |> Params.put_optional("refName", Keyword.get(opts, :ref_name))
+      |> Params.put_optional(
+        "sparsePaths",
+        normalize_non_empty_list(Keyword.get(opts, :sparse_paths))
+      )
+
+    Connection.request(conn, "marketplace/add", params, timeout_ms: 30_000)
   end
 
   @doc """
@@ -1318,6 +1385,11 @@ defmodule Codex.AppServer do
   end
 
   defp normalize_thread_source_kinds(_), do: nil
+
+  defp normalize_non_empty_list(nil), do: nil
+  defp normalize_non_empty_list([]), do: nil
+  defp normalize_non_empty_list(values) when is_list(values), do: values
+  defp normalize_non_empty_list(value), do: [value]
 
   defp encode_command_exec_delta(nil), do: nil
   defp encode_command_exec_delta(delta) when is_binary(delta), do: Base.encode64(delta)
