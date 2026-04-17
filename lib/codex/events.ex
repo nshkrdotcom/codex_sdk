@@ -553,6 +553,36 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule ThreadRealtimeTranscriptDelta do
+    @moduledoc """
+    Event emitted when thread realtime streams transcript delta text.
+    """
+
+    @enforce_keys [:thread_id, :role, :delta]
+    defstruct thread_id: nil, role: nil, delta: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            role: String.t(),
+            delta: String.t()
+          }
+  end
+
+  defmodule ThreadRealtimeTranscriptDone do
+    @moduledoc """
+    Event emitted when thread realtime completes a transcript chunk.
+    """
+
+    @enforce_keys [:thread_id, :role, :text]
+    defstruct thread_id: nil, role: nil, text: nil
+
+    @type t :: %__MODULE__{
+            thread_id: String.t(),
+            role: String.t(),
+            text: String.t()
+          }
+  end
+
   defmodule ThreadRealtimeError do
     @moduledoc """
     Event emitted when thread realtime encounters an error.
@@ -995,7 +1025,7 @@ defmodule Codex.Events do
     Review payload emitted by guardian auto-approval review notifications.
     """
 
-    @type status :: :in_progress | :approved | :denied | :aborted
+    @type status :: :in_progress | :approved | :denied | :timed_out | :aborted
     @type risk_level :: :low | :medium | :high
 
     @enforce_keys [:status]
@@ -1014,13 +1044,19 @@ defmodule Codex.Events do
     Event emitted when guardian review begins for an approval request.
     """
 
-    @enforce_keys [:thread_id, :turn_id, :target_item_id, :review]
-    defstruct thread_id: nil, turn_id: nil, target_item_id: nil, review: nil, action: nil
+    @enforce_keys [:thread_id, :turn_id, :review]
+    defstruct thread_id: nil,
+              turn_id: nil,
+              review_id: nil,
+              target_item_id: nil,
+              review: nil,
+              action: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t(),
             turn_id: String.t(),
-            target_item_id: String.t(),
+            review_id: String.t() | nil,
+            target_item_id: String.t() | nil,
             review: GuardianApprovalReview.t(),
             action: map() | String.t() | nil
           }
@@ -1031,13 +1067,21 @@ defmodule Codex.Events do
     Event emitted when guardian review completes for an approval request.
     """
 
-    @enforce_keys [:thread_id, :turn_id, :target_item_id, :review]
-    defstruct thread_id: nil, turn_id: nil, target_item_id: nil, review: nil, action: nil
+    @enforce_keys [:thread_id, :turn_id, :review]
+    defstruct thread_id: nil,
+              turn_id: nil,
+              review_id: nil,
+              target_item_id: nil,
+              decision_source: nil,
+              review: nil,
+              action: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t(),
             turn_id: String.t(),
-            target_item_id: String.t(),
+            review_id: String.t() | nil,
+            target_item_id: String.t() | nil,
+            decision_source: :agent | String.t() | nil,
             review: GuardianApprovalReview.t(),
             action: map() | String.t() | nil
           }
@@ -1459,6 +1503,8 @@ defmodule Codex.Events do
     ThreadRealtimeStarted,
     ThreadRealtimeItemAdded,
     ThreadRealtimeOutputAudioDelta,
+    ThreadRealtimeTranscriptDelta,
+    ThreadRealtimeTranscriptDone,
     ThreadRealtimeError,
     ThreadRealtimeClosed,
     RawResponseItemCompleted,
@@ -1543,6 +1589,8 @@ defmodule Codex.Events do
           | ThreadRealtimeStarted.t()
           | ThreadRealtimeItemAdded.t()
           | ThreadRealtimeOutputAudioDelta.t()
+          | ThreadRealtimeTranscriptDelta.t()
+          | ThreadRealtimeTranscriptDone.t()
           | ThreadRealtimeError.t()
           | ThreadRealtimeClosed.t()
           | RawResponseItemCompleted.t()
@@ -1811,7 +1859,8 @@ defmodule Codex.Events do
     %GuardianApprovalReviewStarted{
       thread_id: Map.fetch!(map, "thread_id"),
       turn_id: Map.fetch!(map, "turn_id"),
-      target_item_id: Map.fetch!(map, "target_item_id"),
+      review_id: Map.get(map, "review_id"),
+      target_item_id: Map.get(map, "target_item_id"),
       review: parse_guardian_review(Map.get(map, "review") || %{}),
       action: Map.get(map, "action")
     }
@@ -1821,7 +1870,9 @@ defmodule Codex.Events do
     %GuardianApprovalReviewCompleted{
       thread_id: Map.fetch!(map, "thread_id"),
       turn_id: Map.fetch!(map, "turn_id"),
-      target_item_id: Map.fetch!(map, "target_item_id"),
+      review_id: Map.get(map, "review_id"),
+      target_item_id: Map.get(map, "target_item_id"),
+      decision_source: Map.get(map, "decision_source"),
       review: parse_guardian_review(Map.get(map, "review") || %{}),
       action: Map.get(map, "action")
     }
@@ -2184,6 +2235,22 @@ defmodule Codex.Events do
     %ThreadRealtimeOutputAudioDelta{
       thread_id: Map.fetch!(map, "thread_id"),
       audio: Map.get(map, "audio") || %{}
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/transcript/delta"} = map) do
+    %ThreadRealtimeTranscriptDelta{
+      thread_id: Map.fetch!(map, "thread_id"),
+      role: Map.get(map, "role") || "",
+      delta: Map.get(map, "delta") || ""
+    }
+  end
+
+  def parse!(%{"type" => "thread/realtime/transcript/done"} = map) do
+    %ThreadRealtimeTranscriptDone{
+      thread_id: Map.fetch!(map, "thread_id"),
+      role: Map.get(map, "role") || "",
+      text: Map.get(map, "text") || ""
     }
   end
 
@@ -2672,6 +2739,24 @@ defmodule Codex.Events do
     }
   end
 
+  def to_map(%ThreadRealtimeTranscriptDelta{} = event) do
+    %{
+      "type" => "thread/realtime/transcript/delta",
+      "thread_id" => event.thread_id,
+      "role" => event.role,
+      "delta" => event.delta
+    }
+  end
+
+  def to_map(%ThreadRealtimeTranscriptDone{} = event) do
+    %{
+      "type" => "thread/realtime/transcript/done",
+      "thread_id" => event.thread_id,
+      "role" => event.role,
+      "text" => event.text
+    }
+  end
+
   def to_map(%ThreadRealtimeError{} = event) do
     %{
       "type" => "thread/realtime/error",
@@ -2872,9 +2957,10 @@ defmodule Codex.Events do
       "type" => "guardian_approval_review_started",
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id,
-      "target_item_id" => event.target_item_id,
       "review" => guardian_review_to_map(event.review)
     }
+    |> put_optional("review_id", event.review_id)
+    |> put_optional("target_item_id", event.target_item_id)
     |> put_optional("action", event.action)
   end
 
@@ -2883,9 +2969,11 @@ defmodule Codex.Events do
       "type" => "guardian_approval_review_completed",
       "thread_id" => event.thread_id,
       "turn_id" => event.turn_id,
-      "target_item_id" => event.target_item_id,
       "review" => guardian_review_to_map(event.review)
     }
+    |> put_optional("review_id", event.review_id)
+    |> put_optional("target_item_id", event.target_item_id)
+    |> put_optional("decision_source", event.decision_source)
     |> put_optional("action", event.action)
   end
 
@@ -3337,6 +3425,7 @@ defmodule Codex.Events do
   defp guardian_review_status_to_string(:in_progress), do: "in_progress"
   defp guardian_review_status_to_string(:approved), do: "approved"
   defp guardian_review_status_to_string(:denied), do: "denied"
+  defp guardian_review_status_to_string(:timed_out), do: "timed_out"
   defp guardian_review_status_to_string(:aborted), do: "aborted"
   defp guardian_review_status_to_string(value) when is_binary(value), do: value
   defp guardian_review_status_to_string(_), do: "in_progress"
@@ -3345,10 +3434,13 @@ defmodule Codex.Events do
   defp parse_guardian_review_status("in_progress"), do: :in_progress
   defp parse_guardian_review_status("approved"), do: :approved
   defp parse_guardian_review_status("denied"), do: :denied
+  defp parse_guardian_review_status("timedOut"), do: :timed_out
+  defp parse_guardian_review_status("timed_out"), do: :timed_out
   defp parse_guardian_review_status("aborted"), do: :aborted
   defp parse_guardian_review_status(:in_progress), do: :in_progress
   defp parse_guardian_review_status(:approved), do: :approved
   defp parse_guardian_review_status(:denied), do: :denied
+  defp parse_guardian_review_status(:timed_out), do: :timed_out
   defp parse_guardian_review_status(:aborted), do: :aborted
   defp parse_guardian_review_status(_), do: :in_progress
 

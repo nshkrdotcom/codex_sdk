@@ -192,6 +192,14 @@ defmodule Codex.Options do
   end
 
   @doc false
+  @spec execution_model(t()) :: String.t() | nil
+  def execution_model(%__MODULE__{model: model} = opts) when is_binary(model) and model != "" do
+    if implicit_default_model?(opts), do: nil, else: model
+  end
+
+  def execution_model(%__MODULE__{}), do: nil
+
+  @doc false
   @spec normalize_execution_surface(term()) :: {:ok, ExecutionSurface.t()} | {:error, term()}
   def normalize_execution_surface(nil), do: {:ok, %ExecutionSurface{}}
 
@@ -285,6 +293,15 @@ defmodule Codex.Options do
   end
 
   defp pick(_attrs, [], default), do: default
+
+  defp implicit_default_model?(%__MODULE__{model_payload: payload}) when is_map(payload) do
+    case Map.get(payload, :resolution_source, Map.get(payload, "resolution_source")) do
+      value when value in [:default, "default"] -> true
+      _ -> false
+    end
+  end
+
+  defp implicit_default_model?(%__MODULE__{}), do: false
 
   defp normalize_model_input(attrs) do
     attrs

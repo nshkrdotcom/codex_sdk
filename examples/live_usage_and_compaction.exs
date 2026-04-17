@@ -15,20 +15,20 @@ defmodule LiveUsageAndCompaction do
   def main(args) do
     prompt = parse_prompt(args)
 
-    model = ExamplesSupport.example_model(Models.default_model())
+    model = System.get_env("CODEX_MODEL")
     reasoning = ExamplesSupport.example_reasoning(Models.default_reasoning_effort(model))
     tools? = Models.tool_enabled?(model)
 
     IO.puts("""
     Running against the live Codex CLI. Auth will use CODEX_API_KEY if set, otherwise your CLI login.
-    Using model=#{model} reasoning_effort=#{reasoning || "none"} tools_enabled=#{tools?}
+    Using model=#{model || "<cli default>"} reasoning_effort=#{reasoning || "none"} tools_enabled=#{tools?}
     """)
 
     codex_opts =
-      Support.codex_options!(%{
-        model: model,
-        reasoning_effort: reasoning
-      })
+      [model: model, reasoning_effort: reasoning]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+      |> Support.codex_options!()
 
     thread_opts =
       Thread.Options.new(%{})

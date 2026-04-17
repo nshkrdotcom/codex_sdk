@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{AppServer, Items, Options, Thread}
+alias Codex.{AppServer, Items, Thread}
 alias Codex.Models
 
 defmodule LiveThreadManagement do
@@ -40,7 +40,15 @@ defmodule LiveThreadManagement do
           })
         )
 
-      {:ok, result} = Thread.run(thread, prompt, %{timeout_ms: 120_000})
+      result =
+        case Thread.run(thread, prompt, %{timeout_ms: 120_000}) do
+          {:ok, result} ->
+            result
+
+          {:error, reason} ->
+            Mix.raise("thread run failed: #{inspect(reason)}")
+        end
+
       thread_id = result.thread.thread_id
 
       IO.puts("""

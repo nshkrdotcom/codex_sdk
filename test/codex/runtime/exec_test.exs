@@ -7,6 +7,7 @@ defmodule Codex.Runtime.ExecTest do
   alias Codex.{Events, Options}
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
+  alias Codex.Runtime.Exec.Profile, as: ExecProfile
   alias Codex.TestSupport.FixtureScripts
   alias ExecutionPlane.ProcessExit
 
@@ -111,6 +112,40 @@ defmodule Codex.Runtime.ExecTest do
              asm_provider: :codex,
              lane: :codex_sdk
            }
+  end
+
+  test "build_session_options routes exec prompts through stdin" do
+    script_path =
+      "thread_basic.jsonl"
+      |> FixtureScripts.cat_fixture()
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        api_key: "test",
+        codex_path_override: script_path,
+        model: default_model(),
+        reasoning_effort: :medium
+      })
+
+    {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts})
+
+    assert {:ok, session_opts} =
+             Exec.build_session_options(input: "Reply with exactly ok", exec_opts: exec_opts)
+
+    assert Keyword.fetch!(session_opts, :stdin) == "Reply with exactly ok"
+    refute Keyword.has_key?(session_opts, :prompt)
+  end
+
+  test "runtime exec profile omits positional prompt arguments" do
+    assert {:ok, command} =
+             ExecProfile.build_invocation(
+               binary_path: "codex",
+               stdin: "Reply with exactly ok"
+             )
+
+    assert command.command == "codex"
+    assert command.args == ["exec", "--json"]
   end
 
   test "capabilities publish session control support" do

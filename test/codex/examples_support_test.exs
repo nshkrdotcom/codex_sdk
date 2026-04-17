@@ -32,6 +32,37 @@ defmodule Codex.ExamplesSupportTest do
     end
   end
 
+  describe "example_model/1" do
+    test "does not force the bundled registry default outside Ollama" do
+      restore = capture_env()
+
+      on_exit(fn ->
+        restore_env(restore)
+      end)
+
+      System.delete_env("CODEX_PROVIDER_BACKEND")
+      System.delete_env("CODEX_OSS_PROVIDER")
+      System.delete_env("CODEX_MODEL")
+
+      assert ExamplesSupport.example_model() == nil
+      assert ExamplesSupport.example_model("gpt-5.4-mini") == "gpt-5.4-mini"
+    end
+
+    test "returns the active Ollama model in Ollama mode" do
+      restore = capture_env()
+
+      on_exit(fn ->
+        restore_env(restore)
+      end)
+
+      System.put_env("CODEX_PROVIDER_BACKEND", "oss")
+      System.put_env("CODEX_OSS_PROVIDER", "ollama")
+      System.put_env("CODEX_MODEL", "llama3.2")
+
+      assert ExamplesSupport.example_model() == "llama3.2"
+    end
+  end
+
   describe "auth availability" do
     test "treats ollama mode as example-auth-ready" do
       restore = capture_env()
@@ -234,6 +265,7 @@ defmodule Codex.ExamplesSupportTest do
 
   defp capture_env do
     %{
+      "CODEX_MODEL" => System.get_env("CODEX_MODEL"),
       "CODEX_PROVIDER_BACKEND" => System.get_env("CODEX_PROVIDER_BACKEND"),
       "CODEX_OSS_PROVIDER" => System.get_env("CODEX_OSS_PROVIDER")
     }

@@ -74,8 +74,24 @@ defmodule Codex.Protocol.CollaborationModeTest do
              "settings" => %{
                "model" => "gpt-5.1-codex",
                "reasoning_effort" => "low",
-               "developer_instructions" => nil,
                "future_nested" => "kept"
+             }
+           } = CollaborationMode.to_map(mode)
+  end
+
+  test "to_map/1 omits unset optional collaboration settings" do
+    mode = %CollaborationMode{
+      mode: :plan,
+      model: nil,
+      reasoning_effort: :medium,
+      developer_instructions: nil,
+      extra: %{}
+    }
+
+    assert %{
+             "mode" => "plan",
+             "settings" => %{
+               "reasoning_effort" => "medium"
              }
            } = CollaborationMode.to_map(mode)
   end

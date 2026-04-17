@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `thread/memoryMode/set`, `memory/reset`, `fs/watch`, `fs/unwatch`,
   `mcpServer/resource/read`, and `mcpServer/tool/call`, plus MCP server-status
   `detail` support.
+- App-server parity coverage for `session_start_source`,
+  `responsesapi_client_metadata`, realtime `output_modality`, guardian review
+  metadata (`review_id`, optional `target_item_id`, `decision_source`,
+  `timed_out`), realtime transcript delta/done notifications, MCP tool-call
+  `mcp_app_resource_uri`, and newer MCP config aliases.
 - `Codex.CLI.marketplace_add/2` for the upstream `codex marketplace add`
   command surface.
 - A new operational workflows guide and a real marketplace-management example
@@ -25,10 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local plugin path handling now accepts alternate discoverable
   `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
   while preserving Codex-native scaffold and write defaults.
+- The bundled visible model catalog and docs now match the current upstream
+  picker surface: `gpt-5.4`, `gpt-5.2-codex`, `gpt-5.1-codex-max`,
+  `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.2`, and
+  `gpt-5.1-codex-mini`.
 - README, guides, examples, and the example runner now document and exercise
-  the expanded app-server, marketplace, MCP, and thread-management surface.
+  the expanded app-server, marketplace, MCP, guardian-review, realtime
+  transcript, and thread-management surface.
 - HexDocs/package metadata now includes the guides and examples directories so
   published docs can keep the guide menu intact.
+
+### Fixed
+
+- CLI-backed exec and app-server runs no longer force the shared-core implicit
+  default model into live Codex turns. When model selection was left implicit,
+  the SDK now defers to the installed CLI's auth-aware default unless the user
+  explicitly pins `model:` or `CODEX_MODEL`.
+- Shared example helpers no longer pin the bundled registry default into live
+  CLI-backed examples when `CODEX_MODEL` is unset, so the example suite now
+  follows the installed `codex` default model consistently.
+- App-server `Thread.run_turn/3` failures now surface as `{:error,
+  {:turn_failed, ...}}` instead of returning an empty successful result with a
+  `nil` final response.
 
 ## [0.16.1] - 2026-04-09
 

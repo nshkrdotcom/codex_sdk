@@ -32,3 +32,5 @@ codex_sdk-*/
 /priv/plts/
 /logs/
 thread_id.txt
+
+.codex

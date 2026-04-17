@@ -225,6 +225,74 @@ defmodule Codex.AppServerTransportTest do
     assert %Items.AgentMessage{text: "hi"} = result.final_response
   end
 
+  test "Thread.run_turn/3 via app-server transport returns turn failures as errors" do
+    codex_opts = new_codex_opts!()
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+        experimental_api: true,
+        init_timeout_ms: 200
+      )
+
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+
+    thread = Thread.build(codex_opts, thread_opts)
+
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok,
+            %{"id" => turn_start_id, "method" => "turn/start", "params" => turn_start_params}} =
+             Jason.decode(turn_start_line)
+
+    assert turn_start_params["threadId"] == "thr_1"
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("error", %{
+        "message" => "boom",
+        "threadId" => "thr_1",
+        "turnId" => "turn_1"
+      }),
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{
+          "id" => "turn_1",
+          "status" => "failed",
+          "items" => [],
+          "error" => %{"message" => "boom"}
+        }
+      })
+    ])
+
+    assert {:error, {:turn_failed, _}} = Task.await(task, 500)
+  end
+
   test "app-server transport emits request user input events" do
     codex_opts = new_codex_opts!()
 
@@ -1299,10 +1367,9 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, _result} = Task.await(task, 500)
   end
 
-  test "app-server transport applies codex defaults for model and reasoning effort" do
+  test "app-server transport omits implicit default model overrides but preserves reasoning effort" do
     codex_opts =
       new_codex_opts!(%{
-        model: "gpt-5.1-codex-mini",
         reasoning_effort: :high
       })
 
@@ -1330,7 +1397,7 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start", "params" => params}} =
              Jason.decode(thread_start_line)
 
-    assert params["model"] == "gpt-5.1-codex-mini"
+    refute Map.has_key?(params, "model")
     assert %{"model_reasoning_effort" => "high"} = params["config"]
     refute Map.has_key?(params, "sandbox")
 

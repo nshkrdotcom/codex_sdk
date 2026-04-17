@@ -94,6 +94,11 @@ execution, auth resolution is:
 2. `auth.json` `OPENAI_API_KEY`
 3. ChatGPT OAuth tokens stored under `CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support)
 
+When you do not explicitly choose a model, CLI-backed exec and app-server runs
+defer to the installed `codex` binary's auth-aware default model instead of
+forcing the shared catalog default. Use `model:` or `CODEX_MODEL` when you want
+to pin a specific model.
+
 The SDK now also exposes native OAuth login via `Codex.OAuth`:
 
 ```elixir
@@ -350,6 +355,7 @@ return `{:error, {:unsupported_input, :exec}}`.
 App-server-only APIs include:
 
 - `Codex.AppServer.thread_list/2`, `thread_archive/2`, `thread_read/3`, `thread_fork/3`, `thread_rollback/3`, `thread_loaded_list/2`
+- `Codex.AppServer.thread_inject_items/3`, `thread_memory_mode_set/3`, `thread_unarchive/2`, `memory_reset/1`
 - `Codex.AppServer.model_list/2`, `config_read/2`, `config_write/4`, `config_batch_write/3`, `config_requirements/1`
 - `Codex.AppServer.experimental_feature_list/2`, `experimental_feature_enablement_set/2`
 - `Codex.AppServer.fs_read_file/2`, `fs_write_file/3`, `fs_create_directory/3`, `fs_get_metadata/2`, `fs_read_directory/2`, `fs_remove/3`, `fs_copy/4`
@@ -367,11 +373,13 @@ App-server-only APIs include:
 - Approvals via `Codex.AppServer.subscribe/2` + `Codex.AppServer.respond/3`
 
 On app-server transport, thread options now forward current upstream routing fields such as
-`ephemeral`, `service_name`, and `service_tier`; turn options can override `service_tier`
-per `Codex.Thread.run/3`. Raw plugin response maps still preserve newer upstream auth metadata
-such as `needsAuth`, while the typed plugin API projects those payloads into
-`Codex.Protocol.Plugin.*` structs and preserves unknown upstream fields in `extra` maps.
-Subscriptions adapt `mcpServer/startupStatus/updated` into typed `Codex.Events` structs.
+`ephemeral`, `service_name`, `service_tier`, and `session_start_source`; turn options can
+override `service_tier` and pass `responsesapi_client_metadata` per `Codex.Thread.run/3`.
+App-server realtime start accepts `output_modality`. Raw plugin response maps still preserve
+newer upstream auth metadata such as `needsAuth`, while the typed plugin API projects those
+payloads into `Codex.Protocol.Plugin.*` structs and preserves unknown upstream fields in
+`extra` maps. Subscriptions adapt current guardian-review, realtime-transcript, and
+`mcpServer/startupStatus/updated` notifications into typed `Codex.Events` structs.
 
 Runnable app-server demos now include `examples/live_app_server_filesystem.exs` for `fs/*`
 and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` using a disposable
@@ -778,7 +786,7 @@ can list them and apply or undo diffs locally:
     api_key: System.fetch_env!("CODEX_API_KEY"),
     codex_path_override: "/custom/path/to/codex",
     telemetry_prefix: [:codex, :sdk],
-    model: "o1",
+    model: "gpt-5.4",
     reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
     model_personality: :friendly,
     review_model: Codex.Models.default_model(),
@@ -981,9 +989,12 @@ the proposed root for the current session.
 App-server permission approvals use structured grant payloads rather than string decisions.
 Hooks can implement `review_permissions/3` and return `:allow`, `{:allow, permissions: ..., scope: :turn | :session}`,
 or `{:deny, reason}`. App-server streams now also surface `%Codex.Events.GuardianApprovalReviewStarted{}`,
-`%Codex.Events.GuardianApprovalReviewCompleted{}`, and `%Codex.Events.ServerRequestResolved{}` when
-the connected Codex build emits guardian review and request-resolution notifications. Use
-`approvals_reviewer: :user | :guardian_subagent` on thread options to control upstream review routing.
+`%Codex.Events.GuardianApprovalReviewCompleted{}`, `%Codex.Events.ThreadRealtimeTranscriptDelta{}`,
+`%Codex.Events.ThreadRealtimeTranscriptDone{}`, and `%Codex.Events.ServerRequestResolved{}` when
+the connected Codex build emits guardian review, realtime transcript, and request-resolution
+notifications. Guardian review events preserve `review_id`, optional `target_item_id`,
+`decision_source`, and `:timed_out` review states. Use `approvals_reviewer: :user | :guardian_subagent`
+on thread options to control upstream review routing.
 The SDK also emits `%Codex.Events.CommandApprovalRequested{}` and
 `%Codex.Events.FileApprovalRequested{}` for app-server request approvals, preserving upstream
 fields such as `approval_id`, `command_actions`, `network_approval_context`,

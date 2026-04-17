@@ -57,6 +57,13 @@ defmodule Codex.SubagentsTest do
     assert {:ok, []} = Task.await(task, 200)
   end
 
+  test "subagents: list passes thread/list timeout overrides through to app-server", %{
+    conn: conn
+  } do
+    assert {:error, {:timeout, "thread/list", 10}} =
+             Subagents.list(conn, limit: 5, timeout_ms: 10)
+  end
+
   test "subagents: lists children for parent thread", %{conn: conn} do
     task = Task.async(fn -> Subagents.children(conn, "thr_parent") end)
 

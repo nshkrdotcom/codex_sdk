@@ -144,6 +144,24 @@ defmodule Codex.AppServer.Params do
   def thread_memory_mode(value) when is_binary(value), do: value
   def thread_memory_mode(_), do: nil
 
+  @spec thread_start_source(atom() | String.t() | nil) :: String.t() | nil
+  def thread_start_source(nil), do: nil
+  def thread_start_source(:startup), do: "startup"
+  def thread_start_source(:clear), do: "clear"
+  def thread_start_source("startup"), do: "startup"
+  def thread_start_source("clear"), do: "clear"
+  def thread_start_source(value) when is_binary(value), do: value
+  def thread_start_source(_), do: nil
+
+  @spec realtime_output_modality(atom() | String.t() | nil) :: String.t() | nil
+  def realtime_output_modality(nil), do: nil
+  def realtime_output_modality(:text), do: "text"
+  def realtime_output_modality(:audio), do: "audio"
+  def realtime_output_modality("text"), do: "text"
+  def realtime_output_modality("audio"), do: "audio"
+  def realtime_output_modality(value) when is_binary(value), do: value
+  def realtime_output_modality(_), do: nil
+
   @spec mcp_server_status_detail(atom() | String.t() | nil) :: String.t() | nil
   def mcp_server_status_detail(nil), do: nil
   def mcp_server_status_detail(:full), do: "full"

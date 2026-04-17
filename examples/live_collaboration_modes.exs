@@ -7,7 +7,7 @@ alias CodexExamples.Support
 Support.init!()
 
 alias Codex.ExamplesSupport
-alias Codex.{AppServer, Items, Models, Options, Thread}
+alias Codex.{AppServer, Items, Models, Thread}
 alias Codex.Protocol.CollaborationMode
 
 defmodule LiveCollaborationModes do
@@ -96,7 +96,7 @@ defmodule LiveCollaborationModes do
     IO.puts("""
     Using server-advertised collaboration preset:
       mode: #{mode.mode}
-      model: #{mode.model}#{model_note}
+      model: #{mode.model || "<cli default>"}#{model_note}
       reasoning_effort: #{mode.reasoning_effort || "none"}#{effort_note}
       developer_instructions: built-in preset instructions (`settings.developer_instructions = null`)
     """)
@@ -113,10 +113,10 @@ defmodule LiveCollaborationModes do
            Thread.run(thread, prompt, %{collaboration_mode: mode, timeout_ms: 120_000}) do
       IO.puts("""
       Turn completed with collaboration_mode=#{mode.mode}.
-        model: #{mode.model}
+        model: #{mode.model || "<cli default>"}
         reasoning_effort: #{mode.reasoning_effort || "none"}
         developer_instructions: built-in preset instructions
-        final_response: #{format_final_response(result.final_response)}
+        final_response: #{format_final_response(result.final_response || fallback_final_response(result.events))}
       """)
 
       :ok
@@ -254,7 +254,8 @@ defmodule LiveCollaborationModes do
         {model, " (advertised by the server preset)"}
 
       _ ->
-        {ExamplesSupport.example_model(), " (server omitted model; using the SDK default)"}
+        {ExamplesSupport.example_model(Models.default_model()),
+         " (server omitted model; collaboration presets require an explicit model, so using the current bundled default unless CODEX_MODEL is set)"}
     end
   end
 
@@ -268,10 +269,14 @@ defmodule LiveCollaborationModes do
           if effort == :low do
             " (advertised by the server preset)"
           else
-            " (advertised by the server preset; this intentionally overrides the global :low default)"
+            " (advertised by the server preset; this intentionally overrides the runtime default)"
           end
 
         {effort, note}
+
+      {false, _effort} when is_nil(model) ->
+        {nil,
+         " (server omitted effort; deferring to the installed codex CLI/model default)"}
 
       _ ->
         effort = ExamplesSupport.example_reasoning(Models.default_reasoning_effort(model))
@@ -349,6 +354,17 @@ defmodule LiveCollaborationModes do
   defp extract_text(%{type: "text", text: text}) when is_binary(text), do: text
   defp extract_text(other) when is_binary(other), do: other
   defp extract_text(other), do: inspect(other)
+
+  defp fallback_final_response(events) when is_list(events) do
+    events
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      %Codex.Events.ItemCompleted{item: %Items.AgentMessage{} = item} -> item
+      _other -> nil
+    end)
+  end
+
+  defp fallback_final_response(_events), do: nil
 
   defp format_final_response(nil), do: "(no final assistant message returned)"
   defp format_final_response(response), do: extract_text(response)

@@ -175,6 +175,23 @@ defmodule Codex.AppServer.ConnectionTest do
            ]
   end
 
+  test "launch args omit implicit default model config" do
+    codex_opts = new_codex_opts!(%{})
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+        init_timeout_ms: 200
+      )
+
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+    assert %CliSubprocessCore.Command{} = command = Keyword.fetch!(start_opts, :command)
+    assert command.args == ["app-server"]
+  end
+
   test "launch command resolves cwd-sensitive asdf shims to stable executables" do
     cwd = tmp_dir!("codex_app_server_fixture")
 

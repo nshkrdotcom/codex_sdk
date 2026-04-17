@@ -168,7 +168,8 @@ defmodule Codex.AppServer.NotificationAdapter do
      %Events.GuardianApprovalReviewStarted{
        thread_id: fetch(params, "threadId", "thread_id") || "",
        turn_id: fetch(params, "turnId", "turn_id") || "",
-       target_item_id: fetch(params, "targetItemId", "target_item_id") || "",
+       review_id: fetch(params, "reviewId", "review_id"),
+       target_item_id: fetch(params, "targetItemId", "target_item_id"),
        review: normalize_guardian_review(Map.get(params, "review")),
        action: Map.get(params, "action")
      }}
@@ -179,7 +180,12 @@ defmodule Codex.AppServer.NotificationAdapter do
      %Events.GuardianApprovalReviewCompleted{
        thread_id: fetch(params, "threadId", "thread_id") || "",
        turn_id: fetch(params, "turnId", "turn_id") || "",
-       target_item_id: fetch(params, "targetItemId", "target_item_id") || "",
+       review_id: fetch(params, "reviewId", "review_id"),
+       target_item_id: fetch(params, "targetItemId", "target_item_id"),
+       decision_source:
+         params
+         |> fetch("decisionSource", "decision_source")
+         |> normalize_guardian_decision_source(),
        review: normalize_guardian_review(Map.get(params, "review")),
        action: Map.get(params, "action")
      }}
@@ -456,6 +462,24 @@ defmodule Codex.AppServer.NotificationAdapter do
      }}
   end
 
+  def to_event("thread/realtime/transcript/delta", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeTranscriptDelta{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       role: Map.get(params, "role") || "",
+       delta: Map.get(params, "delta") || ""
+     }}
+  end
+
+  def to_event("thread/realtime/transcript/done", %{} = params) do
+    {:ok,
+     %Events.ThreadRealtimeTranscriptDone{
+       thread_id: fetch(params, "threadId", "thread_id") || "",
+       role: Map.get(params, "role") || "",
+       text: Map.get(params, "text") || ""
+     }}
+  end
+
   def to_event("thread/realtime/error", %{} = params) do
     {:ok,
      %Events.ThreadRealtimeError{
@@ -610,10 +634,13 @@ defmodule Codex.AppServer.NotificationAdapter do
   defp normalize_guardian_review_status("in_progress"), do: :in_progress
   defp normalize_guardian_review_status("approved"), do: :approved
   defp normalize_guardian_review_status("denied"), do: :denied
+  defp normalize_guardian_review_status("timedOut"), do: :timed_out
+  defp normalize_guardian_review_status("timed_out"), do: :timed_out
   defp normalize_guardian_review_status("aborted"), do: :aborted
   defp normalize_guardian_review_status(:in_progress), do: :in_progress
   defp normalize_guardian_review_status(:approved), do: :approved
   defp normalize_guardian_review_status(:denied), do: :denied
+  defp normalize_guardian_review_status(:timed_out), do: :timed_out
   defp normalize_guardian_review_status(:aborted), do: :aborted
   defp normalize_guardian_review_status(_), do: :in_progress
 
@@ -624,6 +651,11 @@ defmodule Codex.AppServer.NotificationAdapter do
   defp normalize_guardian_risk_level(:medium), do: :medium
   defp normalize_guardian_risk_level(:high), do: :high
   defp normalize_guardian_risk_level(_), do: nil
+
+  defp normalize_guardian_decision_source("agent"), do: :agent
+  defp normalize_guardian_decision_source(:agent), do: :agent
+  defp normalize_guardian_decision_source(nil), do: nil
+  defp normalize_guardian_decision_source(value), do: value
 
   defp normalize_thread_status(nil), do: nil
 

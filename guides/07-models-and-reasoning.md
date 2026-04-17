@@ -7,7 +7,7 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the SDK default model (currently resolves to gpt-5.4 from the bundled catalog)
+# Use the bundled registry default model metadata (currently gpt-5.4)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
@@ -22,7 +22,7 @@ agent = %Codex.Realtime.Agent{model: Codex.Realtime.Agent.default_model()}
 
 ## Model Defaults
 
-The SDK derives default text models in `Codex.Models`:
+The SDK derives bundled text-model metadata in `Codex.Models`:
 
 | Context | Default | Source |
 |---------|---------|--------|
@@ -32,9 +32,14 @@ The SDK derives default text models in `Codex.Models`:
 | Speech-to-text | `Codex.Voice.Models.OpenAISTT.model_name()` | `@default_model` in `OpenAISTT` |
 | Text-to-speech | `Codex.Voice.Models.OpenAITTS.model_name()` | `@default_model` in `OpenAITTS` |
 
+`Codex.Models.default_model/0` is a registry reader. It does not apply env
+overrides and it does not force live exec/app-server runs to use that model.
+Those live runtime surfaces only pin a model when `Codex.Options` resolves an
+explicit model from user input, `CODEX_MODEL`, or an OSS provider route.
+
 The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
-to `gpt-5.4` unless env overrides or a fresher ChatGPT `/models` cache win.
+to `gpt-5.4`.
 
 The bundled offline catalog lives in `priv/models.json` and is synced from the
 vendored upstream file at `codex/codex-rs/core/models.json`.
@@ -45,8 +50,9 @@ change the current BEAM process's default-model inference on its own.
 
 ### Environment Overrides
 
-The SDK checks these environment variables (in order) before falling back to the
-auth-aware catalog default:
+When you build `Codex.Options` without an explicit `:model`, the shared payload
+resolver checks these environment variables (in order) before leaving model
+selection implicit for the installed `codex` CLI runtime:
 
 1. `CODEX_MODEL`
 2. `OPENAI_DEFAULT_MODEL`
@@ -58,37 +64,38 @@ CODEX_MODEL=gpt-5.1-codex-max mix run my_script.exs
 
 ## Available Models
 
-Call `Codex.Models.list_visible/1` to see what models are available for the
-current auth mode:
+Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
 
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.3-codex",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
 #=>   "gpt-5.2-codex",
 #=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.3-codex",
+#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2",
 #=>   "gpt-5.1-codex-mini"
 #=> ]
 
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.3-codex",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
-#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2-codex",
 #=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.3-codex",
+#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2",
 #=>   "gpt-5.1-codex-mini"
 #=> ]
 ```
 
-That is the current bundled picker-visible snapshot shipped with this repo.
-ChatGPT-auth `/models` refreshes can expose additional runtime-visible models,
-so treat this as the offline baseline rather than the maximum possible menu.
+That is the bundled picker-visible snapshot shipped with this repo and the
+order `Codex.Models.list_visible/1` exposes locally. If upstream ships a newer
+runtime-only model before the bundled catalog is refreshed here, pass it
+explicitly via `model:` or `CODEX_MODEL`.
 
 Each model preset includes:
 
@@ -185,12 +192,15 @@ iex> Codex.Models.normalize_reasoning_effort("invalid")
 Model and reasoning configuration follows the SDK's layered override system.
 Later layers take precedence:
 
-1. **Bundled catalog defaults** - `Codex.Models.default_model()` picks the first visible model for the inferred auth mode (falling back to `Codex.Config.Defaults` only if catalog resolution fails), with `:medium` effort
-2. **Environment variables** - `CODEX_MODEL`, etc.
+1. **Bundled registry metadata** - `Codex.Models.default_model/0` and `Codex.Models.default_reasoning_effort/1` expose the vendored catalog defaults
+2. **Environment variables** - `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, and `CODEX_MODEL_DEFAULT` are consumed when `Codex.Options` is built without an explicit model
 3. **`Codex.Options`** - `:model` and `:reasoning_effort` fields
 4. **`Codex.Thread.Options`** - per-thread overrides
 5. **`Codex.Thread.Options.config_overrides`** - TOML-style key/value pairs
 6. **Per-turn `config_overrides`** - passed to `Codex.Thread.run/3`
+
+If `Codex.Options` still has no explicit model after that resolution, the exec
+and app-server transports leave model selection to the installed `codex` CLI.
 
 ### `openai_base_url` and `model_providers`
 

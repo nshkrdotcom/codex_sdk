@@ -843,7 +843,7 @@ defmodule MyApp.Codex do
   end
 
   defp model do
-    Application.get_env(:my_app, :codex_model, "o1")
+    Application.get_env(:my_app, :codex_model, "gpt-5.4")
   end
 
   defp sandbox_mode do
@@ -866,7 +866,7 @@ Override configuration per request.
 ```elixir
 defmodule ConfigExample do
   def analyze_with_different_models(input) do
-    models = ["gpt-4", "o1", "gpt-4-turbo"]
+    models = ["gpt-5.4", "gpt-5.2-codex", "gpt-5.4-mini"]
 
     results = Enum.map(models, fn model ->
       thread_opts = %Codex.Thread.Options{model: model}
@@ -1355,7 +1355,7 @@ end
 
 `examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or a CLI login) and mirrors the latest defaults:
 
-- Uses the SDK default model (`Codex.Models.default_model/0`, currently `gpt-5.4` with the bundled catalog) and `:low` reasoning effort, coercing upward only when the selected model requires it.
+- Uses `CODEX_MODEL` when you explicitly export one; otherwise it leaves model selection to the installed `codex` CLI default while still requesting `:low` reasoning effort and coercing upward when the resolved model requires it.
 - Streams events, printing token-usage deltas and turn diffs as they arrive.
 - Captures explicit compaction notifications (including usage deltas) and merges them into the displayed token totals.
 - Prints the final agent response alongside merged usage.
@@ -1366,7 +1366,7 @@ Run it with:
 mix run examples/live_usage_and_compaction.exs "summarize recent changes"
 ```
 
-Note: `examples/run_all.sh` exports `CODEX_MODEL=gpt-5.4-mini` by default for faster reproducible live runs, while the bundled SDK default remains `gpt-5.4`. Most live examples inherit `Codex.Models.default_model/0` instead of pinning a model string and explicitly prefer `reasoning_effort: :low`, so overriding `CODEX_MODEL` is usually enough if you want a different model.
+Note: `examples/run_all.sh` no longer exports a default `CODEX_MODEL`. Most live examples now defer to the installed `codex` CLI default unless you explicitly set `CODEX_MODEL`, while still applying example-specific reasoning-effort overrides where noted.
 
 ## Live Exec Controls
 

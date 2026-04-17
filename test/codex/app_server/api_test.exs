@@ -579,6 +579,23 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{}} = Task.await(task, 200)
   end
 
+  test "thread_start/2 encodes session start source", %{conn: conn} do
+    task = Task.async(fn -> AppServer.thread_start(conn, session_start_source: :startup) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["sessionStartSource"] == "startup"
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{"thread" => %{"id" => "thr_1"}})
+    )
+
+    assert {:ok, %{"thread" => %{"id" => "thr_1"}}} = Task.await(task, 200)
+  end
+
   test "thread_memory_mode_set/3 normalizes atom modes", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_memory_mode_set(conn, "thr_1", :disabled) end)
 
@@ -798,6 +815,41 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
+  test "turn_start/4 omits nil collaboration mode settings", %{conn: conn} do
+    collab = %Codex.Protocol.CollaborationMode{
+      mode: :plan,
+      model: nil,
+      reasoning_effort: :medium,
+      developer_instructions: nil
+    }
+
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi", collaboration_mode: collab)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert %{
+             "mode" => "plan",
+             "settings" => %{
+               "model" => "gpt-5.4",
+               "reasoning_effort" => "medium"
+             }
+           } = params["collaborationMode"]
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
   test "turn APIs encode mention input and steering preconditions", %{conn: conn} do
     start_task =
       Task.async(fn ->
@@ -834,6 +886,48 @@ defmodule Codex.AppServer.ApiTest do
     assert steer_params["threadId"] == "thr_1"
     assert steer_params["expectedTurnId"] == "turn_1"
     assert steer_params["input"] == [%{"type" => "text", "text" => "continue"}]
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(steer_id, %{"turnId" => "turn_1"}))
+    assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
+  end
+
+  test "turn APIs encode responses api client metadata", %{conn: conn} do
+    metadata = %{"session_source" => "sdk", "lane" => "tests"}
+
+    start_task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi", responsesapi_client_metadata: metadata)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "turn/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["responsesapiClientMetadata"] == metadata
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(start_task, 200)
+
+    steer_task =
+      Task.async(fn ->
+        AppServer.turn_steer(conn, "thr_1", "continue",
+          expected_turn_id: "turn_1",
+          responsesapi_client_metadata: metadata
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, steer_line}
+
+    assert {:ok, %{"id" => steer_id, "method" => "turn/steer", "params" => steer_params}} =
+             Jason.decode(steer_line)
+
+    assert steer_params["responsesapiClientMetadata"] == metadata
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(steer_id, %{"turnId" => "turn_1"}))
     assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
@@ -1933,7 +2027,10 @@ defmodule Codex.AppServer.ApiTest do
 
     realtime_start_task =
       Task.async(fn ->
-        AppServer.thread_realtime_start(conn, "thr_1", "Listen", session_id: "rt_1")
+        AppServer.thread_realtime_start(conn, "thr_1", "Listen",
+          session_id: "rt_1",
+          output_modality: :audio
+        )
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, realtime_start_line}
@@ -1942,7 +2039,12 @@ defmodule Codex.AppServer.ApiTest do
             %{
               "id" => realtime_start_id,
               "method" => "thread/realtime/start",
-              "params" => %{"threadId" => "thr_1", "prompt" => "Listen", "sessionId" => "rt_1"}
+              "params" => %{
+                "threadId" => "thr_1",
+                "prompt" => "Listen",
+                "outputModality" => "audio",
+                "sessionId" => "rt_1"
+              }
             }} = Jason.decode(realtime_start_line)
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(realtime_start_id, %{}))

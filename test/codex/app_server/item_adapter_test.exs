@@ -64,6 +64,28 @@ defmodule Codex.AppServer.ItemAdapterTest do
               }} = ItemAdapter.to_item(item)
     end
 
+    test "maps mcpToolCall resource uri metadata" do
+      item = %{
+        "type" => "mcpToolCall",
+        "id" => "mcp_1",
+        "server" => "codex_apps",
+        "tool" => "lookup",
+        "arguments" => %{"id" => "123"},
+        "mcpAppResourceUri" => "ui://widget/lookup.html",
+        "status" => "completed"
+      }
+
+      assert {:ok,
+              %Items.McpToolCall{
+                id: "mcp_1",
+                server: "codex_apps",
+                tool: "lookup",
+                arguments: %{"id" => "123"},
+                mcp_app_resource_uri: "ui://widget/lookup.html",
+                status: :completed
+              }} = ItemAdapter.to_item(item)
+    end
+
     test "maps reasoning into Items.Reasoning with structured summary/content" do
       item = %{
         "type" => "reasoning",

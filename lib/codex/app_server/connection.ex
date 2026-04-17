@@ -718,7 +718,7 @@ defmodule Codex.AppServer.Connection do
     derived_values =
       []
       |> maybe_add_config_value("model_provider", app_server_model_provider(payload))
-      |> maybe_add_config_value("model", normalize_option_string(codex_opts.model))
+      |> maybe_add_config_value("model", Options.execution_model(codex_opts))
 
     (payload_values ++ derived_values)
     |> Enum.uniq()
@@ -786,10 +786,6 @@ defmodule Codex.AppServer.Connection do
       _value, acc -> acc
     end)
   end
-
-  defp normalize_option_string(value) when is_atom(value), do: Atom.to_string(value)
-  defp normalize_option_string(value) when is_binary(value) and value != "", do: value
-  defp normalize_option_string(_value), do: nil
 
   defp failure_reason({:channel_exit, %{reason: reason}}), do: reason
   defp failure_reason({:channel_error, reason}), do: reason

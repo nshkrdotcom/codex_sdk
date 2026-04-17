@@ -971,7 +971,9 @@ defmodule Codex.Thread do
 
   defp maybe_decode_stream_event(event, _structured?), do: event
 
-  defp extract_turn_failure(events) do
+  @doc false
+  @spec extract_turn_failure([Events.t()]) :: :ok | {:error, term()}
+  def extract_turn_failure(events) do
     find_turn_failed_failure(events) ||
       find_turn_completed_failure(events) ||
       find_completed_turn_success(events) ||

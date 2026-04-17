@@ -297,7 +297,7 @@ defmodule Codex.Models do
       is_default: model.id == default_id,
       upgrade: normalize_upgrade(model),
       show_in_picker: model.visibility == :public,
-      supported_in_api: model.visibility == :public,
+      supported_in_api: normalize_supported_in_api(model),
       family: model.family
     }
   end
@@ -362,6 +362,14 @@ defmodule Codex.Models do
   defp normalize_model(nil), do: nil
   defp normalize_model(model) when is_binary(model), do: String.trim(model)
   defp normalize_model(model), do: model |> to_string() |> String.trim()
+
+  defp normalize_supported_in_api(%RegistryModel{visibility: visibility, metadata: metadata})
+       when is_map(metadata) do
+    case Map.get(metadata, "supported_in_api") do
+      value when is_boolean(value) -> value
+      _ -> visibility == :public
+    end
+  end
 
   defp nearest_effort(target, supported) do
     target_rank = effort_rank(target)

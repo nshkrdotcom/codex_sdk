@@ -143,9 +143,10 @@ defmodule Codex.AppServer.NotificationAdapterTest do
       params = %{
         "threadId" => "thr_1",
         "turnId" => "turn_1",
-        "targetItemId" => "item_1",
+        "reviewId" => "review_1",
+        "decisionSource" => "agent",
         "review" => %{
-          "status" => "inProgress",
+          "status" => "timedOut",
           "riskScore" => 7,
           "riskLevel" => "high",
           "rationale" => "Suspicious command"
@@ -157,9 +158,10 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               %Events.GuardianApprovalReviewStarted{
                 thread_id: "thr_1",
                 turn_id: "turn_1",
-                target_item_id: "item_1",
+                review_id: "review_1",
+                target_item_id: nil,
                 review: %Events.GuardianApprovalReview{
-                  status: :in_progress,
+                  status: :timed_out,
                   risk_score: 7,
                   risk_level: :high,
                   rationale: "Suspicious command"
@@ -171,8 +173,10 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               %Events.GuardianApprovalReviewCompleted{
                 thread_id: "thr_1",
                 turn_id: "turn_1",
-                target_item_id: "item_1",
-                review: %Events.GuardianApprovalReview{status: :in_progress}
+                review_id: "review_1",
+                target_item_id: nil,
+                decision_source: :agent,
+                review: %Events.GuardianApprovalReview{status: :timed_out}
               }} = NotificationAdapter.to_event("item/autoApprovalReview/completed", params)
     end
 
@@ -349,6 +353,30 @@ defmodule Codex.AppServer.NotificationAdapterTest do
                    "numChannels" => 1,
                    "samplesPerChannel" => 128
                  }
+               })
+
+      assert {:ok,
+              %Events.ThreadRealtimeTranscriptDelta{
+                thread_id: "thr_1",
+                role: "assistant",
+                delta: "Hello"
+              }} =
+               NotificationAdapter.to_event("thread/realtime/transcript/delta", %{
+                 "threadId" => "thr_1",
+                 "role" => "assistant",
+                 "delta" => "Hello"
+               })
+
+      assert {:ok,
+              %Events.ThreadRealtimeTranscriptDone{
+                thread_id: "thr_1",
+                role: "assistant",
+                text: "Hello world"
+              }} =
+               NotificationAdapter.to_event("thread/realtime/transcript/done", %{
+                 "threadId" => "thr_1",
+                 "role" => "assistant",
+                 "text" => "Hello world"
                })
 
       assert {:ok, %Events.ThreadRealtimeError{thread_id: "thr_1", message: "boom"}} =

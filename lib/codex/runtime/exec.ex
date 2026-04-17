@@ -172,7 +172,7 @@ defmodule Codex.Runtime.Exec do
           subscriber: subscriber,
           metadata: session_metadata(opts, exec_opts),
           command_spec: command_spec,
-          prompt: normalize_prompt(input),
+          stdin: normalize_prompt(input),
           cli_profile: exec_opt(exec_opts, :profile),
           oss: payload_oss?(exec_opts),
           local_provider: payload_local_provider(exec_opts),

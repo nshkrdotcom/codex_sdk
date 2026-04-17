@@ -6,7 +6,7 @@ alias CodexExamples.Support
 
 Support.init!()
 
-alias Codex.{AppServer, Events, Items, Options, RunResultStreaming, Subagents, Thread}
+alias Codex.{AppServer, Events, Items, RunResultStreaming, Subagents, Thread}
 alias Codex.ExamplesSupport
 
 defmodule CodexExamples.LiveSubagentHostControls do
@@ -15,7 +15,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
   @stream_wait_note """
   Waiting for streamed events. If the model stays quiet briefly, Codex is still working.
   """
-  @thread_list_opts [sort_key: :updated_at, limit: 100]
+  @thread_list_opts [sort_key: :updated_at, limit: 20, timeout_ms: 120_000]
   @discovery_attempts 10
   @discovery_delay_ms 500
   @prompt_tool_kinds [:spawn_agent, :send_input, :resume_agent, :wait, :close_agent]
@@ -98,12 +98,6 @@ defmodule CodexExamples.LiveSubagentHostControls do
       with_app_server_connection!(codex_opts, fn host_conn ->
         list_opts = Keyword.put(@thread_list_opts, :cwd, cwd)
 
-        all_subagents =
-          retry_ok!(
-            "thread/list for subagents",
-            fn -> Subagents.list(host_conn, list_opts) end
-          )
-
         children =
           if parent_state.spawn_observed? do
             retry_until!(
@@ -129,6 +123,12 @@ defmodule CodexExamples.LiveSubagentHostControls do
               Subagents.children(host_conn, parent_thread_id, list_opts)
             end)
           end
+
+        all_subagents =
+          retry_ok!(
+            "thread/list for recent subagents",
+            fn -> Subagents.list(host_conn, list_opts) end
+          )
 
         case children do
           [%{"id" => child_thread_id} = child | _] ->

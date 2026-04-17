@@ -176,6 +176,7 @@ defmodule Codex.Items do
               server: nil,
               tool: nil,
               arguments: nil,
+              mcp_app_resource_uri: nil,
               result: nil,
               error: nil,
               status: :in_progress,
@@ -189,6 +190,7 @@ defmodule Codex.Items do
             server: String.t(),
             tool: String.t(),
             arguments: map() | list() | nil,
+            mcp_app_resource_uri: String.t() | nil,
             result: map() | nil,
             error: map() | nil,
             status: status(),
@@ -585,6 +587,7 @@ defmodule Codex.Items do
     |> maybe_put("server", item.server)
     |> maybe_put("tool", item.tool)
     |> maybe_put("arguments", item.arguments)
+    |> maybe_put("mcp_app_resource_uri", item.mcp_app_resource_uri)
     |> maybe_put("result", item.result)
     |> maybe_put("error", item.error)
     |> maybe_put("status", status_to_string(item.status, @mcp_status_map))
@@ -783,6 +786,7 @@ defmodule Codex.Items do
       server: get(map, :server) || "",
       tool: get(map, :tool) || "",
       arguments: get(map, :arguments),
+      mcp_app_resource_uri: get(map, :mcp_app_resource_uri),
       result: get(map, :result),
       error: get(map, :error),
       status: parse_status(get(map, :status), @mcp_status_map, :in_progress),

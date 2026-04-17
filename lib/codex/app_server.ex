@@ -8,6 +8,7 @@ defmodule Codex.AppServer do
   alias Codex.AppServer.RemoteConnection
   alias Codex.AppServer.Supervisor, as: ConnectionSupervisor
   alias Codex.Config.Defaults
+  alias Codex.Models
   alias Codex.OAuth.AppServerAuth
   alias Codex.Options
   alias Codex.Protocol.Plugin
@@ -268,6 +269,17 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
         |> Params.put_optional(
+          "sessionStartSource",
+          params
+          |> fetch_any([
+            :session_start_source,
+            "session_start_source",
+            :sessionStartSource,
+            "sessionStartSource"
+          ])
+          |> Params.thread_start_source()
+        )
+        |> Params.put_optional(
           "serviceName",
           fetch_any(params, [:service_name, "service_name", :serviceName, "serviceName"])
         )
@@ -358,6 +370,8 @@ defmodule Codex.AppServer do
 
   @spec thread_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def thread_list(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+
     wire_params =
       %{}
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
@@ -372,7 +386,7 @@ defmodule Codex.AppServer do
       |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
       |> Params.put_optional("searchTerm", Keyword.get(opts, :search_term))
 
-    Connection.request(conn, "thread/list", wire_params, timeout_ms: 30_000)
+    Connection.request(conn, "thread/list", wire_params, timeout_ms: timeout_ms)
   end
 
   @spec thread_archive(connection(), String.t()) :: :ok | {:error, term()}
@@ -614,6 +628,11 @@ defmodule Codex.AppServer do
            opts
            |> Keyword.get(:approval_policy)
            |> Params.ask_for_approval() do
+      collaboration_mode =
+        opts
+        |> Keyword.get(:collaboration_mode)
+        |> collaboration_mode_for_turn_start(Keyword.get(opts, :model))
+
       wire_params =
         %{
           "threadId" => thread_id,
@@ -644,7 +663,11 @@ defmodule Codex.AppServer do
         |> Params.put_optional("outputSchema", Keyword.get(opts, :output_schema))
         |> Params.put_optional(
           "collaborationMode",
-          opts |> Keyword.get(:collaboration_mode) |> Params.collaboration_mode()
+          collaboration_mode
+        )
+        |> Params.put_optional(
+          "responsesapiClientMetadata",
+          Keyword.get(opts, :responsesapi_client_metadata)
         )
         |> Params.put_optional(
           "serviceTier",
@@ -659,14 +682,44 @@ defmodule Codex.AppServer do
           {:ok, map()} | {:error, term()}
   def turn_steer(conn, thread_id, input, opts \\ [])
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
-    wire_params = %{
-      "threadId" => thread_id,
-      "input" => Params.user_input(input),
-      "expectedTurnId" => Keyword.fetch!(opts, :expected_turn_id)
-    }
+    wire_params =
+      %{
+        "threadId" => thread_id,
+        "input" => Params.user_input(input),
+        "expectedTurnId" => Keyword.fetch!(opts, :expected_turn_id)
+      }
+      |> Params.put_optional(
+        "responsesapiClientMetadata",
+        Keyword.get(opts, :responsesapi_client_metadata)
+      )
 
     Connection.request(conn, "turn/steer", wire_params, timeout_ms: 30_000)
   end
+
+  defp collaboration_mode_for_turn_start(nil, _model), do: nil
+
+  defp collaboration_mode_for_turn_start(mode, model) do
+    default_model =
+      case model do
+        value when is_binary(value) and value != "" -> value
+        _ -> Models.default_model()
+      end
+
+    mode
+    |> Params.collaboration_mode()
+    |> maybe_put_collaboration_default_model(default_model)
+  end
+
+  defp maybe_put_collaboration_default_model(%{"settings" => settings} = mode, default_model)
+       when is_map(settings) and is_binary(default_model) and default_model != "" do
+    if Map.has_key?(settings, "model") do
+      mode
+    else
+      put_in(mode, ["settings", "model"], default_model)
+    end
+  end
+
+  defp maybe_put_collaboration_default_model(mode, _default_model), do: mode
 
   @spec turn_interrupt(connection(), String.t(), String.t()) :: :ok | {:error, term()}
   def turn_interrupt(conn, thread_id, turn_id)
@@ -685,6 +738,12 @@ defmodule Codex.AppServer do
       when is_pid(conn) and is_binary(thread_id) and is_binary(prompt) and is_list(opts) do
     params =
       %{"threadId" => thread_id, "prompt" => prompt}
+      |> Params.put_optional(
+        "outputModality",
+        opts
+        |> Keyword.get(:output_modality, :audio)
+        |> Params.realtime_output_modality()
+      )
       |> Params.put_optional("sessionId", Keyword.get(opts, :session_id))
 
     Connection.request(conn, "thread/realtime/start", params, timeout_ms: 30_000)

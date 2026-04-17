@@ -99,10 +99,13 @@ defmodule Codex.MCP.Config do
     config
     |> canonicalize_key("envVars", "env_vars")
     |> canonicalize_key("bearerTokenEnvVar", "bearer_token_env_var")
+    |> canonicalize_key("experimentalEnvironment", "experimental_environment")
     |> canonicalize_key("httpHeaders", "http_headers")
     |> canonicalize_key("envHttpHeaders", "env_http_headers")
     |> canonicalize_key("startupTimeoutSec", "startup_timeout_sec")
     |> canonicalize_key("toolTimeoutSec", "tool_timeout_sec")
+    |> canonicalize_key("supportsParallelToolCalls", "supports_parallel_tool_calls")
+    |> canonicalize_key("defaultToolsApprovalMode", "default_tools_approval_mode")
     |> canonicalize_key("enabledTools", "enabled_tools")
     |> canonicalize_key("disabledTools", "disabled_tools")
   end

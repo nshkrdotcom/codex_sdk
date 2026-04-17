@@ -34,6 +34,26 @@ defmodule Codex.MCP.ConfigTest do
     assert value["env_vars"] == ["API_KEY"]
   end
 
+  test "add_server canonicalizes newer MCP config aliases" do
+    assert {:ok, %{"status" => "ok"}} =
+             Config.add_server(
+               self(),
+               "docs",
+               %{
+                 command: "npx",
+                 experimentalEnvironment: "workspace",
+                 supportsParallelToolCalls: true,
+                 defaultToolsApprovalMode: "approve"
+               },
+               app_server: FakeAppServer
+             )
+
+    assert {"mcp_servers.docs", value} = Process.get(:last_config_write)
+    assert value["experimental_environment"] == "workspace"
+    assert value["supports_parallel_tool_calls"] == true
+    assert value["default_tools_approval_mode"] == "approve"
+  end
+
   test "add_server returns error when transport is missing" do
     assert {:error, :missing_server_config} =
              Config.add_server(self(), "bad", [], app_server: FakeAppServer)

@@ -74,6 +74,7 @@ defmodule Codex.AppServer.ItemAdapter do
        server: Map.get(item, "server") || "",
        tool: Map.get(item, "tool") || "",
        arguments: Map.get(item, "arguments"),
+       mcp_app_resource_uri: Map.get(item, "mcpAppResourceUri"),
        result: Map.get(item, "result"),
        error: Map.get(item, "error"),
        status: normalize_status(Map.get(item, "status")),

@@ -60,23 +60,19 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
-               "gpt-5-codex",
-               "gpt-5.3-codex",
                "gpt-5.4",
-               "gpt-5.4-mini",
-               "gpt-5.3-codex-spark",
                "gpt-5.2-codex",
-               "gpt-5.2",
                "gpt-5.1-codex-max",
-               "gpt-5.1-codex-mini",
-               "gpt-5.1-codex",
-               "gpt-5",
-               "gpt-5.1"
+               "gpt-5.4-mini",
+               "gpt-5.3-codex",
+               "gpt-5.3-codex-spark",
+               "gpt-5.2",
+               "gpt-5.1-codex-mini"
              ]
 
       assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5-codex-internal"))
-      assert length(models) == 12
+      assert length(models) == 8
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
@@ -90,7 +86,7 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
       assert Models.supported_in_api?("gpt-5.4-mini")
-      assert Models.supported_in_api?("gpt-5.3-codex-spark")
+      refute Models.supported_in_api?("gpt-5.3-codex-spark")
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
       assert Models.default_reasoning_effort("gpt-5.3-codex-spark") == :high
     end)
@@ -114,23 +110,24 @@ defmodule Codex.ModelsTest do
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
       System.put_env("CODEX_MODEL", "gpt-5.4-mini")
 
-      assert Models.default_model() == "gpt-5-codex"
+      assert Models.default_model() == default_model()
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
     end)
   end
 
   test "default_model/0 no longer applies local OPENAI_DEFAULT_MODEL policy" do
     System.put_env("OPENAI_DEFAULT_MODEL", "custom-model")
-    assert Models.default_model() == "gpt-5-codex"
+    assert Models.default_model() == default_model()
   end
 
   test "visible model listing comes from the shared core catalog" do
     with_temp_codex_home(fn home ->
       models = Models.list_visible(:api)
-      assert Enum.any?(models, &(&1.id == "gpt-5-codex"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.4"))
       assert Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       assert Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
-      assert length(models) == 12
+      refute Enum.any?(models, &(&1.id == "gpt-5-codex"))
+      assert length(models) == 8
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)

@@ -121,7 +121,7 @@ fi
 if [[ -n "${CODEX_MODEL:-}" ]]; then
   echo "Using model override: ${CODEX_MODEL}"
 else
-  echo "Using shared core default model from cli_subprocess_core"
+  echo "Using installed codex CLI default model selection"
 fi
 
 if [[ "$ollama_enabled" == true ]]; then
@@ -174,7 +174,7 @@ else
   if [[ -n "${CODEX_MODEL:-}" ]]; then
     echo "CLI model override: ${CODEX_MODEL}"
   else
-    echo "CLI model: shared core default"
+    echo "CLI model: <installed codex default>"
   fi
   if [[ " ${example_args[*]} " == *" --danger-full-access "* ]]; then
     echo "CLI/App-server sandbox override: danger_full_access"

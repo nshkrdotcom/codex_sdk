@@ -46,7 +46,7 @@ Primary entrypoints:
 
 - `Codex.Options.new/1` normalizes mixed raw-versus-payload input through
   `CliSubprocessCore.ModelInput.normalize/3`
-- `Codex.Models.default_model/0` returns the current shared core default
+- `Codex.Models.default_model/0` returns the current bundled registry default
 - `Codex.Models.list_visible/1` returns the shared visible Codex catalog
 - `Codex.Models.default_reasoning_effort/1` projects reasoning defaults from
   the shared catalog
@@ -1556,7 +1556,7 @@ Global Codex configuration.
 - `base_url`: OpenAI API base URL (precedence: explicit option, then `OPENAI_BASE_URL`, then official default)
 - `api_key`: OpenAI API key (overrides `CODEX_API_KEY`; optional if CLI login is present)
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
-- `model`: Model override (defaults to `Codex.Models.default_model/0`)
+- `model`: Model override. If omitted, live exec/app-server runs leave model selection to the installed `codex` CLI default, while `Codex.Models.default_model/0` remains the bundled registry reader.
 - `reasoning_effort`: Reasoning effort override (`:none`, `:minimal`, `:low`, `:medium`, `:high`, or `:xhigh`; defaults to `Codex.Models.default_reasoning_effort/1`)
 - `model_personality`: Personality preference (`:friendly`, `:pragmatic`, or `:none`)
 - `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)

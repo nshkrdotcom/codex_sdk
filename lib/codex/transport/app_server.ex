@@ -54,16 +54,20 @@ defmodule Codex.Transport.AppServer do
         |> Map.put(:pending_tool_outputs, [])
         |> Map.put(:pending_tool_failures, [])
 
-      {:ok,
-       %Result{
-         thread: updated_thread,
-         events: events,
-         final_response: final_response,
-         usage: usage,
-         raw: %{transport: :app_server},
-         attempts: 1,
-         last_response_id: Thread.last_response_id(events)
-       }}
+      result = %Result{
+        thread: updated_thread,
+        events: events,
+        final_response: final_response,
+        usage: usage,
+        raw: %{transport: :app_server},
+        attempts: 1,
+        last_response_id: Thread.last_response_id(events)
+      }
+
+      case Thread.extract_turn_failure(events) do
+        {:error, err} -> {:error, {:turn_failed, err}}
+        :ok -> {:ok, result}
+      end
     end
   end
 
@@ -351,10 +355,8 @@ defmodule Codex.Transport.AppServer do
       Map.has_key?(config, :model_reasoning_effort)
   end
 
-  defp default_model(%Thread{codex_opts: %Options{model: model}}, :start)
-       when is_binary(model) and model != "" do
-    model
-  end
+  defp default_model(%Thread{codex_opts: %Options{} = opts}, :start),
+    do: Options.execution_model(opts)
 
   defp default_model(_thread, _mode), do: nil
 

@@ -284,7 +284,7 @@ defmodule Codex.ThreadTest do
       assert length(result.events) == 5
     end
 
-    test "passes default model and reasoning effort to codex exec" do
+    test "omits implicit default model but preserves reasoning effort for codex exec" do
       capture_path =
         Path.join(
           System.tmp_dir!(),
@@ -315,17 +315,52 @@ defmodule Codex.ThreadTest do
         |> String.trim()
         |> String.split(~r/\s+/)
 
-      expected_model = default_model()
-
-      assert Enum.chunk_every(args, 2)
-             |> Enum.any?(fn
-               ["--model", ^expected_model] -> true
-               _ -> false
-             end)
+      refute "--model" in args
 
       assert Enum.chunk_every(args, 2)
              |> Enum.any?(fn
                ["--config", ~s(model_reasoning_effort="medium")] -> true
+               _ -> false
+             end)
+    end
+
+    test "passes explicit model overrides to codex exec" do
+      capture_path =
+        Path.join(
+          System.tmp_dir!(),
+          "codex_exec_explicit_model_args_#{System.unique_integer([:positive])}"
+        )
+
+      script_path =
+        "thread_basic.jsonl"
+        |> FixtureScripts.capture_args(capture_path)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      on_exit(fn -> File.rm_rf(capture_path) end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: script_path,
+          model: alt_model()
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      {:ok, _result} = Thread.run(thread, "Explicit model")
+
+      args =
+        capture_path
+        |> File.read!()
+        |> String.trim()
+        |> String.split(~r/\s+/)
+
+      expected_model = alt_model()
+
+      assert Enum.chunk_every(args, 2)
+             |> Enum.any?(fn
+               ["--model", model] when model == expected_model -> true
                _ -> false
              end)
     end

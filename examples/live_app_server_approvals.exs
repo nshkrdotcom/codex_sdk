@@ -665,6 +665,7 @@ defmodule CodexExamples.LiveAppServerApprovals do
     IO.puts("""
 
     [guardian.review.started]
+      review_id: #{inspect(event.review_id)}
       target_item_id: #{event.target_item_id}
       status: #{inspect(event.review.status)}
       risk_level: #{inspect(event.review.risk_level)}
@@ -678,7 +679,9 @@ defmodule CodexExamples.LiveAppServerApprovals do
     IO.puts("""
 
     [guardian.review.completed]
+      review_id: #{inspect(event.review_id)}
       target_item_id: #{event.target_item_id}
+      decision_source: #{inspect(event.decision_source)}
       status: #{inspect(event.review.status)}
       risk_level: #{inspect(event.review.risk_level)}
       rationale: #{inspect(event.review.rationale)}

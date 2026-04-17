@@ -855,6 +855,30 @@ defmodule Codex.EventsTest do
                  "audio" => %{"data" => "YWJj"}
                })
 
+      assert %Events.ThreadRealtimeTranscriptDelta{
+               thread_id: "thr_1",
+               role: "assistant",
+               delta: "Hello"
+             } =
+               Events.parse!(%{
+                 "type" => "thread/realtime/transcript/delta",
+                 "thread_id" => "thr_1",
+                 "role" => "assistant",
+                 "delta" => "Hello"
+               })
+
+      assert %Events.ThreadRealtimeTranscriptDone{
+               thread_id: "thr_1",
+               role: "assistant",
+               text: "Hello world"
+             } =
+               Events.parse!(%{
+                 "type" => "thread/realtime/transcript/done",
+                 "thread_id" => "thr_1",
+                 "role" => "assistant",
+                 "text" => "Hello world"
+               })
+
       assert %Events.ThreadRealtimeError{thread_id: "thr_1", message: "boom"} =
                Events.parse!(%{
                  "type" => "thread/realtime/error",
@@ -868,6 +892,61 @@ defmodule Codex.EventsTest do
                  "thread_id" => "thr_1",
                  "reason" => "done"
                })
+    end
+
+    test "parses and encodes guardian review metadata with timed out status" do
+      started =
+        Events.parse!(%{
+          "type" => "guardian_approval_review_started",
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "review_id" => "review_1",
+          "target_item_id" => nil,
+          "review" => %{"status" => "timedOut"},
+          "action" => %{"type" => "deny"}
+        })
+
+      assert %Events.GuardianApprovalReviewStarted{
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               review_id: "review_1",
+               target_item_id: nil,
+               review: %Events.GuardianApprovalReview{status: :timed_out}
+             } = started
+
+      assert %{
+               "type" => "guardian_approval_review_started",
+               "review_id" => "review_1",
+               "review" => %{"status" => "timed_out"}
+             } = Events.to_map(started)
+
+      completed =
+        Events.parse!(%{
+          "type" => "guardian_approval_review_completed",
+          "thread_id" => "thr_1",
+          "turn_id" => "turn_1",
+          "review_id" => "review_1",
+          "target_item_id" => nil,
+          "decision_source" => "agent",
+          "review" => %{"status" => "timedOut"},
+          "action" => %{"type" => "deny"}
+        })
+
+      assert %Events.GuardianApprovalReviewCompleted{
+               thread_id: "thr_1",
+               turn_id: "turn_1",
+               review_id: "review_1",
+               target_item_id: nil,
+               decision_source: "agent",
+               review: %Events.GuardianApprovalReview{status: :timed_out}
+             } = completed
+
+      assert %{
+               "type" => "guardian_approval_review_completed",
+               "review_id" => "review_1",
+               "decision_source" => "agent",
+               "review" => %{"status" => "timed_out"}
+             } = Events.to_map(completed)
     end
 
     test "parses session configured events with initial messages" do

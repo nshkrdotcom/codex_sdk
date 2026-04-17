@@ -58,8 +58,8 @@ defmodule Codex.ExamplesSupport do
     System.get_env("CODEX_MODEL") || "gpt-oss:20b"
   end
 
-  @spec example_model(String.t() | nil) :: String.t()
-  def example_model(default \\ Models.default_model()) do
+  @spec example_model(String.t() | nil) :: String.t() | nil
+  def example_model(default \\ System.get_env("CODEX_MODEL")) do
     if ollama_mode?(), do: ollama_model(), else: default
   end
 

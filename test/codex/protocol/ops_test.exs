@@ -80,4 +80,26 @@ defmodule Codex.Protocol.OpsTest do
              }
            } = Ops.to_map(op)
   end
+
+  test "omits nil collaboration mode settings when normalizing maps" do
+    op =
+      Ops.new(:user_turn, %{
+        collaboration_mode: %{
+          mode: :plan,
+          model: nil,
+          reasoningEffort: :medium,
+          developerInstructions: nil
+        }
+      })
+
+    assert %{
+             "type" => "user_turn",
+             "collaboration_mode" => %{
+               "mode" => "plan",
+               "settings" => %{
+                 "reasoning_effort" => "medium"
+               }
+             }
+           } = Ops.to_map(op)
+  end
 end

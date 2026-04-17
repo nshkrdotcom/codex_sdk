@@ -5,6 +5,7 @@ defmodule Codex.Runtime.Exec.Profile do
 
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.ProviderProfiles.Shared
+  alias Codex.Options
 
   @impl true
   def id, do: CoreCodex.id()
@@ -36,7 +37,6 @@ defmodule Codex.Runtime.Exec.Profile do
         |> Shared.maybe_add_pair("--cancellation-token", Keyword.get(opts, :cancellation_token))
         |> Shared.maybe_add_repeat("--image", Keyword.get(opts, :images, []))
         |> maybe_add_output_schema(Keyword.get(opts, :output_schema))
-        |> maybe_add_prompt(Keyword.get(opts, :prompt))
 
       {:ok,
        Shared.command(command_spec, args,
@@ -72,9 +72,6 @@ defmodule Codex.Runtime.Exec.Profile do
 
   defp maybe_add_output_schema(args, _other), do: args
 
-  defp maybe_add_prompt(args, value) when is_binary(value) and value != "", do: args ++ [value]
-  defp maybe_add_prompt(args, _value), do: args
-
   defp normalize_string_list(values) when is_list(values) do
     Enum.flat_map(values, fn
       value when is_binary(value) and value != "" -> [value]
@@ -88,7 +85,12 @@ defmodule Codex.Runtime.Exec.Profile do
     if local_provider_value(opts) do
       nil
     else
-      Keyword.get(opts, :model) || model_payload_value(opts, :resolved_model)
+      opts
+      |> keyword_to_options()
+      |> case do
+        %Options{} = options -> Options.execution_model(options)
+        nil -> Keyword.get(opts, :model) || model_payload_value(opts, :resolved_model)
+      end
     end
   end
 
@@ -161,4 +163,19 @@ defmodule Codex.Runtime.Exec.Profile do
   end
 
   defp normalize_env(_env), do: %{}
+
+  defp keyword_to_options(opts) when is_list(opts) do
+    case Keyword.get(opts, :codex_opts) do
+      %Options{} = options ->
+        options
+
+      _ ->
+        model = Keyword.get(opts, :model)
+        model_payload = Keyword.get(opts, :model_payload)
+
+        if (is_binary(model) and model != "") or is_map(model_payload) do
+          %Options{model: model, model_payload: model_payload}
+        end
+    end
+  end
 end

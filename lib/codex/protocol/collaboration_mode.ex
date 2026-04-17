@@ -42,7 +42,7 @@ defmodule Codex.Protocol.CollaborationMode do
   typedstruct do
     @typedoc "Collaboration mode with settings"
     field(:mode, mode_kind(), enforce: true)
-    field(:model, String.t(), enforce: true)
+    field(:model, String.t() | nil, enforce: true)
     field(:reasoning_effort, Codex.Models.reasoning_effort() | nil)
     field(:developer_instructions, String.t() | nil)
     field(:extra, map(), default: %{})
@@ -83,11 +83,13 @@ defmodule Codex.Protocol.CollaborationMode do
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = cm) do
     settings =
-      %{
-        "model" => cm.model,
-        "reasoning_effort" => encode_effort(cm.reasoning_effort),
-        "developer_instructions" => cm.developer_instructions
-      }
+      %{}
+      |> maybe_put_setting("model", normalize_optional_string(cm.model))
+      |> maybe_put_setting("reasoning_effort", encode_effort(cm.reasoning_effort))
+      |> maybe_put_setting(
+        "developer_instructions",
+        normalize_optional_string(cm.developer_instructions)
+      )
       |> merge_settings_extra(cm.extra)
 
     %{
@@ -105,7 +107,7 @@ defmodule Codex.Protocol.CollaborationMode do
 
     %__MODULE__{
       mode: parsed |> Map.get("mode") |> decode_mode(),
-      model: fetch_setting(settings, parsed, "model") || "",
+      model: fetch_setting(settings, parsed, "model") |> normalize_optional_string(),
       reasoning_effort:
         settings
         |> fetch_setting(parsed, "reasoning_effort")
@@ -150,6 +152,9 @@ defmodule Codex.Protocol.CollaborationMode do
   defp encode_effort(value) when is_atom(value), do: Atom.to_string(value)
   defp encode_effort(value), do: value
 
+  defp maybe_put_setting(settings, _key, nil), do: settings
+  defp maybe_put_setting(settings, key, value), do: Map.put(settings, key, value)
+
   defp merge_settings_extra(settings, %{"settings" => extra}) when is_map(extra),
     do: Map.merge(settings, extra)
 
@@ -168,6 +173,19 @@ defmodule Codex.Protocol.CollaborationMode do
       Map.get(normalized, key)
     end
   end
+
+  defp normalize_optional_string(nil), do: nil
+
+  defp normalize_optional_string(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_optional_string(value), do: value
 
   defp normalize_keys(%{} = data) do
     data

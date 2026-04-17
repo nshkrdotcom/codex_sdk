@@ -9,7 +9,8 @@ This SDK contains two distinct subsystems with different authentication:
 1. **Codex CLI integration** (`live_*.exs` scripts, `Codex.Thread.*`, `Codex.Exec.*`, `Codex.CLI.*`)
    - Wraps the `codex` CLI via `CliSubprocessCore` command/session lanes
    - Uses `codex login`, native `Codex.OAuth`, `CODEX_API_KEY`, or local OSS via Ollama
-   - SDK default model: `Codex.Models.default_model()` from the shared `cli_subprocess_core` catalog
+   - Shared catalog metadata default: `Codex.Models.default_model()`
+   - Live CLI-backed runs do not force that catalog default when model is unset; they defer to the installed `codex` CLI's auth-aware default unless you export `CODEX_MODEL`
 
 2. **OpenAI Agents SDK** (Realtime/Voice modules, ported from `openai-agents-python`)
    - Makes **direct API calls** to OpenAI (WebSocket for Realtime, HTTP for Voice)
@@ -17,9 +18,9 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
-By default, `./examples/run_all.sh` does not pin a local example model. It uses
-the shared `CliSubprocessCore.ModelRegistry` default through
-`Codex.Models.default_model()`, unless you export `CODEX_MODEL` yourself.
+By default, `./examples/run_all.sh` does not pin a local example model. It lets
+the installed `codex` CLI choose its auth-aware default unless you export
+`CODEX_MODEL` yourself.
 Examples that start Codex turns no longer force a global `:low` reasoning
 effort. They rely on the selected model's shared core default unless a live
 collaboration-mode preset explicitly advertises a different value.

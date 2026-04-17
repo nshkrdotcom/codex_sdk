@@ -135,6 +135,20 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
+    test "execution_model/1 omits implicit shared-core defaults" do
+      assert {:ok, opts} = Options.new(%{})
+      assert Options.execution_model(opts) == nil
+    end
+
+    test "execution_model/1 preserves explicit and environment model overrides" do
+      assert {:ok, explicit_opts} = Options.new(%{model: alt_model()})
+      assert Options.execution_model(explicit_opts) == alt_model()
+
+      System.put_env("CODEX_MODEL", alt_model())
+      assert {:ok, env_opts} = Options.new(%{})
+      assert Options.execution_model(env_opts) == alt_model()
+    end
+
     test "falls back to model-specific reasoning defaults" do
       {:ok, opts} = Options.new(%{model: alt_model()})
 
@@ -313,12 +327,15 @@ defmodule Codex.OptionsTest do
                })
     end
 
-    test "rejects unsupported low reasoning for gpt-5.4-mini" do
-      assert {:error, {:invalid_reasoning_effort, :low, ["high", "medium"], :codex}} =
+    test "accepts low reasoning for gpt-5.4-mini" do
+      assert {:ok, %Options{} = opts} =
                Options.new(%{
                  model: "gpt-5.4-mini",
                  reasoning_effort: :low
                })
+
+      assert opts.model == "gpt-5.4-mini"
+      assert opts.reasoning_effort == :low
     end
 
     test "accepts reasoning summary and verbosity options" do
