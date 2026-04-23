@@ -181,11 +181,13 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
     |> maybe_put(:approvals_reviewer, thread.thread_opts.approvals_reviewer)
     |> maybe_put(:sandbox, thread.thread_opts.sandbox)
+    |> maybe_put(:permission_profile, thread.thread_opts.permission_profile)
     |> maybe_put(:config, config)
     |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
     |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
     |> maybe_put(:personality, thread.thread_opts.personality)
     |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
+    |> maybe_put(:persist_extended_history, thread.thread_opts.persist_extended_history)
     |> maybe_put_for_mode(:ephemeral, thread.thread_opts.ephemeral, mode, [:start])
     |> maybe_put_for_mode(:service_name, thread.thread_opts.service_name, mode, [:start])
     |> maybe_put_for_mode(:service_tier, thread.thread_opts.service_tier, mode, [:start, :resume])
@@ -221,6 +223,10 @@ defmodule Codex.Transport.AppServer do
       :sandbox_policy,
       select_turn_opt(turn_opts, :sandbox_policy, thread.thread_opts.sandbox_policy)
     )
+    |> maybe_put_kw(
+      :permission_profile,
+      select_turn_opt(turn_opts, :permission_profile, thread.thread_opts.permission_profile)
+    )
     |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
     |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
     |> maybe_put_kw(
@@ -239,6 +245,7 @@ defmodule Codex.Transport.AppServer do
       :service_tier,
       select_turn_opt(turn_opts, :service_tier, thread.thread_opts.service_tier)
     )
+    |> maybe_put_kw(:environments, fetch_opt(turn_opts, :environments))
   end
 
   defp select_turn_opt(turn_opts, key, fallback) do

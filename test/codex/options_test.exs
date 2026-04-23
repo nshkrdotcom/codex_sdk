@@ -319,11 +319,12 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
-    test "coerces unsupported reasoning effort values" do
-      assert {:error, {:invalid_reasoning_effort, :xhigh, ["high", "medium"], :codex}} =
+    test "rejects unsupported reasoning effort values" do
+      assert {:error,
+              {:invalid_reasoning_effort, :minimal, ["high", "low", "medium", "xhigh"], :codex}} =
                Options.new(%{
                  model: alt_model(),
-                 reasoning_effort: :xhigh
+                 reasoning_effort: :minimal
                })
     end
 

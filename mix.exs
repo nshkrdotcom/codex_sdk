@@ -40,6 +40,7 @@ defmodule CodexSdk.MixProject do
   defp deps do
     [
       {:cli_subprocess_core, path: "../cli_subprocess_core"},
+      {:execution_plane, path: "../execution_plane", override: true},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
       {:typed_struct, "~> 0.3.0"},

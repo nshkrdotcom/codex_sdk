@@ -11,7 +11,7 @@ layer of the configuration stack.
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.1-codex-mini"})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.5"})
 
 # Override reasoning effort
 {:ok, opts} = Codex.Options.new(%{model: "gpt-5.2", reasoning_effort: :high})
@@ -22,7 +22,8 @@ agent = %Codex.Realtime.Agent{model: Codex.Realtime.Agent.default_model()}
 
 ## Model Defaults
 
-The SDK derives bundled text-model metadata in `Codex.Models`:
+The SDK derives bundled text-model metadata from the shared
+`CliSubprocessCore.ModelRegistry` catalog:
 
 | Context | Default | Source |
 |---------|---------|--------|
@@ -41,8 +42,10 @@ The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
 to `gpt-5.4`.
 
-The bundled offline catalog lives in `priv/models.json` and is synced from the
-vendored upstream file at `codex/codex-rs/core/models.json`.
+The active offline catalog lives in
+`../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is kept as a
+local snapshot of the installed CLI's visible model metadata for compatibility
+with older docs and tools.
 
 Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
 selection. Memory-only external app-server auth is connection-local and does not
@@ -59,7 +62,7 @@ selection implicit for the installed `codex` CLI runtime:
 3. `CODEX_MODEL_DEFAULT`
 
 ```bash
-CODEX_MODEL=gpt-5.1-codex-max mix run my_script.exs
+CODEX_MODEL=gpt-5.5 mix run my_script.exs
 ```
 
 ## Available Models
@@ -70,25 +73,21 @@ Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.4",
-#=>   "gpt-5.2-codex",
-#=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.5",
 #=>   "gpt-5.4-mini",
 #=>   "gpt-5.3-codex",
 #=>   "gpt-5.3-codex-spark",
-#=>   "gpt-5.2",
-#=>   "gpt-5.1-codex-mini"
+#=>   "gpt-5.2"
 #=> ]
 
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.4",
-#=>   "gpt-5.2-codex",
-#=>   "gpt-5.1-codex-max",
+#=>   "gpt-5.5",
 #=>   "gpt-5.4-mini",
 #=>   "gpt-5.3-codex",
 #=>   "gpt-5.3-codex-spark",
-#=>   "gpt-5.2",
-#=>   "gpt-5.1-codex-mini"
+#=>   "gpt-5.2"
 #=> ]
 ```
 
@@ -154,21 +153,23 @@ Not all models support all effort levels. When you request an unsupported level,
 the SDK automatically coerces it to the nearest supported value:
 
 ```elixir
-# gpt-5.1-codex-mini only supports :medium and :high
-iex> Codex.Models.coerce_reasoning_effort("gpt-5.1-codex-mini", :xhigh)
-:high
+# Current Codex models do not accept :minimal, so it coerces to :low.
+iex> Codex.Models.coerce_reasoning_effort("gpt-5.4-mini", :minimal)
+:low
 
-iex> Codex.Models.coerce_reasoning_effort("gpt-5.1-codex-mini", :low)
-:medium
+iex> Codex.Models.coerce_reasoning_effort("gpt-5.4-mini", :xhigh)
+:xhigh
 ```
 
 Use `Codex.Models.supported_reasoning_efforts/1` to query what a model accepts:
 
 ```elixir
-iex> Codex.Models.supported_reasoning_efforts("gpt-5.1-codex-mini")
+iex> Codex.Models.supported_reasoning_efforts("gpt-5.4-mini")
 [
-  %{effort: :medium, description: "Dynamically adjusts reasoning based on the task"},
-  %{effort: :high, description: "Maximizes reasoning depth for complex or ambiguous problems"}
+  %{effort: :low, description: "Low"},
+  %{effort: :medium, description: "Medium"},
+  %{effort: :high, description: "High"},
+  %{effort: :xhigh, description: "Xhigh"}
 ]
 ```
 
@@ -294,8 +295,8 @@ The `OpenAIProvider` delegates to the individual STT/TTS module defaults.
 Some models have upgrade paths to newer versions. Query them with:
 
 ```elixir
-iex> Codex.Models.get_upgrade("gpt-5.1-codex-max")
-%{id: target, migration_config_key: key, reasoning_effort_mapping: mapping, ...}
+iex> Codex.Models.get_upgrade("gpt-5.5")
+nil
 ```
 
 Upgrade targets come from the bundled/current catalog and can change across
@@ -308,14 +309,11 @@ metadata:
 
 | Constant | Module | Used By |
 |----------|--------|---------|
-| Bundled `priv/models.json` catalog | `Codex.Models` | Visible model listing, default selection, upgrade metadata |
+| Shared `CliSubprocessCore.ModelRegistry` catalog | `Codex.Models` | Visible model listing, default selection, upgrade metadata |
 | `Codex.Config.Defaults.default_api_model/0` and `default_chatgpt_model/0` | `Codex.Config.Defaults` | Fallback when catalog-based default selection cannot resolve |
 | `@default_model` | `Codex.Realtime.Agent` | `Codex.Realtime.Session`, examples |
 | `@default_model` | `Codex.Voice.Models.OpenAISTT` | `OpenAIProvider`, examples |
 | `@default_model` | `Codex.Voice.Models.OpenAITTS` | `OpenAIProvider`, examples |
-| `@efforts_full` | `Codex.Models` | Shared across model presets with full effort support |
-| `@efforts_mini` | `Codex.Models` | Shared across mini-class model presets |
-| `@efforts_standard` | `Codex.Models` | Shared across standard codex presets |
 
 Downstream modules reference these via public functions (`default_model/0`,
 `model_name/0`) rather than duplicating string literals.

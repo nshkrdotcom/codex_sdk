@@ -608,8 +608,10 @@ defmodule Codex.AppServer.NotificationAdapter do
   defp normalize_turn_status(status), do: status
 
   defp normalize_approvals_reviewer("user"), do: :user
+  defp normalize_approvals_reviewer("auto_review"), do: :auto_review
   defp normalize_approvals_reviewer("guardian_subagent"), do: :guardian_subagent
   defp normalize_approvals_reviewer(:user), do: :user
+  defp normalize_approvals_reviewer(:auto_review), do: :auto_review
   defp normalize_approvals_reviewer(:guardian_subagent), do: :guardian_subagent
   defp normalize_approvals_reviewer(nil), do: nil
   defp normalize_approvals_reviewer(value), do: value

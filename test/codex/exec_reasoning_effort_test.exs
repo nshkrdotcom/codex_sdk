@@ -42,7 +42,7 @@ defmodule Codex.ExecReasoningEffortTest do
       Options.new(%{
         api_key: "test",
         codex_path_override: script_path,
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         reasoning_effort: :medium
       })
 

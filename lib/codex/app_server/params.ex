@@ -92,8 +92,10 @@ defmodule Codex.AppServer.Params do
   @spec approvals_reviewer(atom() | String.t() | nil) :: String.t() | nil
   def approvals_reviewer(nil), do: nil
   def approvals_reviewer(:user), do: "user"
+  def approvals_reviewer(:auto_review), do: "auto_review"
   def approvals_reviewer(:guardian_subagent), do: "guardian_subagent"
   def approvals_reviewer("user"), do: "user"
+  def approvals_reviewer("auto_review"), do: "auto_review"
   def approvals_reviewer("guardian_subagent"), do: "guardian_subagent"
   def approvals_reviewer(_), do: nil
 
@@ -134,6 +136,17 @@ defmodule Codex.AppServer.Params do
   def thread_sort_key("updatedAt"), do: "updated_at"
   def thread_sort_key(value) when is_binary(value), do: value
   def thread_sort_key(_), do: nil
+
+  @spec sort_direction(atom() | String.t() | nil) :: String.t() | nil
+  def sort_direction(nil), do: nil
+  def sort_direction(:asc), do: "asc"
+  def sort_direction(:desc), do: "desc"
+  def sort_direction("asc"), do: "asc"
+  def sort_direction("desc"), do: "desc"
+  def sort_direction("ascending"), do: "asc"
+  def sort_direction("descending"), do: "desc"
+  def sort_direction(value) when is_binary(value), do: value
+  def sort_direction(_), do: nil
 
   @spec thread_memory_mode(atom() | String.t() | nil) :: String.t() | nil
   def thread_memory_mode(nil), do: nil

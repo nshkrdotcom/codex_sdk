@@ -89,7 +89,7 @@ defmodule CodexExamples.LiveAppServerApprovals do
                     conn,
                     fixture,
                     granular_approval_policy(),
-                    :guardian_subagent
+                    :auto_review
                   )
 
                 granular_audit =

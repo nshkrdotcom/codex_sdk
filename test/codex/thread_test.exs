@@ -81,6 +81,9 @@ defmodule Codex.ThreadTest do
 
       {:ok, opts} = ThreadOptions.new(%{approvals_reviewer: "user"})
       assert opts.approvals_reviewer == :user
+
+      {:ok, opts} = ThreadOptions.new(%{approvals_reviewer: "auto_review"})
+      assert opts.approvals_reviewer == :auto_review
     end
 
     test "accepts app-server ephemeral and service controls" do
@@ -88,12 +91,16 @@ defmodule Codex.ThreadTest do
         ThreadOptions.new(%{
           ephemeral: true,
           service_name: "codex-elixir-tests",
-          service_tier: :flex
+          service_tier: :flex,
+          permission_profile: %{"network" => %{"enabled" => false}},
+          persist_extended_history: true
         })
 
       assert opts.ephemeral == true
       assert opts.service_name == "codex-elixir-tests"
       assert opts.service_tier == "flex"
+      assert opts.permission_profile == %{"network" => %{"enabled" => false}}
+      assert opts.persist_extended_history == true
     end
 
     test "accepts granular ask_for_approval maps for app-server parity" do
@@ -167,7 +174,7 @@ defmodule Codex.ThreadTest do
           collaboration_mode: %{
             mode: "plan",
             settings: %{
-              model: "gpt-5.1-codex",
+              model: "gpt-5.3-codex",
               reasoningEffort: "high",
               developerInstructions: "Keep it brief."
             }
@@ -175,7 +182,7 @@ defmodule Codex.ThreadTest do
         })
 
       assert opts.collaboration_mode.mode == :plan
-      assert opts.collaboration_mode.model == "gpt-5.1-codex"
+      assert opts.collaboration_mode.model == "gpt-5.3-codex"
       assert opts.collaboration_mode.reasoning_effort == :high
       assert opts.collaboration_mode.developer_instructions == "Keep it brief."
     end

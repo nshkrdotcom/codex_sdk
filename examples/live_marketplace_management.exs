@@ -76,18 +76,16 @@ defmodule CodexExamples.LiveMarketplaceManagement do
           try do
             IO.puts("\nApp-server marketplace/add:")
 
-            case AppServer.marketplace_add(conn, "./source-marketplace") do
-              {:ok, response} ->
-                IO.inspect(response)
-                :ok
-
-              {:error, %{"code" => code, "message" => message}}
-              when code in [-32_601, -32_600, -32601, -32600] ->
-                IO.puts("SKIPPED app-server marketplace/add: #{message}")
-                :ok
-
-              {:error, reason} ->
-                {:error, {:marketplace_app_server_failed, reason}}
+            with :ok <-
+                   AppServer.marketplace_add(conn, "./source-marketplace")
+                   |> handle_app_server_marketplace_result(:add),
+                 :ok <-
+                   AppServer.marketplace_upgrade(conn, marketplace_name: "debug")
+                   |> handle_app_server_marketplace_result(:upgrade),
+                 :ok <-
+                   AppServer.marketplace_remove(conn, "debug")
+                   |> handle_app_server_marketplace_result(:remove) do
+              :ok
             end
           after
             :ok = AppServer.disconnect(conn)
@@ -146,6 +144,24 @@ defmodule CodexExamples.LiveMarketplaceManagement do
     do: File.rm_rf(temp_root)
 
   defp cleanup_fixture(_fixture), do: :ok
+
+  defp handle_app_server_marketplace_result({:ok, response}, operation) do
+    IO.puts("  #{operation}:")
+    IO.inspect(response)
+    :ok
+  end
+
+  defp handle_app_server_marketplace_result(
+         {:error, %{"code" => code, "message" => message}},
+         operation
+       )
+       when code in [-32_601, -32_600, -32601, -32600] do
+    IO.puts("SKIPPED app-server marketplace/#{operation}: #{message}")
+    :ok
+  end
+
+  defp handle_app_server_marketplace_result({:error, reason}, operation),
+    do: {:error, {:marketplace_app_server_failed, operation, reason}}
 
   defp isolated_env(codex_home) when is_binary(codex_home) do
     home_root = Path.dirname(codex_home)

@@ -804,7 +804,7 @@ end
 
 Configure based on environment.
 
-The SDK default model is derived from the active catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.4`. The SDK always loads bundled upstream model metadata from `priv/models.json`, which is synced from `codex/codex-rs/core/models.json`, and ChatGPT-auth flows can still refresh `/models` and cache the result when available. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
+The SDK default model is derived from the shared `CliSubprocessCore.ModelRegistry` catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.4`. The SDK keeps `priv/models.json` as a local installed-CLI metadata snapshot, but the active registry lives in `../cli_subprocess_core/priv/models/codex.json`. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
 For provider parity, layered config also honors `openai_base_url` and user-defined
 `[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and
@@ -866,7 +866,7 @@ Override configuration per request.
 ```elixir
 defmodule ConfigExample do
   def analyze_with_different_models(input) do
-    models = ["gpt-5.4", "gpt-5.2-codex", "gpt-5.4-mini"]
+    models = ["gpt-5.4", "gpt-5.5", "gpt-5.4-mini"]
 
     results = Enum.map(models, fn model ->
       thread_opts = %Codex.Thread.Options{model: model}

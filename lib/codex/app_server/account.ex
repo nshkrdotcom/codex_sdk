@@ -80,6 +80,14 @@ defmodule Codex.AppServer.Account do
     Connection.request(conn, "account/rateLimits/read", nil, timeout_ms: 30_000)
   end
 
+  @spec send_add_credits_nudge_email(connection(), :credits | :usage_limit | String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def send_add_credits_nudge_email(conn, credit_type) when is_pid(conn) do
+    params = %{"creditType" => normalize_add_credits_nudge_credit_type(credit_type)}
+
+    Connection.request(conn, "account/sendAddCreditsNudgeEmail", params, timeout_ms: 30_000)
+  end
+
   defp enforce_login_constraints(login_type, params, opts) do
     %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id} =
       load_forced_login_config(opts)
@@ -113,6 +121,13 @@ defmodule Codex.AppServer.Account do
         {:error, {:forced_chatgpt_workspace_id, workspace_id, other}}
     end
   end
+
+  defp normalize_add_credits_nudge_credit_type(:credits), do: "credits"
+  defp normalize_add_credits_nudge_credit_type(:usage_limit), do: "usage_limit"
+  defp normalize_add_credits_nudge_credit_type("credits"), do: "credits"
+  defp normalize_add_credits_nudge_credit_type("usage_limit"), do: "usage_limit"
+  defp normalize_add_credits_nudge_credit_type(value) when is_binary(value), do: value
+  defp normalize_add_credits_nudge_credit_type(value), do: to_string(value)
 
   defp infer_login_type(%{} = params) do
     case Map.get(params, "type") || Map.get(params, :type) do

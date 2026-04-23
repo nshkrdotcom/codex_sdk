@@ -6,14 +6,14 @@ defmodule Codex.Protocol.CollaborationModeTest do
   test "from_map/1 decodes collaboration modes" do
     data = %{
       "mode" => "plan",
-      "model" => "gpt-5.1-codex",
+      "model" => "gpt-5.3-codex",
       "reasoning_effort" => "high",
       "developer_instructions" => "Keep it brief."
     }
 
     assert %CollaborationMode{
              mode: :plan,
-             model: "gpt-5.1-codex",
+             model: "gpt-5.3-codex",
              reasoning_effort: :high,
              developer_instructions: "Keep it brief."
            } = CollaborationMode.from_map(data)
@@ -24,7 +24,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
       "mode" => "plan",
       "future_top_level" => true,
       "settings" => %{
-        "model" => "gpt-5.1-codex",
+        "model" => "gpt-5.3-codex",
         "reasoningEffort" => "high",
         "developerInstructions" => "Keep it brief.",
         "future_nested" => "kept"
@@ -33,7 +33,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
 
     assert %CollaborationMode{
              mode: :plan,
-             model: "gpt-5.1-codex",
+             model: "gpt-5.3-codex",
              reasoning_effort: :high,
              developer_instructions: "Keep it brief.",
              extra: %{"future_top_level" => true, "settings" => %{"future_nested" => "kept"}}
@@ -45,7 +45,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
       "mode" => "plan",
       "developer_instructions" => "legacy flat instructions",
       "settings" => %{
-        "model" => "gpt-5.1-codex",
+        "model" => "gpt-5.3-codex",
         "reasoning_effort" => "high",
         "developer_instructions" => nil
       }
@@ -53,7 +53,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
 
     assert %CollaborationMode{
              mode: :plan,
-             model: "gpt-5.1-codex",
+             model: "gpt-5.3-codex",
              reasoning_effort: :high,
              developer_instructions: nil
            } = CollaborationMode.from_map(data)
@@ -62,7 +62,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
   test "to_map/1 encodes collaboration modes" do
     mode = %CollaborationMode{
       mode: :pair_programming,
-      model: "gpt-5.1-codex",
+      model: "gpt-5.3-codex",
       reasoning_effort: :low,
       developer_instructions: nil,
       extra: %{"future_top_level" => true, "settings" => %{"future_nested" => "kept"}}
@@ -72,7 +72,7 @@ defmodule Codex.Protocol.CollaborationModeTest do
              "future_top_level" => true,
              "mode" => "pair_programming",
              "settings" => %{
-               "model" => "gpt-5.1-codex",
+               "model" => "gpt-5.3-codex",
                "reasoning_effort" => "low",
                "future_nested" => "kept"
              }
@@ -100,26 +100,26 @@ defmodule Codex.Protocol.CollaborationModeTest do
     assert %CollaborationMode{mode: :pair_programming} =
              CollaborationMode.from_map(%{
                "mode" => "pairprogramming",
-               "model" => "gpt-5.1-codex"
+               "model" => "gpt-5.3-codex"
              })
 
     assert %CollaborationMode{mode: :pair_programming} =
              CollaborationMode.from_map(%{
                "mode" => "pair-programming",
-               "model" => "gpt-5.1-codex"
+               "model" => "gpt-5.3-codex"
              })
   end
 
   test "from_map/1 decodes code and default modes" do
     assert %CollaborationMode{mode: :code} =
-             CollaborationMode.from_map(%{"mode" => "code", "model" => "gpt-5.1-codex"})
+             CollaborationMode.from_map(%{"mode" => "code", "model" => "gpt-5.3-codex"})
 
     assert %CollaborationMode{mode: :default} =
-             CollaborationMode.from_map(%{"mode" => "default", "model" => "gpt-5.1-codex"})
+             CollaborationMode.from_map(%{"mode" => "default", "model" => "gpt-5.3-codex"})
   end
 
   test "unknown modes default to :custom" do
     assert %CollaborationMode{mode: :custom} =
-             CollaborationMode.from_map(%{"mode" => "unknown", "model" => "gpt-5.1-codex"})
+             CollaborationMode.from_map(%{"mode" => "unknown", "model" => "gpt-5.3-codex"})
   end
 end

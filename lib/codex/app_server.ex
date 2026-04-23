@@ -252,6 +252,15 @@ defmodule Codex.AppServer do
           |> fetch_any([:sandbox, "sandbox"])
           |> Params.sandbox_mode()
         )
+        |> Params.put_optional(
+          "permissionProfile",
+          fetch_any(params, [
+            :permission_profile,
+            "permission_profile",
+            :permissionProfile,
+            "permissionProfile"
+          ])
+        )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
           "baseInstructions",
@@ -292,6 +301,15 @@ defmodule Codex.AppServer do
         |> Params.put_optional(
           "experimentalRawEvents",
           fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
+        )
+        |> Params.put_optional(
+          "persistExtendedHistory",
+          fetch_any(params, [
+            :persist_extended_history,
+            "persist_extended_history",
+            :persistExtendedHistory,
+            "persistExtendedHistory"
+          ])
         )
 
       Connection.request(conn, "thread/start", wire_params, timeout_ms: 30_000)
@@ -338,6 +356,15 @@ defmodule Codex.AppServer do
           |> fetch_any([:sandbox, "sandbox"])
           |> Params.sandbox_mode()
         )
+        |> Params.put_optional(
+          "permissionProfile",
+          fetch_any(params, [
+            :permission_profile,
+            "permission_profile",
+            :permissionProfile,
+            "permissionProfile"
+          ])
+        )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
           "baseInstructions",
@@ -363,6 +390,19 @@ defmodule Codex.AppServer do
           "experimentalRawEvents",
           fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
         )
+        |> Params.put_optional(
+          "excludeTurns",
+          fetch_any(params, [:exclude_turns, "exclude_turns", :excludeTurns, "excludeTurns"])
+        )
+        |> Params.put_optional(
+          "persistExtendedHistory",
+          fetch_any(params, [
+            :persist_extended_history,
+            "persist_extended_history",
+            :persistExtendedHistory,
+            "persistExtendedHistory"
+          ])
+        )
 
       Connection.request(conn, "thread/resume", wire_params, timeout_ms: 30_000)
     end
@@ -377,6 +417,10 @@ defmodule Codex.AppServer do
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
       |> Params.put_optional("sortKey", Params.thread_sort_key(Keyword.get(opts, :sort_key)))
+      |> Params.put_optional(
+        "sortDirection",
+        Params.sort_direction(Keyword.get(opts, :sort_direction))
+      )
       |> Params.put_optional("modelProviders", Keyword.get(opts, :model_providers))
       |> Params.put_optional(
         "sourceKinds",
@@ -384,6 +428,10 @@ defmodule Codex.AppServer do
       )
       |> Params.put_optional("archived", Keyword.get(opts, :archived))
       |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
+      |> Params.put_optional(
+        "useStateDbOnly",
+        normalize_true(Keyword.get(opts, :use_state_db_only))
+      )
       |> Params.put_optional("searchTerm", Keyword.get(opts, :search_term))
 
     Connection.request(conn, "thread/list", wire_params, timeout_ms: timeout_ms)
@@ -444,6 +492,15 @@ defmodule Codex.AppServer do
           |> fetch_any([:sandbox, "sandbox"])
           |> Params.sandbox_mode()
         )
+        |> Params.put_optional(
+          "permissionProfile",
+          fetch_any(params, [
+            :permission_profile,
+            "permission_profile",
+            :permissionProfile,
+            "permissionProfile"
+          ])
+        )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
           "baseInstructions",
@@ -459,6 +516,19 @@ defmodule Codex.AppServer do
           params
           |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
           |> Params.service_tier()
+        )
+        |> Params.put_optional(
+          "excludeTurns",
+          fetch_any(params, [:exclude_turns, "exclude_turns", :excludeTurns, "excludeTurns"])
+        )
+        |> Params.put_optional(
+          "persistExtendedHistory",
+          fetch_any(params, [
+            :persist_extended_history,
+            "persist_extended_history",
+            :persistExtendedHistory,
+            "persistExtendedHistory"
+          ])
         )
 
       Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
@@ -488,6 +558,23 @@ defmodule Codex.AppServer do
     }
 
     Connection.request(conn, "thread/read", params, timeout_ms: timeout_ms)
+  end
+
+  @spec thread_turns_list(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_turns_list(conn, thread_id, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+
+    params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional(
+        "sortDirection",
+        Params.sort_direction(Keyword.get(opts, :sort_direction))
+      )
+
+    Connection.request(conn, "thread/turns/list", params, timeout_ms: timeout_ms)
   end
 
   @spec thread_inject_items(connection(), String.t(), [map()]) :: {:ok, map()} | {:error, term()}
@@ -652,6 +739,7 @@ defmodule Codex.AppServer do
           "sandboxPolicy",
           opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
         )
+        |> Params.put_optional("permissionProfile", Keyword.get(opts, :permission_profile))
         |> Params.put_optional("model", Keyword.get(opts, :model))
         |> Params.put_optional(
           "effort",
@@ -671,6 +759,7 @@ defmodule Codex.AppServer do
           "responsesapiClientMetadata",
           Keyword.get(opts, :responsesapi_client_metadata)
         )
+        |> Params.put_optional("environments", Keyword.get(opts, :environments))
         |> Params.put_optional(
           "serviceTier",
           opts |> Keyword.get(:service_tier) |> Params.service_tier()
@@ -1013,6 +1102,82 @@ defmodule Codex.AppServer do
   end
 
   @doc """
+  Removes an installed marketplace by name.
+  """
+  @spec marketplace_remove(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def marketplace_remove(conn, marketplace_name)
+      when is_pid(conn) and is_binary(marketplace_name) do
+    Connection.request(
+      conn,
+      "marketplace/remove",
+      %{"marketplaceName" => marketplace_name},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Upgrades one installed marketplace or all marketplaces when no name is provided.
+  """
+  @spec marketplace_upgrade(connection(), keyword()) :: {:ok, map()} | {:error, term()}
+  def marketplace_upgrade(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    params =
+      %{}
+      |> Params.put_optional("marketplaceName", Keyword.get(opts, :marketplace_name))
+
+    Connection.request(conn, "marketplace/upgrade", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Creates a controller-local device key.
+  """
+  @spec device_key_create(connection(), map() | keyword()) :: {:ok, map()} | {:error, term()}
+  def device_key_create(conn, params) when is_pid(conn) do
+    params = Params.normalize_map(params)
+
+    wire_params =
+      %{
+        "accountUserId" =>
+          fetch_any(params, [:account_user_id, "account_user_id", :accountUserId, "accountUserId"]),
+        "clientId" => fetch_any(params, [:client_id, "client_id", :clientId, "clientId"])
+      }
+      |> Params.put_optional(
+        "protectionPolicy",
+        params
+        |> fetch_any([
+          :protection_policy,
+          "protection_policy",
+          :protectionPolicy,
+          "protectionPolicy"
+        ])
+        |> normalize_device_key_protection_policy()
+      )
+
+    Connection.request(conn, "device/key/create", wire_params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads device-key public metadata by key id.
+  """
+  @spec device_key_public(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def device_key_public(conn, key_id) when is_pid(conn) and is_binary(key_id) do
+    Connection.request(conn, "device/key/public", %{"keyId" => key_id}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Signs a structured device-key payload with a controller-local key.
+  """
+  @spec device_key_sign(connection(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def device_key_sign(conn, key_id, payload)
+      when is_pid(conn) and is_binary(key_id) and is_map(payload) do
+    Connection.request(
+      conn,
+      "device/key/sign",
+      %{"keyId" => key_id, "payload" => payload},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
   Lists plugin marketplaces via the app-server plugin API and returns the raw response map.
 
   For typed structs, use `plugin_list_typed/2`.
@@ -1314,6 +1479,7 @@ defmodule Codex.AppServer do
         "sandboxPolicy",
         opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
       )
+      |> Params.put_optional("permissionProfile", Keyword.get(opts, :permission_profile))
 
     request_timeout_ms =
       cond do
@@ -1451,6 +1617,21 @@ defmodule Codex.AppServer do
   defp normalize_non_empty_list([]), do: nil
   defp normalize_non_empty_list(values) when is_list(values), do: values
   defp normalize_non_empty_list(value), do: [value]
+
+  defp normalize_device_key_protection_policy(nil), do: nil
+
+  defp normalize_device_key_protection_policy(:hardware_only), do: "hardware_only"
+
+  defp normalize_device_key_protection_policy(:allow_os_protected_nonextractable),
+    do: "allow_os_protected_nonextractable"
+
+  defp normalize_device_key_protection_policy("hardware_only"), do: "hardware_only"
+
+  defp normalize_device_key_protection_policy("allow_os_protected_nonextractable"),
+    do: "allow_os_protected_nonextractable"
+
+  defp normalize_device_key_protection_policy(value) when is_binary(value), do: value
+  defp normalize_device_key_protection_policy(_), do: nil
 
   defp encode_command_exec_delta(nil), do: nil
   defp encode_command_exec_delta(delta) when is_binary(delta), do: Base.encode64(delta)

@@ -848,7 +848,7 @@ defmodule Codex.Events do
             model: String.t() | nil,
             model_provider_id: String.t() | nil,
             approval_policy: term(),
-            approvals_reviewer: :user | :guardian_subagent | String.t() | nil,
+            approvals_reviewer: :user | :auto_review | :guardian_subagent | String.t() | nil,
             sandbox_policy: term(),
             cwd: String.t() | nil,
             reasoning_effort: String.t() | atom() | nil,

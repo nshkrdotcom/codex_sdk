@@ -290,14 +290,14 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               %Events.ModelRerouted{
                 thread_id: "thr_1",
                 turn_id: "turn_1",
-                from_model: "gpt-5.2-codex",
+                from_model: "gpt-5.2",
                 to_model: "gpt-5.4",
                 reason: :high_risk_cyber_activity
               }} =
                NotificationAdapter.to_event("model/rerouted", %{
                  "threadId" => "thr_1",
                  "turnId" => "turn_1",
-                 "fromModel" => "gpt-5.2-codex",
+                 "fromModel" => "gpt-5.2",
                  "toModel" => "gpt-5.4",
                  "reason" => "highRiskCyberActivity"
                })
@@ -486,9 +486,10 @@ defmodule Codex.AppServer.NotificationAdapterTest do
       params = %{
         "sessionId" => "sess_1",
         "forkedFromId" => "sess_0",
-        "model" => "gpt-5.1-codex",
+        "model" => "gpt-5.3-codex",
         "modelProviderId" => "openai",
         "approvalPolicy" => "untrusted",
+        "approvalsReviewer" => "auto_review",
         "sandboxPolicy" => %{"type" => "read-only"},
         "cwd" => "/tmp",
         "reasoningEffort" => "high",
@@ -502,9 +503,10 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               %Events.SessionConfigured{
                 session_id: "sess_1",
                 forked_from_id: "sess_0",
-                model: "gpt-5.1-codex",
+                model: "gpt-5.3-codex",
                 model_provider_id: "openai",
                 approval_policy: "untrusted",
+                approvals_reviewer: :auto_review,
                 sandbox_policy: %{"type" => "read-only"},
                 cwd: "/tmp",
                 reasoning_effort: "high",

@@ -8,9 +8,9 @@ authoring and normal thread execution:
 - thread history injection and memory controls
 - filesystem watches
 
-## Marketplace Acquisition
+## Marketplace Acquisition And Maintenance
 
-There are now two runtime entry points for adding a marketplace source:
+There are two runtime entry points for adding a marketplace source:
 
 - `Codex.CLI.marketplace_add/2`
 - `Codex.AppServer.marketplace_add/3`
@@ -46,6 +46,13 @@ App-server request:
   )
 
 IO.inspect(response)
+```
+
+The app-server surface also exposes marketplace maintenance:
+
+```elixir
+{:ok, _} = Codex.AppServer.marketplace_upgrade(conn, marketplace_name: "source-marketplace")
+{:ok, _} = Codex.AppServer.marketplace_remove(conn, "source-marketplace")
 ```
 
 Use isolated `CODEX_HOME` values for examples, tests, and migration flows so

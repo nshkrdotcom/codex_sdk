@@ -27,6 +27,7 @@ defmodule Codex.Thread.Options do
             approval_timeout_ms: Defaults.approval_timeout_ms(),
             sandbox: :default,
             sandbox_policy: nil,
+            permission_profile: nil,
             working_directory: nil,
             additional_directories: [],
             skip_git_repo_check: false,
@@ -76,6 +77,7 @@ defmodule Codex.Thread.Options do
             retry_opts: nil,
             rate_limit: nil,
             rate_limit_opts: nil,
+            persist_extended_history: nil,
             experimental_raw_events: false
 
   @type transport :: :exec | {:app_server, pid()}
@@ -108,13 +110,15 @@ defmodule Codex.Thread.Options do
           optional(:exclude_slash_tmp) => boolean()
         }
 
+  @type permission_profile :: %{optional(String.t() | atom()) => term()}
+
   @type color :: :always | :never | :auto | String.t()
 
   @type reasoning_summary :: :auto | :concise | :detailed | :none | String.t()
   @type model_verbosity :: :low | :medium | :high | String.t()
   @type web_search_mode :: Codex.Protocol.ConfigTypes.web_search_mode()
   @type personality :: Codex.Protocol.ConfigTypes.personality()
-  @type approvals_reviewer :: :user | :guardian_subagent
+  @type approvals_reviewer :: :user | :auto_review | :guardian_subagent
   @type collaboration_mode :: Codex.Protocol.CollaborationMode.t()
   @type service_tier :: :auto | :default | :flex | :priority | String.t()
   @type granular_approval_policy :: %{
@@ -155,6 +159,7 @@ defmodule Codex.Thread.Options do
           approval_timeout_ms: pos_integer(),
           sandbox: sandbox(),
           sandbox_policy: sandbox_policy() | sandbox_policy_type() | nil,
+          permission_profile: permission_profile() | nil,
           working_directory: String.t() | nil,
           additional_directories: [String.t()],
           skip_git_repo_check: boolean(),
@@ -204,6 +209,7 @@ defmodule Codex.Thread.Options do
           retry_opts: retry_opts() | nil,
           rate_limit: boolean() | nil,
           rate_limit_opts: rate_limit_opts() | nil,
+          persist_extended_history: boolean() | nil,
           experimental_raw_events: boolean()
         }
 
@@ -232,6 +238,7 @@ defmodule Codex.Thread.Options do
 
     sandbox = Map.get(attrs, :sandbox, Map.get(attrs, "sandbox", :default))
     sandbox_policy = Map.get(attrs, :sandbox_policy, Map.get(attrs, "sandbox_policy"))
+    permission_profile = Map.get(attrs, :permission_profile, Map.get(attrs, "permission_profile"))
 
     working_directory =
       Map.get(attrs, :working_directory, Map.get(attrs, "working_directory", Map.get(attrs, :cd)))
@@ -453,6 +460,13 @@ defmodule Codex.Thread.Options do
     experimental_raw_events =
       Map.get(attrs, :experimental_raw_events, Map.get(attrs, "experimental_raw_events", false))
 
+    persist_extended_history =
+      Map.get(
+        attrs,
+        :persist_extended_history,
+        Map.get(attrs, "persist_extended_history")
+      )
+
     with {:ok, metadata} <- ensure_map(metadata, :metadata),
          {:ok, labels} <- ensure_map(labels, :labels),
          {:ok, attachments} <- ensure_list(attachments, :attachments),
@@ -460,6 +474,8 @@ defmodule Codex.Thread.Options do
          {:ok, transport} <- normalize_transport(transport),
          {:ok, sandbox} <- normalize_sandbox(sandbox),
          {:ok, sandbox_policy} <- normalize_sandbox_policy(sandbox_policy),
+         {:ok, permission_profile} <-
+           ensure_optional_map(permission_profile, :permission_profile),
          :ok <- validate_boolean(auto_run, :auto_run),
          {:ok, ephemeral} <- validate_optional_boolean(ephemeral, :ephemeral),
          :ok <- validate_optional_string(working_directory, :working_directory),
@@ -526,6 +542,8 @@ defmodule Codex.Thread.Options do
          {:ok, rate_limit} <- validate_optional_boolean(rate_limit, :rate_limit),
          {:ok, rate_limit_opts} <-
            normalize_optional_keyword_list(rate_limit_opts, :rate_limit_opts),
+         {:ok, persist_extended_history} <-
+           validate_optional_boolean(persist_extended_history, :persist_extended_history),
          :ok <- validate_boolean(experimental_raw_events, :experimental_raw_events),
          :ok <- validate_timeout(approval_timeout_ms) do
       web_search_mode =
@@ -561,6 +579,7 @@ defmodule Codex.Thread.Options do
          approval_timeout_ms: approval_timeout_ms,
          sandbox: sandbox,
          sandbox_policy: sandbox_policy,
+         permission_profile: permission_profile,
          working_directory: working_directory,
          additional_directories: additional_directories,
          skip_git_repo_check: skip_git_repo_check,
@@ -610,6 +629,7 @@ defmodule Codex.Thread.Options do
          retry_opts: retry_opts,
          rate_limit: rate_limit,
          rate_limit_opts: rate_limit_opts,
+         persist_extended_history: persist_extended_history,
          experimental_raw_events: experimental_raw_events
        }}
     else
@@ -868,8 +888,10 @@ defmodule Codex.Thread.Options do
 
   defp normalize_approvals_reviewer(nil), do: {:ok, nil}
   defp normalize_approvals_reviewer(:user), do: {:ok, :user}
+  defp normalize_approvals_reviewer(:auto_review), do: {:ok, :auto_review}
   defp normalize_approvals_reviewer(:guardian_subagent), do: {:ok, :guardian_subagent}
   defp normalize_approvals_reviewer("user"), do: {:ok, :user}
+  defp normalize_approvals_reviewer("auto_review"), do: {:ok, :auto_review}
   defp normalize_approvals_reviewer("guardian_subagent"), do: {:ok, :guardian_subagent}
 
   defp normalize_approvals_reviewer(other),

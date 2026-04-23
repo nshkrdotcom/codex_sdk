@@ -993,7 +993,7 @@ or `{:deny, reason}`. App-server streams now also surface `%Codex.Events.Guardia
 `%Codex.Events.ThreadRealtimeTranscriptDone{}`, and `%Codex.Events.ServerRequestResolved{}` when
 the connected Codex build emits guardian review, realtime transcript, and request-resolution
 notifications. Guardian review events preserve `review_id`, optional `target_item_id`,
-`decision_source`, and `:timed_out` review states. Use `approvals_reviewer: :user | :guardian_subagent`
+`decision_source`, and `:timed_out` review states. Use `approvals_reviewer: :user | :auto_review | :guardian_subagent`
 on thread options to control upstream review routing.
 The SDK also emits `%Codex.Events.CommandApprovalRequested{}` and
 `%Codex.Events.FileApprovalRequested{}` for app-server request approvals, preserving upstream
@@ -1450,7 +1450,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_config_overrides.exs`** - Nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity demo
 - **`live_options_config_overrides.exs`** - Options-level global config overrides, precedence, validation, and reserved provider notes
 - **`live_thread_management.exs`** - Thread read/inject/fork/rollback/memory-mode/loaded list workflows
-- **`live_marketplace_management.exs`** - Disposable marketplace-add flow via both `Codex.CLI.marketplace_add/2` and `Codex.AppServer.marketplace_add/3`
+- **`live_marketplace_management.exs`** - Disposable marketplace flow via `Codex.CLI.marketplace_add/2` plus app-server marketplace add/remove/upgrade helpers
 - **`live_web_search_modes.exs`** - Web search mode toggles with disabled/live validation and cached-mode event reporting
 - **`live_rate_limits.exs`** - Rate limit snapshot reporting from token usage events
 - **`live_session_walkthrough.exs`**, **`live_exec_controls.exs`**, **`live_tooling_stream.exs`**, **`live_telemetry_stream.exs`**, **`live_usage_and_compaction.exs`** - Additional live examples that stream, track usage, and show approvals/tooling flows

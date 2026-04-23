@@ -1248,11 +1248,16 @@ defmodule Codex.AppServerTransportTest do
       ThreadOptions.new(%{
         transport: {:app_server, conn},
         working_directory: "/tmp",
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         model_provider: "openai",
+        permission_profile: %{
+          "network" => %{"enabled" => false},
+          "fileSystem" => %{"entries" => []}
+        },
         config: %{"features.remote_models" => true},
         base_instructions: "base",
         developer_instructions: "dev",
+        persist_extended_history: true,
         experimental_raw_events: true
       })
 
@@ -1265,12 +1270,19 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start", "params" => params}} =
              Jason.decode(thread_start_line)
 
-    assert params["model"] == "gpt-5.1-codex-mini"
+    assert params["model"] == "gpt-5.4-mini"
     assert params["modelProvider"] == "openai"
+
+    assert params["permissionProfile"] == %{
+             "network" => %{"enabled" => false},
+             "fileSystem" => %{"entries" => []}
+           }
+
     assert %{"features.remote_models" => true} = params["config"]
     assert params["config"]["model_reasoning_effort"] == "medium"
     assert params["baseInstructions"] == "base"
     assert params["developerInstructions"] == "dev"
+    assert params["persistExtendedHistory"] == true
     assert params["experimentalRawEvents"] == true
 
     AppServerSubprocess.send_stdout(
@@ -1320,12 +1332,30 @@ defmodule Codex.AppServerTransportTest do
         transport: {:app_server, conn},
         ephemeral: true,
         service_name: "codex-elixir-tests",
-        service_tier: :flex
+        service_tier: :flex,
+        permission_profile: %{
+          "network" => %{"enabled" => false},
+          "fileSystem" => %{"entries" => []}
+        }
       })
 
     thread = Thread.build(codex_opts, thread_opts)
 
-    task = Task.async(fn -> Thread.run_turn(thread, "hello", service_tier: :priority) end)
+    turn_permission_profile = %{
+      "network" => %{"enabled" => true},
+      "fileSystem" => %{"entries" => []}
+    }
+
+    environments = [%{"id" => "remote_1", "kind" => "remote"}]
+
+    task =
+      Task.async(fn ->
+        Thread.run_turn(thread, "hello",
+          service_tier: :priority,
+          permission_profile: turn_permission_profile,
+          environments: environments
+        )
+      end)
 
     assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
 
@@ -1335,6 +1365,11 @@ defmodule Codex.AppServerTransportTest do
     assert params["ephemeral"] == true
     assert params["serviceName"] == "codex-elixir-tests"
     assert params["serviceTier"] == "flex"
+
+    assert params["permissionProfile"] == %{
+             "network" => %{"enabled" => false},
+             "fileSystem" => %{"entries" => []}
+           }
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
@@ -1350,6 +1385,8 @@ defmodule Codex.AppServerTransportTest do
             }} = Jason.decode(turn_start_line)
 
     assert turn_params["serviceTier"] == "priority"
+    assert turn_params["permissionProfile"] == turn_permission_profile
+    assert turn_params["environments"] == environments
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(turn_start_id, %{

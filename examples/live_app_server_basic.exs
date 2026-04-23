@@ -59,7 +59,7 @@ defmodule CodexExamples.LiveAppServerBasic do
 
         IO.puts("""
         approvals_reviewer note:
-          set `approvals_reviewer: :user` or `:guardian_subagent` on `Codex.start_thread/2`
+          set `approvals_reviewer: :user`, `:auto_review`, or `:guardian_subagent` on `Codex.start_thread/2`
           and create the connection with `experimental_api: true` when you want upstream guardian
           review routing on newer app-server builds.
         """)

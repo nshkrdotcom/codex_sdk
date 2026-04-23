@@ -62,7 +62,7 @@ defmodule Codex.Protocol.OpsTest do
       Ops.new(:user_turn, %{
         collaboration_mode: %{
           mode: :plan,
-          model: "gpt-5.1-codex",
+          model: "gpt-5.3-codex",
           reasoningEffort: :high,
           developerInstructions: "Keep it brief."
         }
@@ -73,7 +73,7 @@ defmodule Codex.Protocol.OpsTest do
              "collaboration_mode" => %{
                "mode" => "plan",
                "settings" => %{
-                 "model" => "gpt-5.1-codex",
+                 "model" => "gpt-5.3-codex",
                  "reasoning_effort" => "high",
                  "developer_instructions" => "Keep it brief."
                }

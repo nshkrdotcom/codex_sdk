@@ -160,7 +160,7 @@ defmodule Codex.AppServer.ApiTest do
   test "thread start and resume encode approvals reviewer", %{conn: conn} do
     start_task =
       Task.async(fn ->
-        AppServer.thread_start(conn, approvals_reviewer: :guardian_subagent)
+        AppServer.thread_start(conn, approvals_reviewer: :auto_review)
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, start_line}
@@ -168,14 +168,14 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
              Jason.decode(start_line)
 
-    assert start_params["approvalsReviewer"] == "guardian_subagent"
+    assert start_params["approvalsReviewer"] == "auto_review"
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
 
     resume_task =
       Task.async(fn ->
-        AppServer.thread_resume(conn, "thr_1", approvals_reviewer: :user)
+        AppServer.thread_resume(conn, "thr_1", approvals_reviewer: :guardian_subagent)
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, resume_line}
@@ -184,7 +184,7 @@ defmodule Codex.AppServer.ApiTest do
              Jason.decode(resume_line)
 
     assert resume_params["threadId"] == "thr_1"
-    assert resume_params["approvalsReviewer"] == "user"
+    assert resume_params["approvalsReviewer"] == "guardian_subagent"
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
@@ -316,7 +316,7 @@ defmodule Codex.AppServer.ApiTest do
   test "thread_fork/3 encodes fork params", %{conn: conn} do
     task =
       Task.async(fn ->
-        AppServer.thread_fork(conn, "thr_1", path: "/tmp/rollout.jsonl", model: "gpt-5.1-codex")
+        AppServer.thread_fork(conn, "thr_1", path: "/tmp/rollout.jsonl", model: "gpt-5.3-codex")
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
@@ -326,7 +326,7 @@ defmodule Codex.AppServer.ApiTest do
 
     assert params["threadId"] == "thr_1"
     assert params["path"] == "/tmp/rollout.jsonl"
-    assert params["model"] == "gpt-5.1-codex"
+    assert params["model"] == "gpt-5.3-codex"
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
 
@@ -405,6 +405,83 @@ defmodule Codex.AppServer.ApiTest do
     assert fork_params["threadId"] == "thr_1"
     assert fork_params["ephemeral"] == true
     assert fork_params["serviceTier"] == "auto"
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(fork_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
+  end
+
+  test "thread start, resume, and fork encode permission profile history controls", %{
+    conn: conn
+  } do
+    permission_profile = %{
+      "network" => %{"enabled" => false},
+      "fileSystem" => %{
+        "entries" => [
+          %{
+            "path" => %{"type" => "special", "value" => %{"kind" => "cwd"}},
+            "access" => "write"
+          }
+        ]
+      }
+    }
+
+    start_task =
+      Task.async(fn ->
+        AppServer.thread_start(conn,
+          permission_profile: permission_profile,
+          persist_extended_history: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["permissionProfile"] == permission_profile
+    assert start_params["persistExtendedHistory"] == true
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
+
+    resume_task =
+      Task.async(fn ->
+        AppServer.thread_resume(conn, "thr_1",
+          permission_profile: permission_profile,
+          exclude_turns: true,
+          persist_extended_history: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert resume_params["permissionProfile"] == permission_profile
+    assert resume_params["excludeTurns"] == true
+    assert resume_params["persistExtendedHistory"] == true
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
+
+    fork_task =
+      Task.async(fn ->
+        AppServer.thread_fork(conn, "thr_1",
+          permission_profile: permission_profile,
+          exclude_turns: true,
+          persist_extended_history: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, fork_line}
+
+    assert {:ok, %{"id" => fork_id, "method" => "thread/fork", "params" => fork_params}} =
+             Jason.decode(fork_line)
+
+    assert fork_params["permissionProfile"] == permission_profile
+    assert fork_params["excludeTurns"] == true
+    assert fork_params["persistExtendedHistory"] == true
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(fork_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
@@ -718,9 +795,16 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
   end
 
-  test "thread_list/2 encodes sort key and archived", %{conn: conn} do
+  test "thread_list/2 encodes sort key, direction, and state db filter", %{conn: conn} do
     task =
-      Task.async(fn -> AppServer.thread_list(conn, sort_key: :updated_at, archived: true) end)
+      Task.async(fn ->
+        AppServer.thread_list(conn,
+          sort_key: :updated_at,
+          sort_direction: :asc,
+          archived: true,
+          use_state_db_only: true
+        )
+      end)
 
     assert_receive {:app_server_subprocess_send, ^conn, request_line}
 
@@ -728,7 +812,34 @@ defmodule Codex.AppServer.ApiTest do
              Jason.decode(request_line)
 
     assert params["sortKey"] == "updated_at"
+    assert params["sortDirection"] == "asc"
     assert params["archived"] == true
+    assert params["useStateDbOnly"] == true
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
+
+    assert {:ok, %{"data" => []}} = Task.await(task, 200)
+  end
+
+  test "thread_turns_list/3 encodes pagination params", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.thread_turns_list(conn, "thr_1",
+          cursor: "cur_1",
+          limit: 25,
+          sort_direction: :desc
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/turns/list", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["threadId"] == "thr_1"
+    assert params["cursor"] == "cur_1"
+    assert params["limit"] == 25
+    assert params["sortDirection"] == "desc"
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
@@ -738,7 +849,7 @@ defmodule Codex.AppServer.ApiTest do
   test "turn_start/4 encodes personality and collaboration mode", %{conn: conn} do
     collab = %Codex.Protocol.CollaborationMode{
       mode: :plan,
-      model: "gpt-5.1-codex",
+      model: "gpt-5.3-codex",
       reasoning_effort: :high,
       developer_instructions: "Plan carefully."
     }
@@ -763,11 +874,47 @@ defmodule Codex.AppServer.ApiTest do
     assert %{
              "mode" => "plan",
              "settings" => %{
-               "model" => "gpt-5.1-codex",
+               "model" => "gpt-5.3-codex",
                "reasoning_effort" => "high",
                "developer_instructions" => "Plan carefully."
              }
            } = params["collaborationMode"]
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
+  test "turn_start/4 encodes permission profile and environments", %{conn: conn} do
+    permission_profile = %{"network" => %{"enabled" => true}, "fileSystem" => %{"entries" => []}}
+
+    environments = [
+      %{
+        "id" => "remote_1",
+        "displayName" => "Remote",
+        "kind" => "remote"
+      }
+    ]
+
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi",
+          permission_profile: permission_profile,
+          environments: environments
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["permissionProfile"] == permission_profile
+    assert params["environments"] == environments
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(req_id, %{
@@ -1206,6 +1353,133 @@ defmodule Codex.AppServer.ApiTest do
 
     assert {:ok, %{"marketplaceName" => "debug", "alreadyAdded" => false}} =
              Task.await(task, 200)
+  end
+
+  test "marketplace_remove/2 and marketplace_upgrade/2 encode current params", %{conn: conn} do
+    remove_task = Task.async(fn -> AppServer.marketplace_remove(conn, "debug") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, remove_line}
+
+    assert {:ok,
+            %{
+              "id" => remove_id,
+              "method" => "marketplace/remove",
+              "params" => %{"marketplaceName" => "debug"}
+            }} = Jason.decode(remove_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(remove_id, %{"marketplaceName" => "debug", "installedRoot" => nil})
+    )
+
+    assert {:ok, %{"marketplaceName" => "debug"}} = Task.await(remove_task, 200)
+
+    upgrade_task =
+      Task.async(fn -> AppServer.marketplace_upgrade(conn, marketplace_name: "debug") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, upgrade_line}
+
+    assert {:ok,
+            %{
+              "id" => upgrade_id,
+              "method" => "marketplace/upgrade",
+              "params" => %{"marketplaceName" => "debug"}
+            }} = Jason.decode(upgrade_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(upgrade_id, %{
+        "selectedMarketplaces" => ["debug"],
+        "upgradedRoots" => ["/tmp/marketplace"],
+        "errors" => []
+      })
+    )
+
+    assert {:ok, %{"selectedMarketplaces" => ["debug"], "errors" => []}} =
+             Task.await(upgrade_task, 200)
+  end
+
+  test "device key wrappers encode create, public, and sign params", %{conn: conn} do
+    create_task =
+      Task.async(fn ->
+        AppServer.device_key_create(conn,
+          account_user_id: "user_1",
+          client_id: "client_1",
+          protection_policy: :allow_os_protected_nonextractable
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, create_line}
+
+    assert {:ok, %{"id" => create_id, "method" => "device/key/create", "params" => create_params}} =
+             Jason.decode(create_line)
+
+    assert create_params == %{
+             "accountUserId" => "user_1",
+             "clientId" => "client_1",
+             "protectionPolicy" => "allow_os_protected_nonextractable"
+           }
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(create_id, %{
+        "keyId" => "key_1",
+        "publicKeySpkiDerBase64" => "pub",
+        "algorithm" => "ecdsa_p256_sha256_asn1_der",
+        "protectionClass" => "os_protected_nonextractable"
+      })
+    )
+
+    assert {:ok, %{"keyId" => "key_1"}} = Task.await(create_task, 200)
+
+    public_task = Task.async(fn -> AppServer.device_key_public(conn, "key_1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, public_line}
+
+    assert {:ok,
+            %{
+              "id" => public_id,
+              "method" => "device/key/public",
+              "params" => %{"keyId" => "key_1"}
+            }} = Jason.decode(public_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(public_id, %{
+        "keyId" => "key_1",
+        "publicKeySpkiDerBase64" => "pub",
+        "algorithm" => "ecdsa_p256_sha256_asn1_der",
+        "protectionClass" => "os_protected_nonextractable"
+      })
+    )
+
+    assert {:ok, %{"keyId" => "key_1"}} = Task.await(public_task, 200)
+
+    payload = %{
+      "type" => "remoteControlClientEnrollment",
+      "nonce" => "nonce",
+      "audience" => "remote_control_client_enrollment",
+      "challengeId" => "challenge_1",
+      "targetOrigin" => "https://example.com",
+      "targetPath" => "/client/enroll",
+      "accountUserId" => "user_1",
+      "clientId" => "client_1",
+      "deviceIdentitySha256Base64url" => "hash",
+      "challengeExpiresAt" => 1_800_000_000
+    }
+
+    sign_task = Task.async(fn -> AppServer.device_key_sign(conn, "key_1", payload) end)
+    assert_receive {:app_server_subprocess_send, ^conn, sign_line}
+
+    assert {:ok, %{"id" => sign_id, "method" => "device/key/sign", "params" => sign_params}} =
+             Jason.decode(sign_line)
+
+    assert sign_params == %{"keyId" => "key_1", "payload" => payload}
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(sign_id, %{
+        "signatureDerBase64" => "sig",
+        "signedPayloadBase64" => "signed",
+        "algorithm" => "ecdsa_p256_sha256_asn1_der"
+      })
+    )
+
+    assert {:ok, %{"signatureDerBase64" => "sig"}} = Task.await(sign_task, 200)
   end
 
   test "request_typed/5 encodes param structs and parses typed responses", %{
@@ -2007,6 +2281,26 @@ defmodule Codex.AppServer.ApiTest do
     )
 
     assert {:ok, %{"type" => "chatgptAuthTokens"}} = Task.await(task3, 200)
+  end
+
+  test "account add credits nudge email encodes credit type", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.Account.send_add_credits_nudge_email(conn, :usage_limit)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "account/sendAddCreditsNudgeEmail",
+              "params" => %{"creditType" => "usage_limit"}
+            }} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "sent"}))
+
+    assert {:ok, %{"status" => "sent"}} = Task.await(task, 200)
   end
 
   test "model, realtime, and windows sandbox wrappers encode current params", %{

@@ -1599,7 +1599,7 @@ Thread-specific configuration.
   approval_policy: module() | nil,
   approval_hook: module() | nil,
   approval_timeout_ms: pos_integer(),
-  approvals_reviewer: :user | :guardian_subagent | nil,
+  approvals_reviewer: :user | :auto_review | :guardian_subagent | nil,
   sandbox:
     :default
     | :strict
@@ -1611,6 +1611,7 @@ Thread-specific configuration.
     | {:external_sandbox, :enabled | :restricted}
     | String.t(),
   sandbox_policy: map() | atom() | nil,
+  permission_profile: map() | nil,
   working_directory: String.t() | nil,
   additional_directories: [String.t()],
   skip_git_repo_check: boolean(),
@@ -1672,6 +1673,7 @@ Thread-specific configuration.
   retry_opts: keyword() | nil,
   rate_limit: boolean() | nil,
   rate_limit_opts: keyword() | nil,
+  persist_extended_history: boolean() | nil,
   experimental_raw_events: boolean()
 }
 ```
@@ -1684,10 +1686,11 @@ Thread-specific configuration.
   The `:exec` name is a historical compatibility selector. It does not imply
   direct ownership of the Erlang `:exec` worker.
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
-- `approvals_reviewer`: App-server review routing hint (`:user` or `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
+- `approvals_reviewer`: App-server review routing hint (`:user`, `:auto_review`, or legacy `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
 - `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
+- `permission_profile`: App-server full permissions profile override, forwarded as `permissionProfile`
 - `working_directory`: Working directory passed to codex (`--cd` / `cwd`)
 - `additional_directories`: Extra writable roots (`--add-dir`)
 - `skip_git_repo_check`: Allow running outside a Git repo
@@ -1718,6 +1721,7 @@ Thread-specific configuration.
 - `history_persistence` / `history_max_bytes`: History persistence configuration forwarded via config overrides
 - `model` / `model_provider`: App-server thread model overrides
 - `service_name` / `service_tier`: App-server service-routing hints forwarded on `thread/start`, `thread/resume`, `thread/fork`, and `turn/start`; per-turn `service_tier` opts override the thread default
+- `persist_extended_history`: App-server lifecycle hint forwarded on `thread/start` to preserve richer rollout history for resume/fork/read flows
 - `model_reasoning_summary` / `model_verbosity`: Reasoning summary + verbosity settings forwarded via config overrides
 - `model_context_window`: Context window override (tokens)
 - `model_supports_reasoning_summaries`: Force reasoning summary support for non-default models

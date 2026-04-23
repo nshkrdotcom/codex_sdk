@@ -803,7 +803,7 @@ defmodule Codex.EventsTest do
           "type" => "model/rerouted",
           "thread_id" => "thr_1",
           "turn_id" => "turn_1",
-          "from_model" => "gpt-5.2-codex",
+          "from_model" => "gpt-5.2",
           "to_model" => "gpt-5.4",
           "reason" => "highRiskCyberActivity"
         })
@@ -811,7 +811,7 @@ defmodule Codex.EventsTest do
       assert %Events.ModelRerouted{
                thread_id: "thr_1",
                turn_id: "turn_1",
-               from_model: "gpt-5.2-codex",
+               from_model: "gpt-5.2",
                to_model: "gpt-5.4",
                reason: :high_risk_cyber_activity
              } = reroute_event
@@ -955,7 +955,7 @@ defmodule Codex.EventsTest do
           "type" => "sessionConfigured",
           "sessionId" => "sess_1",
           "forkedFromId" => "sess_0",
-          "model" => "gpt-5.1-codex",
+          "model" => "gpt-5.3-codex",
           "modelProviderId" => "openai",
           "approvalPolicy" => "untrusted",
           "sandboxPolicy" => %{"type" => "read-only"},
@@ -970,7 +970,7 @@ defmodule Codex.EventsTest do
       assert %Events.SessionConfigured{
                session_id: "sess_1",
                forked_from_id: "sess_0",
-               model: "gpt-5.1-codex",
+               model: "gpt-5.3-codex",
                model_provider_id: "openai",
                approval_policy: "untrusted",
                sandbox_policy: %{"type" => "read-only"},
