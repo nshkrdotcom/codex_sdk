@@ -184,15 +184,16 @@ defmodule Codex.AppServer.RemoteConnection do
   end
 
   def handle_call({:respond, id, result}, _from, %State{} = state) do
-    with :ok <- send_text_frame(state.websocket_pid, Protocol.encode_response(id, result)) do
-      {:reply, :ok, state}
+    case send_text_frame(state.websocket_pid, Protocol.encode_response(id, result)) do
+      :ok -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
   def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
-    with :ok <-
-           send_text_frame(state.websocket_pid, Protocol.encode_error(id, code, message, data)) do
-      {:reply, :ok, state}
+    case send_text_frame(state.websocket_pid, Protocol.encode_error(id, code, message, data)) do
+      :ok -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 

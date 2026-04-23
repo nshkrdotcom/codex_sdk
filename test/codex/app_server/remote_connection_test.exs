@@ -6,6 +6,7 @@ defmodule Codex.AppServer.RemoteConnectionTest do
   import Plug.Conn
 
   alias Codex.AppServer
+  alias Codex.AppServer.Connection
 
   defmodule RemoteAppServerPlug do
     import Plug.Conn
@@ -263,5 +264,31 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert :ok = AppServer.disconnect(conn)
     assert_receive {:DOWN, ^ref, :process, ^conn, _reason}, 1_000
     refute Process.alive?(conn)
+  end
+
+  test "respond returns an error instead of crashing when remote socket is unavailable", %{
+    url: url
+  } do
+    assert {:ok, conn} = AppServer.connect_remote(url, init_timeout_ms: 500)
+
+    :sys.replace_state(conn, fn state -> %{state | websocket_pid: nil} end)
+
+    assert {:error, :not_connected} = AppServer.respond(conn, 91, %{"ok" => true})
+    assert Process.alive?(conn)
+    assert :ok = AppServer.disconnect(conn)
+  end
+
+  test "respond_error returns an error instead of crashing when remote socket is unavailable", %{
+    url: url
+  } do
+    assert {:ok, conn} = AppServer.connect_remote(url, init_timeout_ms: 500)
+
+    :sys.replace_state(conn, fn state -> %{state | websocket_pid: nil} end)
+
+    assert {:error, :not_connected} =
+             Connection.respond_error(conn, 91, -32_000, "failed", %{"ok" => false})
+
+    assert Process.alive?(conn)
+    assert :ok = AppServer.disconnect(conn)
   end
 end
