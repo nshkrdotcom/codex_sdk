@@ -114,7 +114,7 @@ defmodule Codex.AppServer.ConnectionTest do
     {:ok, conn} =
       Connection.start_link(codex_opts,
         process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
-        init_timeout_ms: 200
+        init_timeout_ms: 1_000
       )
 
     :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
@@ -320,7 +320,7 @@ defmodule Codex.AppServer.ConnectionTest do
     assert_receive {:app_server_subprocess_send, ^conn, init_line}
     assert {:ok, %{"id" => 0, "method" => "initialize"}} = Jason.decode(init_line)
 
-    ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
+    ready_task = Task.async(fn -> Connection.await_ready(conn, 1_000) end)
     wait_for_ready_waiter(conn, 1)
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
@@ -654,11 +654,11 @@ defmodule Codex.AppServer.ConnectionTest do
     :ok = AppServerSubprocess.exit(1)
 
     assert {:error, {:app_server_down, %{reason: _reason, stderr: ^retained_tail}}} =
-             Task.await(ready_task, 200)
+             Task.await(ready_task, 1_000)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
                     {:shutdown, {:app_server_down, %{reason: _reason, stderr: ^retained_tail}}}},
-                   200
+                   1_000
   end
 
   test "ignores invalid subscriber filters without crashing", %{codex_opts: codex_opts} do

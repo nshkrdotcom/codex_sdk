@@ -3,13 +3,12 @@ defmodule Codex.Runtime.ExecTest do
 
   import ExUnit.CaptureLog
 
-  alias CliSubprocessCore.{Event, Payload}
+  alias CliSubprocessCore.{Event, Payload, ProcessExit}
   alias Codex.{Events, Options}
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
   alias Codex.Runtime.Exec.Profile, as: ExecProfile
   alias Codex.TestSupport.FixtureScripts
-  alias ExecutionPlane.ProcessExit
 
   import Codex.Test.ModelFixtures
 
@@ -51,7 +50,7 @@ defmodule Codex.Runtime.ExecTest do
 
     exit_result =
       Event.new(:result,
-        raw: %{exit: %ProcessExit{status: :success, code: 0, reason: :normal}},
+        raw: %{exit: ProcessExit.from_reason(:normal)},
         payload: Payload.Result.new(status: :completed)
       )
 

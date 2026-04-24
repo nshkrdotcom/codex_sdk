@@ -64,10 +64,10 @@ defmodule Codex.Tools.ShellTool do
   @behaviour Codex.Tool
 
   alias CliSubprocessCore.Command
+  alias CliSubprocessCore.TransportError, as: CoreTransportError
   alias Codex.Config.Defaults
   alias Codex.ProcessExit
   alias Codex.Tools.Hosted
-  alias ExecutionPlane.Process.Transport.Error, as: CoreTransportError
 
   @default_timeout_ms Defaults.shell_timeout_ms()
   @default_max_output_bytes Defaults.shell_max_output_bytes()
@@ -298,10 +298,13 @@ defmodule Codex.Tools.ShellTool do
   defp normalize_cwd(cwd) when is_binary(cwd), do: {:ok, cwd}
   defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
 
-  defp normalize_executor_error(%CliSubprocessCore.Command.Error{
-         reason: {:transport, %CoreTransportError{reason: :timeout}}
-       }),
-       do: {:error, :timeout}
+  defp normalize_executor_error(%CliSubprocessCore.Command.Error{reason: {:transport, error}}) do
+    if CoreTransportError.reason(error) == :timeout do
+      {:error, :timeout}
+    else
+      {:error, {:exec_start_failed, error}}
+    end
+  end
 
   defp normalize_executor_error(%CliSubprocessCore.Command.Error{} = error),
     do: {:error, {:exec_start_failed, error}}

@@ -13,13 +13,13 @@ defmodule Codex.Exec do
   require Logger
 
   alias CliSubprocessCore.Event, as: CoreEvent
+  alias CliSubprocessCore.TransportError, as: CoreTransportError
   alias Codex.Config.Defaults
   alias Codex.Exec.CancellationRegistry
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
   alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TransportError
-  alias ExecutionPlane.Process.Transport.Error, as: CoreTransportError
 
   @type exec_opts :: %{
           optional(:codex_opts) => Codex.Options.t(),
@@ -241,11 +241,13 @@ defmodule Codex.Exec do
     end
   end
 
-  defp log_transport_error(%CoreEvent{raw: %CoreTransportError{} = error}, phase) do
-    Logger.warning("Transport error during #{phase}: #{inspect(error.reason)}")
+  defp log_transport_error(%CoreEvent{raw: error}, phase) do
+    if CoreTransportError.match?(error) do
+      Logger.warning(
+        "Transport error during #{phase}: #{inspect(CoreTransportError.reason(error))}"
+      )
+    end
   end
-
-  defp log_transport_error(_event, _phase), do: :ok
 
   defp safe_stop({:error, _reason}), do: :ok
   defp safe_stop({:ok, state}), do: safe_stop(state)

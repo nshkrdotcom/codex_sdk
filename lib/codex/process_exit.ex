@@ -1,22 +1,12 @@
 defmodule Codex.ProcessExit do
   @moduledoc false
 
-  alias ExecutionPlane.ProcessExit, as: CoreProcessExit
+  alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
 
   @spec exit_status(term()) :: {:ok, integer()} | :unknown
   def exit_status(reason)
 
   def exit_status(:normal), do: {:ok, 0}
-  def exit_status(%CoreProcessExit{status: :success}), do: {:ok, 0}
-
-  def exit_status(%CoreProcessExit{status: :exit, code: status}) when is_integer(status),
-    do: {:ok, status}
-
-  def exit_status(%CoreProcessExit{status: :signal, signal: signal}) do
-    {:ok, 128 + signal_to_int(signal)}
-  end
-
-  def exit_status(%CoreProcessExit{reason: reason}), do: exit_status(reason)
   def exit_status({:exit_code, status}) when is_integer(status), do: {:ok, status}
 
   def exit_status({:exit_status, status}) when is_integer(status) do
@@ -31,16 +21,34 @@ defmodule Codex.ProcessExit do
     {:ok, normalize_wait_status(status)}
   end
 
-  def exit_status({:shutdown, reason}), do: exit_status(reason)
-  def exit_status({:transport, reason}), do: exit_status(reason)
-  def exit_status({:send_failed, reason}), do: exit_status(reason)
-  def exit_status({:call_exit, reason}), do: exit_status(reason)
-  def exit_status({:error, reason}), do: exit_status(reason)
-  def exit_status({:exit, reason}), do: exit_status(reason)
-  def exit_status({:EXIT, _pid, reason}), do: exit_status(reason)
-  def exit_status({reason, {GenServer, :call, _}}), do: exit_status(reason)
+  def exit_status(reason) do
+    if CoreProcessExit.match?(reason) do
+      exit_status_from_core(reason)
+    else
+      exit_status_fallback(reason)
+    end
+  end
 
-  def exit_status({reason, _meta}) do
+  defp exit_status_from_core(reason) do
+    case {CoreProcessExit.status(reason), CoreProcessExit.code(reason),
+          CoreProcessExit.signal(reason)} do
+      {:success, _code, _signal} -> {:ok, 0}
+      {:exit, status, _signal} when is_integer(status) -> {:ok, status}
+      {:signal, _code, signal} -> {:ok, 128 + signal_to_int(signal)}
+      _other -> exit_status(CoreProcessExit.reason(reason))
+    end
+  end
+
+  defp exit_status_fallback({:shutdown, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:transport, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:send_failed, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:call_exit, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:error, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:exit, reason}), do: exit_status(reason)
+  defp exit_status_fallback({:EXIT, _pid, reason}), do: exit_status(reason)
+  defp exit_status_fallback({reason, {GenServer, :call, _}}), do: exit_status(reason)
+
+  defp exit_status_fallback({reason, _meta}) do
     if wrapped_exit_reason?(reason) do
       exit_status(reason)
     else
@@ -48,7 +56,7 @@ defmodule Codex.ProcessExit do
     end
   end
 
-  def exit_status(_reason), do: :unknown
+  defp exit_status_fallback(_reason), do: :unknown
 
   @spec normalize_reason(term()) :: :normal | {:exit_code, integer()} | term()
   def normalize_reason(reason) do
@@ -61,36 +69,45 @@ defmodule Codex.ProcessExit do
 
   @spec normalize_wait_status(integer()) :: integer()
   def normalize_wait_status(raw_status) when is_integer(raw_status) do
-    case CoreProcessExit.from_reason(raw_status) do
-      %CoreProcessExit{status: :success} ->
+    exit = CoreProcessExit.from_reason(raw_status)
+
+    cond do
+      CoreProcessExit.status(exit) == :success ->
         0
 
-      %CoreProcessExit{status: :exit, code: code} when is_integer(code) ->
-        code
+      CoreProcessExit.status(exit) == :exit and is_integer(CoreProcessExit.code(exit)) ->
+        CoreProcessExit.code(exit)
 
-      %CoreProcessExit{status: :signal, signal: signal} ->
+      CoreProcessExit.status(exit) == :signal ->
+        signal = CoreProcessExit.signal(exit)
         128 + signal_to_int(signal)
 
-      _other ->
+      true ->
         raw_status
     end
   end
 
-  defp wrapped_exit_reason?(:normal), do: true
-  defp wrapped_exit_reason?(%CoreProcessExit{}), do: true
-  defp wrapped_exit_reason?({:exit_code, status}) when is_integer(status), do: true
-  defp wrapped_exit_reason?({:exit_status, status}) when is_integer(status), do: true
-  defp wrapped_exit_reason?({:signal, _signal, _core?}), do: true
-  defp wrapped_exit_reason?(status) when is_integer(status), do: true
-  defp wrapped_exit_reason?({:shutdown, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:transport, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:send_failed, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:call_exit, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:error, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:exit, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({:EXIT, _pid, reason}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?({reason, {GenServer, :call, _}}), do: wrapped_exit_reason?(reason)
-  defp wrapped_exit_reason?(_reason), do: false
+  defp wrapped_exit_reason?(reason) do
+    CoreProcessExit.match?(reason) or wrapped_exit_reason_shape?(reason)
+  end
+
+  defp wrapped_exit_reason_shape?(:normal), do: true
+  defp wrapped_exit_reason_shape?(reason) when is_integer(reason), do: true
+  defp wrapped_exit_reason_shape?({:exit_code, status}) when is_integer(status), do: true
+  defp wrapped_exit_reason_shape?({:exit_status, status}) when is_integer(status), do: true
+  defp wrapped_exit_reason_shape?({:signal, _signal, _core?}), do: true
+  defp wrapped_exit_reason_shape?({:shutdown, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:transport, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:send_failed, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:call_exit, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:error, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:exit, reason}), do: wrapped_exit_reason?(reason)
+  defp wrapped_exit_reason_shape?({:EXIT, _pid, reason}), do: wrapped_exit_reason?(reason)
+
+  defp wrapped_exit_reason_shape?({reason, {GenServer, :call, _}}),
+    do: wrapped_exit_reason?(reason)
+
+  defp wrapped_exit_reason_shape?(_reason), do: false
 
   defp signal_to_int(signal) when is_integer(signal), do: signal
 

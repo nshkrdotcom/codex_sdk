@@ -23,10 +23,10 @@ defmodule Codex.CLI.Session do
   """
 
   alias CliSubprocessCore.{Channel, Command, CommandSpec}
+  alias CliSubprocessCore.TransportInfo
   alias Codex.Config.Defaults
   alias Codex.Options
   alias Codex.ProcessExit
-  alias ExecutionPlane.Process.Transport.Info
 
   @enforce_keys [:args, :channel, :command, :os_pid, :pid, :receiver]
   defstruct [:args, :channel, :command, :os_pid, :pid, :receiver, pty?: false, stdin?: false]
@@ -75,7 +75,7 @@ defmodule Codex.CLI.Session do
              env: env,
              clear_env?: clear_env?
            ),
-         {:ok, channel, %{transport: %Info{} = transport_info}} <-
+         {:ok, channel, %{transport: transport_info}} <-
            Channel.start_channel(
              Options.execution_surface_options(execution_surface) ++
                [
@@ -86,7 +86,8 @@ defmodule Codex.CLI.Session do
                  pty?: pty?,
                  interrupt_mode: default_interrupt_mode(pty?)
                ]
-           ) do
+           ),
+         true <- TransportInfo.match?(transport_info) do
       bind_relay(relay, channel, channel_ref, transport_info)
 
       {:ok,
@@ -94,8 +95,8 @@ defmodule Codex.CLI.Session do
          args: args,
          channel: channel,
          command: Command.argv(invocation),
-         os_pid: transport_info.os_pid,
-         pid: transport_info.pid,
+         os_pid: TransportInfo.os_pid(transport_info),
+         pid: TransportInfo.pid(transport_info),
          receiver: receiver,
          pty?: pty?,
          stdin?: stdin?
@@ -225,7 +226,9 @@ defmodule Codex.CLI.Session do
     end)
   end
 
-  defp bind_relay(relay, channel, channel_ref, %Info{pid: pid, os_pid: os_pid}) do
+  defp bind_relay(relay, channel, channel_ref, transport_info) do
+    pid = TransportInfo.pid(transport_info)
+    os_pid = TransportInfo.os_pid(transport_info)
     send(relay, {:bind, channel, channel_ref, pid, os_pid})
     :ok
   end

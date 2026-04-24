@@ -25,9 +25,15 @@
 
 ## Model Registry and Auth Behavior
 - Auth mode inference order: `CODEX_API_KEY`, then `auth.json` `OPENAI_API_KEY`, else ChatGPT tokens.
-- Defaults must be auth-aware; prefer `codex-auto-balanced` when available.
+- Defaults must come from the shared `CliSubprocessCore.ModelRegistry` Codex catalog.
+- The allowed bundled Codex picker models are `gpt-5.4`, `gpt-5.5`, `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and `gpt-5.2`.
 - Remote model registry is gated by `features.remote_models` (default false) in `config.toml`.
 - Keep local presets, upgrade metadata, and reasoning effort normalization aligned with upstream behavior.
+
+## Execution Plane Stack
+- `codex_sdk` sits above `cli_subprocess_core`; it should not depend directly on or expose raw `ExecutionPlane.*` internals.
+- Use `CliSubprocessCore` facade modules for execution surfaces, transport errors, transport info, and process exits.
+- Keep `cli_subprocess_core` dependency resolution publish-aware: local path deps for sibling development, Hex constraints for release builds.
 
 ## Testing Guidelines
 - Use descriptive ExUnit test names: `"module: behavior"`.

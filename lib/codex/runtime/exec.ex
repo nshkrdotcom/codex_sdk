@@ -9,6 +9,7 @@ defmodule Codex.Runtime.Exec do
 
   alias CliSubprocessCore.Event, as: CoreEvent
   alias CliSubprocessCore.Payload
+  alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.Session
   alias Codex.ApprovalPolicy
@@ -20,7 +21,6 @@ defmodule Codex.Runtime.Exec do
   alias Codex.Options
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
-  alias ExecutionPlane.ProcessExit, as: CoreProcessExit
 
   @default_session_event_tag :codex_sdk_exec_session
   @session_control_capabilities [
@@ -99,7 +99,7 @@ defmodule Codex.Runtime.Exec do
   @impl true
   def project_event(%CoreEvent{kind: :run_started}, state), do: {[], state}
 
-  def project_event(%CoreEvent{raw: %{exit: %CoreProcessExit{}}}, state), do: {[], state}
+  def project_event(%CoreEvent{raw: %{exit: _exit}}, state), do: {[], state}
 
   def project_event(
         %CoreEvent{
@@ -127,20 +127,22 @@ defmodule Codex.Runtime.Exec do
   def session_error(
         %CoreEvent{
           kind: :error,
-          raw: %{exit: %CoreProcessExit{} = exit},
+          raw: %{exit: exit},
           payload: %Payload.Error{} = payload
         },
         stderr,
         stderr_truncated?
       ) do
-    {:error,
-     Codex.TransportError.new(exit_code(exit),
-       message: payload.message || exit_message(exit),
-       stderr: stderr,
-       stderr_truncated?: stderr_truncated?,
-       retryable?: retryable_exit?(exit),
-       reason_code: normalize_reason_code(payload.code)
-     )}
+    if CoreProcessExit.match?(exit) do
+      {:error,
+       Codex.TransportError.new(exit_code(exit),
+         message: payload.message || exit_message(exit),
+         stderr: stderr,
+         stderr_truncated?: stderr_truncated?,
+         retryable?: retryable_exit?(exit),
+         reason_code: normalize_reason_code(payload.code)
+       )}
+    end
   end
 
   def session_error(_event, _stderr, _stderr_truncated?), do: nil
@@ -577,29 +579,45 @@ defmodule Codex.Runtime.Exec do
 
   defp transport_stderr_buffer_size(_exec_opts), do: 262_145
 
-  defp exit_code(%CoreProcessExit{status: :success}), do: 0
-  defp exit_code(%CoreProcessExit{status: :exit, code: code}) when is_integer(code), do: code
+  defp exit_code(exit) do
+    case CoreProcessExit.status(exit) do
+      :success -> 0
+      :exit -> core_exit_code(exit)
+      :signal -> normalized_exit_code(exit)
+      _other -> core_exit_code(exit)
+    end
+  end
 
-  defp exit_code(%CoreProcessExit{status: :signal, signal: signal}) do
-    case ProcessExit.exit_status(%CoreProcessExit{status: :signal, signal: signal}) do
+  defp core_exit_code(exit) do
+    case CoreProcessExit.code(exit) do
+      code when is_integer(code) -> code
+      _other -> -1
+    end
+  end
+
+  defp normalized_exit_code(exit) do
+    case ProcessExit.exit_status(exit) do
       {:ok, status} -> status
       :unknown -> -1
     end
   end
 
-  defp exit_code(%CoreProcessExit{code: code}) when is_integer(code), do: code
-  defp exit_code(_exit), do: -1
+  defp exit_message(exit) do
+    code = CoreProcessExit.code(exit)
+    status = CoreProcessExit.status(exit)
+    signal = CoreProcessExit.signal(exit)
+    reason = CoreProcessExit.reason(exit)
 
-  defp exit_message(%CoreProcessExit{status: :exit, code: code}) when is_integer(code) do
-    "codex executable exited with status #{code}"
-  end
+    cond do
+      status == :exit and is_integer(code) ->
+        "codex executable exited with status #{code}"
 
-  defp exit_message(%CoreProcessExit{status: :signal, signal: signal}) do
-    "codex executable exited due to signal #{inspect(signal)}"
-  end
+      status == :signal ->
+        "codex executable exited due to signal #{inspect(signal)}"
 
-  defp exit_message(%CoreProcessExit{reason: reason}) do
-    "codex executable exited: #{inspect(reason)}"
+      true ->
+        "codex executable exited: #{inspect(reason)}"
+    end
   end
 
   defp normalize_reason_code(nil), do: nil
@@ -612,6 +630,5 @@ defmodule Codex.Runtime.Exec do
     |> String.to_atom()
   end
 
-  defp retryable_exit?(%CoreProcessExit{} = exit),
-    do: Codex.TransportError.retryable_status?(exit_code(exit))
+  defp retryable_exit?(exit), do: Codex.TransportError.retryable_status?(exit_code(exit))
 end

@@ -31,9 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
   while preserving Codex-native scaffold and write defaults.
 - The bundled visible model catalog and docs now match the current upstream
-  picker surface: `gpt-5.4`, `gpt-5.2-codex`, `gpt-5.1-codex-max`,
-  `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.2`, and
-  `gpt-5.1-codex-mini`.
+  picker surface: `gpt-5.4`, `gpt-5.5`, `gpt-5.4-mini`,
+  `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and `gpt-5.2`.
 - README, guides, examples, and the example runner now document and exercise
   the expanded app-server, marketplace, MCP, guardian-review, realtime
   transcript, and thread-management surface.

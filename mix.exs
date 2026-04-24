@@ -1,6 +1,8 @@
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
+  @cli_subprocess_core_version "~> 0.1.0"
+
   def project do
     [
       app: :codex_sdk,
@@ -39,8 +41,7 @@ defmodule CodexSdk.MixProject do
 
   defp deps do
     [
-      {:cli_subprocess_core, path: "../cli_subprocess_core"},
-      {:execution_plane, path: "../execution_plane", override: true},
+      cli_subprocess_core_dep(),
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
       {:typed_struct, "~> 0.3.0"},
@@ -61,6 +62,39 @@ defmodule CodexSdk.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:excoveralls, "~> 0.18", only: :test}
     ]
+  end
+
+  defp cli_subprocess_core_dep do
+    case workspace_dep_path("../cli_subprocess_core", "CODEX_SDK_HEX_DEPS") do
+      nil -> {:cli_subprocess_core, @cli_subprocess_core_version}
+      path -> {:cli_subprocess_core, path: path}
+    end
+  end
+
+  defp workspace_dep_path(relative_path, force_hex_env) do
+    if prefer_workspace_paths?(force_hex_env) do
+      path = Path.expand(relative_path, __DIR__)
+      if File.dir?(path), do: path
+    end
+  end
+
+  defp prefer_workspace_paths?(force_hex_env) do
+    workspace_paths_forced?(force_hex_env) or
+      (not release_deps_forced?(force_hex_env) and not Enum.member?(Path.split(__DIR__), "deps"))
+  end
+
+  defp release_deps_forced?(force_hex_env) do
+    force_hex_deps?(force_hex_env) or
+      Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
+  end
+
+  defp workspace_paths_forced?(force_hex_env) do
+    not force_hex_deps?(force_hex_env) and
+      System.get_env("FORCE_WORKSPACE_PATH_DEPS") in ["1", "true", "TRUE", "yes", "YES"]
+  end
+
+  defp force_hex_deps?(force_hex_env) do
+    System.get_env(force_hex_env) in ["1", "true", "TRUE", "yes", "YES"]
   end
 
   defp description do
@@ -255,7 +289,14 @@ defmodule CodexSdk.MixProject do
       },
       maintainers: ["nshkrdotcom"],
       exclude_patterns: [
-        "priv/plts",
+        "**/_build/**",
+        "**/deps/**",
+        "**/doc/**",
+        "**/*.beam",
+        "**/*.plt",
+        "**/*.plt.hash",
+        "priv/plts/**",
+        "examples/_output/**",
         ".DS_Store"
       ]
     ]
