@@ -228,6 +228,7 @@ ssh_ready_cli_examples=(
 ssh_requires_cwd_cli_examples=(
   "examples/live_app_server_basic.exs"
   "examples/live_app_server_streaming.exs"
+  "examples/live_app_server_dynamic_tools.exs"
   "examples/live_collaboration_modes.exs"
   "examples/live_subagent_host_controls.exs"
   "examples/live_personality.exs"

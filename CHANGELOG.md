@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- App-server dynamic host tool support through `Codex.Thread.Options.dynamic_tools`,
+  rendering upstream `dynamicTools` on both `thread/start` and `thread/resume`,
+  plus live documentation and `examples/live_app_server_dynamic_tools.exs` for
+  `DynamicToolCallRequested` / `Codex.AppServer.respond/3` handling.
+
 ## [0.17.0] - 2026-04-16
 
 ### Added

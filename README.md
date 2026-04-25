@@ -275,6 +275,37 @@ When you need experimental app-server fields such as `approvals_reviewer` or
 granular approval policies, create the connection with
 `Codex.AppServer.connect(codex_opts, experimental_api: true)`.
 
+App-server dynamic host tools are advertised per thread with
+`dynamic_tools:`. Specs are forwarded as upstream `dynamicTools` on both
+`thread/start` and `thread/resume`, so callers should pass the same current
+tool registry when resuming a thread:
+
+```elixir
+dynamic_tools = [
+  %{
+    "name" => "echo_json",
+    "description" => "Echo JSON arguments back to the model.",
+    "inputSchema" => %{
+      "type" => "object",
+      "properties" => %{"message" => %{"type" => "string"}},
+      "required" => ["message"]
+    }
+  }
+]
+
+{:ok, thread} =
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: "/project",
+    dynamic_tools: dynamic_tools
+  })
+```
+
+When the app-server emits `%Codex.Events.DynamicToolCallRequested{}`, execute
+the named host tool and answer with `Codex.AppServer.respond(conn, event.id,
+result)`. See `examples/live_app_server_dynamic_tools.exs` for a live-only
+end-to-end flow.
+
 When the managed `codex app-server` child should run against an isolated repo or
 temporary Codex home, pass launch overrides to `connect/2` itself:
 
@@ -386,6 +417,9 @@ and `examples/live_app_server_plugins.exs` for `plugin/list` + `plugin/read` usi
 repo-local marketplace fixture plus an isolated temporary `CODEX_HOME`, rather than your real
 plugin config; that example now uses the typed plugin wrappers and prints derived
 `needs_auth` state from the typed app summaries while the raw wrappers remain available.
+`examples/live_app_server_dynamic_tools.exs` demonstrates host-advertised
+`dynamicTools` plus `Codex.AppServer.respond/3` handling for live app-server
+tool-call requests.
 `examples/live_app_server_approvals.exs` uses the same child-process isolation pattern to enable
 the under-development approval features only inside a temporary `CODEX_HOME`, so it can exercise
 live command/file/permissions approval flows without mutating your real Codex settings or writing
@@ -1444,6 +1478,7 @@ See the `examples/` directory for comprehensive demonstrations. A quick index:
 - **`live_cli_session.exs`** - PTY-backed root `codex` prompt mode via `Codex.CLI.interactive/2`
 - **`live_oauth_login.exs`** - Native OAuth status/login/refresh demo with an isolated temporary `CODEX_HOME`; prints the browser URL before waiting, supports `--browser`, `--device`, and `--no-browser`, and can optionally show memory-mode app-server auth
 - **`live_app_server_approvals.exs`** - Command/file/permissions approvals over app-server, using a disposable workspace plus temporary `CODEX_HOME` to exercise under-development approval features without mutating your real settings
+- **`live_app_server_dynamic_tools.exs`** - App-server `dynamicTools` host-tool flow that advertises an `echo_json` tool, responds to `DynamicToolCallRequested` with `Codex.AppServer.respond/3`, and fails if no live dynamic tool call is observed
 - **`live_collaboration_modes.exs`** - `experimentalApi` collaboration mode presets and a live turn that uses the server-advertised preset settings (falling back only when the server omits a field), with an explicit skip when the connected build rejects or omits `collaborationMode/list`
 - **`live_subagent_host_controls.exs`** - Live subagent workflow over app-server that enables `features.multi_agent`, exercises the full `Codex.Subagents` helper surface, and drives `spawn_agent`, `send_input`, `resume_agent`, `wait`, and `close_agent`
 - **`live_personality.exs`** - Personality overrides (friendly, pragmatic, none)

@@ -186,6 +186,7 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
     |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
     |> maybe_put(:personality, thread.thread_opts.personality)
+    |> maybe_put(:dynamic_tools, thread.thread_opts.dynamic_tools)
     |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
     |> maybe_put(:persist_extended_history, thread.thread_opts.persist_extended_history)
     |> maybe_put_for_mode(:ephemeral, thread.thread_opts.ephemeral, mode, [:start])

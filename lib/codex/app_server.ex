@@ -276,6 +276,10 @@ defmodule Codex.AppServer do
           |> fetch_any([:personality, "personality"])
           |> Params.personality()
         )
+        |> Params.put_optional(
+          "dynamicTools",
+          fetch_any(params, [:dynamic_tools, "dynamic_tools", :dynamicTools, "dynamicTools"])
+        )
         |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
         |> Params.put_optional(
           "sessionStartSource",
@@ -379,6 +383,10 @@ defmodule Codex.AppServer do
           params
           |> fetch_any([:personality, "personality"])
           |> Params.personality()
+        )
+        |> Params.put_optional(
+          "dynamicTools",
+          fetch_any(params, [:dynamic_tools, "dynamic_tools", :dynamicTools, "dynamicTools"])
         )
         |> Params.put_optional(
           "serviceTier",

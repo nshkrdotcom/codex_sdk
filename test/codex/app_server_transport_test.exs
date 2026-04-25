@@ -167,7 +167,21 @@ defmodule Codex.AppServerTransportTest do
     assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
 
     {:ok, thread_opts} =
-      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        working_directory: "/tmp",
+        dynamic_tools: [
+          %{
+            "name" => "echo_json",
+            "description" => "Echo JSON arguments",
+            "inputSchema" => %{
+              "type" => "object",
+              "properties" => %{"message" => %{"type" => "string"}},
+              "required" => ["message"]
+            }
+          }
+        ]
+      })
 
     thread = Thread.build(codex_opts, thread_opts)
 
@@ -177,6 +191,11 @@ defmodule Codex.AppServerTransportTest do
 
     assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
              Jason.decode(thread_start_line)
+
+    assert {:ok, %{"params" => %{"dynamicTools" => [dynamic_tool]}}} =
+             Jason.decode(thread_start_line)
+
+    assert dynamic_tool["name"] == "echo_json"
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
@@ -703,6 +722,17 @@ defmodule Codex.AppServerTransportTest do
       ThreadOptions.new(%{
         transport: {:app_server, conn},
         working_directory: "/tmp",
+        dynamic_tools: [
+          %{
+            "name" => "echo_json",
+            "description" => "Echo JSON arguments",
+            "inputSchema" => %{
+              "type" => "object",
+              "properties" => %{"message" => %{"type" => "string"}},
+              "required" => ["message"]
+            }
+          }
+        ],
         approvals_reviewer: :guardian_subagent,
         ask_for_approval: %{
           type: :granular,
@@ -722,6 +752,7 @@ defmodule Codex.AppServerTransportTest do
              Jason.decode(start_line)
 
     assert start_params["approvalsReviewer"] == "guardian_subagent"
+    assert [%{"name" => "echo_json"}] = start_params["dynamicTools"]
     assert start_params["approvalPolicy"]["granular"]["sandbox_approval"] == true
     assert start_params["approvalPolicy"]["granular"]["rules"] == true
     assert start_params["approvalPolicy"]["granular"]["request_permissions"] == true
@@ -766,6 +797,17 @@ defmodule Codex.AppServerTransportTest do
       ThreadOptions.new(%{
         transport: {:app_server, conn},
         working_directory: "/tmp",
+        dynamic_tools: [
+          %{
+            "name" => "echo_json",
+            "description" => "Echo JSON arguments",
+            "inputSchema" => %{
+              "type" => "object",
+              "properties" => %{"message" => %{"type" => "string"}},
+              "required" => ["message"]
+            }
+          }
+        ],
         approvals_reviewer: :user,
         ask_for_approval: %{
           type: :granular,
@@ -786,6 +828,7 @@ defmodule Codex.AppServerTransportTest do
 
     assert resume_params["threadId"] == "thr_resume"
     assert resume_params["approvalsReviewer"] == "user"
+    assert [%{"name" => "echo_json"}] = resume_params["dynamicTools"]
     assert resume_params["approvalPolicy"]["granular"]["request_permissions"] == true
 
     AppServerSubprocess.send_stdout(

@@ -103,6 +103,28 @@ defmodule Codex.ThreadTest do
       assert opts.persist_extended_history == true
     end
 
+    test "accepts dynamic tool specs for app-server thread start" do
+      dynamic_tools = [
+        %{
+          "name" => "echo_json",
+          "description" => "Echo JSON arguments",
+          "inputSchema" => %{
+            "type" => "object",
+            "properties" => %{"message" => %{"type" => "string"}},
+            "required" => ["message"]
+          }
+        }
+      ]
+
+      assert {:ok, opts} = ThreadOptions.new(%{dynamic_tools: dynamic_tools})
+      assert opts.dynamic_tools == dynamic_tools
+    end
+
+    test "rejects malformed dynamic tool specs" do
+      assert {:error, {:invalid_dynamic_tools, [%{"description" => "missing name"}]}} =
+               ThreadOptions.new(%{dynamic_tools: [%{"description" => "missing name"}]})
+    end
+
     test "accepts granular ask_for_approval maps for app-server parity" do
       {:ok, opts} =
         ThreadOptions.new(%{

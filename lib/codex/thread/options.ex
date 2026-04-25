@@ -40,6 +40,7 @@ defmodule Codex.Thread.Options do
             collaboration_mode: nil,
             compact_prompt: nil,
             show_raw_agent_reasoning: false,
+            dynamic_tools: [],
             output_schema: nil,
             apply_patch_freeform_enabled: nil,
             view_image_tool_enabled: nil,
@@ -137,6 +138,10 @@ defmodule Codex.Thread.Options do
           | String.t()
           | granular_approval_policy()
 
+  @type dynamic_tool :: %{
+          required(String.t()) => term()
+        }
+
   @type retry_opts :: keyword()
   @type rate_limit_opts :: keyword()
   @type history_persistence :: String.t()
@@ -172,6 +177,7 @@ defmodule Codex.Thread.Options do
           collaboration_mode: collaboration_mode() | nil,
           compact_prompt: String.t() | nil,
           show_raw_agent_reasoning: boolean(),
+          dynamic_tools: [dynamic_tool()],
           output_schema: map() | nil,
           apply_patch_freeform_enabled: boolean() | nil,
           view_image_tool_enabled: boolean() | nil,
@@ -300,6 +306,17 @@ defmodule Codex.Thread.Options do
         attrs,
         :show_raw_agent_reasoning,
         Map.get(attrs, "show_raw_agent_reasoning", false)
+      )
+
+    dynamic_tools =
+      Map.get(
+        attrs,
+        :dynamic_tools,
+        Map.get(
+          attrs,
+          "dynamic_tools",
+          Map.get(attrs, :dynamicTools, Map.get(attrs, "dynamicTools"))
+        )
       )
 
     output_schema = Map.get(attrs, :output_schema, Map.get(attrs, "output_schema"))
@@ -492,6 +509,7 @@ defmodule Codex.Thread.Options do
          :ok <- validate_optional_string(compact_prompt, :compact_prompt),
          {:ok, show_raw_agent_reasoning} <-
            validate_optional_boolean(show_raw_agent_reasoning, :show_raw_agent_reasoning),
+         {:ok, dynamic_tools} <- normalize_dynamic_tools(dynamic_tools),
          {:ok, output_schema} <- ensure_optional_map(output_schema, :output_schema),
          {:ok, apply_patch_freeform_enabled} <-
            validate_optional_boolean(apply_patch_freeform_enabled, :apply_patch_freeform_enabled),
@@ -592,6 +610,7 @@ defmodule Codex.Thread.Options do
          collaboration_mode: collaboration_mode,
          compact_prompt: compact_prompt,
          show_raw_agent_reasoning: show_raw_agent_reasoning,
+         dynamic_tools: dynamic_tools,
          output_schema: output_schema,
          apply_patch_freeform_enabled: apply_patch_freeform_enabled,
          view_image_tool_enabled: view_image_tool_enabled,
@@ -741,6 +760,63 @@ defmodule Codex.Thread.Options do
   defp normalize_sandbox_policy(policy) when is_atom(policy), do: {:ok, %{type: policy}}
   defp normalize_sandbox_policy(policy) when is_binary(policy), do: {:ok, %{type: policy}}
   defp normalize_sandbox_policy(value), do: {:error, {:invalid_sandbox_policy, value}}
+
+  defp normalize_dynamic_tools(nil), do: {:ok, []}
+  defp normalize_dynamic_tools([]), do: {:ok, []}
+
+  defp normalize_dynamic_tools(tools) when is_list(tools) do
+    case normalize_dynamic_tool_list(tools) do
+      {:ok, normalized} -> {:ok, normalized}
+      {:error, _reason} -> {:error, {:invalid_dynamic_tools, tools}}
+    end
+  end
+
+  defp normalize_dynamic_tools(value), do: {:error, {:invalid_dynamic_tools, value}}
+
+  defp normalize_dynamic_tool_list(tools) do
+    Enum.reduce_while(tools, {:ok, []}, fn tool, {:ok, acc} ->
+      case normalize_dynamic_tool(tool) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalize_dynamic_tool(tool) when is_list(tool),
+    do: tool |> Map.new() |> normalize_dynamic_tool()
+
+  defp normalize_dynamic_tool(%{} = tool) do
+    normalized =
+      tool
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        Map.put(acc, dynamic_tool_key(key), value)
+      end)
+
+    with name when is_binary(name) and name != "" <- Map.get(normalized, "name"),
+         schema when is_map(schema) <- Map.get(normalized, "inputSchema") do
+      {:ok, normalized}
+    else
+      _ -> {:error, :invalid_dynamic_tool}
+    end
+  end
+
+  defp normalize_dynamic_tool(_tool), do: {:error, :invalid_dynamic_tool}
+
+  defp dynamic_tool_key(:input_schema), do: "inputSchema"
+  defp dynamic_tool_key("input_schema"), do: "inputSchema"
+  defp dynamic_tool_key(:inputSchema), do: "inputSchema"
+  defp dynamic_tool_key("inputSchema"), do: "inputSchema"
+  defp dynamic_tool_key(:output_schema), do: "outputSchema"
+  defp dynamic_tool_key("output_schema"), do: "outputSchema"
+  defp dynamic_tool_key(:outputSchema), do: "outputSchema"
+  defp dynamic_tool_key("outputSchema"), do: "outputSchema"
+  defp dynamic_tool_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp dynamic_tool_key(key) when is_binary(key), do: key
+  defp dynamic_tool_key(key), do: inspect(key)
 
   defp normalize_color(nil), do: {:ok, nil}
 

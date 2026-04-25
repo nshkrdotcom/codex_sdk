@@ -208,6 +208,70 @@ Streaming works the same way:
 Enum.each(stream, &IO.inspect/1)
 ```
 
+## Dynamic host tools
+
+The app-server transport can advertise host-owned dynamic tools on
+`thread/start` and `thread/resume`. Add `dynamic_tools:` to
+`Codex.Thread.Options` or to `Codex.start_thread/2` attrs. Each spec is the
+upstream app-server tool map; at minimum provide `name` and `inputSchema`.
+Snake-case `input_schema` / `output_schema` keys are normalized to
+`inputSchema` / `outputSchema`.
+
+```elixir
+dynamic_tools = [
+  %{
+    "name" => "echo_json",
+    "description" => "Echo JSON arguments back to the model.",
+    "inputSchema" => %{
+      "type" => "object",
+      "properties" => %{"message" => %{"type" => "string"}},
+      "required" => ["message"]
+    }
+  }
+]
+
+{:ok, thread} =
+  Codex.start_thread(codex_opts, %{
+    transport: {:app_server, conn},
+    working_directory: "/path/to/project",
+    dynamic_tools: dynamic_tools
+  })
+```
+
+When the model invokes a dynamic tool, the SDK emits
+`%Codex.Events.DynamicToolCallRequested{}` with `id`, `thread_id`, `turn_id`,
+`call_id`, `tool_name`, and `arguments`. Execute the host tool and respond to
+the request id:
+
+```elixir
+case event do
+  %Codex.Events.DynamicToolCallRequested{} ->
+    output = Jason.encode!(%{"arguments" => event.arguments})
+
+    :ok =
+      Codex.AppServer.respond(conn, event.id, %{
+        "success" => true,
+        "output" => output,
+        "contentItems" => [
+          %{"type" => "inputText", "text" => output}
+        ]
+      })
+
+  _other ->
+    :ok
+end
+```
+
+Resume behavior is explicit: the transport re-sends non-empty `dynamic_tools`
+as `dynamicTools` on `thread/resume`. Hosts should provide the same current
+tool registry when rebuilding a resumed thread; do not rely on app-server
+process-local state retaining the registry across host restarts.
+
+`examples/live_app_server_dynamic_tools.exs` is the live-only end-to-end proof.
+It advertises an `echo_json` tool, handles
+`DynamicToolCallRequested`, responds through `Codex.AppServer.respond/3`, and
+fails if no dynamic tool call is observed.
+
 ## Call app-server v2 APIs directly
 
 App-server enables additional APIs that are not available via exec JSONL. Examples:
@@ -627,6 +691,7 @@ Runnable scripts (against a real `codex` install) live under `examples/`:
 
 - `examples/live_app_server_basic.exs`
 - `examples/live_app_server_streaming.exs`
+- `examples/live_app_server_dynamic_tools.exs`
 - `examples/live_app_server_approvals.exs`
 - `examples/live_app_server_mcp.exs`
 
@@ -635,6 +700,7 @@ Run them with:
 ```bash
 mix run examples/live_app_server_basic.exs
 mix run examples/live_app_server_streaming.exs "Reply with exactly ok and nothing else."
+mix run examples/live_app_server_dynamic_tools.exs
 mix run examples/live_app_server_approvals.exs
 mix run examples/live_app_server_mcp.exs
 ```
