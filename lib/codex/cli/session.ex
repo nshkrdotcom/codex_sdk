@@ -13,7 +13,9 @@ defmodule Codex.CLI.Session do
   - `codex app-server`
   - `codex mcp-server`
 
-  The caller process continues to receive the historical mailbox events:
+  The caller process continues to receive the historical mailbox event shape.
+  The pid fields are opaque compatibility positions and may be `nil` when the
+  lower transport hides process handles:
 
   - `{:stdout, os_pid, binary}`
   - `{:stderr, os_pid, binary}`
@@ -35,8 +37,8 @@ defmodule Codex.CLI.Session do
           args: [String.t()],
           channel: Channel.t(),
           command: [String.t()],
-          os_pid: non_neg_integer(),
-          pid: pid(),
+          os_pid: non_neg_integer() | nil,
+          pid: pid() | nil,
           receiver: pid(),
           pty?: boolean(),
           stdin?: boolean()
