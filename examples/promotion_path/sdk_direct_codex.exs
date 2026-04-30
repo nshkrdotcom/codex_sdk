@@ -3,7 +3,7 @@
 # SDK-direct Codex promotion-path verifier.
 #
 # Usage:
-#   mix run examples/promotion_path/sdk_direct_codex.exs -- \
+#   mix run examples/promotion_path/sdk_direct_codex.exs \
 #     --model gpt-5.4 \
 #     --prompt "Reply with exactly: codex sdk direct ok"
 #

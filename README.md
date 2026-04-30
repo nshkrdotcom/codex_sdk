@@ -529,7 +529,7 @@ without importing ASM, passes keyword `execution_surface` input, and
 demonstrates Codex-native `sandbox` and `skip_git_repo_check` controls:
 
 ```bash
-mix run examples/promotion_path/sdk_direct_codex.exs -- \
+mix run examples/promotion_path/sdk_direct_codex.exs \
   --model gpt-5.4 \
   --prompt "Reply with exactly: codex sdk direct ok"
 ```
