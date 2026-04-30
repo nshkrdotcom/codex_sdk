@@ -118,6 +118,7 @@ defmodule CodexSdk.MixProject do
         "guides/12-operational-workflows.md": [title: "Operational Workflows"],
         "guides/13-plugin-authoring.md": [title: "Plugin Authoring"],
         "guides/14-plugin-marketplaces.md": [title: "Plugin Marketplaces"],
+        "guides/provider_behavior_manifest.md": [title: "Provider Behavior Manifest"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
       ],
@@ -136,7 +137,8 @@ defmodule CodexSdk.MixProject do
           "guides/11-typed-plugin-api.md",
           "guides/12-operational-workflows.md",
           "guides/13-plugin-authoring.md",
-          "guides/14-plugin-marketplaces.md"
+          "guides/14-plugin-marketplaces.md",
+          "guides/provider_behavior_manifest.md"
         ],
         "Models & Configuration": [
           "guides/07-models-and-reasoning.md",

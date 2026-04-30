@@ -21,6 +21,7 @@ defmodule Codex.Runtime.Exec do
   alias Codex.Options
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
+  alias Codex.Runtime.Exec.Profile, as: ExecProfile
 
   @default_session_event_tag :codex_sdk_exec_session
   @session_control_capabilities [
@@ -168,39 +169,11 @@ defmodule Codex.Runtime.Exec do
       subcommand_args = command_args || command_args_for_run(exec_opts)
 
       session_opts =
-        [
-          provider: :codex,
-          profile: Codex.Runtime.Exec.Profile,
-          subscriber: subscriber,
-          metadata: session_metadata(opts, exec_opts),
-          command_spec: command_spec,
-          stdin: normalize_prompt(input),
-          cli_profile: exec_opt(exec_opts, :profile),
-          oss: payload_oss?(exec_opts),
-          local_provider: payload_local_provider(exec_opts),
-          full_auto: exec_opt(exec_opts, :full_auto),
-          dangerously_bypass_approvals_and_sandbox:
-            exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
-          model: normalize_option_string(exec_opts.codex_opts.model),
-          model_payload: exec_opts.codex_opts.model_payload,
-          color: normalize_option_string(exec_opt(exec_opts, :color)),
-          output_last_message: exec_opt(exec_opts, :output_last_message),
-          sandbox: sandbox_mode(fetch_thread_opt(exec_opts.thread, :sandbox)),
-          working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
-          additional_directories:
-            normalize_string_list(fetch_thread_opt(exec_opts.thread, :additional_directories)),
-          skip_git_repo_check: fetch_thread_opt(exec_opts.thread, :skip_git_repo_check) == true,
-          subcommand_args: subcommand_args,
-          continuation_token: exec_opts.continuation_token,
-          cancellation_token: exec_opts.cancellation_token,
-          images: attachment_paths(exec_opts.attachments),
-          output_schema: exec_opts.output_schema_path,
-          config_values: config_values,
-          env: build_env(exec_opts),
-          session_event_tag: @default_session_event_tag,
-          headless_timeout_ms: :infinity,
-          max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
-        ] ++ Options.execution_surface_options(exec_opts.execution_surface)
+        opts
+        |> base_session_options(exec_opts, config_values, subcommand_args)
+        |> Keyword.put(:subscriber, subscriber)
+        |> Keyword.put(:command_spec, command_spec)
+        |> Keyword.put(:stdin, normalize_prompt(input))
 
       {:ok, session_opts}
     else
@@ -210,6 +183,90 @@ defmodule Codex.Runtime.Exec do
       _other ->
         {:error, :invalid_exec_options}
     end
+  end
+
+  @doc false
+  @spec render_for_test(keyword()) ::
+          {:ok,
+           %{
+             provider: :codex,
+             args: [term()],
+             stdin: String.t() | nil,
+             cwd: term(),
+             env: map(),
+             execution_surface: term(),
+             config_values: [term()],
+             provider_native: map()
+           }}
+          | {:error, term()}
+  def render_for_test(opts) when is_list(opts) do
+    exec_opts = Keyword.fetch!(opts, :exec_opts)
+    input = Keyword.get(opts, :input)
+    command_args = Keyword.get(opts, :command_args)
+
+    with %ExecOptions{} = exec_opts <- exec_opts,
+         {:ok, config_values} <- config_values(exec_opts) do
+      subcommand_args = command_args || command_args_for_run(exec_opts)
+      session_opts = base_session_options(opts, exec_opts, config_values, subcommand_args)
+
+      {:ok,
+       %{
+         provider: :codex,
+         args: ExecProfile.render_args(session_opts),
+         stdin: normalize_prompt(input),
+         cwd: Keyword.get(session_opts, :cwd),
+         env: build_env(exec_opts),
+         execution_surface: exec_opts.execution_surface,
+         config_values: config_values,
+         provider_native: %{
+           sandbox: fetch_thread_opt(exec_opts.thread, :sandbox),
+           working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
+           additional_directories:
+             normalize_string_list(fetch_thread_opt(exec_opts.thread, :additional_directories)),
+           skip_git_repo_check: fetch_thread_opt(exec_opts.thread, :skip_git_repo_check) == true,
+           output_schema: exec_opts.output_schema_path,
+           full_auto: exec_opt(exec_opts, :full_auto),
+           dangerously_bypass_approvals_and_sandbox:
+             exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox)
+         }
+       }}
+    else
+      {:error, _reason} = error -> error
+      _other -> {:error, :invalid_exec_options}
+    end
+  end
+
+  defp base_session_options(opts, %ExecOptions{} = exec_opts, config_values, subcommand_args) do
+    [
+      provider: :codex,
+      profile: Codex.Runtime.Exec.Profile,
+      metadata: session_metadata(opts, exec_opts),
+      cli_profile: exec_opt(exec_opts, :profile),
+      oss: payload_oss?(exec_opts),
+      local_provider: payload_local_provider(exec_opts),
+      full_auto: exec_opt(exec_opts, :full_auto),
+      dangerously_bypass_approvals_and_sandbox:
+        exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
+      model: normalize_option_string(exec_opts.codex_opts.model),
+      model_payload: exec_opts.codex_opts.model_payload,
+      color: normalize_option_string(exec_opt(exec_opts, :color)),
+      output_last_message: exec_opt(exec_opts, :output_last_message),
+      sandbox: sandbox_mode(fetch_thread_opt(exec_opts.thread, :sandbox)),
+      working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
+      additional_directories:
+        normalize_string_list(fetch_thread_opt(exec_opts.thread, :additional_directories)),
+      skip_git_repo_check: fetch_thread_opt(exec_opts.thread, :skip_git_repo_check) == true,
+      subcommand_args: subcommand_args,
+      continuation_token: exec_opts.continuation_token,
+      cancellation_token: exec_opts.cancellation_token,
+      images: attachment_paths(exec_opts.attachments),
+      output_schema: exec_opts.output_schema_path,
+      config_values: config_values,
+      env: build_env(exec_opts),
+      session_event_tag: @default_session_event_tag,
+      headless_timeout_ms: :infinity,
+      max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
+    ] ++ Options.execution_surface_options(exec_opts.execution_surface)
   end
 
   defp session_metadata(opts, %ExecOptions{codex_opts: %Options{} = codex_opts}) do

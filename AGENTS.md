@@ -35,6 +35,13 @@
 - Use `CliSubprocessCore` facade modules for execution surfaces, transport errors, transport info, and process exits.
 - Keep `cli_subprocess_core` dependency resolution publish-aware: local path deps for sibling development, Hex constraints for release builds.
 
+## ASM Boundary
+- Codex-native controls such as app-server, dynamic tools, MCP, sandbox flags and policies, approval flows, realtime, voice, model-provider routing, output schemas, and additional directories belong in this SDK.
+- Codex's richer host-tool and app-server surfaces must not define ASM common tools by themselves.
+- ASM may derive only common placement/session data unless a caller passes explicit Codex-native overrides through a provider extension or calls this SDK directly.
+- Before asserting a Codex-native feature exists, add or update `guides/provider_behavior_manifest.md` with source, fixture, or live-smoke evidence.
+- SDK-direct promotion examples in `examples/promotion_path/` must not import or alias ASM.
+
 ## Testing Guidelines
 - Use descriptive ExUnit test names: `"module: behavior"`.
 - Mock external processes with Mox; prefer deterministic GenServer tests via Supertester.

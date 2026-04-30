@@ -24,6 +24,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - `guides/12-operational-workflows.md` - marketplace add, MCP runtime helpers, memory controls, and filesystem watches
 - `guides/13-plugin-authoring.md` - local manifest writes, scaffold helpers, and scope rules
 - `guides/14-plugin-marketplaces.md` - local marketplace modeling, merge behavior, and verification workflows
+- `guides/provider_behavior_manifest.md` - evidence for Codex-native feature
+  translation
 - `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
 - `guides/08-configuration-defaults.md` - config precedence and default resolution
 
@@ -520,6 +522,23 @@ in `ASM.Extensions.ProviderSDK.available_extensions/0` and
 `ASM.Extensions.ProviderSDK.capability_report/0`. That ASM seam is only a
 bridge into Codex-native helpers such as app-server entrypoints; the actual
 app-server, MCP, realtime, and voice APIs remain here.
+
+SDK-direct live verification lives in
+`examples/promotion_path/sdk_direct_codex.exs`. It uses the Codex SDK API
+without importing ASM, passes keyword `execution_surface` input, and
+demonstrates Codex-native `sandbox` and `skip_git_repo_check` controls:
+
+```bash
+mix run examples/promotion_path/sdk_direct_codex.exs -- \
+  --model gpt-5.4 \
+  --prompt "Reply with exactly: codex sdk direct ok"
+```
+
+Provider-native feature evidence is tracked in
+`guides/provider_behavior_manifest.md`. Add or update that manifest before
+translating any new Codex-specific exec flag, app-server payload, dynamic-tool
+shape, MCP flow, approval flow, sandbox policy, realtime behavior, or voice
+behavior.
 
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
