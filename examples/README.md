@@ -18,6 +18,12 @@ This SDK contains two distinct subsystems with different authentication:
      `CODEX_API_KEY` -> `auth.json` `OPENAI_API_KEY` -> `OPENAI_API_KEY`
    - Does NOT use the codex CLI
 
+Both subsystems describe standalone example behavior. Governed Codex runs must
+enter through the platform authority path with explicit refs, credential
+handles or leases, target grants, and materialized auth. Example env vars,
+`auth.json`, local login state, and CLI defaults cannot satisfy governed
+authority by themselves.
+
 By default, `./examples/run_all.sh` does not pin a local example model. It lets
 the installed `codex` CLI choose its auth-aware default unless you export
 `CODEX_MODEL` yourself.

@@ -19,6 +19,11 @@ Realtime/Voice auth precedence:
 helps CLI/app-server flows; realtime and voice still need an API key or an
 `OPENAI_API_KEY` persisted in `auth.json`.
 
+This precedence is standalone direct-API behavior. In governed execution,
+realtime and voice credentials must come from authority-selected handles or
+leases and target-scoped materialization. Env vars, `auth.json`, and normal
+local Codex roots are not governed authority by themselves.
+
 If your account has no credits, direct API calls may return `insufficient_quota` (HTTP 429). If your account lacks access to realtime models, calls may fail with `model_not_found`. When the upstream Realtime service itself returns a generic `server_error`, the realtime examples now run a minimal raw-WebSocket probe first and print `SKIPPED` with the detected `session_id` so you can report the exact upstream failure cleanly.
 
 `Codex.Realtime.Diagnostics.probe_text_turn/1` keeps that probe minimal and now

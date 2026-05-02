@@ -20,6 +20,12 @@ For normal CLI-backed SDK execution, auth precedence remains:
 `Codex.OAuth` only manages the ChatGPT OAuth branch. It does not replace direct
 API-key auth for realtime or voice.
 
+OAuth files, API keys, and normal `CODEX_HOME` state are native standalone
+mechanics until a caller explicitly promotes them through governed authority.
+Governed Codex execution must use control-plane authority refs, credential
+handles or leases, target grants, and materialized auth. A saved `auth.json`,
+env var, or local login cannot satisfy governed authority on its own.
+
 Persistent OAuth respects upstream `auth_mode`:
 
 - `chatgpt` means managed ChatGPT OAuth persisted on disk

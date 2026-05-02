@@ -8,6 +8,11 @@ stored under `CODEX_HOME` (default `~/.codex`). The dedicated OAuth example
 uses `Codex.OAuth` directly and defaults to an isolated temporary `CODEX_HOME`
 so it does not mutate your real login state unless you opt into that explicitly.
 
+Those defaults are standalone Codex SDK mechanics for direct examples only.
+They do not satisfy governed authority. Governed execution must receive
+explicit authority refs, credential handles or leases, target grants, and
+materialized auth from the owning control plane.
+
 ## Table of Contents
 
 1. [Basic Usage](#basic-usage)
