@@ -151,8 +151,8 @@ defmodule Codex.OAuth.AppServerAuth do
              flow: session.flow
            ) do
         {:ok, token_store} ->
-          refreshed_session = MemoryTokenStore.fetch(token_store)
-          {:ok, %Session{refreshed_session | token_store: token_store}}
+          %Session{} = refreshed_session = MemoryTokenStore.fetch(token_store)
+          {:ok, %{refreshed_session | token_store: token_store}}
 
         {:error, _} = error ->
           error

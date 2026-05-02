@@ -30,6 +30,15 @@ defmodule Codex.Runtime.Exec do
     :session_pause,
     :session_intervene
   ]
+  @known_reason_codes %{
+    "cli_not_found" => :cli_not_found,
+    "command_not_found" => :command_not_found,
+    "invalid_input" => :invalid_input,
+    "parse_error" => :parse_error,
+    "permission_denied" => :permission_denied,
+    "provider_error" => :provider_error,
+    "transport_error" => :transport_error
+  }
 
   @impl true
   def start_session(opts) when is_list(opts) do
@@ -194,6 +203,7 @@ defmodule Codex.Runtime.Exec do
              stdin: String.t() | nil,
              cwd: term(),
              env: map(),
+             clear_env?: boolean() | nil,
              execution_surface: term(),
              config_values: [term()],
              provider_native: map()
@@ -216,6 +226,7 @@ defmodule Codex.Runtime.Exec do
          stdin: normalize_prompt(input),
          cwd: Keyword.get(session_opts, :cwd),
          env: build_env(exec_opts),
+         clear_env?: exec_opts.clear_env?,
          execution_surface: exec_opts.execution_surface,
          config_values: config_values,
          provider_native: %{
@@ -263,6 +274,7 @@ defmodule Codex.Runtime.Exec do
       output_schema: exec_opts.output_schema_path,
       config_values: config_values,
       env: build_env(exec_opts),
+      clear_env?: exec_opts.clear_env?,
       session_event_tag: @default_session_event_tag,
       headless_timeout_ms: :infinity,
       max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
@@ -681,10 +693,12 @@ defmodule Codex.Runtime.Exec do
   defp normalize_reason_code(code) when is_atom(code), do: code
 
   defp normalize_reason_code(code) when is_binary(code) do
-    code
-    |> String.downcase()
-    |> String.replace("-", "_")
-    |> String.to_atom()
+    normalized =
+      code
+      |> String.downcase()
+      |> String.replace("-", "_")
+
+    Map.get(@known_reason_codes, normalized, :provider_error)
   end
 
   defp retryable_exit?(exit), do: Codex.TransportError.retryable_status?(exit_code(exit))

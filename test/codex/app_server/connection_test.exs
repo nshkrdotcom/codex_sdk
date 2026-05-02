@@ -75,6 +75,15 @@ defmodule Codex.AppServer.ConnectionTest do
 
   test "launch options forward cwd and merged child env overrides", %{codex_opts: codex_opts} do
     cwd = tmp_dir!("codex_app_server_fixture")
+    previous_ambient = System.get_env("CODEX_SHOULD_NOT_INHERIT")
+    System.put_env("CODEX_SHOULD_NOT_INHERIT", "ambient")
+
+    on_exit(fn ->
+      case previous_ambient do
+        nil -> System.delete_env("CODEX_SHOULD_NOT_INHERIT")
+        value -> System.put_env("CODEX_SHOULD_NOT_INHERIT", value)
+      end
+    end)
 
     {:ok, conn} =
       Connection.start_link(codex_opts,
@@ -87,6 +96,7 @@ defmodule Codex.AppServer.ConnectionTest do
             "USERPROFILE" => "/tmp/isolated-codex-home",
             "EXTRA_FLAG" => 123
           }),
+        clear_env?: true,
         init_timeout_ms: 200
       )
 
@@ -108,6 +118,7 @@ defmodule Codex.AppServer.ConnectionTest do
     assert env["CODEX_API_KEY"] == "test"
     assert env["OPENAI_API_KEY"] == "test"
     assert env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "codex_sdk_elixir"
+    refute Map.has_key?(env, "CODEX_SHOULD_NOT_INHERIT")
   end
 
   test "protocol-session launch options keep line stdout and raw stdin", %{codex_opts: codex_opts} do

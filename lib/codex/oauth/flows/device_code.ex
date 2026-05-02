@@ -214,8 +214,8 @@ defmodule Codex.OAuth.Flows.DeviceCode do
                flow: :device_code
              ) do
           {:ok, token_store} ->
-            session = MemoryTokenStore.fetch(token_store)
-            {:ok, %Codex.OAuth.Session{session | token_store: token_store}}
+            %Codex.OAuth.Session{} = session = MemoryTokenStore.fetch(token_store)
+            {:ok, %{session | token_store: token_store}}
 
           {:error, _} = error ->
             error

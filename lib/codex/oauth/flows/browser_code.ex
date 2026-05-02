@@ -150,8 +150,8 @@ defmodule Codex.OAuth.Flows.BrowserCode do
                flow: flow
              ) do
           {:ok, token_store} ->
-            session = MemoryTokenStore.fetch(token_store)
-            {:ok, %Session{session | token_store: token_store}}
+            %Session{} = session = MemoryTokenStore.fetch(token_store)
+            {:ok, %{session | token_store: token_store}}
 
           {:error, _} = error ->
             error

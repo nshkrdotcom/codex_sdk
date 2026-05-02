@@ -30,6 +30,7 @@ defmodule Codex.RuntimeExecRenderTest do
         codex_opts: codex_opts,
         thread: thread,
         env: %{"CODEX_TEST_RENDER" => "1"},
+        clear_env?: true,
         output_schema_path: "schema.json"
       })
 
@@ -39,6 +40,7 @@ defmodule Codex.RuntimeExecRenderTest do
     assert render.stdin == "hello"
     assert render.execution_surface.observability == %{suite: :promotion_path}
     assert render.env["CODEX_TEST_RENDER"] == "1"
+    assert render.clear_env? == true
     assert render.provider_native.sandbox == :read_only
     assert render.provider_native.additional_directories == ["/tmp/docs"]
     assert render.provider_native.skip_git_repo_check == true

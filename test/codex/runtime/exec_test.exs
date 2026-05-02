@@ -81,6 +81,23 @@ defmodule Codex.Runtime.ExecTest do
     assert log =~ "<<255>>"
   end
 
+  test "session_error bounds provider reason codes without creating atoms" do
+    core_event =
+      Event.new(:error,
+        raw: %{exit: ProcessExit.from_reason({:exit_status, 1})},
+        payload:
+          Payload.Error.new(
+            message: "provider returned an unknown reason",
+            code: "provider-owned-new-reason"
+          )
+      )
+
+    assert {:error, %Codex.TransportError{} = error} =
+             Exec.session_error(core_event, "", false)
+
+    assert error.reason_code == :provider_error
+  end
+
   test "build_session_options preserves runtime metadata and includes effective model and reasoning" do
     script_path =
       "thread_basic.jsonl"

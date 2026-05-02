@@ -128,7 +128,12 @@ defmodule Codex.AppServer.Connection do
          {:ok, env} <- build_env(codex_opts, opts),
          {:ok, execution_surface} <- effective_execution_surface(codex_opts, opts),
          {:ok, command_spec} <- build_command(codex_opts, execution_surface),
-         invocation <- Command.new(command_spec, app_server_args(codex_opts), cwd: cwd, env: env),
+         invocation <-
+           Command.new(command_spec, app_server_args(codex_opts),
+             cwd: cwd,
+             env: env,
+             clear_env?: Keyword.get(opts, :clear_env?, false)
+           ),
          {:ok, session} <- start_protocol_session(invocation, execution_surface) do
       {:ok,
        %State{
