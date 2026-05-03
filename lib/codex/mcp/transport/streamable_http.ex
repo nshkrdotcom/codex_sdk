@@ -387,14 +387,14 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   defp parse_sse(body) do
     body
-    |> String.split(~r/\r?\n\r?\n/, trim: true)
+    |> Codex.StringScan.split_blocks_on_blank_lines()
     |> Enum.flat_map(&decode_sse_event/1)
   end
 
   defp decode_sse_event(event) do
     data =
       event
-      |> String.split(~r/\r?\n/)
+      |> Codex.StringScan.split_lines()
       |> Enum.filter(&String.starts_with?(&1, "data:"))
       |> Enum.map_join("\n", fn line ->
         line
@@ -418,7 +418,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   defp parse_ndjson(body) do
     body
-    |> String.split(~r/\r?\n/, trim: true)
+    |> Codex.StringScan.split_lines(trim: true)
     |> Enum.flat_map(fn line ->
       case Jason.decode(line) do
         {:ok, %{} = map} -> [map]

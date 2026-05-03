@@ -92,10 +92,7 @@ defmodule Codex.Handoff do
   def default_tool_name(%Agent{name: name}) do
     safe =
       name
-      |> to_string()
-      |> String.trim()
-      |> String.replace(~r/\s+/, "_")
-      |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
+      |> Codex.StringScan.ascii_identifier()
       |> String.downcase()
 
     "transfer_to_#{safe}"

@@ -173,16 +173,18 @@ defmodule Codex.Tools.FileSearchToolTest do
       assert 2 in lines
     end
 
-    test "supports regex patterns in content", %{test_dir: dir} do
+    test "treats pattern metacharacters as fixed content", %{test_dir: dir} do
       args = %{"pattern" => "*.ex", "content" => "def\\s+\\w+", "base_path" => dir}
       {:ok, result} = FileSearchTool.invoke(args, %{})
 
-      assert result["count"] == 1
+      assert result["count"] == 0
     end
 
-    test "returns error for invalid regex", %{test_dir: dir} do
+    test "does not reject bracket content as syntax", %{test_dir: dir} do
       args = %{"pattern" => "*.ex", "content" => "[invalid", "base_path" => dir}
-      {:error, {:regex_error, _reason}} = FileSearchTool.invoke(args, %{})
+      {:ok, result} = FileSearchTool.invoke(args, %{})
+
+      assert result["count"] == 0
     end
 
     test "returns empty when content not found", %{test_dir: dir} do
@@ -436,8 +438,8 @@ defmodule Codex.Tools.FileSearchToolTest do
       args = %{"pattern" => "*.ex", "content" => "", "base_path" => dir}
       {:ok, result} = FileSearchTool.invoke(args, %{})
 
-      # Empty content regex matches all lines, so files with any content match
-      assert result["count"] >= 0
+      assert result["count"] == 1
+      refute Map.has_key?(hd(result["files"]), "matches")
     end
 
     test "handles special characters in pattern", %{test_dir: dir} do

@@ -639,7 +639,7 @@ defmodule CodexExamples.LiveSubagentHostControls do
 
   defp preview(text) when is_binary(text) do
     text
-    |> String.replace(~r/\s+/, " ")
+    |> Codex.StringScan.collapse_ascii_whitespace()
     |> String.slice(0, 120)
   end
 

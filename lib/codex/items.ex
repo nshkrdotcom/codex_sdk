@@ -30,6 +30,52 @@ defmodule Codex.Items do
 
   alias Codex.Protocol.CollabAgentState
 
+  @known_item_atom_keys %{
+    "action" => :action,
+    "agent_status" => :agent_status,
+    "agents_states" => :agents_states,
+    "aggregated_output" => :aggregated_output,
+    "arguments" => :arguments,
+    "command" => :command,
+    "command_actions" => :command_actions,
+    "content" => :content,
+    "content_items" => :content_items,
+    "cwd" => :cwd,
+    "duration_ms" => :duration_ms,
+    "encryptedContent" => :encryptedContent,
+    "encrypted_content" => :encrypted_content,
+    "entered" => :entered,
+    "error" => :error,
+    "exit_code" => :exit_code,
+    "ghostCommit" => :ghostCommit,
+    "ghost_commit" => :ghost_commit,
+    "id" => :id,
+    "mcp_app_resource_uri" => :mcp_app_resource_uri,
+    "message" => :message,
+    "model" => :model,
+    "new_thread_id" => :new_thread_id,
+    "parsed" => :parsed,
+    "path" => :path,
+    "phase" => :phase,
+    "process_id" => :process_id,
+    "prompt" => :prompt,
+    "query" => :query,
+    "reasoning_effort" => :reasoning_effort,
+    "receiver_thread_id" => :receiver_thread_id,
+    "receiver_thread_ids" => :receiver_thread_ids,
+    "result" => :result,
+    "review" => :review,
+    "revised_prompt" => :revised_prompt,
+    "saved_path" => :saved_path,
+    "sender_thread_id" => :sender_thread_id,
+    "server" => :server,
+    "status" => :status,
+    "success" => :success,
+    "summary" => :summary,
+    "text" => :text,
+    "tool" => :tool
+  }
+
   @type t ::
           AgentMessage.t()
           | Plan.t()
@@ -969,11 +1015,10 @@ defmodule Codex.Items do
   end
 
   defp fetch_atom_key(map, key, default) do
-    key
-    |> String.to_existing_atom()
-    |> then(&Map.get(map, &1, default))
-  rescue
-    ArgumentError -> default
+    case Map.get(@known_item_atom_keys, key) do
+      nil -> default
+      atom -> Map.get(map, atom, default)
+    end
   end
 
   defp maybe_put(map, _key, nil), do: map

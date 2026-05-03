@@ -1225,7 +1225,7 @@ alias Codex.Tools.FileSearchTool
 {:ok, result} = Tools.invoke("file_search", %{"pattern" => "lib/**/*.ex"}, %{})
 # => %{"count" => 42, "files" => [%{"path" => "lib/foo.ex"}, ...]}
 
-# Search file content with regex
+# Search file content with fixed text
 {:ok, result} = Tools.invoke("file_search", %{
   "pattern" => "**/*.ex",
   "content" => "defmodule"

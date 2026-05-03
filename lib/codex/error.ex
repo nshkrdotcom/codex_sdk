@@ -358,12 +358,12 @@ defmodule Codex.Error do
   defp match_rate_limit?(code, type, message) do
     code in ["rate_limit", "rate_limit_exceeded", "rate_limit_error"] ||
       type in ["rate_limit", "rate_limit_error", "azure_rate_limit"] ||
-      (is_binary(message) and String.match?(message, ~r/rate limit/i))
+      Codex.StringScan.contains_ci?(message, "rate limit")
   end
 
   defp match_sandbox_assessment?(code, type, message) do
     code in ["sandbox_assessment_failed", "sandbox_assessment"] ||
       type in ["sandbox_assessment_failed", "sandbox_assessment"] ||
-      (is_binary(message) and String.match?(message, ~r/sandbox assessment/i))
+      Codex.StringScan.contains_ci?(message, "sandbox assessment")
   end
 end

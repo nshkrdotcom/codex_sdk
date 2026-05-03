@@ -8,15 +8,15 @@ defmodule Codex.Config.OverridesTest do
   test "merge_config does not intern atoms from untrusted provider ids" do
     provider_id = fresh_missing_key("provider")
     override_key = "model_providers.#{provider_id}.request_max_retries"
-    refute atom_exists?(override_key)
 
     thread_opts = %ThreadOptions{model_provider: provider_id, request_max_retries: 3}
+    _ = Overrides.merge_config(%{}, %Options{}, %ThreadOptions{})
+    atom_count_before = :erlang.system_info(:atom_count)
 
     merged = Overrides.merge_config(%{}, %Options{}, thread_opts)
 
     assert merged[override_key] == 3
-    refute atom_exists?(provider_id)
-    refute atom_exists?(override_key)
+    assert :erlang.system_info(:atom_count) == atom_count_before
   end
 
   test "merge_config applies options-level config overrides when missing" do
@@ -156,19 +156,6 @@ defmodule Codex.Config.OverridesTest do
   end
 
   defp fresh_missing_key(prefix) do
-    key = unique_key(prefix)
-
-    if atom_exists?(key) do
-      fresh_missing_key(prefix)
-    else
-      key
-    end
-  end
-
-  defp atom_exists?(key) do
-    _ = String.to_existing_atom(key)
-    true
-  rescue
-    ArgumentError -> false
+    unique_key(prefix)
   end
 end

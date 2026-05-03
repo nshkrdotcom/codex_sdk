@@ -134,15 +134,15 @@ end
 
 IO.puts("")
 
-# Example 7: Search with regex pattern
-IO.puts("--- Example 7: Regex content search ---")
+# Example 7: Search with fixed content
+IO.puts("--- Example 7: Fixed content search ---")
 
 {:ok, result} =
   Tools.invoke(
     "file_search",
     %{
       "pattern" => "lib/**/*.ex",
-      "content" => "def\\s+\\w+\\(",
+      "content" => "def ",
       "max_results" => 5
     },
     %{}

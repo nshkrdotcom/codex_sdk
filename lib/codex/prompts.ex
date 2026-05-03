@@ -13,8 +13,6 @@ defmodule Codex.Prompts do
           argument_hint: String.t() | nil
         }
 
-  @prompt_arg_regex ~r/(?<!\$)\$[A-Z][A-Z0-9_]*/
-
   @doc """
   Lists custom prompts from `$CODEX_HOME/prompts` (or a provided directory).
 
@@ -202,10 +200,9 @@ defmodule Codex.Prompts do
   end
 
   defp prompt_argument_names(content) do
-    @prompt_arg_regex
-    |> Regex.scan(content)
-    |> Enum.map(&List.first/1)
-    |> Enum.map(&String.trim_leading(&1, "$"))
+    content
+    |> scan_named_placeholders()
+    |> Enum.map(& &1.name)
     |> Enum.reject(&(&1 == "ARGUMENTS"))
     |> Enum.reduce({MapSet.new(), []}, fn name, {seen, acc} ->
       if MapSet.member?(seen, name) do
@@ -299,10 +296,54 @@ defmodule Codex.Prompts do
   end
 
   defp replace_named_placeholders(content, inputs) do
-    Regex.replace(@prompt_arg_regex, content, fn match ->
-      key = String.trim_leading(match, "$")
-      Map.get(inputs, key, match)
-    end)
+    do_replace_named_placeholders(content, inputs, false, [])
+  end
+
+  defp scan_named_placeholders(content), do: do_scan_named_placeholders(content, false, [])
+
+  defp do_scan_named_placeholders(<<"$", next, rest::binary>>, false, acc)
+       when next in ?A..?Z do
+    {name, tail} = take_placeholder_name(<<next, rest::binary>>, [])
+    do_scan_named_placeholders(tail, false, [%{name: name} | acc])
+  end
+
+  defp do_scan_named_placeholders(<<"$", rest::binary>>, _previous_dollar?, acc) do
+    do_scan_named_placeholders(rest, true, acc)
+  end
+
+  defp do_scan_named_placeholders(<<_byte, rest::binary>>, _previous_dollar?, acc) do
+    do_scan_named_placeholders(rest, false, acc)
+  end
+
+  defp do_scan_named_placeholders(<<>>, _previous_dollar?, acc), do: Enum.reverse(acc)
+
+  defp do_replace_named_placeholders(<<"$", next, rest::binary>>, inputs, false, acc)
+       when next in ?A..?Z do
+    {name, tail} = take_placeholder_name(<<next, rest::binary>>, [])
+    marker = "$" <> name
+    replacement = Map.get(inputs, name, marker)
+    do_replace_named_placeholders(tail, inputs, false, [replacement | acc])
+  end
+
+  defp do_replace_named_placeholders(<<"$", rest::binary>>, inputs, _previous_dollar?, acc) do
+    do_replace_named_placeholders(rest, inputs, true, ["$" | acc])
+  end
+
+  defp do_replace_named_placeholders(<<byte, rest::binary>>, inputs, _previous_dollar?, acc) do
+    do_replace_named_placeholders(rest, inputs, false, [<<byte>> | acc])
+  end
+
+  defp do_replace_named_placeholders(<<>>, _inputs, _previous_dollar?, acc) do
+    acc |> Enum.reverse() |> IO.iodata_to_binary()
+  end
+
+  defp take_placeholder_name(<<byte, rest::binary>>, acc)
+       when byte in ?A..?Z or byte in ?0..?9 or byte == ?_ do
+    take_placeholder_name(rest, [<<byte>> | acc])
+  end
+
+  defp take_placeholder_name(rest, acc) do
+    {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
   end
 
   defp expand_numeric_placeholders(content, args) do

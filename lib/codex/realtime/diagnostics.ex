@@ -86,10 +86,7 @@ defmodule Codex.Realtime.Diagnostics do
   def extract_session_id(error) do
     text = normalized_error_text(error)
 
-    case Regex.run(~r/(sess_[A-Za-z0-9]+)/, text, capture: :all_but_first) do
-      [session_id] -> session_id
-      _ -> nil
-    end
+    Codex.StringScan.extract_prefixed_ascii_token(text, "sess_", &Codex.StringScan.alnum?/1)
   end
 
   @doc """

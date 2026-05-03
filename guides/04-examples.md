@@ -727,7 +727,11 @@ defmodule ErrorHandlingExample do
 
   defp retryable?(error) do
     # Check if error message indicates transient issue
-    error.message =~ ~r/(rate limit|timeout|temporarily unavailable)/i
+    message = String.downcase(error.message || "")
+
+    String.contains?(message, "rate limit") or
+      String.contains?(message, "timeout") or
+      String.contains?(message, "temporarily unavailable")
   end
 
   def with_retry(thread, input, max_attempts \\ 3) do

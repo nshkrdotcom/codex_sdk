@@ -104,11 +104,7 @@ defmodule Codex.ExecTest do
 
     assert {:ok, _} = Exec.run("cancel", exec_opts)
 
-    args =
-      capture_path
-      |> File.read!()
-      |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+    args = read_captured_args(capture_path)
 
     idx = Enum.find_index(args, &(&1 == "--cancellation-token"))
     assert idx
@@ -221,7 +217,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert fetch_flag_value(args, "--profile") == "team"
 
@@ -275,7 +271,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert ~s(model_provider="ollama") in flag_values(args, "--config")
     assert ~s(model="gpt-oss:20b") in flag_values(args, "--config")
@@ -317,7 +313,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -349,7 +345,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert "--json" in args
     refute "--experimental-json" in args
@@ -399,7 +395,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -450,7 +446,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -500,7 +496,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -554,7 +550,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -596,7 +592,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert "features.web_search_request=true" in flag_values(args, "--config")
   end
@@ -628,7 +624,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert ~s(web_search="disabled") in flag_values(args, "--config")
   end
@@ -660,7 +656,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert ~s(web_search="disabled") in flag_values(args, "--config")
   end
@@ -692,7 +688,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert Enum.any?(args, &(&1 == "--dangerously-bypass-approvals-and-sandbox"))
   end
@@ -736,7 +732,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     resume_idx = Enum.find_index(args, &(&1 == "resume"))
     image_idx = Enum.find_index(args, &(&1 == "--image"))
@@ -786,7 +782,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     personality_configs =
       args
@@ -857,7 +853,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     configs = flag_values(args, "--config")
 
@@ -888,7 +884,7 @@ defmodule Codex.ExecTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     assert Enum.any?(args, &(&1 == "review"))
 
@@ -1060,6 +1056,13 @@ defmodule Codex.ExecTest do
     |> Enum.with_index()
     |> Enum.filter(fn {value, _idx} -> value == flag end)
     |> Enum.map(fn {_value, idx} -> Enum.at(args, idx + 1) end)
+  end
+
+  defp read_captured_args(path) do
+    path
+    |> File.read!()
+    |> String.trim()
+    |> Codex.StringScan.split_ascii_whitespace()
   end
 
   defp temp_script(contents) do

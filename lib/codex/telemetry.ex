@@ -259,7 +259,7 @@ defmodule Codex.Telemetry do
     if windows_path_fragment?(warning) do
       warning
       |> String.replace("\\", "/")
-      |> String.replace(~r{/+}, "/")
+      |> Codex.StringScan.collapse_slashes()
     else
       warning
     end
@@ -280,7 +280,7 @@ defmodule Codex.Telemetry do
   end
 
   defp windows_path_fragment?(value) do
-    Regex.match?(~r/[A-Za-z]:[\\\/]/, value)
+    Codex.StringScan.windows_path_fragment?(value)
   end
 
   defp convert_duration_to_ms(duration) do

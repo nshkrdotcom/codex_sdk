@@ -74,9 +74,7 @@ defmodule Codex.Plugins.Scaffold do
       name
       |> String.trim()
       |> String.downcase()
-      |> String.replace(~r/[^a-z0-9]+/, "-")
-      |> String.trim("-")
-      |> String.replace(~r/-+/, "-")
+      |> Codex.StringScan.slugify()
 
     if normalized == "" do
       {:error,

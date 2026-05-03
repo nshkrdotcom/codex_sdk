@@ -296,11 +296,58 @@ defmodule Codex.ExamplesSupport do
   end
 
   defp fenced_json(text) when is_binary(text) do
-    case Regex.run(~r/```(?:json)?\s*(.*?)\s*```/s, text, capture: :all_but_first) do
-      [body] -> String.trim(body)
+    with {start, marker_size} <- find_marker(text, "```"),
+         after_open <-
+           binary_part(text, start + marker_size, byte_size(text) - start - marker_size),
+         {:ok, body_start} <- skip_fence_label(after_open),
+         body_source <- binary_part(after_open, body_start, byte_size(after_open) - body_start),
+         {finish, _} <- find_marker(body_source, "```") do
+      body_source
+      |> binary_part(0, finish)
+      |> String.trim()
+    else
       _ -> nil
     end
   end
+
+  defp find_marker(text, marker) do
+    case :binary.match(text, marker) do
+      :nomatch -> nil
+      match -> match
+    end
+  end
+
+  defp skip_fence_label(text) do
+    cond do
+      starts_with_ascii_whitespace?(text) ->
+        {:ok, leading_ascii_whitespace_size(text)}
+
+      String.starts_with?(text, "json") ->
+        rest = binary_part(text, 4, byte_size(text) - 4)
+
+        if rest == "" or starts_with_ascii_whitespace?(rest) do
+          {:ok, 4 + leading_ascii_whitespace_size(rest)}
+        else
+          :error
+        end
+
+      true ->
+        {:ok, 0}
+    end
+  end
+
+  defp starts_with_ascii_whitespace?(<<byte, _rest::binary>>),
+    do: byte in [?\s, ?\t, ?\n, ?\r, ?\v, ?\f]
+
+  defp starts_with_ascii_whitespace?(<<>>), do: false
+
+  defp leading_ascii_whitespace_size(value), do: do_leading_ascii_whitespace_size(value, 0)
+
+  defp do_leading_ascii_whitespace_size(<<byte, rest::binary>>, count)
+       when byte in [?\s, ?\t, ?\n, ?\r, ?\v, ?\f],
+       do: do_leading_ascii_whitespace_size(rest, count + 1)
+
+  defp do_leading_ascii_whitespace_size(_value, count), do: count
 
   defp bracket_slice(text, left, right)
        when is_binary(text) and is_binary(left) and is_binary(right) do

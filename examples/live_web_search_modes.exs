@@ -192,10 +192,14 @@ defmodule LiveWebSearchModes do
   defp format_query(_query), do: "<pending>"
 
   defp parse_args([mode | rest]) when mode in ["disabled", "cached", "live"] do
-    {[String.to_atom(mode)], parse_prompt(rest)}
+    {[web_search_mode!(mode)], parse_prompt(rest)}
   end
 
   defp parse_args(args), do: {@modes, parse_prompt(args)}
+
+  defp web_search_mode!("disabled"), do: :disabled
+  defp web_search_mode!("cached"), do: :cached
+  defp web_search_mode!("live"), do: :live
 
   defp parse_prompt([prompt | _]), do: prompt
   defp parse_prompt(_args), do: @default_prompt

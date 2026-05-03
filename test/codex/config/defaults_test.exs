@@ -390,7 +390,24 @@ defmodule Codex.Config.DefaultsTest do
       version = Defaults.client_version()
       assert is_binary(version)
       # Should either be the app version or the fallback
-      assert version =~ ~r/^\d+\.\d+\.\d+/
+      assert semver_prefix?(version)
+    end
+  end
+
+  defp semver_prefix?(version) do
+    case String.split(version, ".", parts: 4) do
+      [major, minor, patch | _] ->
+        integer_text?(major) and integer_text?(minor) and integer_text?(patch)
+
+      _ ->
+        false
+    end
+  end
+
+  defp integer_text?(value) do
+    case Integer.parse(value) do
+      {_integer, ""} -> true
+      _ -> false
     end
   end
 

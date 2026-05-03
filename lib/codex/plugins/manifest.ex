@@ -190,7 +190,7 @@ defmodule Codex.Plugins.Manifest do
       name == "" ->
         {:error, "expected a non-empty plugin name"}
 
-      Regex.match?(~r/^[a-z0-9]+(?:-[a-z0-9]+)*$/, name) ->
+      Codex.StringScan.kebab_case?(name) ->
         {:ok, name}
 
       true ->

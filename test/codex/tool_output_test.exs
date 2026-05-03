@@ -77,6 +77,17 @@ defmodule Codex.ToolOutputTest do
   test "image/1 and file/1 reject unknown string keys without interning atoms" do
     image_key = fresh_missing_key("unknown_image")
     file_key = fresh_missing_key("unknown_file")
+    _ = ToolOutput.image(%{"url" => "https://example.com/warmup.png"})
+
+    assert_raise KeyError, fn ->
+      ToolOutput.image(%{"unknown_image_warmup" => "https://example.com/warmup.png"})
+    end
+
+    assert_raise KeyError, fn ->
+      ToolOutput.file(%{"unknown_file_warmup" => "file_warmup"})
+    end
+
+    atom_count_before = :erlang.system_info(:atom_count)
 
     assert_raise KeyError, fn ->
       ToolOutput.image(%{image_key => "https://example.com/image.png"})
@@ -86,8 +97,7 @@ defmodule Codex.ToolOutputTest do
       ToolOutput.file(%{file_key => "file_123"})
     end
 
-    refute atom_exists?(image_key)
-    refute atom_exists?(file_key)
+    assert :erlang.system_info(:atom_count) == atom_count_before
   end
 
   defp tmp_file!(name, contents) do
@@ -104,19 +114,6 @@ defmodule Codex.ToolOutputTest do
   end
 
   defp fresh_missing_key(prefix) do
-    key = unique_key(prefix)
-
-    if atom_exists?(key) do
-      fresh_missing_key(prefix)
-    else
-      key
-    end
-  end
-
-  defp atom_exists?(key) do
-    _ = String.to_existing_atom(key)
-    true
-  rescue
-    ArgumentError -> false
+    unique_key(prefix)
   end
 end

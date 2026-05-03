@@ -116,7 +116,7 @@ defmodule Codex.Tools.ApplyPatchTool do
   defp parse_apply_patch(patch) do
     lines =
       patch
-      |> String.split(~r/\r?\n/, trim: false)
+      |> Codex.StringScan.split_lines(trim: false)
       |> drop_leading_blank_lines()
 
     case lines do
@@ -354,7 +354,7 @@ defmodule Codex.Tools.ApplyPatchTool do
   defp drop_leading_blank_lines(lines), do: Enum.drop_while(lines, &(&1 == ""))
 
   defp parse_unified_diff(patch) do
-    lines = String.split(patch, ~r/\r?\n/)
+    lines = Codex.StringScan.split_lines(patch, trim: false)
 
     case do_parse_unified(lines, []) do
       {:ok, changes} -> {:ok, changes}
@@ -403,47 +403,48 @@ defmodule Codex.Tools.ApplyPatchTool do
   defp parse_unified_hunks(lines, acc), do: {acc, lines}
 
   defp parse_unified_hunk_header(header) do
-    # Format: @@ -start,count +start,count @@ optional context
-    # Examples: @@ -1,3 +1,4 @@
-    #           @@ -0,0 +1,5 @@
-    #           @@ -1 +1 @@
-    regex = ~r/^-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?/
-
-    case Regex.run(regex, header) do
-      [_match, old_start, old_count, new_start, new_count] ->
-        {:ok,
-         %{
-           old_start: String.to_integer(old_start),
-           old_count: parse_count(old_count),
-           new_start: String.to_integer(new_start),
-           new_count: parse_count(new_count)
-         }}
-
-      [_match, old_start, old_count, new_start] ->
-        {:ok,
-         %{
-           old_start: String.to_integer(old_start),
-           old_count: parse_count(old_count),
-           new_start: String.to_integer(new_start),
-           new_count: 1
-         }}
-
-      [_match, old_start, new_start] ->
-        {:ok,
-         %{
-           old_start: String.to_integer(old_start),
-           old_count: 1,
-           new_start: String.to_integer(new_start),
-           new_count: 1
-         }}
+    case String.split(header, " ", parts: 3, trim: true) do
+      [old_range, new_range | _] ->
+        with {:ok, old_start, old_count} <- parse_hunk_range(old_range, "-"),
+             {:ok, new_start, new_count} <- parse_hunk_range(new_range, "+") do
+          {:ok,
+           %{
+             old_start: old_start,
+             old_count: old_count,
+             new_start: new_start,
+             new_count: new_count
+           }}
+        else
+          :error -> {:error, "invalid hunk header: #{header}"}
+        end
 
       _ ->
         {:error, "invalid hunk header: #{header}"}
     end
   end
 
-  defp parse_count(""), do: 1
-  defp parse_count(count), do: String.to_integer(count)
+  defp parse_hunk_range(range, prefix) do
+    with true <- String.starts_with?(range, prefix),
+         rest <- String.trim_leading(range, prefix),
+         [start_text | count_parts] <- String.split(rest, ",", parts: 2),
+         {:ok, start} <- parse_non_negative_integer(start_text),
+         {:ok, count} <- parse_hunk_count(count_parts) do
+      {:ok, start, count}
+    else
+      _ -> :error
+    end
+  end
+
+  defp parse_non_negative_integer(value) do
+    case Integer.parse(value) do
+      {number, ""} when number >= 0 -> {:ok, number}
+      _ -> :error
+    end
+  end
+
+  defp parse_hunk_count([]), do: {:ok, 1}
+  defp parse_hunk_count([value]), do: parse_non_negative_integer(value)
+  defp parse_hunk_count(_), do: :error
 
   defp take_hunk_lines([" " <> line | rest], acc) do
     take_hunk_lines(rest, [{:context, line} | acc])
@@ -480,11 +481,15 @@ defmodule Codex.Tools.ApplyPatchTool do
   defp clean_path(path) do
     path
     |> String.trim()
-    |> String.replace(~r/^[ab]\//, "")
+    |> strip_diff_path_prefix()
     |> String.split("\t")
     |> List.first()
     |> String.trim()
   end
+
+  defp strip_diff_path_prefix("a/" <> rest), do: rest
+  defp strip_diff_path_prefix("b/" <> rest), do: rest
+  defp strip_diff_path_prefix(path), do: path
 
   defp determine_kind(old_path, new_path) do
     old_cleaned = clean_path(old_path)
@@ -817,7 +822,7 @@ defmodule Codex.Tools.ApplyPatchTool do
   end
 
   defp split_content_lines(content) do
-    lines = String.split(content, ~r/\r?\n/, trim: false)
+    lines = Codex.StringScan.split_lines(content, trim: false)
 
     case List.last(lines) do
       "" -> {Enum.drop(lines, -1), true}
@@ -963,7 +968,7 @@ defmodule Codex.Tools.ApplyPatchTool do
   """
   @spec apply_hunks(String.t(), list()) :: {:ok, String.t()}
   def apply_hunks(content, hunks) do
-    lines = String.split(content, ~r/\r?\n/, include_captures: false)
+    lines = Codex.StringScan.split_lines(content, trim: false)
     lines_array = :array.from_list(lines)
 
     # Apply hunks in reverse order to preserve line numbers

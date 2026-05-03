@@ -219,8 +219,6 @@ defmodule Codex.Plugins.Writer do
   defp indent(size), do: String.duplicate(" ", size)
 
   defp humanize_name(name) when is_binary(name) do
-    name
-    |> String.split(~r/[-_]+/, trim: true)
-    |> Enum.map_join(" ", &String.capitalize/1)
+    Codex.StringScan.humanize_separated(name)
   end
 end

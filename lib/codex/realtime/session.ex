@@ -781,10 +781,7 @@ defmodule Codex.Realtime.Session do
   defp default_handoff_tool_name(name) do
     safe_name =
       name
-      |> to_string()
-      |> String.trim()
-      |> String.replace(~r/\s+/, "_")
-      |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
+      |> Codex.StringScan.ascii_identifier()
       |> String.downcase()
 
     "transfer_to_#{safe_name}"

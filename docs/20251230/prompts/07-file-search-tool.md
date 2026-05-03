@@ -53,7 +53,7 @@ defmodule Codex.Tools.FileSearchTool do
           },
           "content" => %{
             "type" => "string",
-            "description" => "Text or regex to search within files (optional)"
+            "description" => "Fixed text to search within files (optional)"
           },
           "base_path" => %{
             "type" => "string",
@@ -107,33 +107,35 @@ defmodule Codex.Tools.FileSearchTool do
     {:ok, Enum.map(files, &%{path: &1, matches: nil})}
   end
 
-  defp maybe_search_content(files, content, case_sensitive) do
-    regex_opts = if case_sensitive, do: [], else: [:caseless]
-
-    case Regex.compile(content, regex_opts) do
-      {:ok, regex} ->
-        results =
-          files
-          |> Enum.map(fn path ->
-            matches = search_file(path, regex)
-            %{path: path, matches: matches}
-          end)
-          |> Enum.filter(fn %{matches: m} -> m != [] end)
-
-        {:ok, results}
-
-      {:error, reason} ->
-        {:error, {:regex_error, reason}}
-    end
+  defp maybe_search_content(files, "", _case_sensitive) do
+    {:ok, Enum.map(files, &%{path: &1, matches: nil})}
   end
 
-  defp search_file(path, regex) do
+  defp maybe_search_content(files, content, case_sensitive) do
+    results =
+      files
+      |> Enum.map(fn path ->
+        matches = search_file(path, content, case_sensitive)
+        %{path: path, matches: matches}
+      end)
+      |> Enum.filter(fn %{matches: m} -> m != [] end)
+
+    {:ok, results}
+  end
+
+  defp search_file(path, needle, case_sensitive) do
     case File.read(path) do
       {:ok, content} ->
+        normalized_needle = normalize_search_text(needle, case_sensitive)
+
         content
         |> String.split("\n")
         |> Enum.with_index(1)
-        |> Enum.filter(fn {line, _} -> Regex.match?(regex, line) end)
+        |> Enum.filter(fn {line, _} ->
+          line
+          |> normalize_search_text(case_sensitive)
+          |> String.contains?(normalized_needle)
+        end)
         |> Enum.map(fn {line, num} ->
           %{line_number: num, text: String.trim(line)}
         end)
@@ -142,6 +144,9 @@ defmodule Codex.Tools.FileSearchTool do
         []
     end
   end
+
+  defp normalize_search_text(value, true), do: value
+  defp normalize_search_text(value, false), do: String.downcase(value)
 
   defp limit_results(results, max) do
     Enum.take(results, max)
@@ -313,7 +318,7 @@ Add to the existing `## [0.4.5] - 2025-12-30` section:
 ```markdown
 - FileSearch hosted tool with `Codex.Tools.FileSearchTool`
 - Glob pattern matching for file discovery
-- Content search with regex support
+- Fixed-string content search
 - Case-sensitive/insensitive search modes
 ```
 

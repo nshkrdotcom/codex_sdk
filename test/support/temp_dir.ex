@@ -30,13 +30,22 @@ defmodule Codex.TestSupport.TempDir do
 
   defp sanitize_prefix(prefix) do
     prefix
+    |> to_string()
     |> String.trim()
-    |> String.replace(~r/[^a-zA-Z0-9_-]+/, "_")
+    |> scan_prefix([])
     |> case do
       "" -> "codex_tmp"
       sanitized -> sanitized
     end
   end
+
+  defp scan_prefix(<<byte, rest::binary>>, acc)
+       when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in [?_, ?-] do
+    scan_prefix(rest, [<<byte>> | acc])
+  end
+
+  defp scan_prefix(<<_byte, rest::binary>>, acc), do: scan_prefix(rest, ["_" | acc])
+  defp scan_prefix(<<>>, acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
 
   defp unique_suffix do
     Base.encode16(:crypto.strong_rand_bytes(10), case: :lower)

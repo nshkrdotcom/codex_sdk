@@ -6,6 +6,72 @@ defmodule Codex.Config.Overrides do
   alias Codex.Options
   alias Codex.Thread.Options, as: ThreadOptions
 
+  @config_atom_keys %{
+    "agents" => :agents,
+    "agents.max_threads" => :"agents.max_threads",
+    "approvals_reviewer" => :approvals_reviewer,
+    "apply_patch_freeform" => :apply_patch_freeform,
+    "base_instructions" => :base_instructions,
+    "compact_prompt" => :compact_prompt,
+    "developer_instructions" => :developer_instructions,
+    "exclude" => :exclude,
+    "exclude_slash_tmp" => :exclude_slash_tmp,
+    "exclude_tmpdir_env_var" => :exclude_tmpdir_env_var,
+    "features" => :features,
+    "features.apply_patch_freeform" => :"features.apply_patch_freeform",
+    "features.skills" => :"features.skills",
+    "features.unified_exec" => :"features.unified_exec",
+    "features.view_image_tool" => :"features.view_image_tool",
+    "features.web_search_request" => :"features.web_search_request",
+    "hide_agent_reasoning" => :hide_agent_reasoning,
+    "history" => :history,
+    "history.max_bytes" => :"history.max_bytes",
+    "history.persistence" => :"history.persistence",
+    "ignore_default_excludes" => :ignore_default_excludes,
+    "include_only" => :include_only,
+    "inherit" => :inherit,
+    "max_bytes" => :max_bytes,
+    "max_threads" => :max_threads,
+    "model_auto_compact_token_limit" => :model_auto_compact_token_limit,
+    "model_context_window" => :model_context_window,
+    "model_personality" => :model_personality,
+    "model_provider" => :model_provider,
+    "model_providers" => :model_providers,
+    "model_reasoning_summary" => :model_reasoning_summary,
+    "model_supports_reasoning_summaries" => :model_supports_reasoning_summaries,
+    "model_verbosity" => :model_verbosity,
+    "network_access" => :network_access,
+    "persistence" => :persistence,
+    "request_max_retries" => :request_max_retries,
+    "review_model" => :review_model,
+    "sandbox_external" => :sandbox_external,
+    "sandbox_external.network_access" => :"sandbox_external.network_access",
+    "sandbox_workspace_write" => :sandbox_workspace_write,
+    "sandbox_workspace_write.exclude_slash_tmp" => :"sandbox_workspace_write.exclude_slash_tmp",
+    "sandbox_workspace_write.exclude_tmpdir_env_var" =>
+      :"sandbox_workspace_write.exclude_tmpdir_env_var",
+    "sandbox_workspace_write.network_access" => :"sandbox_workspace_write.network_access",
+    "sandbox_workspace_write.writable_roots" => :"sandbox_workspace_write.writable_roots",
+    "set" => :set,
+    "shell_environment_policy" => :shell_environment_policy,
+    "shell_environment_policy.exclude" => :"shell_environment_policy.exclude",
+    "shell_environment_policy.ignore_default_excludes" =>
+      :"shell_environment_policy.ignore_default_excludes",
+    "shell_environment_policy.include_only" => :"shell_environment_policy.include_only",
+    "shell_environment_policy.inherit" => :"shell_environment_policy.inherit",
+    "shell_environment_policy.set" => :"shell_environment_policy.set",
+    "show_raw_agent_reasoning" => :show_raw_agent_reasoning,
+    "skills" => :skills,
+    "stream_idle_timeout_ms" => :stream_idle_timeout_ms,
+    "stream_max_retries" => :stream_max_retries,
+    "tool_output_token_limit" => :tool_output_token_limit,
+    "unified_exec" => :unified_exec,
+    "view_image_tool" => :view_image_tool,
+    "web_search" => :web_search,
+    "web_search_request" => :web_search_request,
+    "writable_roots" => :writable_roots
+  }
+
   @type config_override_scalar :: String.t() | boolean() | integer() | float()
   @type config_override_value ::
           config_override_scalar
@@ -339,25 +405,21 @@ defmodule Codex.Config.Overrides do
     if Map.has_key?(map, segment) do
       Map.get(map, segment)
     else
-      case existing_atom(segment) do
-        {:ok, atom} -> Map.get(map, atom)
-        :error -> nil
+      case config_atom_key(segment) do
+        nil -> nil
+        atom -> Map.get(map, atom)
       end
     end
   end
 
   defp has_existing_atom_key?(map, key) do
-    case existing_atom(key) do
-      {:ok, atom} -> Map.has_key?(map, atom)
-      :error -> false
+    case config_atom_key(key) do
+      nil -> false
+      atom -> Map.has_key?(map, atom)
     end
   end
 
-  defp existing_atom(value) when is_binary(value) do
-    {:ok, String.to_existing_atom(value)}
-  rescue
-    ArgumentError -> :error
-  end
+  defp config_atom_key(value) when is_binary(value), do: Map.get(@config_atom_keys, value)
 
   defp add_shell_environment_policy_overrides(overrides, nil), do: overrides
 

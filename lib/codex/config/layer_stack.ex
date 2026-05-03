@@ -239,18 +239,13 @@ defmodule Codex.Config.LayerStack do
   end
 
   defp decode_toml(contents) when is_binary(contents) do
-    # The toml library's runtime API and docs use `:strings`, but the published
-    # typespec incorrectly advertises `:string`. Keep the runtime-correct option
-    # here and isolate the bad spec at this boundary.
-    case Toml.decode(contents, keys: toml_keys_opt()) do
+    case Toml.decode(contents, keys: &toml_string_key/1) do
       {:ok, config} -> {:ok, config}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp toml_keys_opt do
-    String.to_existing_atom("strings")
-  end
+  defp toml_string_key(key), do: key
 
   defp validate_config(%{} = config) do
     with :ok <- validate_features(config),

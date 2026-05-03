@@ -168,7 +168,7 @@ defmodule Codex.AgentRunnerStreamedTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
 
     refute "--cancellation-token" in args
   end

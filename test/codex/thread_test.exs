@@ -342,7 +342,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       refute "--model" in args
 
@@ -383,7 +383,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       expected_model = alt_model()
 
@@ -430,7 +430,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       assert Enum.any?(args, &(&1 == "--output-schema"))
 
@@ -470,7 +470,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       assert Enum.any?(args, &(&1 == "--output-schema"))
     end
@@ -851,7 +851,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       refute Enum.any?(args, &(&1 == "--thread-id"))
 
@@ -1145,7 +1145,7 @@ defmodule Codex.ThreadTest do
         capture_path
         |> File.read!()
         |> String.trim()
-        |> String.split(~r/\s+/)
+        |> Codex.StringScan.split_ascii_whitespace()
 
       refute "--tool-output" in args
       refute "--tool-failure" in args

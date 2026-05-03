@@ -8,7 +8,7 @@ defmodule Codex.OAuth.PKCETest do
     verifier = PKCE.generate_verifier()
 
     assert byte_size(verifier) >= 43
-    assert verifier =~ ~r/^[A-Za-z0-9._~-]+$/
+    assert all_bytes?(verifier, &Codex.StringScan.ascii_alnum_dot_tilde_dash_underscore?/1)
   end
 
   test "challenge/1 implements RFC 7636 S256" do
@@ -29,7 +29,13 @@ defmodule Codex.OAuth.PKCETest do
     state2 = State.generate()
 
     assert byte_size(state1) >= 32
-    assert state1 =~ ~r/^[A-Za-z0-9_-]+$/
+    assert all_bytes?(state1, &(Codex.StringScan.alnum?(&1) or &1 in [?_, ?-]))
     assert state1 != state2
   end
+
+  defp all_bytes?(<<byte, rest::binary>>, allowed_fun) do
+    allowed_fun.(byte) and all_bytes?(rest, allowed_fun)
+  end
+
+  defp all_bytes?(<<>>, _allowed_fun), do: true
 end

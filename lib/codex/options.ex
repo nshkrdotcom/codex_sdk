@@ -364,12 +364,8 @@ defmodule Codex.Options do
     reasoning =
       Map.get(model_payload, :reasoning, Map.get(model_payload, "reasoning"))
 
-    {:ok, normalize_reasoning_atom(reasoning)}
+    Models.normalize_reasoning_effort(reasoning)
   end
-
-  defp normalize_reasoning_atom(nil), do: nil
-  defp normalize_reasoning_atom(value) when is_atom(value), do: value
-  defp normalize_reasoning_atom(value) when is_binary(value), do: String.to_atom(value)
 
   defp fetch_model_personality(attrs) do
     attrs

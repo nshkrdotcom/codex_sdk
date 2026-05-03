@@ -173,11 +173,14 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
           client: client
         )
 
-      assert_raise RuntimeError, ~r/insufficient_quota/, fn ->
-        model
-        |> OpenAITTS.run("Hello", TTSSettings.new())
-        |> Enum.to_list()
-      end
+      error =
+        assert_raise RuntimeError, fn ->
+          model
+          |> OpenAITTS.run("Hello", TTSSettings.new())
+          |> Enum.to_list()
+        end
+
+      assert Exception.message(error) =~ "insufficient_quota"
     end
 
     test "raises when the stream reports a transport error" do
@@ -196,11 +199,14 @@ defmodule Codex.Voice.Models.OpenAITTSTest do
           client: client
         )
 
-      assert_raise RuntimeError, ~r/socket_closed/, fn ->
-        model
-        |> OpenAITTS.run("Hello", TTSSettings.new())
-        |> Enum.to_list()
-      end
+      error =
+        assert_raise RuntimeError, fn ->
+          model
+          |> OpenAITTS.run("Hello", TTSSettings.new())
+          |> Enum.to_list()
+        end
+
+      assert Exception.message(error) =~ "socket_closed"
     end
   end
 end

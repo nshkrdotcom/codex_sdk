@@ -147,7 +147,13 @@ defmodule Codex.LiveAppServerTest do
   defp extract_text(other), do: inspect(other)
 
   defp normalized_ok?(text) when is_binary(text) do
-    String.trim(text) =~ ~r/\A\"?ok[.!]?\"?\z/i
+    text
+    |> String.trim()
+    |> String.trim("\"")
+    |> String.trim_trailing(".")
+    |> String.trim_trailing("!")
+    |> String.downcase()
+    |> Kernel.==("ok")
   end
 
   defp normalized_ok?(_text), do: false

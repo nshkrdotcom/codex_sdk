@@ -776,7 +776,8 @@ defmodule Codex.MCPClientTest do
 
       # Should contain a SHA1 hash suffix (40 hex chars)
       suffix = String.slice(qualified_name, -40, 40)
-      assert Regex.match?(~r/^[a-f0-9]{40}$/, suffix)
+      assert String.length(suffix) == 40
+      assert Codex.StringScan.hex_lower?(suffix)
     end
 
     test "list_tools preserves original name alongside qualified name" do
@@ -933,7 +934,7 @@ defmodule Codex.MCPClientTest do
 
       assert String.length(result) == 64
       assert String.starts_with?(result, "mcp__server_one__tool_tw")
-      assert Regex.match?(~r/^[A-Za-z0-9_-]+$/, result)
+      assert Codex.StringScan.base64url?(result)
       refute String.contains?(result, ".")
       refute String.contains?(result, "/")
       refute String.contains?(result, "+")

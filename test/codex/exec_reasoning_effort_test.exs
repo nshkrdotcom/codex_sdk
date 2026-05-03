@@ -55,7 +55,7 @@ defmodule Codex.ExecReasoningEffortTest do
       capture_path
       |> File.read!()
       |> String.trim()
-      |> String.split(~r/\s+/, trim: true)
+      |> Codex.StringScan.split_ascii_whitespace()
       |> flag_values("--config")
 
     assert ~s(model_reasoning_effort="medium") in configs

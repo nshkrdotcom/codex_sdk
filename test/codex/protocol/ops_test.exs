@@ -52,9 +52,12 @@ defmodule Codex.Protocol.OpsTest do
         approval_policy: %{granular: %{request_permissions: "yes"}}
       })
 
-    assert_raise ArgumentError, ~r/invalid approval_policy for protocol op/, fn ->
-      Ops.to_map(op)
-    end
+    error =
+      assert_raise ArgumentError, fn ->
+        Ops.to_map(op)
+      end
+
+    assert Exception.message(error) =~ "invalid approval_policy for protocol op"
   end
 
   test "normalizes collaboration mode maps to the upstream nested settings shape" do
