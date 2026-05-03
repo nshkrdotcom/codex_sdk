@@ -31,6 +31,14 @@ defmodule Codex.Config.BaseURL do
     end
   end
 
+  @spec resolve_explicit(map() | keyword() | nil) :: String.t() | nil
+  def resolve_explicit(attrs \\ nil) do
+    attrs
+    |> normalize_attrs()
+    |> explicit_base_url()
+    |> normalize_url()
+  end
+
   defp explicit_base_url(attrs) do
     fetch_first(attrs, [:base_url, "base_url"]) ||
       fetch_first(attrs, [

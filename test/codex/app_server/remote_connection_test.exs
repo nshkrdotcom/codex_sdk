@@ -7,6 +7,7 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
   alias Codex.AppServer
   alias Codex.AppServer.Connection
+  alias Codex.TestSupport.GovernedAuthority
 
   defmodule RemoteAppServerPlug do
     import Plug.Conn
@@ -233,6 +234,47 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert headers["authorization"] == "Bearer env-secret"
 
     assert :ok = AppServer.disconnect(conn)
+  end
+
+  test "connect_remote/2 keeps standalone ambient auth_token_env fallback", %{url: url} do
+    previous = System.get_env("CODEX_REMOTE_TOKEN")
+    System.put_env("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
+
+    on_exit(fn ->
+      case previous do
+        nil -> System.delete_env("CODEX_REMOTE_TOKEN")
+        value -> System.put_env("CODEX_REMOTE_TOKEN", value)
+      end
+    end)
+
+    assert {:ok, conn} =
+             AppServer.connect_remote(url,
+               auth_token_env: "CODEX_REMOTE_TOKEN",
+               init_timeout_ms: 500
+             )
+
+    assert_receive {:remote_upgrade_headers, headers}, 1_000
+    assert headers["authorization"] == "Bearer ambient-remote-secret"
+
+    assert :ok = AppServer.disconnect(conn)
+  end
+
+  test "connect_remote/2 rejects governed ambient auth_token_env fallback" do
+    previous = System.get_env("CODEX_REMOTE_TOKEN")
+    System.put_env("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
+
+    on_exit(fn ->
+      case previous do
+        nil -> System.delete_env("CODEX_REMOTE_TOKEN")
+        value -> System.put_env("CODEX_REMOTE_TOKEN", value)
+      end
+    end)
+
+    assert {:error, {:missing_auth_token_env, "CODEX_REMOTE_TOKEN"}} =
+             AppServer.connect_remote("ws://127.0.0.1:4500",
+               auth_token_env: "CODEX_REMOTE_TOKEN",
+               governed_authority: GovernedAuthority.refs()
+             )
   end
 
   test "connect_remote/2 rejects missing auth_token_env" do

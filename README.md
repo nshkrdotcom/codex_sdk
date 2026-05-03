@@ -96,6 +96,21 @@ execution, auth resolution is:
 2. `auth.json` `OPENAI_API_KEY`
 3. ChatGPT OAuth tokens stored under `CODEX_HOME` (default `~/.codex/auth.json`, with legacy credential file support)
 
+### Governed authority mode
+
+Standalone auth remains the default. Governed execution is selected only when
+callers pass `:governed_authority` refs into `Codex.Options.new/1` or the
+app-server/OAuth remote surfaces that support those refs. A governed authority
+must include authority, credential lease, native-auth assertion, provider
+account, connector binding, target, and materialization refs.
+
+In governed mode, ambient `CODEX_HOME`, `CODEX_API_KEY`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, model env, command env, and saved `auth.json` state are not
+used to build `Codex.Options`. Exec and app-server launch paths require
+`clear_env?: true` and reject unmanaged ambient env before a child process is
+started. Remote app-server `auth_token_env:` is read only from the supplied
+`process_env`; the normal shell fallback remains standalone-only.
+
 When you do not explicitly choose a model, CLI-backed exec and app-server runs
 defer to the installed `codex` binary's auth-aware default model instead of
 forcing the shared catalog default. Use `model:` or `CODEX_MODEL` when you want

@@ -5,6 +5,7 @@ defmodule Codex.AppServer.Account do
   alias Codex.AppServer.Params
   alias Codex.Auth
   alias Codex.Config.LayerStack
+  alias Codex.GovernedAuthority
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type connection :: pid()
@@ -89,10 +90,9 @@ defmodule Codex.AppServer.Account do
   end
 
   defp enforce_login_constraints(login_type, params, opts) do
-    %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id} =
-      load_forced_login_config(opts)
-
-    with :ok <- enforce_forced_login_method(forced_method, login_type) do
+    with {:ok, %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id}} <-
+           load_forced_login_config(opts),
+         :ok <- enforce_forced_login_method(forced_method, login_type) do
       enforce_forced_workspace_id(workspace_id, login_type, params)
     end
   end
@@ -142,31 +142,51 @@ defmodule Codex.AppServer.Account do
   end
 
   defp load_forced_login_config(opts) do
-    with {:ok, child_process_env} <- resolve_child_env(opts),
+    with {:ok, authority} <- GovernedAuthority.fetch(opts),
+         {:ok, child_process_env} <- resolve_child_env(opts, authority),
+         :ok <- GovernedAuthority.validate_runtime_env(authority, child_process_env),
          {:ok, cwd} <- resolve_cwd(opts),
-         codex_home <- resolve_codex_home(opts, child_process_env),
+         {:ok, codex_home} <- resolve_codex_home(opts, child_process_env, authority),
          {:ok, layers} <- LayerStack.load(codex_home, cwd) do
-      config = LayerStack.effective_config(layers)
-
-      %{
-        forced_login_method:
-          Map.get(config, "forced_login_method") || Map.get(config, :forced_login_method),
-        forced_chatgpt_workspace_id:
-          Map.get(config, "forced_chatgpt_workspace_id") ||
-            Map.get(config, :forced_chatgpt_workspace_id)
-      }
+      {:ok, forced_login_config(LayerStack.effective_config(layers))}
     else
-      {:error, _reason} ->
-        %{forced_login_method: nil, forced_chatgpt_workspace_id: nil}
+      {:error, reason} ->
+        if governed_opts?(opts) do
+          {:error, reason}
+        else
+          {:ok, forced_login_config(%{})}
+        end
     end
   end
 
-  defp resolve_child_env(opts) do
+  defp forced_login_config(config) do
+    %{
+      forced_login_method:
+        Map.get(config, "forced_login_method") || Map.get(config, :forced_login_method),
+      forced_chatgpt_workspace_id:
+        Map.get(config, "forced_chatgpt_workspace_id") ||
+          Map.get(config, :forced_chatgpt_workspace_id)
+    }
+  end
+
+  defp governed_opts?(opts) do
+    case GovernedAuthority.fetch(opts) do
+      {:ok, %{} = _authority} -> true
+      _ -> false
+    end
+  end
+
+  defp resolve_child_env(opts, nil) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env))
 
     with {:ok, overrides} <- RuntimeEnv.normalize_overrides(process_env) do
       {:ok, Map.merge(System.get_env(), overrides)}
     end
+  end
+
+  defp resolve_child_env(opts, %{}) do
+    process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
+    RuntimeEnv.normalize_overrides(process_env)
   end
 
   defp resolve_cwd(opts) do
@@ -185,13 +205,20 @@ defmodule Codex.AppServer.Account do
     end
   end
 
-  defp resolve_codex_home(opts, child_process_env) do
+  defp resolve_codex_home(opts, child_process_env, nil) do
     case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
       value when is_binary(value) and value != "" ->
-        value
+        {:ok, value}
 
       _ ->
-        Auth.codex_home()
+        {:ok, Auth.codex_home()}
+    end
+  end
+
+  defp resolve_codex_home(opts, child_process_env, %{}) do
+    case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, {:governed_codex_home_required, :app_server_account}}
     end
   end
 

@@ -11,6 +11,7 @@ defmodule Codex.AppServer.ConnectionTest do
   alias Codex.Config.Defaults
   alias Codex.Options
   alias Codex.TestSupport.AppServerSubprocess
+  alias Codex.TestSupport.GovernedAuthority
 
   setup do
     harness =
@@ -119,6 +120,92 @@ defmodule Codex.AppServer.ConnectionTest do
     assert env["OPENAI_API_KEY"] == "test"
     assert env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "codex_sdk_elixir"
     refute Map.has_key?(env, "CODEX_SHOULD_NOT_INHERIT")
+  end
+
+  test "governed app-server rejects unmanaged ambient API env before launch" do
+    previous = Process.flag(:trap_exit, true)
+    previous_openai = System.get_env("OPENAI_API_KEY")
+    System.put_env("OPENAI_API_KEY", "ambient-openai-key")
+
+    on_exit(fn ->
+      Process.flag(:trap_exit, previous)
+
+      case previous_openai do
+        nil -> System.delete_env("OPENAI_API_KEY")
+        value -> System.put_env("OPENAI_API_KEY", value)
+      end
+    end)
+
+    {:ok, base_opts} =
+      Options.new(%{
+        governed_authority: GovernedAuthority.command_refs(),
+        api_key: "materialized-key"
+      })
+
+    codex_opts = AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
+
+    assert {:error, {:unmanaged_governed_env, "OPENAI_API_KEY"}} =
+             Connection.start_link(codex_opts,
+               process_env:
+                 Map.put(
+                   AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+                   "CODEX_HOME",
+                   "/tmp/materialized-codex-home"
+                 ),
+               clear_env?: true,
+               init_timeout_ms: 200
+             )
+
+    refute_receive {:app_server_subprocess_started, _, _}
+  end
+
+  test "governed app-server requires clear_env and materialized child env" do
+    GovernedAuthority.with_clean_ambient(fn ->
+      previous = Process.flag(:trap_exit, true)
+      on_exit(fn -> Process.flag(:trap_exit, previous) end)
+
+      {:ok, base_opts} =
+        Options.new(%{
+          governed_authority: GovernedAuthority.command_refs(),
+          api_key: "materialized-key",
+          base_url: "https://materialized.example.com/v1"
+        })
+
+      codex_opts = AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
+
+      process_env =
+        Map.merge(AppServerSubprocess.process_env(AppServerSubprocess.current!()), %{
+          "CODEX_HOME" => "/tmp/materialized-codex-home",
+          "HOME" => "/tmp/materialized-home",
+          "USERPROFILE" => "/tmp/materialized-home"
+        })
+
+      assert {:error, {:governed_clear_env_required, :app_server, false}} =
+               Connection.start_link(codex_opts,
+                 process_env: process_env,
+                 clear_env?: false,
+                 init_timeout_ms: 200
+               )
+
+      assert {:ok, conn} =
+               Connection.start_link(codex_opts,
+                 process_env: process_env,
+                 clear_env?: true,
+                 init_timeout_ms: 200
+               )
+
+      :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+      assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+      assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+      assert %CliSubprocessCore.Command{} = command = Keyword.fetch!(start_opts, :command)
+      env = Map.new(command.env)
+
+      assert env["CODEX_API_KEY"] == "materialized-key"
+      assert env["OPENAI_API_KEY"] == "materialized-key"
+      assert env["OPENAI_BASE_URL"] == "https://materialized.example.com/v1"
+      assert env["CODEX_HOME"] == "/tmp/materialized-codex-home"
+    end)
   end
 
   test "protocol-session launch options keep line stdout and raw stdin", %{codex_opts: codex_opts} do

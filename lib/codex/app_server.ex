@@ -8,6 +8,7 @@ defmodule Codex.AppServer do
   alias Codex.AppServer.RemoteConnection
   alias Codex.AppServer.Supervisor, as: ConnectionSupervisor
   alias Codex.Config.Defaults
+  alias Codex.GovernedAuthority
   alias Codex.Models
   alias Codex.OAuth.AppServerAuth
   alias Codex.Options
@@ -43,6 +44,7 @@ defmodule Codex.AppServer do
           experimental_api: boolean(),
           auth_token: String.t(),
           auth_token_env: String.t(),
+          governed_authority: map() | keyword(),
           cwd: String.t(),
           process_env: map() | keyword(),
           env: map() | keyword(),
@@ -1734,7 +1736,8 @@ defmodule Codex.AppServer do
   defp normalize_true(_), do: nil
 
   defp resolve_remote_auth_token(opts) when is_list(opts) do
-    with {:ok, process_env} <-
+    with {:ok, governed_authority} <- GovernedAuthority.fetch(opts),
+         {:ok, process_env} <-
            RuntimeEnv.normalize_overrides(
              Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
            ) do
@@ -1751,23 +1754,19 @@ defmodule Codex.AppServer do
           {:ok, Keyword.delete(opts, :auth_token)}
 
         {nil, auth_token_env} ->
-          resolve_remote_auth_token_env(opts, process_env, auth_token_env)
+          resolve_remote_auth_token_env(opts, process_env, auth_token_env, governed_authority)
       end
     end
   end
 
-  defp resolve_remote_auth_token_env(opts, process_env, auth_token_env) do
+  defp resolve_remote_auth_token_env(opts, process_env, auth_token_env, governed_authority) do
     auth_token_env =
       auth_token_env
       |> to_string()
       |> String.trim()
 
     auth_token =
-      process_env[auth_token_env]
-      |> case do
-        nil -> System.get_env(auth_token_env)
-        value -> value
-      end
+      remote_auth_token_env_value(process_env, auth_token_env, governed_authority)
       |> normalize_remote_auth_token()
 
     cond do
@@ -1777,13 +1776,30 @@ defmodule Codex.AppServer do
       is_binary(auth_token) ->
         {:ok, Keyword.put(opts, :auth_token, auth_token)}
 
-      Map.has_key?(process_env, auth_token_env) or System.get_env(auth_token_env) != nil ->
+      Map.has_key?(process_env, auth_token_env) or
+          standalone_remote_auth_env_present?(auth_token_env, governed_authority) ->
         {:error, {:empty_auth_token_env, auth_token_env}}
 
       true ->
         {:error, {:missing_auth_token_env, auth_token_env}}
     end
   end
+
+  defp remote_auth_token_env_value(process_env, auth_token_env, %{}) do
+    Map.get(process_env, auth_token_env)
+  end
+
+  defp remote_auth_token_env_value(process_env, auth_token_env, nil) do
+    case Map.get(process_env, auth_token_env) do
+      nil -> System.get_env(auth_token_env)
+      value -> value
+    end
+  end
+
+  defp standalone_remote_auth_env_present?(_auth_token_env, %{}), do: false
+
+  defp standalone_remote_auth_env_present?(auth_token_env, nil),
+    do: System.get_env(auth_token_env) != nil
 
   defp normalize_remote_auth_token(value) when is_binary(value) do
     value = String.trim(value)

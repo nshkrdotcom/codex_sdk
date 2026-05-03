@@ -4,6 +4,7 @@ defmodule Codex.OAuth.Context do
   alias Codex.Auth.Store
   alias Codex.Config.Defaults
   alias Codex.Config.LayerStack
+  alias Codex.GovernedAuthority
   alias Codex.Net.CA
   alias Codex.OAuth.Environment
   alias Codex.OAuth.Provider.OpenAI
@@ -61,9 +62,11 @@ defmodule Codex.OAuth.Context do
 
   @spec resolve(keyword()) :: {:ok, t()} | {:error, term()}
   def resolve(opts \\ []) when is_list(opts) do
-    with {:ok, child_process_env} <- resolve_child_env(opts),
+    with {:ok, authority} <- GovernedAuthority.fetch(opts),
+         {:ok, child_process_env} <- resolve_child_env(opts, authority),
+         :ok <- GovernedAuthority.validate_runtime_env(authority, child_process_env),
          {:ok, cwd} <- resolve_cwd(opts),
-         codex_home <- resolve_codex_home(opts, child_process_env),
+         {:ok, codex_home} <- resolve_codex_home(opts, child_process_env, authority),
          {:ok, layers} <- LayerStack.load(codex_home, cwd) do
       effective_config = LayerStack.effective_config(layers)
       environment = resolve_environment(opts, child_process_env)
@@ -108,12 +111,17 @@ defmodule Codex.OAuth.Context do
     end
   end
 
-  defp resolve_child_env(opts) do
+  defp resolve_child_env(opts, nil) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env))
 
     with {:ok, overrides} <- RuntimeEnv.normalize_overrides(process_env) do
       {:ok, Map.merge(System.get_env(), overrides)}
     end
+  end
+
+  defp resolve_child_env(opts, %{}) do
+    process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
+    RuntimeEnv.normalize_overrides(process_env)
   end
 
   defp resolve_cwd(opts) do
@@ -132,17 +140,24 @@ defmodule Codex.OAuth.Context do
     end
   end
 
-  defp resolve_codex_home(opts, child_process_env) do
+  defp resolve_codex_home(opts, child_process_env, nil) do
     case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
       value when is_binary(value) and value != "" ->
-        value
+        {:ok, value}
 
       _ ->
         home =
           Map.get(child_process_env, "HOME") || Map.get(child_process_env, "USERPROFILE") ||
             System.user_home!()
 
-        Path.join(home, ".codex")
+        {:ok, Path.join(home, ".codex")}
+    end
+  end
+
+  defp resolve_codex_home(opts, child_process_env, %{}) do
+    case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, {:governed_codex_home_required, :oauth_context}}
     end
   end
 

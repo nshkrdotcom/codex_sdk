@@ -3,7 +3,9 @@ defmodule Codex.OptionsTest do
 
   alias CliSubprocessCore.ExecutionSurface
   alias CliSubprocessCore.ModelRegistry.Selection
+  alias Codex.Config.BaseURL
   alias Codex.Options
+  alias Codex.TestSupport.GovernedAuthority
   import Codex.Test.ModelFixtures
 
   setup do
@@ -126,6 +128,71 @@ defmodule Codex.OptionsTest do
 
       assert {:ok, opts} = Options.new(%{base_url: "https://explicit.example.com/v1"})
       assert opts.base_url == "https://explicit.example.com/v1"
+    end
+
+    test "governed authority ignores ambient auth, base URL, auth file, and model env" do
+      System.put_env("CODEX_API_KEY", "ambient-codex-key")
+      System.put_env("OPENAI_BASE_URL", "https://ambient.example.com/v1")
+      System.put_env("CODEX_MODEL", alt_model())
+
+      File.write!(
+        Path.join(System.get_env("CODEX_HOME"), "auth.json"),
+        ~s({"OPENAI_API_KEY":"sk-auth-file"})
+      )
+
+      assert {:ok, opts} = Options.new(%{governed_authority: GovernedAuthority.refs()})
+
+      assert opts.governed_authority["authority_ref"] == "authz-codex-test"
+      assert opts.api_key == nil
+      assert opts.base_url == BaseURL.default()
+      assert opts.model == default_model()
+    end
+
+    test "governed authority accepts explicit materialized auth and command refs" do
+      assert {:ok, opts} =
+               Options.new(%{
+                 governed_authority: GovernedAuthority.command_refs(),
+                 api_key: "materialized-key",
+                 base_url: "https://materialized.example.com/v1",
+                 codex_path_override: "/opt/materialized/codex",
+                 model: alt_model()
+               })
+
+      assert opts.api_key == "materialized-key"
+      assert opts.base_url == "https://materialized.example.com/v1"
+      assert opts.codex_path_override == "/opt/materialized/codex"
+      assert opts.model == alt_model()
+    end
+
+    test "governed authority rejects incomplete authority refs" do
+      assert {:error, {:missing_governed_authority_refs, missing}} =
+               Options.new(%{governed_authority: %{authority_ref: "authz-only"}})
+
+      assert "credential_lease_ref" in missing
+      assert "materialization_ref" in missing
+    end
+
+    test "governed authority rejects raw secret-shaped fields" do
+      authority = Map.put(GovernedAuthority.refs(), :api_key, "sk-raw")
+
+      assert {:error, {:raw_secret_field_in_governed_authority, "api_key"}} =
+               Options.new(%{governed_authority: authority})
+    end
+
+    test "governed authority rejects secret config overrides" do
+      assert {:error, {:governed_secret_config_override, :options, "api_key"}} =
+               Options.new(%{
+                 governed_authority: GovernedAuthority.refs(),
+                 config: %{"api_key" => "raw"}
+               })
+    end
+
+    test "governed authority rejects command override without command ref" do
+      assert {:error, {:governed_command_ref_required, :options}} =
+               Options.new(%{
+                 governed_authority: GovernedAuthority.refs(),
+                 codex_path_override: "/opt/materialized/codex"
+               })
     end
 
     test "allows API key to be omitted" do

@@ -63,6 +63,11 @@ OAuth issuer resolution is also separate from `openai_base_url`: overriding the
 OpenAI API base URL does not change the ChatGPT OAuth authority. Use
 `Codex.OAuth` `auth_issuer:` options (or layered `auth_issuer`) for that.
 
+All env-backed layered config is standalone compatibility behavior. Governed
+Codex execution requires explicit authority refs and materialized env for one
+bounded effect; normal layered config, shell env, and saved CLI auth files do
+not satisfy governed authority.
+
 ## Defaults Reference
 
 ### Transport Timeouts

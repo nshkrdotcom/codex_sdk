@@ -156,6 +156,12 @@ If you configure an auth token for a non-loopback plain `ws://` URL,
 `connect_remote/2` returns `{:error, {:invalid_remote_auth_transport, url}}`
 instead of sending credentials over an unsafe transport.
 
+When `governed_authority:` refs are supplied, `auth_token_env:` is resolved
+only from the provided `process_env` / `env` map. Shell env fallback is
+standalone-only. Governed local app-server launch also requires `clear_env?:
+true` and rejects unmanaged ambient Codex auth/base-url/model env before the
+child process starts.
+
 ### Client identity
 
 You can identify your application in the handshake:

@@ -2,6 +2,7 @@ defmodule Codex.AppServer.AccountTest do
   use ExUnit.Case, async: false
 
   alias Codex.AppServer.Account
+  alias Codex.TestSupport.GovernedAuthority
 
   setup do
     tmp_root =
@@ -42,6 +43,11 @@ defmodule Codex.AppServer.AccountTest do
 
     assert {:error, {:forced_login_method, "chatgpt", :api_key}} =
              Account.login_start(self(), {:api_key, "sk-test"})
+  end
+
+  test "rejects ambient CODEX_HOME as governed account authority" do
+    assert {:error, {:unmanaged_governed_env, "CODEX_HOME"}} =
+             Account.login_start(self(), :chatgpt, governed_authority: GovernedAuthority.refs())
   end
 
   test "rejects chatgpt workspace mismatch", %{codex_home: codex_home} do
@@ -90,5 +96,29 @@ defmodule Codex.AppServer.AccountTest do
                  USERPROFILE: child_home
                ]
              )
+  end
+
+  test "login_start/3 accepts governed account config from materialized child env", %{
+    codex_home: codex_home
+  } do
+    GovernedAuthority.with_clean_ambient(fn ->
+      child_home = Path.join(Path.dirname(codex_home), "governed_child_home")
+      File.mkdir_p!(child_home)
+
+      File.write!(Path.join(child_home, "config.toml"), """
+      forced_login_method = "chatgpt"
+      """)
+
+      assert {:error, {:forced_login_method, "chatgpt", :api_key}} =
+               Account.login_start(self(), {:api_key, "sk-test"},
+                 governed_authority: GovernedAuthority.refs(),
+                 cwd: child_home,
+                 process_env: [
+                   CODEX_HOME: child_home,
+                   HOME: child_home,
+                   USERPROFILE: child_home
+                 ]
+               )
+    end)
   end
 end

@@ -24,7 +24,14 @@ OAuth files, API keys, and normal `CODEX_HOME` state are native standalone
 mechanics until a caller explicitly promotes them through governed authority.
 Governed Codex execution must use control-plane authority refs, credential
 handles or leases, target grants, and materialized auth. A saved `auth.json`,
-env var, or local login cannot satisfy governed authority on its own.
+env var, local login, or shell-provided remote auth token cannot satisfy
+governed authority on its own.
+
+When `governed_authority:` refs are present, OAuth and account helpers derive
+their child context from supplied `process_env` / `env` values instead of the
+caller shell. Missing governed `CODEX_HOME` is rejected for persistent
+child-auth work, and unmanaged ambient Codex auth/base-url/model env is
+rejected before it can influence the effect.
 
 Persistent OAuth respects upstream `auth_mode`:
 

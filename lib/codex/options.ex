@@ -10,6 +10,7 @@ defmodule Codex.Options do
   alias Codex.Config.BaseURL
   alias Codex.Config.OptionNormalizers
   alias Codex.Config.Overrides
+  alias Codex.GovernedAuthority
   alias Codex.Models
 
   @enforce_keys []
@@ -33,7 +34,8 @@ defmodule Codex.Options do
             hide_agent_reasoning: false,
             tool_output_token_limit: nil,
             agent_max_threads: nil,
-            config_overrides: []
+            config_overrides: [],
+            governed_authority: nil
 
   @typep config_override_value_scalar :: String.t() | boolean() | integer() | float()
   @typep config_override_value ::
@@ -64,7 +66,8 @@ defmodule Codex.Options do
           agent_max_threads: pos_integer() | nil,
           config_overrides: [
             String.t() | {String.t(), config_override_value()}
-          ]
+          ],
+          governed_authority: map() | nil
         }
 
   @doc """
@@ -77,12 +80,13 @@ defmodule Codex.Options do
   def new(attrs \\ %{}) do
     attrs = Map.new(attrs)
 
-    with {:ok, api_key} <- fetch_api_key(attrs),
-         {:ok, base_url} <- fetch_base_url(attrs),
+    with {:ok, governed_authority} <- fetch_governed_authority(attrs),
+         {:ok, api_key} <- fetch_api_key(attrs, governed_authority),
+         {:ok, base_url} <- fetch_base_url(attrs, governed_authority),
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, execution_surface} <- fetch_execution_surface(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model_input} <- normalize_model_input(attrs),
+         {:ok, model_input} <- normalize_model_input(attrs, governed_authority),
          model_payload = model_input.selection,
          normalized_attrs = model_input.attrs,
          {:ok, model} <- fetch_model(model_payload),
@@ -101,7 +105,19 @@ defmodule Codex.Options do
          {:ok, hide_agent_reasoning} <- fetch_hide_agent_reasoning(normalized_attrs),
          {:ok, tool_output_token_limit} <- fetch_tool_output_token_limit(normalized_attrs),
          {:ok, agent_max_threads} <- fetch_agent_max_threads(normalized_attrs),
-         {:ok, config_overrides} <- fetch_config_overrides(normalized_attrs) do
+         {:ok, config_overrides} <- fetch_config_overrides(normalized_attrs),
+         :ok <-
+           GovernedAuthority.reject_config_overrides(
+             governed_authority,
+             config_overrides,
+             :options
+           ),
+         :ok <-
+           GovernedAuthority.validate_command_override(
+             governed_authority,
+             override,
+             :options
+           ) do
       {:ok,
        %__MODULE__{
          api_key: api_key,
@@ -124,7 +140,8 @@ defmodule Codex.Options do
          hide_agent_reasoning: hide_agent_reasoning,
          tool_output_token_limit: tool_output_token_limit,
          agent_max_threads: agent_max_threads,
-         config_overrides: config_overrides
+         config_overrides: config_overrides,
+         governed_authority: governed_authority
        }}
     end
   end
@@ -232,15 +249,31 @@ defmodule Codex.Options do
 
   def execution_surface_options(nil), do: []
 
-  defp fetch_api_key(attrs) do
+  defp fetch_governed_authority(attrs), do: GovernedAuthority.fetch(attrs)
+
+  defp fetch_api_key(attrs, nil) do
     case normalize_string(pick(attrs, [:api_key, "api_key"], Auth.api_key())) do
       nil -> {:ok, nil}
       key -> {:ok, key}
     end
   end
 
-  defp fetch_base_url(attrs) do
+  defp fetch_api_key(attrs, %{} = _governed_authority) do
+    case normalize_string(pick(attrs, [:api_key, "api_key"])) do
+      nil -> {:ok, nil}
+      key -> {:ok, key}
+    end
+  end
+
+  defp fetch_base_url(attrs, nil) do
     case BaseURL.resolve(attrs) do
+      url when is_binary(url) and url != "" -> {:ok, url}
+      _ -> {:error, :invalid_base_url}
+    end
+  end
+
+  defp fetch_base_url(attrs, %{} = _governed_authority) do
+    case BaseURL.resolve_explicit(attrs) || BaseURL.default() do
       url when is_binary(url) and url != "" -> {:ok, url}
       _ -> {:error, :invalid_base_url}
     end
@@ -303,10 +336,14 @@ defmodule Codex.Options do
 
   defp implicit_default_model?(%__MODULE__{}), do: false
 
-  defp normalize_model_input(attrs) do
+  defp normalize_model_input(attrs, nil) do
     attrs
     |> apply_model_env_defaults()
     |> then(&ModelInput.normalize(:codex, &1, []))
+  end
+
+  defp normalize_model_input(attrs, %{} = _governed_authority) do
+    ModelInput.normalize(:codex, attrs, [])
   end
 
   defp apply_model_env_defaults(attrs) when is_map(attrs) do

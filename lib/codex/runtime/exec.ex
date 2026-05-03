@@ -17,6 +17,7 @@ defmodule Codex.Runtime.Exec do
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Files.Attachment
+  alias Codex.GovernedAuthority
   alias Codex.IO.Buffer
   alias Codex.Options
   alias Codex.ProcessExit
@@ -174,7 +175,8 @@ defmodule Codex.Runtime.Exec do
     with %ExecOptions{} = exec_opts <- exec_opts,
          {:ok, command_spec} <-
            Options.codex_command_spec(exec_opts.codex_opts, exec_opts.execution_surface),
-         {:ok, config_values} <- config_values(exec_opts) do
+         {:ok, config_values} <- config_values(exec_opts),
+         :ok <- validate_governed_runtime(exec_opts, config_values) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
 
       session_opts =
@@ -215,7 +217,8 @@ defmodule Codex.Runtime.Exec do
     command_args = Keyword.get(opts, :command_args)
 
     with %ExecOptions{} = exec_opts <- exec_opts,
-         {:ok, config_values} <- config_values(exec_opts) do
+         {:ok, config_values} <- config_values(exec_opts),
+         :ok <- validate_governed_runtime(exec_opts, config_values) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
       session_opts = base_session_options(opts, exec_opts, config_values, subcommand_args)
 
@@ -498,6 +501,19 @@ defmodule Codex.Runtime.Exec do
     RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
     |> Map.merge(payload_env_overrides(opts), fn _key, _base, payload -> payload end)
     |> Map.merge(env, fn _key, _base, custom -> custom end)
+  end
+
+  defp validate_governed_runtime(
+         %ExecOptions{codex_opts: %Options{governed_authority: authority} = opts} = exec_opts,
+         config_values
+       ) do
+    env = build_env(exec_opts)
+
+    with :ok <- GovernedAuthority.validate_clear_env(authority, exec_opts.clear_env?, :exec),
+         :ok <- GovernedAuthority.validate_runtime_env(authority, env),
+         :ok <- GovernedAuthority.reject_config_overrides(authority, config_values, :exec) do
+      GovernedAuthority.validate_command_override(authority, opts.codex_path_override, :exec)
+    end
   end
 
   defp attachment_paths(attachments) do

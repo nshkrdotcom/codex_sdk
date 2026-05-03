@@ -6,7 +6,10 @@ defmodule Codex.ExecTest do
   alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
+  alias Codex.Exec.Options, as: ExecOptions
+  alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TestSupport.FixtureScripts
+  alias Codex.TestSupport.GovernedAuthority
   alias Codex.Thread.Options, as: ThreadOptions
   import Codex.Test.ModelFixtures
 
@@ -83,6 +86,80 @@ defmodule Codex.ExecTest do
              _ ->
                false
            end)
+  end
+
+  test "governed exec rejects unmanaged ambient API env before launch" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      exit 0
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    previous = System.get_env("OPENAI_API_KEY")
+    System.put_env("OPENAI_API_KEY", "ambient-openai-key")
+
+    on_exit(fn ->
+      case previous do
+        nil -> System.delete_env("OPENAI_API_KEY")
+        value -> System.put_env("OPENAI_API_KEY", value)
+      end
+    end)
+
+    {:ok, codex_opts} =
+      Options.new(%{
+        governed_authority: GovernedAuthority.command_refs(),
+        api_key: "materialized-key",
+        codex_path_override: script_path
+      })
+
+    assert {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts, clear_env?: true})
+
+    assert {:error, {:unmanaged_governed_env, "OPENAI_API_KEY"}} =
+             RuntimeExec.render_for_test(exec_opts: exec_opts, input: "hi")
+  end
+
+  test "governed exec renders materialized env only when clear_env is enabled" do
+    GovernedAuthority.with_clean_ambient(fn ->
+      script_path =
+        temp_script("""
+        #!/usr/bin/env bash
+        exit 0
+        """)
+        |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          governed_authority: GovernedAuthority.command_refs(),
+          api_key: "materialized-key",
+          base_url: "https://materialized.example.com/v1",
+          codex_path_override: script_path
+        })
+
+      assert {:ok, exec_opts} =
+               ExecOptions.new(%{
+                 codex_opts: codex_opts,
+                 clear_env?: true,
+                 env: %{"CODEX_HOME" => "/tmp/materialized-codex-home"}
+               })
+
+      assert {:ok, rendered} = RuntimeExec.render_for_test(exec_opts: exec_opts, input: "hi")
+      assert rendered.clear_env? == true
+      assert rendered.env["CODEX_API_KEY"] == "materialized-key"
+      assert rendered.env["OPENAI_API_KEY"] == "materialized-key"
+      assert rendered.env["OPENAI_BASE_URL"] == "https://materialized.example.com/v1"
+      assert rendered.env["CODEX_HOME"] == "/tmp/materialized-codex-home"
+
+      assert {:ok, unsafe_exec_opts} =
+               ExecOptions.new(%{
+                 codex_opts: codex_opts,
+                 clear_env?: false,
+                 env: %{"CODEX_HOME" => "/tmp/materialized-codex-home"}
+               })
+
+      assert {:error, {:governed_clear_env_required, :exec, false}} =
+               RuntimeExec.render_for_test(exec_opts: unsafe_exec_opts, input: "hi")
+    end)
   end
 
   test "forwards cancellation token flag to codex exec" do

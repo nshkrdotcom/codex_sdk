@@ -5,6 +5,7 @@ Code.require_file("support/parity_matrix.ex", __DIR__)
 Code.require_file("support/mock_websocket.ex", __DIR__)
 Code.require_file("support/model_fixtures.ex", __DIR__)
 Code.require_file("support/temp_dir.ex", __DIR__)
+Code.require_file("support/governed_authority.ex", __DIR__)
 
 loopback_available? =
   case :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}]) do

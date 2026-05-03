@@ -7,6 +7,7 @@ defmodule Codex.AppServer.Connection do
 
   alias CliSubprocessCore.{Command, JSONRPC, TaskSupport}
   alias Codex.Config.Defaults
+  alias Codex.GovernedAuthority
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
 
@@ -126,6 +127,7 @@ defmodule Codex.AppServer.Connection do
 
     with {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, env} <- build_env(codex_opts, opts),
+         :ok <- validate_governed_runtime(codex_opts, opts, env),
          {:ok, execution_surface} <- effective_execution_surface(codex_opts, opts),
          {:ok, command_spec} <- build_command(codex_opts, execution_surface),
          invocation <-
@@ -702,6 +704,26 @@ defmodule Codex.AppServer.Connection do
       |> Map.merge(payload_env_overrides(codex_opts), fn _key, _base, payload -> payload end)
       |> Map.merge(custom_env, fn _key, _base, custom -> custom end)
       |> then(&{:ok, &1})
+    end
+  end
+
+  defp validate_governed_runtime(
+         %Options{governed_authority: authority} = codex_opts,
+         opts,
+         env
+       ) do
+    with :ok <-
+           GovernedAuthority.validate_clear_env(
+             authority,
+             Keyword.get(opts, :clear_env?, false),
+             :app_server
+           ),
+         :ok <- GovernedAuthority.validate_runtime_env(authority, env) do
+      GovernedAuthority.validate_command_override(
+        authority,
+        codex_opts.codex_path_override,
+        :app_server
+      )
     end
   end
 

@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus live documentation and `examples/live_app_server_dynamic_tools.exs` for
   `DynamicToolCallRequested` / `Codex.AppServer.respond/3` handling.
 
+### Changed
+
+- Added governed authority refs for Codex options, exec, app-server remote
+  auth, OAuth context, and account-login config resolution. Standalone env,
+  saved CLI auth, and native login behavior remain the default, while governed
+  paths ignore or reject unmanaged ambient Codex auth/base-url/model env and
+  require materialized child env for bounded effects.
+
 ## [0.17.0] - 2026-04-16
 
 ### Added
