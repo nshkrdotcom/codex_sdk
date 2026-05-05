@@ -23,6 +23,18 @@ defmodule Codex.ModelSettings do
             extra_query: %{},
             provider: :responses
 
+  @invalid_field_tags %{
+    temperature: :invalid_temperature,
+    top_p: :invalid_top_p,
+    frequency_penalty: :invalid_frequency_penalty,
+    presence_penalty: :invalid_presence_penalty,
+    parallel_tool_calls: :invalid_parallel_tool_calls,
+    max_tokens: :invalid_max_tokens,
+    extra_headers: :invalid_extra_headers,
+    extra_body: :invalid_extra_body,
+    extra_query: :invalid_extra_query
+  }
+
   @type t :: %__MODULE__{
           temperature: number() | nil,
           top_p: number() | nil,
@@ -136,24 +148,24 @@ defmodule Codex.ModelSettings do
     if value >= min and value <= max do
       :ok
     else
-      {:error, {:"invalid_#{field}", value}}
+      invalid_field_error(field, value)
     end
   end
 
-  defp validate_range(value, field, _min, _max), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_range(value, field, _min, _max), do: invalid_field_error(field, value)
 
   defp validate_number(nil, _field), do: :ok
   defp validate_number(value, _field) when is_number(value), do: :ok
-  defp validate_number(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_number(value, field), do: invalid_field_error(field, value)
 
   defp validate_boolean(nil, _field), do: :ok
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
-  defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_boolean(value, field), do: invalid_field_error(field, value)
 
   defp validate_positive(nil, _field), do: :ok
 
   defp validate_positive(value, _field) when is_integer(value) and value > 0, do: :ok
-  defp validate_positive(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_positive(value, field), do: invalid_field_error(field, value)
 
   defp validate_provider(provider) when provider in [:responses, :chat], do: :ok
   defp validate_provider(provider), do: {:error, {:invalid_provider, provider}}
@@ -174,6 +186,13 @@ defmodule Codex.ModelSettings do
   defp normalize_map(nil, _field), do: {:ok, %{}}
 
   defp normalize_map(value, field) do
-    {:error, {:"invalid_#{field}", value}}
+    invalid_field_error(field, value)
+  end
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
   end
 end

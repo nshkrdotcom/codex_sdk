@@ -10,6 +10,22 @@ defmodule Codex.RunConfig do
 
   @default_max_turns Defaults.max_agent_turns()
 
+  @invalid_field_tags %{
+    model: :invalid_model,
+    nest_handoff_history: :invalid_nest_handoff_history,
+    call_model_input_filter: :invalid_call_model_input_filter,
+    conversation_id: :invalid_conversation_id,
+    previous_response_id: :invalid_previous_response_id,
+    auto_previous_response_id: :invalid_auto_previous_response_id,
+    input_guardrails: :invalid_input_guardrails,
+    output_guardrails: :invalid_output_guardrails,
+    workflow: :invalid_workflow,
+    group: :invalid_group,
+    trace_id: :invalid_trace_id,
+    trace_include_sensitive_data: :invalid_trace_include_sensitive_data,
+    tracing_disabled: :invalid_tracing_disabled
+  }
+
   @enforce_keys []
   defstruct model: nil,
             model_settings: nil,
@@ -151,17 +167,17 @@ defmodule Codex.RunConfig do
 
   defp validate_optional_string(nil, _field), do: :ok
   defp validate_optional_string(value, _field) when is_binary(value), do: :ok
-  defp validate_optional_string(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_string(value, field), do: invalid_field_error(field, value)
 
   defp validate_max_turns(value) when is_integer(value) and value > 0, do: :ok
   defp validate_max_turns(value), do: {:error, {:invalid_max_turns, value}}
 
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
-  defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_boolean(value, field), do: invalid_field_error(field, value)
 
   defp validate_optional_function(nil, _field), do: :ok
   defp validate_optional_function(value, _field) when is_function(value, 1), do: :ok
-  defp validate_optional_function(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_function(value, field), do: invalid_field_error(field, value)
 
   defp normalize_model_settings(nil), do: {:ok, nil}
   defp normalize_model_settings(%ModelSettings{} = settings), do: {:ok, settings}
@@ -187,5 +203,12 @@ defmodule Codex.RunConfig do
 
   defp ensure_list(value, _field) when is_list(value), do: {:ok, value}
   defp ensure_list(nil, _field), do: {:ok, []}
-  defp ensure_list(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp ensure_list(value, field), do: invalid_field_error(field, value)
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
+  end
 end

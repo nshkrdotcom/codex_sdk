@@ -11,6 +11,12 @@ defmodule Codex.FileSearch do
             ranking_options: nil,
             include_search_results: nil
 
+  @invalid_field_tags %{
+    filters: :invalid_filters,
+    ranking_options: :invalid_ranking_options,
+    include_search_results: :invalid_include_search_results
+  }
+
   @type t :: %__MODULE__{
           vector_store_ids: [String.t()] | nil,
           filters: map() | nil,
@@ -69,11 +75,18 @@ defmodule Codex.FileSearch do
 
   defp normalize_map(nil, _field), do: {:ok, nil}
   defp normalize_map(map, _field) when is_map(map), do: {:ok, map}
-  defp normalize_map(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp normalize_map(value, field), do: invalid_field_error(field, value)
 
   defp validate_boolean(nil, _field), do: :ok
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
-  defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_boolean(value, field), do: invalid_field_error(field, value)
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
+  end
 
   @spec merge(t() | nil, t() | nil) :: t() | nil
   def merge(nil, nil), do: nil

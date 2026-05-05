@@ -4,19 +4,37 @@ defmodule Codex.ForbiddenTokensTest do
   @project_root Path.expand("../..", __DIR__)
   @forbidden_tokens [
     "ExternalRuntimeTransport",
-    "external_runtime_transport"
+    "external_runtime_transport",
+    "Module" <> ".concat",
+    "String.to" <> "_atom",
+    "String.to" <> "_existing_atom",
+    "binary_to" <> "_atom",
+    "binary_to" <> "_existing_atom",
+    "list_to" <> "_atom",
+    "list_to" <> "_existing_atom",
+    ":\"" <> "\#{",
+    "Reg" <> "ex",
+    "~" <> "r",
+    ":r" <> "e.",
+    "String" <> ".match",
+    "Reg" <> "Exp",
+    "reg" <> "exp",
+    "re." <> "compile",
+    "import" <> " re"
   ]
   @paths [
+    "config",
     "lib",
     "test",
     "examples",
+    "guides",
     "docs",
     "README.md",
     "mix.exs",
     "mix.lock"
   ]
 
-  test "repo contains no external runtime transport references" do
+  test "repo contains no forbidden runtime tokens" do
     Enum.each(expanded_files(), fn path ->
       if path != __ENV__.file do
         contents = File.read!(path)

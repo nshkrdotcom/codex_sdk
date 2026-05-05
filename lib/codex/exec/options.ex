@@ -22,6 +22,12 @@ defmodule Codex.Exec.Options do
             stream_idle_timeout_ms: nil,
             max_stderr_buffer_bytes: nil
 
+  @invalid_field_tags %{
+    clear_env?: :invalid_clear_env?,
+    stream_idle_timeout_ms: :invalid_stream_idle_timeout_ms,
+    max_stderr_buffer_bytes: :invalid_max_stderr_buffer_bytes
+  }
+
   @type t :: %__MODULE__{
           codex_opts: Options.t(),
           execution_surface: CliSubprocessCore.ExecutionSurface.t(),
@@ -130,7 +136,7 @@ defmodule Codex.Exec.Options do
 
   defp validate_optional_boolean(nil, _field), do: {:ok, nil}
   defp validate_optional_boolean(value, _field) when is_boolean(value), do: {:ok, value}
-  defp validate_optional_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_boolean(value, field), do: invalid_field_error(field, value)
 
   defp validate_timeout(nil), do: :ok
   defp validate_timeout(timeout) when is_integer(timeout) and timeout > 0, do: :ok
@@ -142,7 +148,7 @@ defmodule Codex.Exec.Options do
     do: :ok
 
   defp validate_optional_timeout(timeout, field),
-    do: {:error, {:"invalid_#{field}", timeout}}
+    do: invalid_field_error(field, timeout)
 
   defp validate_optional_positive_integer(nil, _field), do: :ok
 
@@ -151,5 +157,12 @@ defmodule Codex.Exec.Options do
        do: :ok
 
   defp validate_optional_positive_integer(value, field),
-    do: {:error, {:"invalid_#{field}", value}}
+    do: invalid_field_error(field, value)
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
+  end
 end

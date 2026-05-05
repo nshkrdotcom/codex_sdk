@@ -20,6 +20,20 @@ defmodule Codex.Agent do
             model: nil,
             model_settings: nil
 
+  @invalid_field_tags %{
+    name: :invalid_name,
+    instructions: :invalid_instructions,
+    handoff_description: :invalid_handoff_description,
+    handoffs: :invalid_handoffs,
+    tools: :invalid_tools,
+    reset_tool_choice: :invalid_reset_tool_choice,
+    input_guardrails: :invalid_input_guardrails,
+    output_guardrails: :invalid_output_guardrails,
+    tool_input_guardrails: :invalid_tool_input_guardrails,
+    tool_output_guardrails: :invalid_tool_output_guardrails,
+    model: :invalid_model
+  }
+
   @type t :: %__MODULE__{
           name: String.t() | nil,
           instructions: String.t() | nil,
@@ -122,7 +136,7 @@ defmodule Codex.Agent do
 
   defp validate_optional_string(nil, _field), do: :ok
   defp validate_optional_string(value, _field) when is_binary(value), do: :ok
-  defp validate_optional_string(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_string(value, field), do: invalid_field_error(field, value)
 
   defp validate_tool_use_behavior(:auto), do: {:ok, :run_llm_again}
   defp validate_tool_use_behavior("auto"), do: {:ok, :run_llm_again}
@@ -151,9 +165,16 @@ defmodule Codex.Agent do
   defp validate_prompt(value), do: {:error, {:invalid_prompt, value}}
 
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
-  defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_boolean(value, field), do: invalid_field_error(field, value)
 
   defp ensure_list(value, _field) when is_list(value), do: {:ok, value}
   defp ensure_list(nil, _field), do: {:ok, []}
-  defp ensure_list(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp ensure_list(value, field), do: invalid_field_error(field, value)
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
+  end
 end

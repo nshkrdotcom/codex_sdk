@@ -146,6 +146,44 @@ defmodule Codex.Thread.Options do
   @type rate_limit_opts :: keyword()
   @type history_persistence :: String.t()
 
+  @invalid_field_tags %{
+    ephemeral: :invalid_ephemeral,
+    auto_run: :invalid_auto_run,
+    working_directory: :invalid_working_directory,
+    skip_git_repo_check: :invalid_skip_git_repo_check,
+    network_access_enabled: :invalid_network_access_enabled,
+    web_search_enabled: :invalid_web_search_enabled,
+    compact_prompt: :invalid_compact_prompt,
+    show_raw_agent_reasoning: :invalid_show_raw_agent_reasoning,
+    apply_patch_freeform_enabled: :invalid_apply_patch_freeform_enabled,
+    view_image_tool_enabled: :invalid_view_image_tool_enabled,
+    unified_exec_enabled: :invalid_unified_exec_enabled,
+    skills_enabled: :invalid_skills_enabled,
+    profile: :invalid_profile,
+    oss: :invalid_oss,
+    local_provider: :invalid_local_provider,
+    full_auto: :invalid_full_auto,
+    dangerously_bypass_approvals_and_sandbox: :invalid_dangerously_bypass_approvals_and_sandbox,
+    output_last_message: :invalid_output_last_message,
+    history_max_bytes: :invalid_history_max_bytes,
+    model: :invalid_model,
+    model_provider: :invalid_model_provider,
+    service_name: :invalid_service_name,
+    model_context_window: :invalid_model_context_window,
+    model_supports_reasoning_summaries: :invalid_model_supports_reasoning_summaries,
+    request_max_retries: :invalid_request_max_retries,
+    stream_max_retries: :invalid_stream_max_retries,
+    stream_idle_timeout_ms: :invalid_stream_idle_timeout_ms,
+    base_instructions: :invalid_base_instructions,
+    developer_instructions: :invalid_developer_instructions,
+    retry: :invalid_retry,
+    retry_opts: :invalid_retry_opts,
+    rate_limit: :invalid_rate_limit,
+    rate_limit_opts: :invalid_rate_limit_opts,
+    persist_extended_history: :invalid_persist_extended_history,
+    experimental_raw_events: :invalid_experimental_raw_events
+  }
+
   @typep config_override_value_scalar :: String.t() | boolean() | integer() | float()
   @type config_override_value ::
           config_override_value_scalar()
@@ -670,11 +708,11 @@ defmodule Codex.Thread.Options do
 
   defp validate_optional_string(nil, _field), do: :ok
   defp validate_optional_string(value, _field) when is_binary(value), do: :ok
-  defp validate_optional_string(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_string(value, field), do: invalid_field_error(field, value)
 
   defp validate_optional_boolean(nil, _field), do: {:ok, nil}
   defp validate_optional_boolean(value, _field) when is_boolean(value), do: {:ok, value}
-  defp validate_optional_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_optional_boolean(value, field), do: invalid_field_error(field, value)
 
   defp validate_optional_positive_integer(nil, _field), do: :ok
 
@@ -682,7 +720,7 @@ defmodule Codex.Thread.Options do
     do: :ok
 
   defp validate_optional_positive_integer(value, field),
-    do: {:error, {:"invalid_#{field}", value}}
+    do: invalid_field_error(field, value)
 
   defp validate_optional_non_negative_integer(nil, _field), do: :ok
 
@@ -691,10 +729,10 @@ defmodule Codex.Thread.Options do
        do: :ok
 
   defp validate_optional_non_negative_integer(value, field),
-    do: {:error, {:"invalid_#{field}", value}}
+    do: invalid_field_error(field, value)
 
   defp validate_boolean(value, _field) when is_boolean(value), do: :ok
-  defp validate_boolean(value, field), do: {:error, {:"invalid_#{field}", value}}
+  defp validate_boolean(value, field), do: invalid_field_error(field, value)
 
   defp validate_auto_flags(full_auto, dangerously_bypass)
        when full_auto and dangerously_bypass,
@@ -1102,12 +1140,19 @@ defmodule Codex.Thread.Options do
     if Keyword.keyword?(value) do
       {:ok, value}
     else
-      {:error, {:"invalid_#{field}", value}}
+      invalid_field_error(field, value)
     end
   end
 
   defp normalize_optional_keyword_list(value, field),
-    do: {:error, {:"invalid_#{field}", value}}
+    do: invalid_field_error(field, value)
+
+  defp invalid_field_error(field, value) do
+    case Map.fetch(@invalid_field_tags, field) do
+      {:ok, tag} -> {:error, {tag, value}}
+      :error -> {:error, {:invalid_field, field, value}}
+    end
+  end
 
   defp normalize_ask_for_approval(value), do: ApprovalPolicy.normalize(value)
 
