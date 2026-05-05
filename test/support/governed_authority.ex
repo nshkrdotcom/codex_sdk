@@ -21,9 +21,11 @@ defmodule Codex.TestSupport.GovernedAuthority do
         authority_ref: "authz-codex-test",
         credential_lease_ref: "lease-codex-test",
         native_auth_assertion_ref: "native-codex-test",
+        connector_instance_ref: "connector-instance-codex-test",
         provider_account_ref: "provider-account-codex-test",
         connector_binding_ref: "connector-binding-codex-test",
         target_ref: "target-codex-test",
+        operation_policy_ref: "operation-policy-codex-test",
         materialization_ref: "materialization-codex-test"
       },
       Map.new(extra)

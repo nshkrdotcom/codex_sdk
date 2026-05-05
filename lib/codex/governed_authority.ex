@@ -7,9 +7,11 @@ defmodule Codex.GovernedAuthority do
     authority_ref
     credential_lease_ref
     native_auth_assertion_ref
+    connector_instance_ref
     provider_account_ref
     connector_binding_ref
     target_ref
+    operation_policy_ref
     materialization_ref
   )
 
@@ -35,9 +37,11 @@ defmodule Codex.GovernedAuthority do
     authority_ref
     credential_lease_ref
     native_auth_assertion_ref
+    connector_instance_ref
     provider_account_ref
     connector_binding_ref
     target_ref
+    operation_policy_ref
     materialization_ref
     command_ref
     command_materialization_ref

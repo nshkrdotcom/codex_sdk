@@ -10,6 +10,7 @@ defmodule CodexSdk.MixProject do
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      aliases: aliases(),
       docs: docs(),
       description: description(),
       package: package(),
@@ -17,17 +18,23 @@ defmodule CodexSdk.MixProject do
       source_url: "https://github.com/nshkrdotcom/codex_sdk",
       homepage_url: "https://hex.pm/packages/codex_sdk",
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
-      ],
       dialyzer: [
         plt_add_apps: [:mix],
         plt_core_path: "priv/plts/core",
         plt_local_path: "priv/plts",
         flags: [:error_handling, :underspecs]
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        ci: :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
       ]
     ]
   end
@@ -289,6 +296,17 @@ defmodule CodexSdk.MixProject do
         "priv/plts/**",
         "examples/_output/**",
         ".DS_Store"
+      ]
+    ]
+  end
+
+  defp aliases do
+    [
+      ci: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "test"
       ]
     ]
   end

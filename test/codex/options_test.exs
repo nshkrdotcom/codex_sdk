@@ -164,11 +164,44 @@ defmodule Codex.OptionsTest do
       assert opts.model == alt_model()
     end
 
+    test "governed authority keeps two native auth roots distinct" do
+      assert {:ok, root_a} =
+               Options.new(%{
+                 governed_authority:
+                   GovernedAuthority.refs(
+                     native_auth_assertion_ref: "native-codex-root-a",
+                     provider_account_ref: "provider-account-codex-root-a",
+                     materialization_ref: "materialization-codex-root-a"
+                   )
+               })
+
+      assert {:ok, root_b} =
+               Options.new(%{
+                 governed_authority:
+                   GovernedAuthority.refs(
+                     native_auth_assertion_ref: "native-codex-root-b",
+                     provider_account_ref: "provider-account-codex-root-b",
+                     materialization_ref: "materialization-codex-root-b"
+                   )
+               })
+
+      assert root_a.governed_authority["provider_account_ref"] ==
+               "provider-account-codex-root-a"
+
+      assert root_b.governed_authority["provider_account_ref"] ==
+               "provider-account-codex-root-b"
+
+      refute root_a.governed_authority["native_auth_assertion_ref"] ==
+               root_b.governed_authority["native_auth_assertion_ref"]
+    end
+
     test "governed authority rejects incomplete authority refs" do
       assert {:error, {:missing_governed_authority_refs, missing}} =
                Options.new(%{governed_authority: %{authority_ref: "authz-only"}})
 
       assert "credential_lease_ref" in missing
+      assert "connector_instance_ref" in missing
+      assert "operation_policy_ref" in missing
       assert "materialization_ref" in missing
     end
 
