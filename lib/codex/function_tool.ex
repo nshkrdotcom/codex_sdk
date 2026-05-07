@@ -30,25 +30,18 @@ defmodule Codex.FunctionTool do
 
   @doc false
   defmacro __using__(opts) do
-    {evaluated_opts, _} = Code.eval_quoted(opts, [], __CALLER__)
-    normalized_opts = normalize_opts(evaluated_opts)
-    _ = build_metadata(normalized_opts)
-
     quote location: :keep do
       @behaviour Codex.Tool
-      @codex_function_tool_opts_ast unquote(Macro.escape(opts, unquote: true))
 
       @impl true
       def metadata do
-        {evaluated_opts, _} = Code.eval_quoted(@codex_function_tool_opts_ast, [], __ENV__)
-        opts_map = Codex.FunctionTool.normalize_opts(evaluated_opts)
+        opts_map = Codex.FunctionTool.normalize_opts(unquote(opts))
         Codex.FunctionTool.build_metadata(opts_map)
       end
 
       @impl true
       def invoke(args, context) do
-        {evaluated_opts, _} = Code.eval_quoted(@codex_function_tool_opts_ast, [], __ENV__)
-        opts_map = Codex.FunctionTool.normalize_opts(evaluated_opts)
+        opts_map = Codex.FunctionTool.normalize_opts(unquote(opts))
 
         Codex.FunctionTool.execute(__MODULE__, opts_map, args, context)
       end

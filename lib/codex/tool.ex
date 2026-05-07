@@ -26,23 +26,27 @@ defmodule Codex.Tool do
     end
   end
 
-  defp normalise_metadata(metadata) when is_map(metadata), do: metadata
-  defp normalise_metadata(metadata) when is_list(metadata), do: Map.new(metadata)
-  defp normalise_metadata(_other), do: %{}
+  @doc """
+  Normalizes metadata options to a map.
+  """
+  @spec normalize_metadata(term()) :: map()
+  def normalize_metadata(metadata) when is_map(metadata), do: metadata
+  def normalize_metadata(metadata) when is_list(metadata), do: Map.new(metadata)
+  def normalize_metadata(_other), do: %{}
 
   @doc false
   defmacro __using__(opts) do
-    {evaluated_opts, _} = Code.eval_quoted(opts, [], __CALLER__)
-    metadata = Macro.escape(normalise_metadata(evaluated_opts), unquote: true)
-
     quote do
       @behaviour Codex.Tool
       @impl true
       def metadata do
-        unquote(metadata)
+        unquote(opts)
+        |> Codex.Tool.normalize_metadata()
       end
 
       defoverridable metadata: 0
     end
   end
+
+  defp normalise_metadata(metadata), do: normalize_metadata(metadata)
 end

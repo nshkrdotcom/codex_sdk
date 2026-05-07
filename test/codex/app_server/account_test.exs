@@ -45,8 +45,8 @@ defmodule Codex.AppServer.AccountTest do
              Account.login_start(self(), {:api_key, "sk-test"})
   end
 
-  test "rejects ambient CODEX_HOME as governed account authority" do
-    assert {:error, {:unmanaged_governed_env, "CODEX_HOME"}} =
+  test "ignores ambient CODEX_HOME as governed account authority" do
+    assert {:error, {:governed_codex_home_required, :app_server_account}} =
              Account.login_start(self(), :chatgpt, governed_authority: GovernedAuthority.refs())
   end
 

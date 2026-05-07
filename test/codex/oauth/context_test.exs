@@ -53,7 +53,7 @@ defmodule Codex.OAuth.ContextTest do
     refute context.interactive?
   end
 
-  test "resolve/1 rejects ambient CODEX_HOME as governed OAuth authority", %{
+  test "resolve/1 ignores ambient CODEX_HOME as governed OAuth authority", %{
     child_home: child_home
   } do
     previous = System.get_env("CODEX_HOME")
@@ -66,7 +66,7 @@ defmodule Codex.OAuth.ContextTest do
       end
     end)
 
-    assert {:error, {:unmanaged_governed_env, "CODEX_HOME"}} =
+    assert {:error, {:governed_codex_home_required, :oauth_context}} =
              Context.resolve(governed_authority: GovernedAuthority.refs(), interactive?: false)
   end
 

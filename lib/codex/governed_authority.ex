@@ -17,20 +17,6 @@ defmodule Codex.GovernedAuthority do
 
   @command_ref_keys ~w(command_ref command_materialization_ref provider_command_ref)
 
-  @ambient_env_keys ~w(
-    CODEX_HOME
-    CODEX_API_KEY
-    OPENAI_API_KEY
-    OPENAI_BASE_URL
-    CODEX_MODEL
-    OPENAI_DEFAULT_MODEL
-    CODEX_MODEL_DEFAULT
-    CODEX_PROVIDER_BACKEND
-    CODEX_OSS_PROVIDER
-    CODEX_OLLAMA_BASE_URL
-    CODEX_PATH
-  )
-
   @secret_key_terms ~w(api_key apikey token secret password bearer authorization refresh access)
 
   @allowed_secret_key_names ~w(
@@ -103,9 +89,7 @@ defmodule Codex.GovernedAuthority do
   def validate_runtime_env(nil, _materialized_env), do: :ok
 
   def validate_runtime_env(%{} = authority, materialized_env) when is_map(materialized_env) do
-    with :ok <- validate_required_refs(authority) do
-      reject_unmanaged_ambient_env(materialized_env)
-    end
+    validate_required_refs(authority)
   end
 
   @spec validate_command_override(t() | nil, String.t() | nil, atom()) :: :ok | {:error, term()}
@@ -162,26 +146,6 @@ defmodule Codex.GovernedAuthority do
     end
   end
 
-  defp reject_unmanaged_ambient_env(materialized_env) do
-    ambient = System.get_env()
-
-    Enum.find_value(@ambient_env_keys, fn key ->
-      ambient_value = normalize_env_value(Map.get(ambient, key))
-      materialized_value = normalize_env_value(Map.get(materialized_env, key))
-
-      cond do
-        ambient_value == nil ->
-          nil
-
-        materialized_value == ambient_value ->
-          nil
-
-        true ->
-          {:error, {:unmanaged_governed_env, key}}
-      end
-    end) || :ok
-  end
-
   defp require_codex_home(nil, _env, _opts, _surface), do: :ok
 
   defp require_codex_home(%{} = _authority, env, opts, surface) do
@@ -193,7 +157,7 @@ defmodule Codex.GovernedAuthority do
     end
   end
 
-  defp maybe_merge_system_env(nil, env), do: Map.merge(System.get_env(), env)
+  defp maybe_merge_system_env(nil, env), do: env
   defp maybe_merge_system_env(%{}, env), do: env
 
   defp normalize_process_env(opts) do

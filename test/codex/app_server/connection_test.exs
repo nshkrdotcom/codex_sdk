@@ -122,7 +122,7 @@ defmodule Codex.AppServer.ConnectionTest do
     refute Map.has_key?(env, "CODEX_SHOULD_NOT_INHERIT")
   end
 
-  test "governed app-server rejects unmanaged ambient API env before launch" do
+  test "governed app-server ignores ambient API env when clear_env materializes auth" do
     previous = Process.flag(:trap_exit, true)
     previous_openai = System.get_env("OPENAI_API_KEY")
     System.put_env("OPENAI_API_KEY", "ambient-openai-key")
@@ -144,7 +144,7 @@ defmodule Codex.AppServer.ConnectionTest do
 
     codex_opts = AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
 
-    assert {:error, {:unmanaged_governed_env, "OPENAI_API_KEY"}} =
+    assert {:ok, conn} =
              Connection.start_link(codex_opts,
                process_env:
                  Map.put(
@@ -156,7 +156,15 @@ defmodule Codex.AppServer.ConnectionTest do
                init_timeout_ms: 200
              )
 
-    refute_receive {:app_server_subprocess_started, _, _}
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, os_pid}
+    assert_receive {:app_server_subprocess_start_opts, ^conn, ^os_pid, start_opts}
+
+    assert %CliSubprocessCore.Command{} = command = Keyword.fetch!(start_opts, :command)
+    env = Map.new(command.env)
+
+    assert env["OPENAI_API_KEY"] == "materialized-key"
+    refute env["OPENAI_API_KEY"] == "ambient-openai-key"
   end
 
   test "governed app-server requires clear_env and materialized child env" do

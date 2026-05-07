@@ -88,7 +88,7 @@ defmodule Codex.ExecTest do
            end)
   end
 
-  test "governed exec rejects unmanaged ambient API env before launch" do
+  test "governed exec ignores ambient API env when clear_env materializes auth" do
     script_path =
       temp_script("""
       #!/usr/bin/env bash
@@ -115,8 +115,9 @@ defmodule Codex.ExecTest do
 
     assert {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts, clear_env?: true})
 
-    assert {:error, {:unmanaged_governed_env, "OPENAI_API_KEY"}} =
-             RuntimeExec.render_for_test(exec_opts: exec_opts, input: "hi")
+    assert {:ok, rendered} = RuntimeExec.render_for_test(exec_opts: exec_opts, input: "hi")
+    assert rendered.env["OPENAI_API_KEY"] == "materialized-key"
+    refute rendered.env["OPENAI_API_KEY"] == "ambient-openai-key"
   end
 
   test "governed exec renders materialized env only when clear_env is enabled" do
