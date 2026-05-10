@@ -1,6 +1,8 @@
 defmodule Codex.ModelsTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Models
   import Codex.Test.ModelFixtures
 
@@ -24,11 +26,11 @@ defmodule Codex.ModelsTest do
       |> Enum.map(&{&1, System.get_env(&1)})
       |> Map.new()
 
-    Enum.each(env_keys, &System.delete_env/1)
+    Enum.each(env_keys, &Env.delete/1)
 
     tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_home)
-    System.put_env("CODEX_HOME", tmp_home)
+    Env.put("CODEX_HOME", tmp_home)
 
     Application.put_env(
       :codex_sdk,
@@ -39,8 +41,8 @@ defmodule Codex.ModelsTest do
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
-          nil -> System.delete_env(key)
-          value -> System.put_env(key, value)
+          nil -> Env.delete(key)
+          value -> Env.put(key, value)
         end
       end)
 
@@ -99,9 +101,9 @@ defmodule Codex.ModelsTest do
     with_temp_codex_home(fn home ->
       assert Models.default_model() == default_model()
 
-      System.put_env("CODEX_API_KEY", "sk-test")
+      Env.put("CODEX_API_KEY", "sk-test")
       assert Models.default_model() == default_model()
-      System.delete_env("CODEX_API_KEY")
+      Env.delete("CODEX_API_KEY")
 
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
       assert Models.default_model() == default_model()
@@ -111,7 +113,7 @@ defmodule Codex.ModelsTest do
   test "default reasoning effort lookup supports explicitly named models" do
     with_temp_codex_home(fn home ->
       write_auth_json!(home, %{"OPENAI_API_KEY" => "sk-auth"})
-      System.put_env("CODEX_MODEL", "gpt-5.4-mini")
+      Env.put("CODEX_MODEL", "gpt-5.4-mini")
 
       assert Models.default_model() == default_model()
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
@@ -119,7 +121,7 @@ defmodule Codex.ModelsTest do
   end
 
   test "default_model/0 no longer applies local OPENAI_DEFAULT_MODEL policy" do
-    System.put_env("OPENAI_DEFAULT_MODEL", "custom-model")
+    Env.put("OPENAI_DEFAULT_MODEL", "custom-model")
     assert Models.default_model() == default_model()
   end
 
@@ -208,7 +210,7 @@ defmodule Codex.ModelsTest do
   end
 
   test "remote models http options include custom CA ssl settings" do
-    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex-ca.pem")
+    Env.put("CODEX_CA_CERTIFICATE", "/tmp/codex-ca.pem")
 
     opts = Models.remote_models_http_options()
     timeout = Keyword.fetch!(opts, :timeout)
@@ -220,7 +222,7 @@ defmodule Codex.ModelsTest do
 
   test "remote models url prefers layered openai_base_url over env" do
     with_temp_codex_home(fn home ->
-      System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+      Env.put("OPENAI_BASE_URL", "https://env.example.com/v1")
 
       File.write!(
         Path.join(home, "config.toml"),
@@ -241,7 +243,7 @@ defmodule Codex.ModelsTest do
     original_home = System.get_env("CODEX_HOME")
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
     File.mkdir_p!(tmp_home)
-    System.put_env("CODEX_HOME", tmp_home)
+    Env.put("CODEX_HOME", tmp_home)
 
     Application.put_env(
       :codex_sdk,
@@ -253,8 +255,8 @@ defmodule Codex.ModelsTest do
       fun.(tmp_home)
     after
       case original_home do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
+        nil -> Env.delete("CODEX_HOME")
+        value -> Env.put("CODEX_HOME", value)
       end
 
       case original_system_path do

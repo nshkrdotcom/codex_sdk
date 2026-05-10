@@ -49,17 +49,17 @@ defmodule Codex.ExamplesSupport do
 
   @spec ollama_mode?() :: boolean()
   def ollama_mode? do
-    System.get_env("CODEX_PROVIDER_BACKEND") == "oss" and
-      System.get_env("CODEX_OSS_PROVIDER") == "ollama"
+    Codex.Env.get("CODEX_PROVIDER_BACKEND") == "oss" and
+      Codex.Env.get("CODEX_OSS_PROVIDER") == "ollama"
   end
 
   @spec ollama_model() :: String.t()
   def ollama_model do
-    System.get_env("CODEX_MODEL") || "gpt-oss:20b"
+    Codex.Env.get("CODEX_MODEL") || "gpt-oss:20b"
   end
 
   @spec example_model(String.t() | nil) :: String.t() | nil
-  def example_model(default \\ System.get_env("CODEX_MODEL")) do
+  def example_model(default \\ Codex.Env.get("CODEX_MODEL")) do
     if ollama_mode?(), do: ollama_model(), else: default
   end
 
@@ -504,7 +504,7 @@ defmodule Codex.ExamplesSupport do
   end
 
   defp resolve_local_codex_path(attrs, mode) do
-    case System.get_env("CODEX_PATH") || System.find_executable("codex") do
+    case Codex.Env.get("CODEX_PATH") || System.find_executable("codex") do
       path when is_binary(path) and path != "" ->
         {:ok, Map.put(attrs, :codex_path_override, path)}
 

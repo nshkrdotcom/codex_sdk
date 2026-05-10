@@ -1,6 +1,8 @@
 defmodule Codex.SessionsTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Items
   alias Codex.Sessions
 
@@ -62,14 +64,14 @@ defmodule Codex.SessionsTest do
 
     File.mkdir_p!(sessions_dir)
     File.write!(session_path, Jason.encode!(%{"id" => "thread_codex_home"}) <> "\n")
-    System.put_env("CODEX_HOME", codex_home)
+    Env.put("CODEX_HOME", codex_home)
 
     on_exit(fn ->
       File.rm_rf(codex_home)
 
       case original_home do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
+        nil -> Env.delete("CODEX_HOME")
+        value -> Env.put("CODEX_HOME", value)
       end
     end)
 

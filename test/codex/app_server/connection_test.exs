@@ -1,5 +1,7 @@
 defmodule Codex.AppServer.ConnectionTest do
   use ExUnit.Case, async: true
+
+  alias Codex.TestSupport.Env
   @moduletag capture_log: true
 
   import ExUnit.CaptureLog
@@ -77,12 +79,12 @@ defmodule Codex.AppServer.ConnectionTest do
   test "launch options forward cwd and merged child env overrides", %{codex_opts: codex_opts} do
     cwd = tmp_dir!("codex_app_server_fixture")
     previous_ambient = System.get_env("CODEX_SHOULD_NOT_INHERIT")
-    System.put_env("CODEX_SHOULD_NOT_INHERIT", "ambient")
+    Env.put("CODEX_SHOULD_NOT_INHERIT", "ambient")
 
     on_exit(fn ->
       case previous_ambient do
-        nil -> System.delete_env("CODEX_SHOULD_NOT_INHERIT")
-        value -> System.put_env("CODEX_SHOULD_NOT_INHERIT", value)
+        nil -> Env.delete("CODEX_SHOULD_NOT_INHERIT")
+        value -> Env.put("CODEX_SHOULD_NOT_INHERIT", value)
       end
     end)
 
@@ -125,14 +127,14 @@ defmodule Codex.AppServer.ConnectionTest do
   test "governed app-server ignores ambient API env when clear_env materializes auth" do
     previous = Process.flag(:trap_exit, true)
     previous_openai = System.get_env("OPENAI_API_KEY")
-    System.put_env("OPENAI_API_KEY", "ambient-openai-key")
+    Env.put("OPENAI_API_KEY", "ambient-openai-key")
 
     on_exit(fn ->
       Process.flag(:trap_exit, previous)
 
       case previous_openai do
-        nil -> System.delete_env("OPENAI_API_KEY")
-        value -> System.put_env("OPENAI_API_KEY", value)
+        nil -> Env.delete("OPENAI_API_KEY")
+        value -> Env.put("OPENAI_API_KEY", value)
       end
     end)
 
@@ -306,12 +308,12 @@ defmodule Codex.AppServer.ConnectionTest do
 
     try do
       previous_asdf_dir = System.get_env("ASDF_DIR")
-      System.put_env("ASDF_DIR", Path.join(root, ".asdf"))
+      Env.put("ASDF_DIR", Path.join(root, ".asdf"))
 
       on_exit(fn ->
         case previous_asdf_dir do
-          nil -> System.delete_env("ASDF_DIR")
-          value -> System.put_env("ASDF_DIR", value)
+          nil -> Env.delete("ASDF_DIR")
+          value -> Env.put("ASDF_DIR", value)
         end
       end)
 

@@ -1,6 +1,8 @@
 defmodule Codex.ExecReasoningEffortTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.{Options, Thread}
   alias Codex.TestSupport.FixtureScripts
   alias Codex.Thread.Options, as: ThreadOptions
@@ -11,12 +13,12 @@ defmodule Codex.ExecReasoningEffortTest do
     File.write!(Path.join(codex_home, "config.toml"), "model_reasoning_effort = \"xhigh\"\n")
 
     previous_home = System.get_env("CODEX_HOME")
-    System.put_env("CODEX_HOME", codex_home)
+    Env.put("CODEX_HOME", codex_home)
 
     on_exit(fn ->
       case previous_home do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
+        nil -> Env.delete("CODEX_HOME")
+        value -> Env.put("CODEX_HOME", value)
       end
 
       File.rm_rf(codex_home)

@@ -1,6 +1,8 @@
 defmodule Codex.ExecTest do
   use ExUnit.Case, async: true
 
+  alias Codex.TestSupport.Env
+
   import ExUnit.CaptureLog
 
   alias CliSubprocessCore.TestSupport.FakeSSH
@@ -97,12 +99,12 @@ defmodule Codex.ExecTest do
       |> tap(&on_exit(fn -> File.rm_rf(&1) end))
 
     previous = System.get_env("OPENAI_API_KEY")
-    System.put_env("OPENAI_API_KEY", "ambient-openai-key")
+    Env.put("OPENAI_API_KEY", "ambient-openai-key")
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env("OPENAI_API_KEY")
-        value -> System.put_env("OPENAI_API_KEY", value)
+        nil -> Env.delete("OPENAI_API_KEY")
+        value -> Env.put("OPENAI_API_KEY", value)
       end
     end)
 

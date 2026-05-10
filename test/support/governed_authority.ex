@@ -1,6 +1,8 @@
 defmodule Codex.TestSupport.GovernedAuthority do
   @moduledoc false
 
+  alias Codex.TestSupport.Env
+
   @ambient_keys ~w(
     CODEX_HOME
     CODEX_API_KEY
@@ -38,14 +40,14 @@ defmodule Codex.TestSupport.GovernedAuthority do
 
   def with_clean_ambient(fun) when is_function(fun, 0) do
     original = Map.new(@ambient_keys, fn key -> {key, System.get_env(key)} end)
-    Enum.each(@ambient_keys, &System.delete_env/1)
+    Enum.each(@ambient_keys, &Env.delete/1)
 
     try do
       fun.()
     after
       Enum.each(original, fn
-        {key, nil} -> System.delete_env(key)
-        {key, value} -> System.put_env(key, value)
+        {key, nil} -> Env.delete(key)
+        {key, value} -> Env.put(key, value)
       end)
     end
   end

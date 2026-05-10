@@ -24,6 +24,7 @@ enable_otlp? =
   |> parse_enabled.()
 
 config :codex_sdk, :enable_otlp?, enable_otlp?
+config :codex_sdk, :env, System.get_env()
 
 if enable_otlp? do
   config :opentelemetry, :tracer, :otel_trace

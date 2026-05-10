@@ -1,7 +1,9 @@
+unless Code.ensure_loaded?(DependencySources) do
+  Code.require_file("build_support/dependency_sources.exs", __DIR__)
+end
+
 defmodule CodexSdk.MixProject do
   use Mix.Project
-
-  @cli_subprocess_core_version "~> 0.1.0"
 
   def project do
     [
@@ -72,25 +74,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    case local_dep_path("../cli_subprocess_core") do
-      nil -> {:cli_subprocess_core, @cli_subprocess_core_version}
-      path -> {:cli_subprocess_core, path: path}
-    end
-  end
-
-  defp local_dep_path(relative_path) do
-    if local_workspace_deps?() do
-      path = Path.expand(relative_path, __DIR__)
-      if File.dir?(path), do: path
-    end
-  end
-
-  defp local_workspace_deps? do
-    not hex_packaging_task?() and not Enum.member?(Path.split(__DIR__), "deps")
-  end
-
-  defp hex_packaging_task? do
-    Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
+    DependencySources.dep(:cli_subprocess_core, __DIR__)
   end
 
   defp description do
@@ -276,7 +260,7 @@ defmodule CodexSdk.MixProject do
       description: description(),
       readme: "README.md",
       files:
-        ~w(lib config priv/models.json assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
+        ~w(lib config build_support priv/models.json assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/nshkrdotcom/codex_sdk",

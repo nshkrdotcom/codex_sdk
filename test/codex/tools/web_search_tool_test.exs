@@ -1,6 +1,8 @@
 defmodule Codex.Tools.WebSearchToolTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Options
   alias Codex.Thread
   alias Codex.Thread.Options, as: ThreadOptions
@@ -13,14 +15,14 @@ defmodule Codex.Tools.WebSearchToolTest do
     Tools.reset_metrics()
 
     # Clear env vars that might interfere with tests
-    System.delete_env("TAVILY_API_KEY")
-    System.delete_env("SERPER_API_KEY")
+    Env.delete("TAVILY_API_KEY")
+    Env.delete("SERPER_API_KEY")
 
     on_exit(fn ->
       Tools.reset!()
       Tools.reset_metrics()
-      System.delete_env("TAVILY_API_KEY")
-      System.delete_env("SERPER_API_KEY")
+      Env.delete("TAVILY_API_KEY")
+      Env.delete("SERPER_API_KEY")
     end)
 
     :ok
@@ -194,7 +196,7 @@ defmodule Codex.Tools.WebSearchToolTest do
     end
 
     test "uses API key from environment for tavily" do
-      System.put_env("TAVILY_API_KEY", "test-key")
+      Env.put("TAVILY_API_KEY", "test-key")
 
       # Mock the HTTP client to prevent actual API call
       original_impl = Application.get_env(:codex_sdk, :http_client)

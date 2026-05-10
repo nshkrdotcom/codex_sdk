@@ -19,7 +19,7 @@ defmodule Codex.Config.BaseURL do
     |> normalize_url()
     |> case do
       nil ->
-        System.get_env("OPENAI_BASE_URL")
+        Codex.Env.get("OPENAI_BASE_URL")
         |> normalize_url()
         |> case do
           nil -> @default_base_url

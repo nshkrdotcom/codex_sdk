@@ -2,6 +2,7 @@ defmodule Codex.Runtime.EnvTest do
   use ExUnit.Case, async: false
 
   alias Codex.Runtime.Env
+  alias Codex.TestSupport.Env, as: TestEnv
 
   setup do
     env_keys = ~w(CODEX_CA_CERTIFICATE SSL_CERT_FILE)
@@ -11,13 +12,13 @@ defmodule Codex.Runtime.EnvTest do
       |> Enum.map(&{&1, System.get_env(&1)})
       |> Map.new()
 
-    Enum.each(env_keys, &System.delete_env/1)
+    Enum.each(env_keys, &TestEnv.delete/1)
 
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
-          nil -> System.delete_env(key)
-          value -> System.put_env(key, value)
+          nil -> TestEnv.delete(key)
+          value -> TestEnv.put(key, value)
         end
       end)
     end)
@@ -26,7 +27,7 @@ defmodule Codex.Runtime.EnvTest do
   end
 
   test "base_overrides propagates the resolved custom CA bundle" do
-    System.put_env("SSL_CERT_FILE", "/tmp/ssl.pem")
+    TestEnv.put("SSL_CERT_FILE", "/tmp/ssl.pem")
 
     overrides = Env.base_overrides("sk-test", "https://gateway.example.com/v1")
 

@@ -1,5 +1,7 @@
 defmodule Codex.Voice.Models.OpenAISTTTest do
   use ExUnit.Case, async: true
+
+  alias Codex.TestSupport.Env
   use Codex.TestSupport.AuthEnv
 
   alias Codex.Voice.Config.STTSettings
@@ -155,8 +157,8 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
     end
 
     test "defaults api_key to Codex auth precedence" do
-      System.put_env("CODEX_API_KEY", "sk-codex-priority")
-      System.delete_env("OPENAI_API_KEY")
+      Env.put("CODEX_API_KEY", "sk-codex-priority")
+      Env.delete("OPENAI_API_KEY")
 
       input = StreamedAudioInput.new()
       settings = STTSettings.new()
@@ -176,8 +178,8 @@ defmodule Codex.Voice.Models.OpenAISTTTest do
     } do
       refute File.exists?(Path.join(codex_home, "auth.json"))
 
-      System.delete_env("CODEX_API_KEY")
-      System.put_env("OPENAI_API_KEY", "sk-openai-env")
+      Env.delete("CODEX_API_KEY")
+      Env.put("OPENAI_API_KEY", "sk-openai-env")
 
       input = StreamedAudioInput.new()
       settings = STTSettings.new()

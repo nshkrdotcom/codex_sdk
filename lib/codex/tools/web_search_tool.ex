@@ -40,7 +40,7 @@ defmodule Codex.Tools.WebSearchTool do
 
       {:ok, _} = Codex.Tools.register(Codex.Tools.WebSearchTool,
         provider: :tavily,
-        api_key: System.get_env("TAVILY_API_KEY")
+        api_key: Codex.Env.get("TAVILY_API_KEY")
       )
 
       {:ok, result} = Codex.Tools.invoke("web_search",
@@ -176,8 +176,8 @@ defmodule Codex.Tools.WebSearchTool do
     end
   end
 
-  defp get_env_key(:tavily), do: System.get_env("TAVILY_API_KEY")
-  defp get_env_key(:serper), do: System.get_env("SERPER_API_KEY")
+  defp get_env_key(:tavily), do: Codex.Env.get("TAVILY_API_KEY")
+  defp get_env_key(:serper), do: Codex.Env.get("SERPER_API_KEY")
   defp get_env_key(_), do: nil
 
   # Mock provider for testing

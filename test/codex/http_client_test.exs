@@ -1,6 +1,8 @@
 defmodule Codex.HTTPClientTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.HTTPClient
 
   setup do
@@ -11,13 +13,13 @@ defmodule Codex.HTTPClientTest do
       |> Enum.map(&{&1, System.get_env(&1)})
       |> Map.new()
 
-    Enum.each(env_keys, &System.delete_env/1)
+    Enum.each(env_keys, &Env.delete/1)
 
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
-          nil -> System.delete_env(key)
-          value -> System.put_env(key, value)
+          nil -> Env.delete(key)
+          value -> Env.put(key, value)
         end
       end)
     end)
@@ -26,7 +28,7 @@ defmodule Codex.HTTPClientTest do
   end
 
   test "Req request options include connect_options when a custom CA is configured" do
-    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
+    Env.put("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
 
     opts = HTTPClient.Req.request_options(headers: [{"authorization", "Bearer test"}])
 

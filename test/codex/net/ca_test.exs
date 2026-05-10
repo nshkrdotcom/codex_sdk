@@ -1,6 +1,8 @@
 defmodule Codex.Net.CATest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Net.CA
 
   setup do
@@ -11,13 +13,13 @@ defmodule Codex.Net.CATest do
       |> Enum.map(&{&1, System.get_env(&1)})
       |> Map.new()
 
-    Enum.each(env_keys, &System.delete_env/1)
+    Enum.each(env_keys, &Env.delete/1)
 
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
-          nil -> System.delete_env(key)
-          value -> System.put_env(key, value)
+          nil -> Env.delete(key)
+          value -> Env.put(key, value)
         end
       end)
     end)
@@ -26,15 +28,15 @@ defmodule Codex.Net.CATest do
   end
 
   test "CODEX_CA_CERTIFICATE takes precedence over SSL_CERT_FILE" do
-    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
-    System.put_env("SSL_CERT_FILE", "/tmp/ssl.pem")
+    Env.put("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
+    Env.put("SSL_CERT_FILE", "/tmp/ssl.pem")
 
     assert CA.certificate_file() == "/tmp/codex.pem"
   end
 
   test "blank CA environment values are ignored" do
-    System.put_env("CODEX_CA_CERTIFICATE", "   ")
-    System.put_env("SSL_CERT_FILE", "")
+    Env.put("CODEX_CA_CERTIFICATE", "   ")
+    Env.put("SSL_CERT_FILE", "")
 
     assert CA.certificate_file() == nil
     assert CA.env_overrides() == %{}
@@ -44,7 +46,7 @@ defmodule Codex.Net.CATest do
   end
 
   test "SSL_CERT_FILE is used when CODEX_CA_CERTIFICATE is unset" do
-    System.put_env("SSL_CERT_FILE", "/tmp/ssl.pem")
+    Env.put("SSL_CERT_FILE", "/tmp/ssl.pem")
 
     assert CA.certificate_file() == "/tmp/ssl.pem"
 
@@ -55,7 +57,7 @@ defmodule Codex.Net.CATest do
   end
 
   test "builds Req, :httpc, and websocket options from the resolved certificate file" do
-    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
+    Env.put("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
 
     assert CA.req_connect_options() == [transport_opts: [cacertfile: "/tmp/codex.pem"]]
     assert CA.httpc_ssl_options() == [cacertfile: "/tmp/codex.pem"]
@@ -63,7 +65,7 @@ defmodule Codex.Net.CATest do
   end
 
   test "merges Req options without dropping existing transport options" do
-    System.put_env("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
+    Env.put("CODEX_CA_CERTIFICATE", "/tmp/codex.pem")
 
     opts =
       CA.merge_req_options(

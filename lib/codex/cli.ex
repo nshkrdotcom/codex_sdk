@@ -549,7 +549,7 @@ defmodule Codex.CLI do
   defp preserved_env do
     Defaults.preserved_env_keys()
     |> Enum.reduce(%{}, fn key, acc ->
-      case System.get_env(key) do
+      case Codex.Env.get(key) do
         nil -> acc
         value -> Map.put(acc, key, value)
       end

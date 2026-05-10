@@ -1,5 +1,7 @@
 defmodule Codex.AppServer.RemoteConnectionTest do
   use ExUnit.Case, async: false
+
+  alias Codex.TestSupport.Env
   @moduletag capture_log: true
   @moduletag :requires_loopback
 
@@ -238,12 +240,12 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
   test "connect_remote/2 keeps standalone ambient auth_token_env fallback", %{url: url} do
     previous = System.get_env("CODEX_REMOTE_TOKEN")
-    System.put_env("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
+    Env.put("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env("CODEX_REMOTE_TOKEN")
-        value -> System.put_env("CODEX_REMOTE_TOKEN", value)
+        nil -> Env.delete("CODEX_REMOTE_TOKEN")
+        value -> Env.put("CODEX_REMOTE_TOKEN", value)
       end
     end)
 
@@ -261,12 +263,12 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
   test "connect_remote/2 rejects governed ambient auth_token_env fallback" do
     previous = System.get_env("CODEX_REMOTE_TOKEN")
-    System.put_env("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
+    Env.put("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env("CODEX_REMOTE_TOKEN")
-        value -> System.put_env("CODEX_REMOTE_TOKEN", value)
+        nil -> Env.delete("CODEX_REMOTE_TOKEN")
+        value -> Env.put("CODEX_REMOTE_TOKEN", value)
       end
     end)
 

@@ -3,6 +3,8 @@ defmodule Codex.TestSupport.AuthEnv do
 
   use ExUnit.CaseTemplate
 
+  alias Codex.TestSupport.Env
+
   using do
     quote do
       import Codex.TestSupport.AuthEnv
@@ -26,9 +28,9 @@ defmodule Codex.TestSupport.AuthEnv do
 
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
 
-    System.put_env("CODEX_HOME", codex_home)
-    System.delete_env("CODEX_API_KEY")
-    System.delete_env("OPENAI_API_KEY")
+    Env.put("CODEX_HOME", codex_home)
+    Env.delete("CODEX_API_KEY")
+    Env.delete("OPENAI_API_KEY")
     Application.put_env(:codex_sdk, :system_config_path, system_path)
 
     :persistent_term.erase({Codex.Auth, :keyring_warning_emitted})
@@ -51,6 +53,6 @@ defmodule Codex.TestSupport.AuthEnv do
     Enum.each(env, fn {key, value} -> restore_env(key, value) end)
   end
 
-  def restore_env(key, nil), do: System.delete_env(key)
-  def restore_env(key, value), do: System.put_env(key, value)
+  def restore_env(key, nil), do: Env.delete(key)
+  def restore_env(key, value), do: Env.put(key, value)
 end

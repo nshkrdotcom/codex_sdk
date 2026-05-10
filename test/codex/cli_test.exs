@@ -1,6 +1,8 @@
 defmodule Codex.CLITest do
   use ExUnit.Case, async: true
 
+  alias Codex.TestSupport.Env
+
   alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.{CLI, Options}
 
@@ -34,12 +36,12 @@ defmodule Codex.CLITest do
     args_path = tmp_path("argv_clear_env")
     env_key = "CODEX_CLI_PHASE2A_ENV"
     previous = System.get_env(env_key)
-    System.put_env(env_key, "present")
+    Env.put(env_key, "present")
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env(env_key)
-        value -> System.put_env(env_key, value)
+        nil -> Env.delete(env_key)
+        value -> Env.put(env_key, value)
       end
     end)
 
@@ -277,12 +279,12 @@ defmodule Codex.CLITest do
 
     local_script_path = probe_script(local_args_path, stdout: "local-path\n")
 
-    System.put_env("CODEX_PATH", local_script_path)
+    Env.put("CODEX_PATH", local_script_path)
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env("CODEX_PATH")
-        value -> System.put_env("CODEX_PATH", value)
+        nil -> Env.delete("CODEX_PATH")
+        value -> Env.put("CODEX_PATH", value)
       end
 
       File.rm_rf(remote_dir)

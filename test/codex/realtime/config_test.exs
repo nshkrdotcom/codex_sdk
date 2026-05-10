@@ -1,5 +1,7 @@
 defmodule Codex.Realtime.ConfigTest do
   use ExUnit.Case, async: true
+
+  alias Codex.TestSupport.Env
   use Codex.TestSupport.AuthEnv
 
   alias Codex.Realtime.Config
@@ -316,8 +318,8 @@ defmodule Codex.Realtime.ConfigTest do
     end
 
     test "falls back to Codex auth precedence when api_key is nil" do
-      System.put_env("CODEX_API_KEY", "sk-codex-priority")
-      System.put_env("OPENAI_API_KEY", "sk-openai-secondary")
+      Env.put("CODEX_API_KEY", "sk-codex-priority")
+      Env.put("OPENAI_API_KEY", "sk-openai-secondary")
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-codex-priority"
@@ -328,8 +330,8 @@ defmodule Codex.Realtime.ConfigTest do
     } do
       File.write!(Path.join(codex_home, "auth.json"), ~s({"OPENAI_API_KEY":"sk-auth-file"}))
 
-      System.delete_env("CODEX_API_KEY")
-      System.delete_env("OPENAI_API_KEY")
+      Env.delete("CODEX_API_KEY")
+      Env.delete("OPENAI_API_KEY")
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-auth-file"
@@ -340,8 +342,8 @@ defmodule Codex.Realtime.ConfigTest do
     } do
       refute File.exists?(Path.join(codex_home, "auth.json"))
 
-      System.delete_env("CODEX_API_KEY")
-      System.put_env("OPENAI_API_KEY", "sk-openai-env")
+      Env.delete("CODEX_API_KEY")
+      Env.put("OPENAI_API_KEY", "sk-openai-env")
 
       config = %Config.ModelConfig{api_key: nil}
       assert Config.ModelConfig.resolve_api_key(config) == "sk-openai-env"

@@ -1,6 +1,8 @@
 defmodule Codex.AppServer.AccountTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.AppServer.Account
   alias Codex.TestSupport.GovernedAuthority
 
@@ -16,13 +18,13 @@ defmodule Codex.AppServer.AccountTest do
     original_home = System.get_env("CODEX_HOME")
     original_system_path = Application.get_env(:codex_sdk, :system_config_path)
 
-    System.put_env("CODEX_HOME", codex_home)
+    Env.put("CODEX_HOME", codex_home)
     Application.put_env(:codex_sdk, :system_config_path, system_path)
 
     on_exit(fn ->
       case original_home do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
+        nil -> Env.delete("CODEX_HOME")
+        value -> Env.put("CODEX_HOME", value)
       end
 
       case original_system_path do

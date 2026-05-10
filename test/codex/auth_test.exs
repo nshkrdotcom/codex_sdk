@@ -1,5 +1,7 @@
 defmodule Codex.AuthTest do
   use ExUnit.Case, async: false
+
+  alias Codex.TestSupport.Env
   use Codex.TestSupport.AuthEnv
 
   import ExUnit.CaptureLog
@@ -37,7 +39,7 @@ defmodule Codex.AuthTest do
   end
 
   test "direct_api_key/0 falls back to OPENAI_API_KEY when Codex key sources are absent" do
-    System.put_env("OPENAI_API_KEY", "sk-openai-env")
+    Env.put("OPENAI_API_KEY", "sk-openai-env")
     assert Auth.api_key() == nil
     assert Auth.direct_api_key() == "sk-openai-env"
   end
@@ -45,8 +47,8 @@ defmodule Codex.AuthTest do
   test "direct_api_key/0 preserves Codex precedence over OPENAI_API_KEY", %{
     codex_home: codex_home
   } do
-    System.put_env("CODEX_API_KEY", "sk-codex-priority")
-    System.put_env("OPENAI_API_KEY", "sk-openai-secondary")
+    Env.put("CODEX_API_KEY", "sk-codex-priority")
+    Env.put("OPENAI_API_KEY", "sk-openai-secondary")
     File.write!(Path.join(codex_home, "auth.json"), ~s({"OPENAI_API_KEY":"sk-auth-file"}))
 
     assert Auth.api_key() == "sk-codex-priority"

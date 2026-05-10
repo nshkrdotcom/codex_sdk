@@ -26,8 +26,8 @@ defmodule Codex.Plugins.Paths do
   def scope_root(:personal, opts) when is_list(opts) do
     home =
       Keyword.get(opts, :home) ||
-        System.get_env("HOME") ||
-        System.get_env("USERPROFILE") ||
+        Codex.Env.get("HOME") ||
+        Codex.Env.get("USERPROFILE") ||
         System.user_home!()
 
     {:ok, Path.expand(home)}

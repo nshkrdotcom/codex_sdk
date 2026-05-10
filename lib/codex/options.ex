@@ -353,13 +353,13 @@ defmodule Codex.Options do
       attrs
       |> put_missing_attr(
         :env_model,
-        System.get_env("CODEX_MODEL") ||
-          System.get_env("OPENAI_DEFAULT_MODEL") ||
-          System.get_env("CODEX_MODEL_DEFAULT")
+        Codex.Env.get("CODEX_MODEL") ||
+          Codex.Env.get("OPENAI_DEFAULT_MODEL") ||
+          Codex.Env.get("CODEX_MODEL_DEFAULT")
       )
-      |> put_missing_attr(:provider_backend, System.get_env("CODEX_PROVIDER_BACKEND"))
-      |> put_missing_attr(:oss_provider, System.get_env("CODEX_OSS_PROVIDER"))
-      |> put_missing_attr(:ollama_base_url, System.get_env("CODEX_OLLAMA_BASE_URL"))
+      |> put_missing_attr(:provider_backend, Codex.Env.get("CODEX_PROVIDER_BACKEND"))
+      |> put_missing_attr(:oss_provider, Codex.Env.get("CODEX_OSS_PROVIDER"))
+      |> put_missing_attr(:ollama_base_url, Codex.Env.get("CODEX_OLLAMA_BASE_URL"))
     end
   end
 

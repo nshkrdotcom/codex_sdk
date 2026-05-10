@@ -1,6 +1,8 @@
 defmodule Codex.OAuth.ContextTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.OAuth.Context
   alias Codex.TestSupport.GovernedAuthority
 
@@ -57,12 +59,12 @@ defmodule Codex.OAuth.ContextTest do
     child_home: child_home
   } do
     previous = System.get_env("CODEX_HOME")
-    System.put_env("CODEX_HOME", child_home)
+    Env.put("CODEX_HOME", child_home)
 
     on_exit(fn ->
       case previous do
-        nil -> System.delete_env("CODEX_HOME")
-        value -> System.put_env("CODEX_HOME", value)
+        nil -> Env.delete("CODEX_HOME")
+        value -> Env.put("CODEX_HOME", value)
       end
     end)
 

@@ -10,12 +10,12 @@ defmodule Codex.Auth do
 
   @spec codex_home() :: String.t()
   def codex_home do
-    System.get_env("CODEX_HOME") || Path.join(System.user_home!(), ".codex")
+    Codex.Env.get("CODEX_HOME") || Path.join(System.user_home!(), ".codex")
   end
 
   @spec auth_paths() :: [String.t()]
   def auth_paths do
-    Store.auth_paths(codex_home(), codex_home_explicit?: !!System.get_env("CODEX_HOME"))
+    Store.auth_paths(codex_home(), codex_home_explicit?: !!Codex.Env.get("CODEX_HOME"))
   end
 
   @spec infer_auth_mode() :: :api | :chatgpt
@@ -30,7 +30,7 @@ defmodule Codex.Auth do
 
   @spec direct_api_key() :: String.t() | nil
   def direct_api_key do
-    api_key() || normalize_string(System.get_env("OPENAI_API_KEY"))
+    api_key() || normalize_string(Codex.Env.get("OPENAI_API_KEY"))
   end
 
   @spec chatgpt_access_token() :: String.t() | nil
@@ -51,7 +51,7 @@ defmodule Codex.Auth do
   end
 
   defp api_key_env do
-    System.get_env("CODEX_API_KEY")
+    Codex.Env.get("CODEX_API_KEY")
     |> normalize_string()
   end
 
@@ -113,12 +113,12 @@ defmodule Codex.Auth do
         else
           Store.load(
             codex_home: codex_home(),
-            codex_home_explicit?: !!System.get_env("CODEX_HOME")
+            codex_home_explicit?: !!Codex.Env.get("CODEX_HOME")
           )
         end
 
       _ ->
-        Store.load(codex_home: codex_home(), codex_home_explicit?: !!System.get_env("CODEX_HOME"))
+        Store.load(codex_home: codex_home(), codex_home_explicit?: !!Codex.Env.get("CODEX_HOME"))
     end
   end
 end

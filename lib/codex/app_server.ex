@@ -1791,7 +1791,7 @@ defmodule Codex.AppServer do
 
   defp remote_auth_token_env_value(process_env, auth_token_env, nil) do
     case Map.get(process_env, auth_token_env) do
-      nil -> System.get_env(auth_token_env)
+      nil -> Codex.Env.get(auth_token_env)
       value -> value
     end
   end
@@ -1799,7 +1799,7 @@ defmodule Codex.AppServer do
   defp standalone_remote_auth_env_present?(_auth_token_env, %{}), do: false
 
   defp standalone_remote_auth_env_present?(auth_token_env, nil),
-    do: System.get_env(auth_token_env) != nil
+    do: Codex.Env.get(auth_token_env) != nil
 
   defp normalize_remote_auth_token(value) when is_binary(value) do
     value = String.trim(value)

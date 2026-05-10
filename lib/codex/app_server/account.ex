@@ -180,7 +180,7 @@ defmodule Codex.AppServer.Account do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env))
 
     with {:ok, overrides} <- RuntimeEnv.normalize_overrides(process_env) do
-      {:ok, Map.merge(System.get_env(), overrides)}
+      {:ok, Map.merge(Codex.Env.all(), overrides)}
     end
   end
 

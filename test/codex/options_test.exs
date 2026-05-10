@@ -1,6 +1,8 @@
 defmodule Codex.OptionsTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias CliSubprocessCore.ExecutionSurface
   alias CliSubprocessCore.ModelRegistry.Selection
   alias Codex.Config.BaseURL
@@ -26,17 +28,17 @@ defmodule Codex.OptionsTest do
       |> Enum.map(&{&1, System.get_env(&1)})
       |> Map.new()
 
-    Enum.each(env_keys, &System.delete_env/1)
+    Enum.each(env_keys, &Env.delete/1)
 
     tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_home)
-    System.put_env("CODEX_HOME", tmp_home)
+    Env.put("CODEX_HOME", tmp_home)
 
     on_exit(fn ->
       Enum.each(env_keys, fn key ->
         case Map.fetch!(original_env, key) do
-          nil -> System.delete_env(key)
-          value -> System.put_env(key, value)
+          nil -> Env.delete(key)
+          value -> Env.put(key, value)
         end
       end)
 
@@ -95,12 +97,12 @@ defmodule Codex.OptionsTest do
       File.chmod!(local_path, 0o755)
       previous = System.get_env("CODEX_PATH")
 
-      System.put_env("CODEX_PATH", local_path)
+      Env.put("CODEX_PATH", local_path)
 
       on_exit(fn ->
         case previous do
-          nil -> System.delete_env("CODEX_PATH")
-          value -> System.put_env("CODEX_PATH", value)
+          nil -> Env.delete("CODEX_PATH")
+          value -> Env.put("CODEX_PATH", value)
         end
 
         File.rm_rf(dir)
@@ -117,23 +119,23 @@ defmodule Codex.OptionsTest do
     end
 
     test "uses OPENAI_BASE_URL when base_url is not provided" do
-      System.put_env("OPENAI_BASE_URL", "https://gateway.example.com/v1")
+      Env.put("OPENAI_BASE_URL", "https://gateway.example.com/v1")
 
       assert {:ok, opts} = Options.new(%{})
       assert opts.base_url == "https://gateway.example.com/v1"
     end
 
     test "explicit base_url overrides OPENAI_BASE_URL" do
-      System.put_env("OPENAI_BASE_URL", "https://gateway.example.com/v1")
+      Env.put("OPENAI_BASE_URL", "https://gateway.example.com/v1")
 
       assert {:ok, opts} = Options.new(%{base_url: "https://explicit.example.com/v1"})
       assert opts.base_url == "https://explicit.example.com/v1"
     end
 
     test "governed authority ignores ambient auth, base URL, auth file, and model env" do
-      System.put_env("CODEX_API_KEY", "ambient-codex-key")
-      System.put_env("OPENAI_BASE_URL", "https://ambient.example.com/v1")
-      System.put_env("CODEX_MODEL", alt_model())
+      Env.put("CODEX_API_KEY", "ambient-codex-key")
+      Env.put("OPENAI_BASE_URL", "https://ambient.example.com/v1")
+      Env.put("CODEX_MODEL", alt_model())
 
       File.write!(
         Path.join(System.get_env("CODEX_HOME"), "auth.json"),
@@ -244,7 +246,7 @@ defmodule Codex.OptionsTest do
       assert {:ok, explicit_opts} = Options.new(%{model: alt_model()})
       assert Options.execution_model(explicit_opts) == alt_model()
 
-      System.put_env("CODEX_MODEL", alt_model())
+      Env.put("CODEX_MODEL", alt_model())
       assert {:ok, env_opts} = Options.new(%{})
       assert Options.execution_model(env_opts) == alt_model()
     end
@@ -397,10 +399,10 @@ defmodule Codex.OptionsTest do
           errors: []
         })
 
-      System.put_env("CODEX_MODEL", "gpt-5.4")
-      System.put_env("CODEX_PROVIDER_BACKEND", "openai")
-      System.put_env("CODEX_OSS_PROVIDER", "other")
-      System.put_env("CODEX_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+      Env.put("CODEX_MODEL", "gpt-5.4")
+      Env.put("CODEX_PROVIDER_BACKEND", "openai")
+      Env.put("CODEX_OSS_PROVIDER", "other")
+      Env.put("CODEX_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
       assert {:ok, opts} = Options.new(%{model_payload: payload})
       assert opts.model_payload == payload
@@ -411,7 +413,7 @@ defmodule Codex.OptionsTest do
     test "does not crash when CODEX_MODEL points at a cross-catalog model under api auth" do
       auth_path = Path.join(System.get_env("CODEX_HOME"), "auth.json")
       File.write!(auth_path, ~s({"OPENAI_API_KEY":"sk-test"}))
-      System.put_env("CODEX_MODEL", "gpt-5.4-mini")
+      Env.put("CODEX_MODEL", "gpt-5.4-mini")
 
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == "sk-test"
@@ -541,15 +543,15 @@ defmodule Codex.OptionsTest do
       File.write!(auth_path, ~s({"OPENAI_API_KEY":"sk-test"}))
 
       original_env = System.get_env("CODEX_HOME")
-      System.put_env("CODEX_HOME", tmp_home)
-      System.delete_env("CODEX_API_KEY")
+      Env.put("CODEX_HOME", tmp_home)
+      Env.delete("CODEX_API_KEY")
 
       on_exit(fn ->
         if original_env,
-          do: System.put_env("CODEX_HOME", original_env),
-          else: System.delete_env("CODEX_HOME")
+          do: Env.put("CODEX_HOME", original_env),
+          else: Env.delete("CODEX_HOME")
 
-        System.delete_env("CODEX_API_KEY")
+        Env.delete("CODEX_API_KEY")
         File.rm_rf(tmp_home)
       end)
 
@@ -565,15 +567,15 @@ defmodule Codex.OptionsTest do
       File.write!(auth_path, ~s({"tokens":{"access_token":"cli_token"}}))
 
       original_env = System.get_env("CODEX_HOME")
-      System.put_env("CODEX_HOME", tmp_home)
-      System.delete_env("CODEX_API_KEY")
+      Env.put("CODEX_HOME", tmp_home)
+      Env.delete("CODEX_API_KEY")
 
       on_exit(fn ->
         if original_env,
-          do: System.put_env("CODEX_HOME", original_env),
-          else: System.delete_env("CODEX_HOME")
+          do: Env.put("CODEX_HOME", original_env),
+          else: Env.delete("CODEX_HOME")
 
-        System.delete_env("CODEX_API_KEY")
+        Env.delete("CODEX_API_KEY")
         File.rm_rf(tmp_home)
       end)
 

@@ -40,7 +40,7 @@ defmodule Codex.OAuth.Environment do
 
   @spec detect(keyword()) :: t()
   def detect(opts \\ []) when is_list(opts) do
-    env = normalize_env(Keyword.get(opts, :env, System.get_env()))
+    env = normalize_env(Keyword.get(opts, :env, Codex.Env.all()))
     os = Keyword.get(opts, :os) || detect_os()
     wsl? = truthy_override(Keyword.get(opts, :wsl?), wsl?(os, env))
     ssh? = truthy_override(Keyword.get(opts, :ssh?), ssh?(env))

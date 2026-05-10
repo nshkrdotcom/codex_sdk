@@ -299,7 +299,7 @@ defmodule Codex.MCP.Transport.Stdio do
     default_env =
       default_env_vars()
       |> Enum.reduce(%{}, fn key, acc ->
-        case System.get_env(key) do
+        case Codex.Env.get(key) do
           nil -> acc
           value -> Map.put(acc, key, value)
         end
@@ -308,7 +308,7 @@ defmodule Codex.MCP.Transport.Stdio do
     from_env_vars =
       env_vars
       |> Enum.reduce(%{}, fn key, acc ->
-        case System.get_env(key) do
+        case Codex.Env.get(key) do
           nil -> acc
           value -> Map.put(acc, key, value)
         end

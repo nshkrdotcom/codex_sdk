@@ -55,7 +55,7 @@ defmodule Codex.Telemetry do
   Configures OpenTelemetry exporting if the required environment variables are present.
 
   Reads `CODEX_OTLP_ENDPOINT` and optional `CODEX_OTLP_HEADERS` from the provided `:env` map
-  (defaults to `System.get_env/0`) and wires the exporter when set.
+  (defaults to the materialized Codex env map) and wires the exporter when set.
   """
   @spec configure(keyword()) :: :ok
   def configure(opts \\ []) do
@@ -311,7 +311,7 @@ defmodule Codex.Telemetry do
     end
   end
 
-  defp resolve_env(nil), do: System.get_env()
+  defp resolve_env(nil), do: Codex.Env.all()
   defp resolve_env(env) when is_map(env), do: env
 
   defp parse_boolean(nil), do: :error

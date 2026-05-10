@@ -33,7 +33,17 @@
 ## Execution Plane Stack
 - `codex_sdk` sits above `cli_subprocess_core`; it should not depend directly on or expose raw `ExecutionPlane.*` internals.
 - Use `CliSubprocessCore` facade modules for execution surfaces, transport errors, transport info, and process exits.
-- Keep `cli_subprocess_core` dependency resolution publish-aware: local path deps for sibling development, Hex constraints for release builds.
+- Dependency source selection is handled by `build_support/dependency_sources.exs` and `build_support/dependency_sources.config.exs`.
+- Local dependency overrides use `.dependency_sources.local.exs`.
+- Default dependency priority is `path -> GitHub -> Hex`; publish mode is Hex-only and must fail with exact blockers if an internal dep is unavailable on Hex.
+- Dependency source selection must not use environment variables.
+- Weld maintains helper drift, manifests, clone checks, publish checks, and publish order, but this repo is not a Weld consumer in this pass and must not receive a blind Weld dependency.
+- Keep `cli_subprocess_core` dependency resolution publish-aware: local path deps for sibling development, GitHub fallback for standalone clones, and Hex constraints for release builds.
+- Runtime application code under `lib/**` must not call direct OS env APIs such as `System.get_env`, `System.fetch_env`, `System.put_env`, or `System.delete_env`.
+- Runtime and deployment env reads belong in `config/runtime.exs` or an explicit `Config.Provider`.
+- Library APIs receive explicit options, config structs, credential providers, application config materialized by the top-level app, or caller-supplied env maps.
+- Tests may manipulate env only for config-boundary, SDK compatibility, or live-wrapper checks.
+- Live Codex commands use `~/scripts/with_bash_secrets <command>` and must not print secrets.
 
 ## ASM Boundary
 - Codex-native controls such as app-server, dynamic tools, MCP, sandbox flags and policies, approval flows, realtime, voice, model-provider routing, output schemas, and additional directories belong in this SDK.

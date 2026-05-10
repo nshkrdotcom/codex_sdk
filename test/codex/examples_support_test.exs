@@ -1,6 +1,8 @@
 defmodule Codex.ExamplesSupportTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias CliSubprocessCore.ExecutionSurface
   alias Codex.ExamplesSupport
 
@@ -12,8 +14,8 @@ defmodule Codex.ExamplesSupportTest do
         restore_env(restore)
       end)
 
-      System.delete_env("CODEX_PROVIDER_BACKEND")
-      System.delete_env("CODEX_OSS_PROVIDER")
+      Env.delete("CODEX_PROVIDER_BACKEND")
+      Env.delete("CODEX_OSS_PROVIDER")
 
       assert ExamplesSupport.conversation_default_mode() == :multi_turn
     end
@@ -25,8 +27,8 @@ defmodule Codex.ExamplesSupportTest do
         restore_env(restore)
       end)
 
-      System.put_env("CODEX_PROVIDER_BACKEND", "oss")
-      System.put_env("CODEX_OSS_PROVIDER", "ollama")
+      Env.put("CODEX_PROVIDER_BACKEND", "oss")
+      Env.put("CODEX_OSS_PROVIDER", "ollama")
 
       assert ExamplesSupport.conversation_default_mode() == :save_resume
     end
@@ -40,9 +42,9 @@ defmodule Codex.ExamplesSupportTest do
         restore_env(restore)
       end)
 
-      System.delete_env("CODEX_PROVIDER_BACKEND")
-      System.delete_env("CODEX_OSS_PROVIDER")
-      System.delete_env("CODEX_MODEL")
+      Env.delete("CODEX_PROVIDER_BACKEND")
+      Env.delete("CODEX_OSS_PROVIDER")
+      Env.delete("CODEX_MODEL")
 
       assert ExamplesSupport.example_model() == nil
       assert ExamplesSupport.example_model("gpt-5.4-mini") == "gpt-5.4-mini"
@@ -55,9 +57,9 @@ defmodule Codex.ExamplesSupportTest do
         restore_env(restore)
       end)
 
-      System.put_env("CODEX_PROVIDER_BACKEND", "oss")
-      System.put_env("CODEX_OSS_PROVIDER", "ollama")
-      System.put_env("CODEX_MODEL", "llama3.2")
+      Env.put("CODEX_PROVIDER_BACKEND", "oss")
+      Env.put("CODEX_OSS_PROVIDER", "ollama")
+      Env.put("CODEX_MODEL", "llama3.2")
 
       assert ExamplesSupport.example_model() == "llama3.2"
     end
@@ -71,8 +73,8 @@ defmodule Codex.ExamplesSupportTest do
         restore_env(restore)
       end)
 
-      System.put_env("CODEX_PROVIDER_BACKEND", "oss")
-      System.put_env("CODEX_OSS_PROVIDER", "ollama")
+      Env.put("CODEX_PROVIDER_BACKEND", "oss")
+      Env.put("CODEX_OSS_PROVIDER", "ollama")
 
       assert ExamplesSupport.auth_available?() == true
       assert ExamplesSupport.ensure_auth_available() == :ok
@@ -273,8 +275,8 @@ defmodule Codex.ExamplesSupportTest do
 
   defp restore_env(saved) do
     Enum.each(saved, fn
-      {key, nil} -> System.delete_env(key)
-      {key, value} -> System.put_env(key, value)
+      {key, nil} -> Env.delete(key)
+      {key, value} -> Env.put(key, value)
     end)
   end
 end

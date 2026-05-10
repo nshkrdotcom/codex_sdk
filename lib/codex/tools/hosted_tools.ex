@@ -461,7 +461,7 @@ defmodule Codex.Tools.ShellCommandTool do
   end
 
   defp resolve_shell do
-    shell_env = System.get_env("SHELL")
+    shell_env = Codex.Env.get("SHELL")
 
     if is_binary(shell_env) and shell_env != "" and File.exists?(shell_env) do
       shell_env

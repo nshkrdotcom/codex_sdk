@@ -257,7 +257,7 @@ defmodule Codex.MCP.OAuth do
 
   defp add_env_headers(headers, %{} = map) do
     Enum.reduce(map, headers, fn {key, env_var}, acc ->
-      case System.get_env(env_var) do
+      case Codex.Env.get(env_var) do
         value when is_binary(value) and value != "" ->
           [{to_string(key), value} | acc]
 

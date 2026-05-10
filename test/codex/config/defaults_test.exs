@@ -1,6 +1,8 @@
 defmodule Codex.Config.DefaultsTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Config.Defaults
   alias Codex.Models
 
@@ -242,12 +244,12 @@ defmodule Codex.Config.DefaultsTest do
       original_home = System.get_env("CODEX_HOME")
       tmp_home = Path.join(System.tmp_dir!(), "codex_home_#{System.unique_integer([:positive])}")
 
-      System.put_env("CODEX_HOME", tmp_home)
+      Env.put("CODEX_HOME", tmp_home)
 
       on_exit(fn ->
         case original_home do
-          nil -> System.delete_env("CODEX_HOME")
-          value -> System.put_env("CODEX_HOME", value)
+          nil -> Env.delete("CODEX_HOME")
+          value -> Env.put("CODEX_HOME", value)
         end
       end)
 

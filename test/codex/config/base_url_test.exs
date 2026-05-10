@@ -1,6 +1,8 @@
 defmodule Codex.Config.BaseURLTest do
   use ExUnit.Case, async: false
 
+  alias Codex.TestSupport.Env
+
   alias Codex.Config.BaseURL
 
   setup do
@@ -8,8 +10,8 @@ defmodule Codex.Config.BaseURLTest do
 
     on_exit(fn ->
       case original do
-        nil -> System.delete_env("OPENAI_BASE_URL")
-        value -> System.put_env("OPENAI_BASE_URL", value)
+        nil -> Env.delete("OPENAI_BASE_URL")
+        value -> Env.put("OPENAI_BASE_URL", value)
       end
     end)
 
@@ -17,26 +19,26 @@ defmodule Codex.Config.BaseURLTest do
   end
 
   test "resolve/1 prefers explicit option over env" do
-    System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+    Env.put("OPENAI_BASE_URL", "https://env.example.com/v1")
 
     assert BaseURL.resolve(%{base_url: "https://explicit.example.com/v1"}) ==
              "https://explicit.example.com/v1"
   end
 
   test "resolve/1 uses openai_base_url from config attrs before env" do
-    System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+    Env.put("OPENAI_BASE_URL", "https://env.example.com/v1")
 
     assert BaseURL.resolve(%{openai_base_url: "https://config.example.com/v1"}) ==
              "https://config.example.com/v1"
   end
 
   test "resolve/1 falls back to env" do
-    System.put_env("OPENAI_BASE_URL", "https://env.example.com/v1")
+    Env.put("OPENAI_BASE_URL", "https://env.example.com/v1")
     assert BaseURL.resolve(%{}) == "https://env.example.com/v1"
   end
 
   test "resolve/1 falls back to default" do
-    System.delete_env("OPENAI_BASE_URL")
+    Env.delete("OPENAI_BASE_URL")
     assert BaseURL.resolve(%{}) == BaseURL.default()
   end
 end

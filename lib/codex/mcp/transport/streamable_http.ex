@@ -163,9 +163,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
   end
 
   defp resolve_env_var_token(env_var) when is_binary(env_var) do
-    env_var
-    |> System.get_env()
-    |> normalize_token()
+    env_var |> Codex.Env.get() |> normalize_token()
   end
 
   defp resolve_env_var_token(_), do: nil
@@ -464,7 +462,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
 
   defp add_env_headers(headers, env_http_headers) do
     Enum.reduce(env_http_headers, headers, fn {key, env_var}, acc ->
-      case System.get_env(env_var) do
+      case Codex.Env.get(env_var) do
         value when is_binary(value) and value != "" ->
           [{key, value} | acc]
 

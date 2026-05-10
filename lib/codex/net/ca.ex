@@ -14,7 +14,7 @@ defmodule Codex.Net.CA do
   Returns the effective CA certificate bundle path, if any.
   """
   @spec certificate_file() :: String.t() | nil
-  def certificate_file, do: certificate_file(System.get_env())
+  def certificate_file, do: certificate_file(Codex.Env.all())
 
   @spec certificate_file(map()) :: String.t() | nil
   def certificate_file(env) when is_map(env) do
@@ -25,7 +25,7 @@ defmodule Codex.Net.CA do
   Returns subprocess environment overrides for the resolved CA bundle.
   """
   @spec env_overrides() :: %{optional(String.t()) => String.t()}
-  def env_overrides, do: env_overrides(System.get_env())
+  def env_overrides, do: env_overrides(Codex.Env.all())
 
   @doc """
   Returns subprocess environment overrides for the resolved CA bundle.
@@ -48,7 +48,7 @@ defmodule Codex.Net.CA do
   Returns Req `connect_options` for the resolved CA bundle.
   """
   @spec req_connect_options() :: keyword()
-  def req_connect_options, do: req_connect_options(System.get_env())
+  def req_connect_options, do: req_connect_options(Codex.Env.all())
 
   @spec req_connect_options(map()) :: keyword()
   def req_connect_options(env) when is_map(env) do
@@ -76,14 +76,14 @@ defmodule Codex.Net.CA do
   end
 
   def merge_req_options(opts \\ []) when is_list(opts) do
-    merge_req_options(opts, System.get_env())
+    merge_req_options(opts, Codex.Env.all())
   end
 
   @doc """
   Returns `:httpc` SSL options for the resolved CA bundle.
   """
   @spec httpc_ssl_options() :: keyword()
-  def httpc_ssl_options, do: httpc_ssl_options(System.get_env())
+  def httpc_ssl_options, do: httpc_ssl_options(Codex.Env.all())
 
   @spec httpc_ssl_options(map()) :: keyword()
   def httpc_ssl_options(env) when is_map(env) do
@@ -111,14 +111,14 @@ defmodule Codex.Net.CA do
   end
 
   def merge_httpc_options(opts \\ []) when is_list(opts) do
-    merge_httpc_options(opts, System.get_env())
+    merge_httpc_options(opts, Codex.Env.all())
   end
 
   @doc """
   Returns websocket SSL options for the resolved CA bundle.
   """
   @spec websocket_ssl_options() :: keyword()
-  def websocket_ssl_options, do: websocket_ssl_options(System.get_env())
+  def websocket_ssl_options, do: websocket_ssl_options(Codex.Env.all())
 
   @spec websocket_ssl_options(map()) :: keyword()
   def websocket_ssl_options(env) when is_map(env) do
