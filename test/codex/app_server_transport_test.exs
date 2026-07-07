@@ -600,6 +600,8 @@ defmodule Codex.AppServerTransportTest do
       "previousAccountId" => "acct_1"
     }
 
+    current_time_request = %{"threadId" => "thr_1"}
+
     AppServerSubprocess.send_stdout([
       Protocol.encode_request(
         5,
@@ -619,7 +621,9 @@ defmodule Codex.AppServerTransportTest do
         11,
         "account/chatgptAuthTokens/refresh",
         auth_refresh_request
-      )
+      ),
+      Protocol.encode_request(12, "attestation/generate", %{}),
+      Protocol.encode_request(13, "currentTime/read", current_time_request)
     ])
 
     notifications = [
@@ -751,6 +755,16 @@ defmodule Codex.AppServerTransportTest do
 
     refute Enum.any?(result.events, fn
              %Codex.Events.DynamicToolCallRequested{call_id: "call_ignored"} -> true
+             _ -> false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.AttestationGenerateRequested{id: 12} -> true
+             _ -> false
+           end)
+
+    assert Enum.any?(result.events, fn
+             %Codex.Events.CurrentTimeReadRequested{id: 13, thread_id: "thr_1"} -> true
              _ -> false
            end)
   end

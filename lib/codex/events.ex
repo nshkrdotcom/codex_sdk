@@ -1139,6 +1139,35 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule AttestationGenerateRequested do
+    @moduledoc """
+    Event emitted when the app-server asks the client to generate a fresh
+    upstream attestation token. There is no default provider; respond via
+    `Codex.AppServer.respond/3` with `%{"token" => token}` or the request
+    will not receive a timely response.
+    """
+
+    @enforce_keys [:id]
+    defstruct id: nil
+
+    @type t :: %__MODULE__{id: String.t() | integer()}
+  end
+
+  defmodule CurrentTimeReadRequested do
+    @moduledoc """
+    Event emitted when the app-server asks the client to read the current
+    time from an externally-owned clock. There is no default provider;
+    respond via `Codex.AppServer.respond/3` with
+    `%{"currentTimeAt" => unix_seconds}` or the request will not receive a
+    timely response.
+    """
+
+    @enforce_keys [:id, :thread_id]
+    defstruct id: nil, thread_id: nil
+
+    @type t :: %__MODULE__{id: String.t() | integer(), thread_id: String.t()}
+  end
+
   defmodule McpStartupUpdate do
     @moduledoc """
     Incremental status update for MCP server startup.
@@ -1524,6 +1553,8 @@ defmodule Codex.Events do
     ServerRequestResolved,
     DynamicToolCallRequested,
     ChatgptAuthTokensRefreshRequested,
+    AttestationGenerateRequested,
+    CurrentTimeReadRequested,
     McpStartupUpdate,
     McpStartupComplete,
     ElicitationRequest,
@@ -1612,6 +1643,8 @@ defmodule Codex.Events do
           | ServerRequestResolved.t()
           | DynamicToolCallRequested.t()
           | ChatgptAuthTokensRefreshRequested.t()
+          | AttestationGenerateRequested.t()
+          | CurrentTimeReadRequested.t()
           | McpStartupUpdate.t()
           | McpStartupComplete.t()
           | ElicitationRequest.t()
@@ -1901,6 +1934,17 @@ defmodule Codex.Events do
       id: Map.fetch!(map, "id"),
       reason: Map.fetch!(map, "reason"),
       previous_account_id: Map.get(map, "previous_account_id")
+    }
+  end
+
+  def parse!(%{"type" => "attestation_generate_requested"} = map) do
+    %AttestationGenerateRequested{id: Map.fetch!(map, "id")}
+  end
+
+  def parse!(%{"type" => "current_time_read_requested"} = map) do
+    %CurrentTimeReadRequested{
+      id: Map.fetch!(map, "id"),
+      thread_id: Map.fetch!(map, "thread_id")
     }
   end
 
@@ -3004,6 +3048,18 @@ defmodule Codex.Events do
       "reason" => event.reason
     }
     |> put_optional("previous_account_id", event.previous_account_id)
+  end
+
+  def to_map(%AttestationGenerateRequested{} = event) do
+    %{"type" => "attestation_generate_requested", "id" => event.id}
+  end
+
+  def to_map(%CurrentTimeReadRequested{} = event) do
+    %{
+      "type" => "current_time_read_requested",
+      "id" => event.id,
+      "thread_id" => event.thread_id
+    }
   end
 
   def to_map(%McpStartupUpdate{} = event) do

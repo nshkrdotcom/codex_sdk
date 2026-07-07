@@ -426,7 +426,8 @@ defmodule Codex.Transport.AppServer do
       "item/tool/request_user_input",
       "mcpServer/elicitation/request",
       "item/permissions/requestApproval",
-      "item/tool/call"
+      "item/tool/call",
+      "currentTime/read"
     ]
   end
 
@@ -544,6 +545,18 @@ defmodule Codex.Transport.AppServer do
        reason: fetch_any(params, ["reason", :reason]) || "",
        previous_account_id:
          fetch_any(params, ["previousAccountId", "previous_account_id", :previous_account_id])
+     }}
+  end
+
+  defp do_build_request_event(id, "attestation/generate", %{}) do
+    {:ok, %Events.AttestationGenerateRequested{id: id}}
+  end
+
+  defp do_build_request_event(id, "currentTime/read", %{} = params) do
+    {:ok,
+     %Events.CurrentTimeReadRequested{
+       id: id,
+       thread_id: fetch_any(params, ["threadId", "thread_id"]) || ""
      }}
   end
 
