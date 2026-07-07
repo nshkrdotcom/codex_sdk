@@ -170,6 +170,21 @@ defmodule Codex.AppServerTransportTest do
       ThreadOptions.new(%{
         transport: {:app_server, conn},
         working_directory: "/tmp",
+        allow_provider_model_fallback: true,
+        runtime_workspace_roots: ["/workspace"],
+        history_mode: :paginated,
+        thread_source: {:feature, "transport-test"},
+        selected_capability_roots: [
+          %{
+            "id" => "root_1",
+            "location" => %{
+              "type" => "environment",
+              "environmentId" => "env_1",
+              "path" => "file:///workspace/.codex/plugins/demo"
+            }
+          }
+        ],
+        environments: [%{"environmentId" => "env_1", "cwd" => "file:///workspace"}],
         dynamic_tools: [
           %{
             "name" => "echo_json",
@@ -185,17 +200,52 @@ defmodule Codex.AppServerTransportTest do
 
     thread = Thread.build(codex_opts, thread_opts)
 
-    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+    additional_context = %{
+      "editor-selection" => %{"value" => "selected text", "kind" => "application"}
+    }
+
+    task =
+      Task.async(fn ->
+        Thread.run_turn(thread, "hello",
+          client_user_message_id: "client-msg-1",
+          additional_context: additional_context,
+          runtime_workspace_roots: ["/turn-workspace"],
+          effort: "provider-custom"
+        )
+      end)
 
     assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
 
-    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+    assert {:ok,
+            %{
+              "id" => thread_start_id,
+              "method" => "thread/start",
+              "params" => thread_start_params
+            }} =
              Jason.decode(thread_start_line)
 
-    assert {:ok, %{"params" => %{"dynamicTools" => [dynamic_tool]}}} =
-             Jason.decode(thread_start_line)
+    assert %{"dynamicTools" => [dynamic_tool]} = thread_start_params
 
     assert dynamic_tool["name"] == "echo_json"
+    assert thread_start_params["allowProviderModelFallback"] == true
+    assert thread_start_params["runtimeWorkspaceRoots"] == ["/workspace"]
+    assert thread_start_params["historyMode"] == "paginated"
+    assert thread_start_params["threadSource"] == "feature:transport-test"
+
+    assert thread_start_params["selectedCapabilityRoots"] == [
+             %{
+               "id" => "root_1",
+               "location" => %{
+                 "type" => "environment",
+                 "environmentId" => "env_1",
+                 "path" => "file:///workspace/.codex/plugins/demo"
+               }
+             }
+           ]
+
+    assert thread_start_params["environments"] == [
+             %{"environmentId" => "env_1", "cwd" => "file:///workspace"}
+           ]
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
@@ -208,6 +258,10 @@ defmodule Codex.AppServerTransportTest do
              Jason.decode(turn_start_line)
 
     assert turn_start_params["threadId"] == "thr_1"
+    assert turn_start_params["clientUserMessageId"] == "client-msg-1"
+    assert turn_start_params["additionalContext"] == additional_context
+    assert turn_start_params["runtimeWorkspaceRoots"] == ["/turn-workspace"]
+    assert turn_start_params["effort"] == "provider-custom"
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(turn_start_id, %{
@@ -1293,10 +1347,7 @@ defmodule Codex.AppServerTransportTest do
         working_directory: "/tmp",
         model: "gpt-5.4-mini",
         model_provider: "openai",
-        permission_profile: %{
-          "network" => %{"enabled" => false},
-          "fileSystem" => %{"entries" => []}
-        },
+        permissions: ":workspace",
         config: %{"features.remote_models" => true},
         base_instructions: "base",
         developer_instructions: "dev",
@@ -1316,10 +1367,8 @@ defmodule Codex.AppServerTransportTest do
     assert params["model"] == "gpt-5.4-mini"
     assert params["modelProvider"] == "openai"
 
-    assert params["permissionProfile"] == %{
-             "network" => %{"enabled" => false},
-             "fileSystem" => %{"entries" => []}
-           }
+    assert params["permissions"] == ":workspace"
+    refute Map.has_key?(params, "permissionProfile")
 
     assert %{"features.remote_models" => true} = params["config"]
     assert params["config"]["model_reasoning_effort"] == "medium"
@@ -1376,18 +1425,12 @@ defmodule Codex.AppServerTransportTest do
         ephemeral: true,
         service_name: "codex-elixir-tests",
         service_tier: :flex,
-        permission_profile: %{
-          "network" => %{"enabled" => false},
-          "fileSystem" => %{"entries" => []}
-        }
+        permissions: ":workspace"
       })
 
     thread = Thread.build(codex_opts, thread_opts)
 
-    turn_permission_profile = %{
-      "network" => %{"enabled" => true},
-      "fileSystem" => %{"entries" => []}
-    }
+    turn_permission_profile = ":read-only"
 
     environments = [%{"id" => "remote_1", "kind" => "remote"}]
 
@@ -1409,10 +1452,8 @@ defmodule Codex.AppServerTransportTest do
     assert params["serviceName"] == "codex-elixir-tests"
     assert params["serviceTier"] == "flex"
 
-    assert params["permissionProfile"] == %{
-             "network" => %{"enabled" => false},
-             "fileSystem" => %{"entries" => []}
-           }
+    assert params["permissions"] == ":workspace"
+    refute Map.has_key?(params, "permissionProfile")
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
@@ -1428,7 +1469,8 @@ defmodule Codex.AppServerTransportTest do
             }} = Jason.decode(turn_start_line)
 
     assert turn_params["serviceTier"] == "priority"
-    assert turn_params["permissionProfile"] == turn_permission_profile
+    assert turn_params["permissions"] == turn_permission_profile
+    refute Map.has_key?(turn_params, "permissionProfile")
     assert turn_params["environments"] == environments
 
     AppServerSubprocess.send_stdout(

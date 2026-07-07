@@ -421,6 +421,42 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :medium
     end
 
+    test "passes through a model newer than the bundled registry by default" do
+      assert {:ok, %Options{} = opts} =
+               Options.new(%{model: "gpt-5.9-not-yet-released"})
+
+      assert opts.model == "gpt-5.9-not-yet-released"
+      assert opts.model_payload.extra["unregistered"] == true
+    end
+
+    test "passes through an env-derived model newer than the bundled registry by default" do
+      Env.put("CODEX_MODEL", "gpt-5.9-not-yet-released")
+
+      assert {:ok, %Options{} = opts} = Options.new(%{})
+      assert opts.model == "gpt-5.9-not-yet-released"
+      assert opts.model_payload.extra["unregistered"] == true
+    end
+
+    test "allow_unknown_model: false restores strict rejection of unlisted models" do
+      assert {:error, {:unknown_model, "gpt-5.9-not-yet-released", known, :codex}} =
+               Options.new(%{model: "gpt-5.9-not-yet-released", allow_unknown_model: false})
+
+      assert is_list(known)
+    end
+
+    test "allow_unknown_model: false still resolves known models normally" do
+      assert {:ok, %Options{} = opts} =
+               Options.new(%{model: alt_model(), allow_unknown_model: false})
+
+      assert opts.model == alt_model()
+      refute Map.get(opts.model_payload.extra, "unregistered")
+    end
+
+    test "rejects a non-boolean allow_unknown_model value" do
+      assert {:error, {:invalid_allow_unknown_model, "yes"}} =
+               Options.new(%{model: alt_model(), allow_unknown_model: "yes"})
+    end
+
     test "rejects unsupported reasoning effort values" do
       assert {:error,
               {:invalid_reasoning_effort, :minimal, ["high", "low", "medium", "xhigh"], :codex}} =

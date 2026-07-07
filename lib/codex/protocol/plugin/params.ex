@@ -7,12 +7,16 @@ defmodule Codex.Protocol.Plugin.ListParams do
 
   alias Codex.Protocol.Plugin.Helpers
 
-  @key_mapping %{"force_remote_sync" => "forceRemoteSync"}
-  @known_fields ["cwds", "forceRemoteSync"]
+  @key_mapping %{
+    "force_remote_sync" => "forceRemoteSync",
+    "marketplace_kinds" => "marketplaceKinds"
+  }
+  @known_fields ["cwds", "forceRemoteSync", "marketplaceKinds"]
   @schema Zoi.map(
             %{
               "cwds" => Zoi.optional(Zoi.nullish(Zoi.array(Helpers.required_string()))),
-              "forceRemoteSync" => Helpers.boolean_flag()
+              "forceRemoteSync" => Helpers.boolean_flag(),
+              "marketplaceKinds" => Zoi.optional(Zoi.nullish(Zoi.array(Zoi.any())))
             },
             unrecognized_keys: :preserve
           )
@@ -20,6 +24,7 @@ defmodule Codex.Protocol.Plugin.ListParams do
   typedstruct do
     field(:cwds, [String.t()] | nil)
     field(:force_remote_sync, boolean(), default: false)
+    field(:marketplace_kinds, [String.t()] | nil)
     field(:extra, map(), default: %{})
   end
 
@@ -49,7 +54,7 @@ defmodule Codex.Protocol.Plugin.ListParams do
   def to_map(%__MODULE__{} = params) do
     %{}
     |> Helpers.maybe_put("cwds", params.cwds)
-    |> maybe_put_force_remote_sync(params.force_remote_sync)
+    |> Helpers.maybe_put("marketplaceKinds", params.marketplace_kinds)
     |> Map.merge(params.extra)
   end
 
@@ -59,12 +64,28 @@ defmodule Codex.Protocol.Plugin.ListParams do
     %__MODULE__{
       cwds: Map.get(known, "cwds"),
       force_remote_sync: Map.get(known, "forceRemoteSync", false),
+      marketplace_kinds:
+        known
+        |> Map.get("marketplaceKinds")
+        |> normalize_marketplace_kinds(),
       extra: extra
     }
   end
 
-  defp maybe_put_force_remote_sync(map, true), do: Map.put(map, "forceRemoteSync", true)
-  defp maybe_put_force_remote_sync(map, _value), do: map
+  defp normalize_marketplace_kinds(nil), do: nil
+
+  defp normalize_marketplace_kinds(kinds) when is_list(kinds) do
+    Enum.map(kinds, &normalize_marketplace_kind/1)
+  end
+
+  defp normalize_marketplace_kind(:local), do: "local"
+  defp normalize_marketplace_kind(:vertical), do: "vertical"
+  defp normalize_marketplace_kind(:workspace_directory), do: "workspace-directory"
+  defp normalize_marketplace_kind(:shared_with_me), do: "shared-with-me"
+  defp normalize_marketplace_kind(:created_by_me_remote), do: "created-by-me-remote"
+  defp normalize_marketplace_kind(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_marketplace_kind(value) when is_binary(value), do: value
+  defp normalize_marketplace_kind(value), do: value
 end
 
 defmodule Codex.Protocol.Plugin.ReadParams do

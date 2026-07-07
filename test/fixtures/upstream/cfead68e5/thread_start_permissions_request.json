@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "thread/start",
+  "params": {
+    "model": "gpt-5.4",
+    "permissions": ":workspace",
+    "serviceTier": "default"
+  }
+}

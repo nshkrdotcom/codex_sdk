@@ -105,6 +105,7 @@ defmodule Codex.AppServer.ItemAdapterTest do
       dynamic_item = %{
         "type" => "dynamicToolCall",
         "id" => "dyn_1",
+        "namespace" => "mcp__codex_apps__gmail",
         "tool" => "browser",
         "arguments" => %{"url" => "https://example.com"},
         "status" => "completed",
@@ -116,6 +117,7 @@ defmodule Codex.AppServer.ItemAdapterTest do
       assert {:ok,
               %Items.DynamicToolCall{
                 id: "dyn_1",
+                namespace: "mcp__codex_apps__gmail",
                 tool: "browser",
                 arguments: %{"url" => "https://example.com"},
                 status: :completed,

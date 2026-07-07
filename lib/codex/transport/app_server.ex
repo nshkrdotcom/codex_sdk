@@ -177,7 +177,9 @@ defmodule Codex.Transport.AppServer do
       :model_provider,
       thread.thread_opts.model_provider || default_model_provider(thread)
     )
+    |> maybe_put(:allow_provider_model_fallback, thread.thread_opts.allow_provider_model_fallback)
     |> maybe_put(:working_directory, thread.thread_opts.working_directory)
+    |> maybe_put(:runtime_workspace_roots, thread.thread_opts.runtime_workspace_roots)
     |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
     |> maybe_put(:approvals_reviewer, thread.thread_opts.approvals_reviewer)
     |> maybe_put(:sandbox, thread.thread_opts.sandbox)
@@ -187,8 +189,15 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:developer_instructions, thread.thread_opts.developer_instructions)
     |> maybe_put(:personality, thread.thread_opts.personality)
     |> maybe_put(:dynamic_tools, thread.thread_opts.dynamic_tools)
+    |> maybe_put(:history_mode, thread.thread_opts.history_mode)
+    |> maybe_put(:thread_source, thread.thread_opts.thread_source)
+    |> maybe_put(:selected_capability_roots, thread.thread_opts.selected_capability_roots)
+    |> maybe_put(:environments, thread.thread_opts.environments)
     |> maybe_put(:experimental_raw_events, thread.thread_opts.experimental_raw_events)
     |> maybe_put(:persist_extended_history, thread.thread_opts.persist_extended_history)
+    |> maybe_put_for_mode(:initial_turns_page, thread.thread_opts.initial_turns_page, mode, [
+      :resume
+    ])
     |> maybe_put_for_mode(:ephemeral, thread.thread_opts.ephemeral, mode, [:start])
     |> maybe_put_for_mode(:service_name, thread.thread_opts.service_name, mode, [:start])
     |> maybe_put_for_mode(:service_tier, thread.thread_opts.service_tier, mode, [:start, :resume])
@@ -210,7 +219,9 @@ defmodule Codex.Transport.AppServer do
 
   defp turn_start_opts(%Thread{} = thread, turn_opts) do
     []
+    |> maybe_put_kw(:client_user_message_id, fetch_opt(turn_opts, :client_user_message_id))
     |> maybe_put_kw(:cwd, select_turn_opt(turn_opts, :cwd, thread.thread_opts.working_directory))
+    |> maybe_put_kw(:runtime_workspace_roots, fetch_opt(turn_opts, :runtime_workspace_roots))
     |> maybe_put_kw(:model, select_turn_opt(turn_opts, :model, thread.thread_opts.model))
     |> maybe_put_kw(
       :approval_policy,
@@ -230,6 +241,7 @@ defmodule Codex.Transport.AppServer do
     )
     |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
     |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
+    |> maybe_put_kw(:additional_context, fetch_opt(turn_opts, :additional_context))
     |> maybe_put_kw(
       :personality,
       select_turn_opt(turn_opts, :personality, thread.thread_opts.personality)

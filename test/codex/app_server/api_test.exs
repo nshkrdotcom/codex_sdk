@@ -141,6 +141,60 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
+  test "thread_start/2 encodes current upstream experimental thread params", %{conn: conn} do
+    environments = [%{"environmentId" => "env_1", "cwd" => "file:///workspace"}]
+
+    selected_capability_roots = [
+      %{
+        "id" => "root_1",
+        "location" => %{
+          "type" => "environment",
+          "environmentId" => "env_1",
+          "path" => "file:///workspace/.codex/plugins/demo"
+        }
+      }
+    ]
+
+    task =
+      Task.async(fn ->
+        AppServer.thread_start(conn,
+          allow_provider_model_fallback: true,
+          runtime_workspace_roots: ["/workspace"],
+          history_mode: :paginated,
+          thread_source: :user,
+          environments: environments,
+          selected_capability_roots: selected_capability_roots
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "thread/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["allowProviderModelFallback"] == true
+    assert params["runtimeWorkspaceRoots"] == ["/workspace"]
+    assert params["historyMode"] == "paginated"
+    assert params["threadSource"] == "user"
+    assert params["environments"] == environments
+    assert params["selectedCapabilityRoots"] == selected_capability_roots
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"thread" => %{}}))
+
+    assert {:ok, %{"thread" => _}} = Task.await(task, 200)
+  end
+
+  test "upstream fixture documents thread start permissions wire shape" do
+    fixture =
+      "test/fixtures/upstream/cfead68e5/thread_start_permissions_request.json"
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert fixture["method"] == "thread/start"
+    assert fixture["params"]["permissions"] == ":workspace"
+    refute Map.has_key?(fixture["params"], "permissionProfile")
+  end
+
   test "thread_resume/3 encodes none personality from string", %{conn: conn} do
     task = Task.async(fn -> AppServer.thread_resume(conn, "thr_1", personality: "none") end)
 
@@ -333,6 +387,55 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(task, 200)
   end
 
+  test "thread_resume/3 and thread_fork/3 encode paginated-history params", %{conn: conn} do
+    resume_task =
+      Task.async(fn ->
+        AppServer.thread_resume(conn, "thr_1",
+          runtime_workspace_roots: ["/workspace"],
+          initial_turns_page: %{limit: 10, sort_direction: :desc, items_view: :summary}
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert resume_params["threadId"] == "thr_1"
+    assert resume_params["runtimeWorkspaceRoots"] == ["/workspace"]
+
+    assert resume_params["initialTurnsPage"] == %{
+             "limit" => 10,
+             "sortDirection" => "desc",
+             "itemsView" => "summary"
+           }
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
+
+    fork_task =
+      Task.async(fn ->
+        AppServer.thread_fork(conn, "thr_1",
+          last_turn_id: "turn_7",
+          runtime_workspace_roots: ["/workspace"],
+          thread_source: "feature:automation"
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, fork_line}
+
+    assert {:ok, %{"id" => fork_id, "method" => "thread/fork", "params" => fork_params}} =
+             Jason.decode(fork_line)
+
+    assert fork_params["threadId"] == "thr_1"
+    assert fork_params["lastTurnId"] == "turn_7"
+    assert fork_params["runtimeWorkspaceRoots"] == ["/workspace"]
+    assert fork_params["threadSource"] == "feature:automation"
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(fork_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
+  end
+
   test "thread_fork/3 does not inject startup history or duplicate context params", %{
     conn: conn
   } do
@@ -410,20 +513,10 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
   end
 
-  test "thread start, resume, and fork encode permission profile history controls", %{
+  test "thread start, resume, and fork encode permissions and history controls", %{
     conn: conn
   } do
-    permission_profile = %{
-      "network" => %{"enabled" => false},
-      "fileSystem" => %{
-        "entries" => [
-          %{
-            "path" => %{"type" => "special", "value" => %{"kind" => "cwd"}},
-            "access" => "write"
-          }
-        ]
-      }
-    }
+    permission_profile = ":workspace"
 
     start_task =
       Task.async(fn ->
@@ -438,7 +531,8 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
              Jason.decode(start_line)
 
-    assert start_params["permissionProfile"] == permission_profile
+    assert start_params["permissions"] == permission_profile
+    refute Map.has_key?(start_params, "permissionProfile")
     assert start_params["persistExtendedHistory"] == true
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
@@ -447,7 +541,7 @@ defmodule Codex.AppServer.ApiTest do
     resume_task =
       Task.async(fn ->
         AppServer.thread_resume(conn, "thr_1",
-          permission_profile: permission_profile,
+          permissions: permission_profile,
           exclude_turns: true,
           persist_extended_history: true
         )
@@ -458,7 +552,8 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
              Jason.decode(resume_line)
 
-    assert resume_params["permissionProfile"] == permission_profile
+    assert resume_params["permissions"] == permission_profile
+    refute Map.has_key?(resume_params, "permissionProfile")
     assert resume_params["excludeTurns"] == true
     assert resume_params["persistExtendedHistory"] == true
 
@@ -468,7 +563,7 @@ defmodule Codex.AppServer.ApiTest do
     fork_task =
       Task.async(fn ->
         AppServer.thread_fork(conn, "thr_1",
-          permission_profile: permission_profile,
+          permissionProfile: permission_profile,
           exclude_turns: true,
           persist_extended_history: true
         )
@@ -479,12 +574,67 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => fork_id, "method" => "thread/fork", "params" => fork_params}} =
              Jason.decode(fork_line)
 
-    assert fork_params["permissionProfile"] == permission_profile
+    assert fork_params["permissions"] == permission_profile
+    refute Map.has_key?(fork_params, "permissionProfile")
     assert fork_params["excludeTurns"] == true
     assert fork_params["persistExtendedHistory"] == true
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(fork_id, %{"thread" => %{}}))
     assert {:ok, %{"thread" => _}} = Task.await(fork_task, 200)
+  end
+
+  test "thread start rejects conflicting sandbox and permissions without sending a request", %{
+    conn: conn
+  } do
+    assert {:error, {:conflicting_permissions, :sandbox}} =
+             AppServer.thread_start(conn, permissions: ":workspace", sandbox: :read_only)
+
+    refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 50
+  end
+
+  test "thread and turn encode explicit service tier null and default sentinel", %{conn: conn} do
+    start_task = Task.async(fn -> AppServer.thread_start(conn, service_tier: :default) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, start_line}
+
+    assert {:ok, %{"id" => start_id, "method" => "thread/start", "params" => start_params}} =
+             Jason.decode(start_line)
+
+    assert start_params["serviceTier"] == "default"
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(start_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(start_task, 200)
+
+    resume_task = Task.async(fn -> AppServer.thread_resume(conn, "thr_1", service_tier: nil) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, resume_line}
+
+    assert {:ok, %{"id" => resume_id, "method" => "thread/resume", "params" => resume_params}} =
+             Jason.decode(resume_line)
+
+    assert Map.has_key?(resume_params, "serviceTier")
+    assert resume_params["serviceTier"] == nil
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(resume_id, %{"thread" => %{}}))
+    assert {:ok, %{"thread" => _}} = Task.await(resume_task, 200)
+
+    turn_task = Task.async(fn -> AppServer.turn_start(conn, "thr_1", "hi", service_tier: nil) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_line}
+
+    assert {:ok, %{"id" => turn_id, "method" => "turn/start", "params" => turn_params}} =
+             Jason.decode(turn_line)
+
+    assert Map.has_key?(turn_params, "serviceTier")
+    assert turn_params["serviceTier"] == nil
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(turn_task, 200)
   end
 
   test "thread_rollback/3 encodes numTurns", %{conn: conn} do
@@ -827,7 +977,8 @@ defmodule Codex.AppServer.ApiTest do
         AppServer.thread_turns_list(conn, "thr_1",
           cursor: "cur_1",
           limit: 25,
-          sort_direction: :desc
+          sort_direction: :desc,
+          items_view: :not_loaded
         )
       end)
 
@@ -840,10 +991,70 @@ defmodule Codex.AppServer.ApiTest do
     assert params["cursor"] == "cur_1"
     assert params["limit"] == 25
     assert params["sortDirection"] == "desc"
+    assert params["itemsView"] == "notLoaded"
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"data" => []}))
 
     assert {:ok, %{"data" => []}} = Task.await(task, 200)
+  end
+
+  test "thread_items_list/3 and thread_search/2 encode current pagination params", %{conn: conn} do
+    items_task =
+      Task.async(fn ->
+        AppServer.thread_items_list(conn, "thr_1",
+          turn_id: "turn_1",
+          cursor: "cur_1",
+          limit: 50,
+          sort_direction: :asc
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, items_line}
+
+    assert {:ok, %{"id" => items_id, "method" => "thread/items/list", "params" => items_params}} =
+             Jason.decode(items_line)
+
+    assert items_params == %{
+             "threadId" => "thr_1",
+             "turnId" => "turn_1",
+             "cursor" => "cur_1",
+             "limit" => 50,
+             "sortDirection" => "asc"
+           }
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(items_id, %{"data" => []}))
+    assert {:ok, %{"data" => []}} = Task.await(items_task, 200)
+
+    search_task =
+      Task.async(fn ->
+        AppServer.thread_search(conn,
+          search_term: "checkout",
+          cursor: "cur_2",
+          limit: 20,
+          sort_key: :updated_at,
+          sort_direction: :desc,
+          source_kinds: [:app_server, :sub_agent],
+          archived: false
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, search_line}
+
+    assert {:ok, %{"id" => search_id, "method" => "thread/search", "params" => search_params}} =
+             Jason.decode(search_line)
+
+    assert search_params == %{
+             "searchTerm" => "checkout",
+             "cursor" => "cur_2",
+             "limit" => 20,
+             "sortKey" => "updated_at",
+             "sortDirection" => "desc",
+             "sourceKinds" => ["appServer", "subAgent"],
+             "archived" => false
+           }
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(search_id, %{"data" => []}))
+    assert {:ok, %{"data" => []}} = Task.await(search_task, 200)
   end
 
   test "turn_start/4 encodes personality and collaboration mode", %{conn: conn} do
@@ -889,8 +1100,8 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
   end
 
-  test "turn_start/4 encodes permission profile and environments", %{conn: conn} do
-    permission_profile = %{"network" => %{"enabled" => true}, "fileSystem" => %{"entries" => []}}
+  test "turn_start/4 encodes permissions and environments", %{conn: conn} do
+    permission_profile = ":workspace"
 
     environments = [
       %{
@@ -913,7 +1124,8 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
              Jason.decode(request_line)
 
-    assert params["permissionProfile"] == permission_profile
+    assert params["permissions"] == permission_profile
+    refute Map.has_key?(params, "permissionProfile")
     assert params["environments"] == environments
 
     AppServerSubprocess.send_stdout(
@@ -1036,6 +1248,77 @@ defmodule Codex.AppServer.ApiTest do
 
     AppServerSubprocess.send_stdout(Protocol.encode_response(steer_id, %{"turnId" => "turn_1"}))
     assert {:ok, %{"turnId" => "turn_1"}} = Task.await(steer_task, 200)
+  end
+
+  test "turn_start/4 encodes permissions aliases with the current upstream key", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi", permission_profile: ":workspace")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["permissions"] == ":workspace"
+    refute Map.has_key?(params, "permissionProfile")
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
+  test "turn_start/4 encodes current upstream turn params", %{conn: conn} do
+    additional_context = %{
+      "editor-selection" => %{"value" => "selected text", "kind" => "application"}
+    }
+
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "hi",
+          client_user_message_id: "client-msg-1",
+          additional_context: additional_context,
+          runtime_workspace_roots: ["/workspace"],
+          effort: "provider-custom",
+          service_tier: :default
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"id" => req_id, "method" => "turn/start", "params" => params}} =
+             Jason.decode(request_line)
+
+    assert params["clientUserMessageId"] == "client-msg-1"
+    assert params["additionalContext"] == additional_context
+    assert params["runtimeWorkspaceRoots"] == ["/workspace"]
+    assert params["effort"] == "provider-custom"
+    assert params["serviceTier"] == "default"
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    assert {:ok, %{"turn" => %{"id" => "turn_1"}}} = Task.await(task, 200)
+  end
+
+  test "turn_start/4 rejects conflicting sandbox policy and permissions without sending", %{
+    conn: conn
+  } do
+    assert {:error, {:conflicting_permissions, :sandbox_policy}} =
+             AppServer.turn_start(conn, "thr_1", "hi",
+               permissions: ":workspace",
+               sandbox_policy: :read_only
+             )
+
+    refute_receive {:app_server_subprocess_send, ^conn, _request_line}, 50
   end
 
   test "turn APIs encode responses api client metadata", %{conn: conn} do
@@ -1200,7 +1483,10 @@ defmodule Codex.AppServer.ApiTest do
 
     plugin_list_task =
       Task.async(fn ->
-        AppServer.plugin_list(conn, cwds: ["/tmp/project"], force_remote_sync: true)
+        AppServer.plugin_list(conn,
+          cwds: ["/tmp/project"],
+          marketplace_kinds: [:local, :workspace_directory]
+        )
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, plugin_list_line}
@@ -1210,7 +1496,8 @@ defmodule Codex.AppServer.ApiTest do
              Jason.decode(plugin_list_line)
 
     assert plugin_list_params["cwds"] == ["/tmp/project"]
-    assert plugin_list_params["forceRemoteSync"] == true
+    assert plugin_list_params["marketplaceKinds"] == ["local", "workspace-directory"]
+    refute Map.has_key?(plugin_list_params, "forceRemoteSync")
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})
@@ -1353,6 +1640,84 @@ defmodule Codex.AppServer.ApiTest do
 
     assert {:ok, %{"marketplaceName" => "debug", "alreadyAdded" => false}} =
              Task.await(task, 200)
+  end
+
+  test "environment_add/4 and environment_info/2 encode current environment API", %{conn: conn} do
+    add_task =
+      Task.async(fn ->
+        AppServer.environment_add(conn, "env_1", "ws://127.0.0.1:9001", connect_timeout_ms: 1_500)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, add_line}
+
+    assert {:ok,
+            %{
+              "id" => add_id,
+              "method" => "environment/add",
+              "params" => add_params
+            }} = Jason.decode(add_line)
+
+    assert add_params == %{
+             "environmentId" => "env_1",
+             "execServerUrl" => "ws://127.0.0.1:9001",
+             "connectTimeoutMs" => 1_500
+           }
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(add_id, %{}))
+    assert {:ok, %{}} = Task.await(add_task, 200)
+
+    info_task = Task.async(fn -> AppServer.environment_info(conn, "env_1") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, info_line}
+
+    assert {:ok,
+            %{
+              "id" => info_id,
+              "method" => "environment/info",
+              "params" => %{"environmentId" => "env_1"}
+            }} = Jason.decode(info_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(info_id, %{
+        "shell" => %{"name" => "bash", "path" => "/bin/bash"},
+        "cwd" => "file:///workspace"
+      })
+    )
+
+    assert {:ok, %{"shell" => %{"name" => "bash", "path" => "/bin/bash"}, "cwd" => cwd}} =
+             Task.await(info_task, 200)
+
+    assert cwd == "file:///workspace"
+  end
+
+  test "environment_info/2 preserves upstream error codes", %{conn: conn} do
+    unknown_task = Task.async(fn -> AppServer.environment_info(conn, "missing") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, unknown_line}
+
+    assert {:ok, %{"id" => unknown_id, "method" => "environment/info"}} =
+             Jason.decode(unknown_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_error(unknown_id, -32_600, "unknown environment")
+    )
+
+    assert {:error, %{"code" => -32_600, "message" => "unknown environment"}} =
+             Task.await(unknown_task, 200)
+
+    failure_task = Task.async(fn -> AppServer.environment_info(conn, "env_1") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, failure_line}
+
+    assert {:ok, %{"id" => failure_id, "method" => "environment/info"}} =
+             Jason.decode(failure_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_error(failure_id, -32_603, "environment info failed")
+    )
+
+    assert {:error, %{"code" => -32_603, "message" => "environment info failed"}} =
+             Task.await(failure_task, 200)
   end
 
   test "marketplace_remove/2 and marketplace_upgrade/2 encode current params", %{conn: conn} do
@@ -1641,7 +2006,10 @@ defmodule Codex.AppServer.ApiTest do
   } do
     plugin_list_task =
       Task.async(fn ->
-        AppServer.plugin_list_typed(conn, cwds: ["/tmp/project"], force_remote_sync: true)
+        AppServer.plugin_list_typed(conn,
+          cwds: ["/tmp/project"],
+          marketplace_kinds: [:local, :workspace_directory]
+        )
       end)
 
     assert_receive {:app_server_subprocess_send, ^conn, plugin_list_line}
@@ -1651,7 +2019,8 @@ defmodule Codex.AppServer.ApiTest do
              Jason.decode(plugin_list_line)
 
     assert plugin_list_params["cwds"] == ["/tmp/project"]
-    assert plugin_list_params["forceRemoteSync"] == true
+    assert plugin_list_params["marketplaceKinds"] == ["local", "workspace-directory"]
+    refute Map.has_key?(plugin_list_params, "forceRemoteSync")
 
     AppServerSubprocess.send_stdout(
       Protocol.encode_response(plugin_list_id, %{"marketplaces" => []})

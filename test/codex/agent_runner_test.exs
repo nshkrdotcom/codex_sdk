@@ -127,7 +127,8 @@ defmodule Codex.AgentRunnerTest do
                AgentRunner.run(pending_thread, "Still running", %{max_turns: 2})
     end
 
-    test "errors when a model override requests a retired model", %{thread: _thread} do
+    test "errors when a model override requests a retired model and allow_unknown_model is false",
+         %{thread: _thread} do
       {script_path, state_file} =
         FixtureScripts.sequential_fixtures([
           "thread_auto_run_step1.jsonl"
@@ -142,7 +143,8 @@ defmodule Codex.AgentRunnerTest do
         Options.new(%{
           api_key: "test",
           codex_path_override: script_path,
-          model: max_model()
+          model: max_model(),
+          allow_unknown_model: false
         })
 
       {:ok, thread_opts} = ThreadOptions.new(%{})
@@ -150,6 +152,34 @@ defmodule Codex.AgentRunnerTest do
 
       assert {:error, {:unknown_model, "gpt-5.2-codex", _suggestions, :codex}} =
                AgentRunner.run(thread, "Hello Codex", %{run_config: %{model: "gpt-5.2-codex"}})
+    end
+
+    test "passes through a model override newer than the registry by default", %{
+      thread: _thread
+    } do
+      {pending_path, pending_state} =
+        FixtureScripts.sequential_fixtures(["thread_auto_run_pending.jsonl"])
+
+      on_exit(fn ->
+        File.rm_rf(pending_path)
+        File.rm_rf(pending_state)
+      end)
+
+      {:ok, codex_opts} =
+        Options.new(%{
+          api_key: "test",
+          codex_path_override: pending_path,
+          model: max_model()
+        })
+
+      {:ok, thread_opts} = ThreadOptions.new(%{})
+      thread = Thread.build(codex_opts, thread_opts)
+
+      assert {:error, {:max_turns_exceeded, _, _}} =
+               AgentRunner.run(thread, "Hello Codex", %{
+                 max_turns: 1,
+                 run_config: %{model: "gpt-5.9-not-yet-released"}
+               })
     end
   end
 

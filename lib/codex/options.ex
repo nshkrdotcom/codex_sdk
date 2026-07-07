@@ -3,7 +3,19 @@ defmodule Codex.Options do
   Global configuration for Codex interactions.
 
   Options are built from caller-supplied values merged with environment defaults.
+
+  ## Models newer than the bundled registry
+
+  `Codex.Models` resolves model metadata from a bundled, vendored catalog
+  (via `CliSubprocessCore.ModelRegistry`). A model id that's newer than the
+  bundled catalog is passed through as-is by default — matching the
+  installed `codex` CLI, which does not itself validate `--model` against
+  this catalog. A warning is logged when this happens. Pass
+  `allow_unknown_model: false` to restore strict rejection of any model id
+  not present in the bundled catalog (useful for catching typos early).
   """
+
+  require Logger
 
   alias CliSubprocessCore.{CommandSpec, ExecutionSurface, ModelInput, ProviderCLI}
   alias Codex.Auth
@@ -35,7 +47,8 @@ defmodule Codex.Options do
             tool_output_token_limit: nil,
             agent_max_threads: nil,
             config_overrides: [],
-            governed_authority: nil
+            governed_authority: nil,
+            allow_unknown_model: true
 
   @typep config_override_value_scalar :: String.t() | boolean() | integer() | float()
   @typep config_override_value ::
@@ -67,7 +80,8 @@ defmodule Codex.Options do
           config_overrides: [
             String.t() | {String.t(), config_override_value()}
           ],
-          governed_authority: map() | nil
+          governed_authority: map() | nil,
+          allow_unknown_model: boolean()
         }
 
   @doc """
@@ -86,8 +100,11 @@ defmodule Codex.Options do
          {:ok, override} <- fetch_codex_path_override(attrs),
          {:ok, execution_surface} <- fetch_execution_surface(attrs),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
-         {:ok, model_input} <- normalize_model_input(attrs, governed_authority),
+         {:ok, allow_unknown_model} <- fetch_allow_unknown_model(attrs),
+         {:ok, model_input} <-
+           normalize_model_input(attrs, governed_authority, allow_unknown_model),
          model_payload = model_input.selection,
+         :ok = warn_if_unregistered_model(model_payload),
          normalized_attrs = model_input.attrs,
          {:ok, model} <- fetch_model(model_payload),
          {:ok, reasoning_effort} <- fetch_reasoning_effort(model_payload),
@@ -141,7 +158,8 @@ defmodule Codex.Options do
          tool_output_token_limit: tool_output_token_limit,
          agent_max_threads: agent_max_threads,
          config_overrides: config_overrides,
-         governed_authority: governed_authority
+         governed_authority: governed_authority,
+         allow_unknown_model: allow_unknown_model
        }}
     end
   end
@@ -336,15 +354,39 @@ defmodule Codex.Options do
 
   defp implicit_default_model?(%__MODULE__{}), do: false
 
-  defp normalize_model_input(attrs, nil) do
+  defp normalize_model_input(attrs, nil, allow_unknown_model) do
     attrs
     |> apply_model_env_defaults()
+    |> Map.put(:allow_unknown, allow_unknown_model)
     |> then(&ModelInput.normalize(:codex, &1, []))
   end
 
-  defp normalize_model_input(attrs, %{} = _governed_authority) do
-    ModelInput.normalize(:codex, attrs, [])
+  defp normalize_model_input(attrs, %{} = _governed_authority, allow_unknown_model) do
+    attrs
+    |> Map.put(:allow_unknown, allow_unknown_model)
+    |> then(&ModelInput.normalize(:codex, &1, []))
   end
+
+  defp fetch_allow_unknown_model(attrs) do
+    case pick(attrs, [:allow_unknown_model, "allow_unknown_model"]) do
+      nil -> {:ok, true}
+      value when is_boolean(value) -> {:ok, value}
+      other -> {:error, {:invalid_allow_unknown_model, other}}
+    end
+  end
+
+  defp warn_if_unregistered_model(%{extra: %{"unregistered" => true}} = payload) do
+    Logger.warning(
+      "Codex model #{inspect(Map.get(payload, :resolved_model))} is not in the bundled " <>
+        "model registry; passing it through as-is. This is expected for a model newer " <>
+        "than the bundled registry. Pass allow_unknown_model: false to require a " <>
+        "registered model."
+    )
+
+    :ok
+  end
+
+  defp warn_if_unregistered_model(_payload), do: :ok
 
   defp apply_model_env_defaults(attrs) when is_map(attrs) do
     if explicit_model_payload?(attrs) do

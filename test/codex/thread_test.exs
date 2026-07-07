@@ -92,15 +92,49 @@ defmodule Codex.ThreadTest do
           ephemeral: true,
           service_name: "codex-elixir-tests",
           service_tier: :flex,
-          permission_profile: %{"network" => %{"enabled" => false}},
+          permissions: ":workspace",
           persist_extended_history: true
         })
 
       assert opts.ephemeral == true
       assert opts.service_name == "codex-elixir-tests"
       assert opts.service_tier == "flex"
-      assert opts.permission_profile == %{"network" => %{"enabled" => false}}
+      assert opts.permission_profile == ":workspace"
       assert opts.persist_extended_history == true
+    end
+
+    test "accepts app-server paginated history and environment controls" do
+      selected_roots = [
+        %{
+          "id" => "root_1",
+          "location" => %{
+            "type" => "environment",
+            "environmentId" => "env_1",
+            "path" => "file:///workspace/.codex/plugins/demo"
+          }
+        }
+      ]
+
+      environments = [%{"environmentId" => "env_1", "cwd" => "file:///workspace"}]
+
+      {:ok, opts} =
+        ThreadOptions.new(%{
+          allow_provider_model_fallback: true,
+          runtime_workspace_roots: ["/workspace"],
+          history_mode: :paginated,
+          thread_source: {:feature, "automation"},
+          selected_capability_roots: selected_roots,
+          environments: environments,
+          initial_turns_page: %{limit: 10, items_view: :summary}
+        })
+
+      assert opts.allow_provider_model_fallback == true
+      assert opts.runtime_workspace_roots == ["/workspace"]
+      assert opts.history_mode == "paginated"
+      assert opts.thread_source == "feature:automation"
+      assert opts.selected_capability_roots == selected_roots
+      assert opts.environments == environments
+      assert opts.initial_turns_page == %{limit: 10, items_view: :summary}
     end
 
     test "accepts dynamic tool specs for app-server thread start" do

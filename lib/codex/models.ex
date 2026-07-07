@@ -11,7 +11,8 @@ defmodule Codex.Models do
   alias Codex.Config.LayerStack
   alias Codex.Net.CA
 
-  @type reasoning_effort :: :none | :minimal | :low | :medium | :high | :xhigh
+  @type reasoning_effort ::
+          :none | :minimal | :low | :medium | :high | :xhigh | :max | :ultra | String.t()
 
   @type reasoning_effort_preset :: %{
           effort: reasoning_effort(),
@@ -42,7 +43,7 @@ defmodule Codex.Models do
 
   @type client_version :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}
 
-  @reasoning_efforts [:none, :minimal, :low, :medium, :high, :xhigh]
+  @reasoning_efforts [:none, :minimal, :low, :medium, :high, :xhigh, :max, :ultra]
   @reasoning_effort_aliases %{
     "none" => :none,
     "extra_high" => :xhigh,
@@ -51,7 +52,9 @@ defmodule Codex.Models do
     "low" => :low,
     "medium" => :medium,
     "high" => :high,
-    "xhigh" => :xhigh
+    "xhigh" => :xhigh,
+    "max" => :max,
+    "ultra" => :ultra
   }
 
   @doc """
@@ -112,7 +115,8 @@ defmodule Codex.Models do
   end
 
   def normalize_reasoning_effort(value) when is_binary(value) do
-    normalized = value |> String.trim() |> String.downcase()
+    trimmed = String.trim(value)
+    normalized = String.downcase(trimmed)
 
     cond do
       normalized == "" ->
@@ -122,7 +126,7 @@ defmodule Codex.Models do
         {:ok, Map.fetch!(@reasoning_effort_aliases, normalized)}
 
       true ->
-        {:error, {:invalid_reasoning_effort, normalized}}
+        {:ok, trimmed}
     end
   end
 
@@ -137,7 +141,8 @@ defmodule Codex.Models do
   @doc """
   Lists the valid reasoning effort values understood by the SDK.
   """
-  @spec reasoning_efforts() :: nonempty_list(reasoning_effort())
+  @spec reasoning_efforts() ::
+          nonempty_list(:none | :minimal | :low | :medium | :high | :xhigh | :max | :ultra)
   def reasoning_efforts, do: @reasoning_efforts
 
   @doc """
@@ -147,6 +152,8 @@ defmodule Codex.Models do
   def reasoning_effort_to_string(effort) when effort in @reasoning_efforts do
     Atom.to_string(effort)
   end
+
+  def reasoning_effort_to_string(effort) when is_binary(effort), do: effort
 
   @doc """
   Returns the upgrade information for a model, if available.

@@ -86,6 +86,7 @@ defmodule Codex.AppServer.ItemAdapter do
     {:ok,
      %Items.DynamicToolCall{
        id: Map.get(item, "id"),
+       namespace: Map.get(item, "namespace"),
        tool: Map.get(item, "tool") || "",
        arguments: Map.get(item, "arguments"),
        status: normalize_status(Map.get(item, "status")),

@@ -54,6 +54,7 @@ defmodule Codex.Items do
     "message" => :message,
     "model" => :model,
     "new_thread_id" => :new_thread_id,
+    "namespace" => :namespace,
     "parsed" => :parsed,
     "path" => :path,
     "phase" => :phase,
@@ -252,6 +253,7 @@ defmodule Codex.Items do
     @enforce_keys [:tool]
     defstruct id: nil,
               type: :dynamic_tool_call,
+              namespace: nil,
               tool: nil,
               arguments: nil,
               status: :in_progress,
@@ -264,6 +266,7 @@ defmodule Codex.Items do
     @type t :: %__MODULE__{
             id: String.t() | nil,
             type: :dynamic_tool_call,
+            namespace: String.t() | nil,
             tool: String.t(),
             arguments: map() | list() | String.t() | nil,
             status: status(),
@@ -642,6 +645,7 @@ defmodule Codex.Items do
 
   def to_map(%DynamicToolCall{} = item) do
     base_item_map(item, "dynamic_tool_call")
+    |> maybe_put("namespace", item.namespace)
     |> maybe_put("tool", item.tool)
     |> maybe_put("arguments", item.arguments)
     |> maybe_put("status", status_to_string(item.status, @dynamic_tool_status_map))
@@ -843,6 +847,7 @@ defmodule Codex.Items do
   defp parse_dynamic_tool_call(map) do
     %DynamicToolCall{
       id: get(map, :id),
+      namespace: get(map, :namespace),
       tool: get(map, :tool) || "",
       arguments: get(map, :arguments),
       status: parse_status(get(map, :status), @dynamic_tool_status_map, :in_progress),

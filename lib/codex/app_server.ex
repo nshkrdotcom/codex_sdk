@@ -52,6 +52,17 @@ defmodule Codex.AppServer do
         ]
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
+  @permissions_keys [
+    :permissions,
+    "permissions",
+    :permission_profile,
+    "permission_profile",
+    :permissionProfile,
+    "permissionProfile"
+  ]
+  @sandbox_keys [:sandbox, "sandbox"]
+  @sandbox_policy_keys [:sandbox_policy, "sandbox_policy", :sandboxPolicy, "sandboxPolicy"]
+  @service_tier_keys [:service_tier, "service_tier", :serviceTier, "serviceTier"]
 
   @doc """
   Starts a supervised `codex app-server` subprocess and completes the `initialize` handshake.
@@ -220,8 +231,11 @@ defmodule Codex.AppServer do
   @spec thread_start(connection(), map() | keyword()) :: {:ok, map()} | {:error, term()}
   def thread_start(conn, params \\ %{}) when is_pid(conn) do
     params = Params.normalize_map(params)
+    sandbox = params |> fetch_any(@sandbox_keys) |> Params.sandbox_mode()
+    permissions = permissions_param(params)
 
-    with {:ok, approval_policy} <-
+    with :ok <- reject_conflicting_permissions(permissions, sandbox, :sandbox),
+         {:ok, approval_policy} <-
            params
            |> fetch_any([:approval_policy, "approval_policy"])
            |> Params.ask_for_approval() do
@@ -233,8 +247,26 @@ defmodule Codex.AppServer do
           fetch_any(params, [:model_provider, "model_provider", :modelProvider, "modelProvider"])
         )
         |> Params.put_optional(
+          "allowProviderModelFallback",
+          fetch_any(params, [
+            :allow_provider_model_fallback,
+            "allow_provider_model_fallback",
+            :allowProviderModelFallback,
+            "allowProviderModelFallback"
+          ])
+        )
+        |> Params.put_optional(
           "cwd",
           fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+        )
+        |> Params.put_optional(
+          "runtimeWorkspaceRoots",
+          fetch_any(params, [
+            :runtime_workspace_roots,
+            "runtime_workspace_roots",
+            :runtimeWorkspaceRoots,
+            "runtimeWorkspaceRoots"
+          ])
         )
         |> Params.put_optional("approvalPolicy", approval_policy)
         |> Params.put_optional(
@@ -250,18 +282,11 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional(
           "sandbox",
-          params
-          |> fetch_any([:sandbox, "sandbox"])
-          |> Params.sandbox_mode()
+          sandbox
         )
         |> Params.put_optional(
-          "permissionProfile",
-          fetch_any(params, [
-            :permission_profile,
-            "permission_profile",
-            :permissionProfile,
-            "permissionProfile"
-          ])
+          "permissions",
+          permissions
         )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
@@ -284,6 +309,12 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
         |> Params.put_optional(
+          "historyMode",
+          params
+          |> fetch_any([:history_mode, "history_mode", :historyMode, "historyMode"])
+          |> Params.history_mode()
+        )
+        |> Params.put_optional(
           "sessionStartSource",
           params
           |> fetch_any([
@@ -295,14 +326,25 @@ defmodule Codex.AppServer do
           |> Params.thread_start_source()
         )
         |> Params.put_optional(
+          "threadSource",
+          params
+          |> fetch_any([:thread_source, "thread_source", :threadSource, "threadSource"])
+          |> Params.thread_source()
+        )
+        |> Params.put_optional(
           "serviceName",
           fetch_any(params, [:service_name, "service_name", :serviceName, "serviceName"])
         )
+        |> put_service_tier(params)
+        |> Params.put_optional("environments", fetch_any(params, [:environments, "environments"]))
         |> Params.put_optional(
-          "serviceTier",
-          params
-          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
-          |> Params.service_tier()
+          "selectedCapabilityRoots",
+          fetch_any(params, [
+            :selected_capability_roots,
+            "selected_capability_roots",
+            :selectedCapabilityRoots,
+            "selectedCapabilityRoots"
+          ])
         )
         |> Params.put_optional(
           "experimentalRawEvents",
@@ -326,8 +368,11 @@ defmodule Codex.AppServer do
           {:ok, map()} | {:error, term()}
   def thread_resume(conn, thread_id, params \\ %{}) when is_pid(conn) and is_binary(thread_id) do
     params = Params.normalize_map(params)
+    sandbox = params |> fetch_any(@sandbox_keys) |> Params.sandbox_mode()
+    permissions = permissions_param(params)
 
-    with {:ok, approval_policy} <-
+    with :ok <- reject_conflicting_permissions(permissions, sandbox, :sandbox),
+         {:ok, approval_policy} <-
            params
            |> fetch_any([:approval_policy, "approval_policy"])
            |> Params.ask_for_approval() do
@@ -344,6 +389,15 @@ defmodule Codex.AppServer do
           "cwd",
           fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
         )
+        |> Params.put_optional(
+          "runtimeWorkspaceRoots",
+          fetch_any(params, [
+            :runtime_workspace_roots,
+            "runtime_workspace_roots",
+            :runtimeWorkspaceRoots,
+            "runtimeWorkspaceRoots"
+          ])
+        )
         |> Params.put_optional("approvalPolicy", approval_policy)
         |> Params.put_optional(
           "approvalsReviewer",
@@ -358,18 +412,11 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional(
           "sandbox",
-          params
-          |> fetch_any([:sandbox, "sandbox"])
-          |> Params.sandbox_mode()
+          sandbox
         )
         |> Params.put_optional(
-          "permissionProfile",
-          fetch_any(params, [
-            :permission_profile,
-            "permission_profile",
-            :permissionProfile,
-            "permissionProfile"
-          ])
+          "permissions",
+          permissions
         )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
@@ -390,12 +437,7 @@ defmodule Codex.AppServer do
           "dynamicTools",
           fetch_any(params, [:dynamic_tools, "dynamic_tools", :dynamicTools, "dynamicTools"])
         )
-        |> Params.put_optional(
-          "serviceTier",
-          params
-          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
-          |> Params.service_tier()
-        )
+        |> put_service_tier(params)
         |> Params.put_optional(
           "experimentalRawEvents",
           fetch_any(params, [:experimental_raw_events, "experimental_raw_events"])
@@ -412,6 +454,17 @@ defmodule Codex.AppServer do
             :persistExtendedHistory,
             "persistExtendedHistory"
           ])
+        )
+        |> Params.put_optional(
+          "initialTurnsPage",
+          params
+          |> fetch_any([
+            :initial_turns_page,
+            "initial_turns_page",
+            :initialTurnsPage,
+            "initialTurnsPage"
+          ])
+          |> Params.initial_turns_page()
         )
 
       Connection.request(conn, "thread/resume", wire_params, timeout_ms: 30_000)
@@ -467,13 +520,20 @@ defmodule Codex.AppServer do
   def thread_fork(conn, thread_id, params \\ %{})
       when is_pid(conn) and is_binary(thread_id) do
     params = Params.normalize_map(params)
+    sandbox = params |> fetch_any(@sandbox_keys) |> Params.sandbox_mode()
+    permissions = permissions_param(params)
 
-    with {:ok, approval_policy} <-
+    with :ok <- reject_conflicting_permissions(permissions, sandbox, :sandbox),
+         {:ok, approval_policy} <-
            params
            |> fetch_any([:approval_policy, "approval_policy"])
            |> Params.ask_for_approval() do
       wire_params =
         %{"threadId" => thread_id}
+        |> Params.put_optional(
+          "lastTurnId",
+          fetch_any(params, [:last_turn_id, "last_turn_id", :lastTurnId, "lastTurnId"])
+        )
         |> Params.put_optional("path", fetch_any(params, [:path, "path"]))
         |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
         |> Params.put_optional(
@@ -483,6 +543,15 @@ defmodule Codex.AppServer do
         |> Params.put_optional(
           "cwd",
           fetch_any(params, [:cwd, "cwd", :working_directory, "working_directory"])
+        )
+        |> Params.put_optional(
+          "runtimeWorkspaceRoots",
+          fetch_any(params, [
+            :runtime_workspace_roots,
+            "runtime_workspace_roots",
+            :runtimeWorkspaceRoots,
+            "runtimeWorkspaceRoots"
+          ])
         )
         |> Params.put_optional("approvalPolicy", approval_policy)
         |> Params.put_optional(
@@ -498,18 +567,11 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional(
           "sandbox",
-          params
-          |> fetch_any([:sandbox, "sandbox"])
-          |> Params.sandbox_mode()
+          sandbox
         )
         |> Params.put_optional(
-          "permissionProfile",
-          fetch_any(params, [
-            :permission_profile,
-            "permission_profile",
-            :permissionProfile,
-            "permissionProfile"
-          ])
+          "permissions",
+          permissions
         )
         |> Params.put_optional("config", fetch_any(params, [:config, "config"]))
         |> Params.put_optional(
@@ -521,12 +583,7 @@ defmodule Codex.AppServer do
           fetch_any(params, [:developer_instructions, "developer_instructions"])
         )
         |> Params.put_optional("ephemeral", fetch_any(params, [:ephemeral, "ephemeral"]))
-        |> Params.put_optional(
-          "serviceTier",
-          params
-          |> fetch_any([:service_tier, "service_tier", :serviceTier, "serviceTier"])
-          |> Params.service_tier()
-        )
+        |> put_service_tier(params)
         |> Params.put_optional(
           "excludeTurns",
           fetch_any(params, [:exclude_turns, "exclude_turns", :excludeTurns, "excludeTurns"])
@@ -539,6 +596,12 @@ defmodule Codex.AppServer do
             :persistExtendedHistory,
             "persistExtendedHistory"
           ])
+        )
+        |> Params.put_optional(
+          "threadSource",
+          params
+          |> fetch_any([:thread_source, "thread_source", :threadSource, "threadSource"])
+          |> Params.thread_source()
         )
 
       Connection.request(conn, "thread/fork", wire_params, timeout_ms: 30_000)
@@ -583,8 +646,61 @@ defmodule Codex.AppServer do
         "sortDirection",
         Params.sort_direction(Keyword.get(opts, :sort_direction))
       )
+      |> Params.put_optional("itemsView", Params.turn_items_view(Keyword.get(opts, :items_view)))
 
     Connection.request(conn, "thread/turns/list", params, timeout_ms: timeout_ms)
+  end
+
+  @spec thread_items_list(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_items_list(conn, thread_id, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+
+    params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("turnId", Keyword.get(opts, :turn_id))
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional(
+        "sortDirection",
+        Params.sort_direction(Keyword.get(opts, :sort_direction))
+      )
+
+    Connection.request(conn, "thread/items/list", params, timeout_ms: timeout_ms)
+  end
+
+  @spec thread_search(connection(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec thread_search(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_search(conn, opts) when is_pid(conn) and is_list(opts) do
+    search_term = Keyword.get(opts, :search_term) || Keyword.get(opts, :searchTerm)
+    do_thread_search(conn, search_term, opts)
+  end
+
+  def thread_search(conn, search_term, opts \\ [])
+      when is_pid(conn) and is_binary(search_term) and is_list(opts) do
+    do_thread_search(conn, search_term, opts)
+  end
+
+  defp do_thread_search(conn, search_term, opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+
+    params =
+      %{}
+      |> Params.put_optional("searchTerm", search_term)
+      |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+      |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional("sortKey", Params.thread_sort_key(Keyword.get(opts, :sort_key)))
+      |> Params.put_optional(
+        "sortDirection",
+        Params.sort_direction(Keyword.get(opts, :sort_direction))
+      )
+      |> Params.put_optional(
+        "sourceKinds",
+        normalize_thread_source_kinds(Keyword.get(opts, :source_kinds))
+      )
+      |> Params.put_optional("archived", Keyword.get(opts, :archived))
+
+    Connection.request(conn, "thread/search", params, timeout_ms: timeout_ms)
   end
 
   @spec thread_inject_items(connection(), String.t(), [map()]) :: {:ok, map()} | {:error, term()}
@@ -723,9 +839,14 @@ defmodule Codex.AppServer do
           {:ok, map()} | {:error, term()}
   def turn_start(conn, thread_id, input, opts \\ [])
       when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
-    with {:ok, approval_policy} <-
-           opts
-           |> Keyword.get(:approval_policy)
+    opts_map = Params.normalize_map(opts)
+    sandbox_policy = opts_map |> fetch_any(@sandbox_policy_keys) |> Params.sandbox_policy()
+    permissions = permissions_param(opts_map)
+
+    with :ok <- reject_conflicting_permissions(permissions, sandbox_policy, :sandbox_policy),
+         {:ok, approval_policy} <-
+           opts_map
+           |> fetch_any([:approval_policy, "approval_policy"])
            |> Params.ask_for_approval() do
       collaboration_mode =
         opts
@@ -737,7 +858,27 @@ defmodule Codex.AppServer do
           "threadId" => thread_id,
           "input" => Params.user_input(input)
         }
+        |> Params.put_optional(
+          "clientUserMessageId",
+          opts_map
+          |> fetch_any([
+            :client_user_message_id,
+            "client_user_message_id",
+            :clientUserMessageId,
+            "clientUserMessageId"
+          ])
+        )
         |> Params.put_optional("cwd", Keyword.get(opts, :cwd))
+        |> Params.put_optional(
+          "runtimeWorkspaceRoots",
+          opts_map
+          |> fetch_any([
+            :runtime_workspace_roots,
+            "runtime_workspace_roots",
+            :runtimeWorkspaceRoots,
+            "runtimeWorkspaceRoots"
+          ])
+        )
         |> Params.put_optional("approvalPolicy", approval_policy)
         |> Params.put_optional(
           "approvalsReviewer",
@@ -747,9 +888,9 @@ defmodule Codex.AppServer do
         )
         |> Params.put_optional(
           "sandboxPolicy",
-          opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
+          sandbox_policy
         )
-        |> Params.put_optional("permissionProfile", Keyword.get(opts, :permission_profile))
+        |> Params.put_optional("permissions", permissions)
         |> Params.put_optional("model", Keyword.get(opts, :model))
         |> Params.put_optional(
           "effort",
@@ -769,11 +910,18 @@ defmodule Codex.AppServer do
           "responsesapiClientMetadata",
           Keyword.get(opts, :responsesapi_client_metadata)
         )
-        |> Params.put_optional("environments", Keyword.get(opts, :environments))
         |> Params.put_optional(
-          "serviceTier",
-          opts |> Keyword.get(:service_tier) |> Params.service_tier()
+          "additionalContext",
+          opts_map
+          |> fetch_any([
+            :additional_context,
+            "additional_context",
+            :additionalContext,
+            "additionalContext"
+          ])
         )
+        |> Params.put_optional("environments", Keyword.get(opts, :environments))
+        |> put_service_tier(opts_map)
 
       Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
     end
@@ -1095,6 +1243,37 @@ defmodule Codex.AppServer do
   end
 
   @doc """
+  Registers an execution environment backed by an exec-server websocket.
+  """
+  @spec environment_add(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def environment_add(conn, environment_id, exec_server_url, opts \\ [])
+      when is_pid(conn) and is_binary(environment_id) and is_binary(exec_server_url) and
+             is_list(opts) do
+    params =
+      %{
+        "environmentId" => environment_id,
+        "execServerUrl" => exec_server_url
+      }
+      |> Params.put_optional("connectTimeoutMs", Keyword.get(opts, :connect_timeout_ms))
+
+    Connection.request(conn, "environment/add", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads shell and cwd metadata for a registered execution environment.
+  """
+  @spec environment_info(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def environment_info(conn, environment_id) when is_pid(conn) and is_binary(environment_id) do
+    Connection.request(
+      conn,
+      "environment/info",
+      %{"environmentId" => environment_id},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
   Adds a marketplace source through the app-server marketplace API.
   """
   @spec marketplace_add(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -1198,6 +1377,7 @@ defmodule Codex.AppServer do
            encode_plugin_request_params(
              "plugin/list",
              cwds: Keyword.get(opts, :cwds),
+             marketplace_kinds: Keyword.get(opts, :marketplace_kinds),
              force_remote_sync: Keyword.get(opts, :force_remote_sync)
            ) do
       Connection.request(conn, "plugin/list", params, timeout_ms: 30_000)
@@ -1489,7 +1669,6 @@ defmodule Codex.AppServer do
         "sandboxPolicy",
         opts |> Keyword.get(:sandbox_policy) |> Params.sandbox_policy()
       )
-      |> Params.put_optional("permissionProfile", Keyword.get(opts, :permission_profile))
 
     request_timeout_ms =
       cond do
@@ -1837,6 +2016,39 @@ defmodule Codex.AppServer do
   end
 
   defp fetch_any(%{} = map, keys) when is_list(keys) do
-    Enum.find_value(keys, &Map.get(map, &1))
+    Enum.reduce_while(keys, nil, fn key, _acc ->
+      case Map.fetch(map, key) do
+        {:ok, value} -> {:halt, value}
+        :error -> {:cont, nil}
+      end
+    end)
+  end
+
+  defp fetch_present_any(%{} = map, keys) when is_list(keys) do
+    Enum.reduce_while(keys, :error, fn key, _acc ->
+      case Map.fetch(map, key) do
+        {:ok, value} -> {:halt, {:ok, value}}
+        :error -> {:cont, :error}
+      end
+    end)
+  end
+
+  defp permissions_param(%{} = params) do
+    params
+    |> fetch_any(@permissions_keys)
+    |> Params.permissions()
+  end
+
+  defp reject_conflicting_permissions(nil, _sandbox, _field), do: :ok
+  defp reject_conflicting_permissions(_permissions, nil, _field), do: :ok
+
+  defp reject_conflicting_permissions(_permissions, _sandbox, field),
+    do: {:error, {:conflicting_permissions, field}}
+
+  defp put_service_tier(wire_params, %{} = params) do
+    case fetch_present_any(params, @service_tier_keys) do
+      {:ok, value} -> Map.put(wire_params, "serviceTier", Params.service_tier(value))
+      :error -> wire_params
+    end
   end
 end

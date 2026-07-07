@@ -78,6 +78,21 @@ defmodule Codex.AppServer.Params do
   def service_tier(value) when is_binary(value), do: value
   def service_tier(_), do: nil
 
+  @spec permissions(atom() | String.t() | term() | nil) :: String.t() | term() | nil
+  def permissions(nil), do: nil
+  def permissions(value) when is_atom(value), do: Atom.to_string(value)
+
+  def permissions(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  def permissions(value), do: value
+
   @spec personality(atom() | String.t() | nil) :: String.t() | nil
   def personality(nil), do: nil
   def personality(:friendly), do: "friendly"
@@ -165,6 +180,26 @@ defmodule Codex.AppServer.Params do
   def thread_start_source("clear"), do: "clear"
   def thread_start_source(value) when is_binary(value), do: value
   def thread_start_source(_), do: nil
+
+  @spec history_mode(atom() | String.t() | nil) :: String.t() | nil
+  def history_mode(nil), do: nil
+  def history_mode(:legacy), do: "legacy"
+  def history_mode(:paginated), do: "paginated"
+  def history_mode("legacy"), do: "legacy"
+  def history_mode("paginated"), do: "paginated"
+  def history_mode(value) when is_binary(value), do: value
+  def history_mode(_), do: nil
+
+  @spec thread_source(atom() | String.t() | {:feature, String.t()} | nil) :: String.t() | nil
+  def thread_source(nil), do: nil
+  def thread_source(:user), do: "user"
+  def thread_source(:subagent), do: "subagent"
+  def thread_source(:sub_agent), do: "subagent"
+  def thread_source(:memory_consolidation), do: "memory_consolidation"
+  def thread_source({:feature, feature}) when is_binary(feature), do: "feature:#{feature}"
+  def thread_source(value) when is_binary(value), do: value
+  def thread_source(value) when is_atom(value), do: Atom.to_string(value)
+  def thread_source(_), do: nil
 
   @spec realtime_output_modality(atom() | String.t() | nil) :: String.t() | nil
   def realtime_output_modality(nil), do: nil
@@ -528,6 +563,48 @@ defmodule Codex.AppServer.Params do
     do: Atom.to_string(value)
 
   defp normalize_collaboration_value(_key, value), do: value
+
+  @spec turn_items_view(atom() | String.t() | nil) :: String.t() | nil
+  def turn_items_view(nil), do: nil
+  def turn_items_view(:not_loaded), do: "notLoaded"
+  def turn_items_view(:notLoaded), do: "notLoaded"
+  def turn_items_view(:summary), do: "summary"
+  def turn_items_view(:full), do: "full"
+  def turn_items_view("not_loaded"), do: "notLoaded"
+  def turn_items_view("notLoaded"), do: "notLoaded"
+  def turn_items_view("summary"), do: "summary"
+  def turn_items_view("full"), do: "full"
+  def turn_items_view(value) when is_binary(value), do: value
+  def turn_items_view(_), do: nil
+
+  @spec initial_turns_page(map() | keyword() | nil) :: map() | nil
+  def initial_turns_page(nil), do: nil
+  def initial_turns_page(page) when is_list(page), do: page |> Map.new() |> initial_turns_page()
+
+  def initial_turns_page(%{} = page) do
+    page = normalize_map(page)
+
+    %{}
+    |> put_optional("limit", fetch_any(page, [:limit, "limit"]))
+    |> put_optional(
+      "sortDirection",
+      page
+      |> fetch_any([:sort_direction, "sort_direction", :sortDirection, "sortDirection"])
+      |> sort_direction()
+    )
+    |> put_optional(
+      "itemsView",
+      page
+      |> fetch_any([:items_view, "items_view", :itemsView, "itemsView"])
+      |> turn_items_view()
+    )
+    |> case do
+      %{} = result when map_size(result) == 0 -> nil
+      %{} = result -> result
+    end
+  end
+
+  def initial_turns_page(_), do: nil
 
   defp normalize_sandbox_policy(%{} = policy) do
     type =

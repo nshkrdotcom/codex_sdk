@@ -184,13 +184,13 @@ defmodule Codex.Protocol.PluginTest do
   test "param modules encode app-server wire casing" do
     assert %{
              "cwds" => ["/tmp/project"],
-             "forceRemoteSync" => true,
+             "marketplaceKinds" => ["local", "workspace-directory"],
              "futureListField" => "kept"
            } =
              Plugin.ListParams.to_map(
                Plugin.ListParams.from_map(
                  cwds: ["/tmp/project"],
-                 force_remote_sync: true,
+                 marketplace_kinds: [:local, :workspace_directory],
                  futureListField: "kept"
                )
              )

@@ -52,7 +52,7 @@ defmodule CodexSdk.MixProject do
     [
       cli_subprocess_core_dep(),
       {:jason, "~> 1.4"},
-      {:zoi, "~> 0.17"},
+      {:zoi, "~> 0.18"},
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.4"},
       {:opentelemetry, "~> 1.7"},

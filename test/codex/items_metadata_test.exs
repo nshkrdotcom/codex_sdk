@@ -32,4 +32,33 @@ defmodule Codex.ItemsMetadataTest do
              "status" => "completed"
            } = Items.to_map(item)
   end
+
+  test "dynamic tool call preserves namespace through parse and to_map" do
+    item =
+      Items.parse!(%{
+        "type" => "dynamic_tool_call",
+        "id" => "dyn_1",
+        "namespace" => "mcp__codex_apps__gmail",
+        "tool" => "send_email",
+        "arguments" => %{"to" => "team@example.com"},
+        "status" => "completed"
+      })
+
+    assert %Items.DynamicToolCall{
+             id: "dyn_1",
+             namespace: "mcp__codex_apps__gmail",
+             tool: "send_email",
+             arguments: %{"to" => "team@example.com"},
+             status: :completed
+           } = item
+
+    assert %{
+             "type" => "dynamic_tool_call",
+             "id" => "dyn_1",
+             "namespace" => "mcp__codex_apps__gmail",
+             "tool" => "send_email",
+             "arguments" => %{"to" => "team@example.com"},
+             "status" => "completed"
+           } = Items.to_map(item)
+  end
 end
