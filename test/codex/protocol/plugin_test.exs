@@ -94,6 +94,30 @@ defmodule Codex.Protocol.PluginTest do
            } = Plugin.ListResponse.to_map(Plugin.ListResponse.from_map(payload))
   end
 
+  test "plugin summary parses and round-trips the remote-marketplace version field" do
+    payload = %{
+      "id" => "demo-plugin@codex-curated",
+      "name" => "demo-plugin",
+      "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+      "installed" => true,
+      "enabled" => true,
+      "installPolicy" => "AVAILABLE",
+      "authPolicy" => "ON_INSTALL",
+      "version" => "1.2.3"
+    }
+
+    assert {:ok, %Plugin.Summary{version: "1.2.3"}} = Plugin.Summary.parse(payload)
+    assert %{"version" => "1.2.3"} = Plugin.Summary.to_map(Plugin.Summary.from_map(payload))
+
+    without_version = Map.delete(payload, "version")
+    assert {:ok, %Plugin.Summary{version: nil}} = Plugin.Summary.parse(without_version)
+
+    refute Map.has_key?(
+             Plugin.Summary.to_map(Plugin.Summary.from_map(without_version)),
+             "version"
+           )
+  end
+
   test "read response parses app needsAuth and preserves unknown plugin metadata" do
     payload = %{
       "plugin" => %{

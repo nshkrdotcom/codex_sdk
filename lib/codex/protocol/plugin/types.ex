@@ -537,7 +537,8 @@ defmodule Codex.Protocol.Plugin.Summary do
     "enabled",
     "installPolicy",
     "authPolicy",
-    "interface"
+    "interface",
+    "version"
   ]
   @schema Zoi.map(
             %{
@@ -548,7 +549,8 @@ defmodule Codex.Protocol.Plugin.Summary do
               "enabled" => Zoi.boolean(),
               "installPolicy" => InstallPolicy.schema(),
               "authPolicy" => AuthPolicy.schema(),
-              "interface" => Helpers.optional_map()
+              "interface" => Helpers.optional_map(),
+              "version" => Helpers.optional_string()
             },
             unrecognized_keys: :preserve
           )
@@ -562,6 +564,9 @@ defmodule Codex.Protocol.Plugin.Summary do
     field(:install_policy, InstallPolicy.t(), enforce: true)
     field(:auth_policy, AuthPolicy.t(), enforce: true)
     field(:interface, Interface.t() | nil)
+    # Remote-marketplace advertised version, distinct from any locally
+    # materialized package version that may ride along in `extra`.
+    field(:version, String.t() | nil)
     field(:extra, map(), default: %{})
   end
 
@@ -597,6 +602,7 @@ defmodule Codex.Protocol.Plugin.Summary do
       "authPolicy" => AuthPolicy.to_wire(value.auth_policy)
     }
     |> Helpers.maybe_put("interface", Helpers.encode_nested(value.interface, Interface))
+    |> Helpers.maybe_put("version", value.version)
     |> Map.merge(value.extra)
   end
 
@@ -612,6 +618,7 @@ defmodule Codex.Protocol.Plugin.Summary do
       install_policy: Map.fetch!(known, "installPolicy"),
       auth_policy: Map.fetch!(known, "authPolicy"),
       interface: Helpers.parse_nested(Map.get(known, "interface"), Interface),
+      version: Map.get(known, "version"),
       extra: extra
     }
   end
