@@ -2672,6 +2672,74 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"status" => "sent"}} = Task.await(task, 200)
   end
 
+  test "account usage/workspace-messages/reset-credit wrappers encode current params", %{
+    conn: conn
+  } do
+    usage_task = Task.async(fn -> AppServer.Account.usage(conn) end)
+    assert_receive {:app_server_subprocess_send, ^conn, usage_line}
+
+    assert {:ok, %{"id" => usage_id, "method" => "account/usage/read", "params" => nil}} =
+             Jason.decode(usage_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(usage_id, %{
+        "summary" => %{"lifetimeTokens" => 100},
+        "dailyUsageBuckets" => nil
+      })
+    )
+
+    assert {:ok, %{"summary" => %{"lifetimeTokens" => 100}}} = Task.await(usage_task, 200)
+
+    messages_task = Task.async(fn -> AppServer.Account.workspace_messages(conn) end)
+    assert_receive {:app_server_subprocess_send, ^conn, messages_line}
+
+    assert {:ok,
+            %{
+              "id" => messages_id,
+              "method" => "account/workspaceMessages/read",
+              "params" => nil
+            }} = Jason.decode(messages_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(messages_id, %{"featureEnabled" => true, "messages" => []})
+    )
+
+    assert {:ok, %{"featureEnabled" => true, "messages" => []}} =
+             Task.await(messages_task, 200)
+
+    consume_task =
+      Task.async(fn ->
+        AppServer.Account.consume_rate_limit_reset_credit(conn, credit_id: "credit_1")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, consume_line}
+
+    assert {:ok,
+            %{
+              "id" => consume_id,
+              "method" => "account/rateLimitResetCredit/consume",
+              "params" => %{"creditId" => "credit_1"}
+            }} = Jason.decode(consume_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(consume_id, %{"status" => "ok"}))
+
+    assert {:ok, %{"status" => "ok"}} = Task.await(consume_task, 200)
+  end
+
+  test "consume_rate_limit_reset_credit/2 omits creditId when not supplied", %{conn: conn} do
+    task = Task.async(fn -> AppServer.Account.consume_rate_limit_reset_credit(conn) end)
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok, %{"method" => "account/rateLimitResetCredit/consume", "params" => %{} = params}} =
+             Jason.decode(request_line)
+
+    refute Map.has_key?(params, "creditId")
+
+    req_id = Jason.decode!(request_line)["id"]
+    AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "ok"}))
+    assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
+  end
+
   test "model, realtime, and windows sandbox wrappers encode current params", %{
     conn: conn
   } do
@@ -2806,6 +2874,217 @@ defmodule Codex.AppServer.ApiTest do
       AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "started"}))
 
       assert {:ok, %{"status" => "started"}} = Task.await(task, 200)
+    end
+  end
+
+  describe "Stage 5 P1 wrappers" do
+    test "thread_delete/2 encodes threadId", %{conn: conn} do
+      task = Task.async(fn -> AppServer.thread_delete(conn, "thr_123") end)
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "thread/delete",
+                "params" => %{"threadId" => "thr_123"}
+              }} =
+               Jason.decode(request_line)
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"deleted" => true}))
+      assert {:ok, %{"deleted" => true}} = Task.await(task, 200)
+    end
+
+    test "thread_settings_update/3 encodes overrides including double-option serviceTier", %{
+      conn: conn
+    } do
+      task =
+        Task.async(fn ->
+          AppServer.thread_settings_update(conn, "thr_123",
+            cwd: "/tmp",
+            approval_policy: :on_request,
+            approvals_reviewer: :auto_review,
+            sandbox_policy: %{type: :workspace_write, writable_roots: ["/tmp"]},
+            model: "gpt-5.5",
+            service_tier: nil,
+            effort: :high,
+            summary: :concise
+          )
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok, %{"id" => req_id, "method" => "thread/settings/update", "params" => params}} =
+               Jason.decode(request_line)
+
+      assert params["threadId"] == "thr_123"
+      assert params["cwd"] == "/tmp"
+      assert params["approvalPolicy"] == "on-request"
+      assert params["approvalsReviewer"] == "auto_review"
+      assert params["sandboxPolicy"]["type"] == "workspaceWrite"
+      assert params["model"] == "gpt-5.5"
+      assert Map.has_key?(params, "serviceTier")
+      assert params["serviceTier"] == nil
+      assert params["effort"] == "high"
+      assert params["summary"] == "concise"
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "queued"}))
+      assert {:ok, %{"status" => "queued"}} = Task.await(task, 200)
+    end
+
+    test "thread_settings_update/3 omits serviceTier entirely when not supplied", %{conn: conn} do
+      task =
+        Task.async(fn -> AppServer.thread_settings_update(conn, "thr_123", model: "gpt-5.5") end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok, %{"id" => req_id, "params" => params}} = Jason.decode(request_line)
+      refute Map.has_key?(params, "serviceTier")
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "queued"}))
+      assert {:ok, %{"status" => "queued"}} = Task.await(task, 200)
+    end
+
+    test "background terminal wrappers encode thread-scoped params", %{conn: conn} do
+      clean_task =
+        Task.async(fn -> AppServer.thread_background_terminals_clean(conn, "thr_1") end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, clean_line}
+
+      assert {:ok,
+              %{
+                "id" => clean_id,
+                "method" => "thread/backgroundTerminals/clean",
+                "params" => %{"threadId" => "thr_1"}
+              }} = Jason.decode(clean_line)
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(clean_id, %{}))
+      assert {:ok, %{}} = Task.await(clean_task, 200)
+
+      list_task =
+        Task.async(fn ->
+          AppServer.thread_background_terminals_list(conn, "thr_1", limit: 10, cursor: "abc")
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, list_line}
+
+      assert {:ok,
+              %{
+                "id" => list_id,
+                "method" => "thread/backgroundTerminals/list",
+                "params" => %{"threadId" => "thr_1", "limit" => 10, "cursor" => "abc"}
+              }} = Jason.decode(list_line)
+
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(list_id, %{"data" => [], "nextCursor" => nil})
+      )
+
+      assert {:ok, %{"data" => []}} = Task.await(list_task, 200)
+
+      terminate_task =
+        Task.async(fn ->
+          AppServer.thread_background_terminals_terminate(conn, "thr_1", "proc_1")
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, terminate_line}
+
+      assert {:ok,
+              %{
+                "id" => terminate_id,
+                "method" => "thread/backgroundTerminals/terminate",
+                "params" => %{"threadId" => "thr_1", "processId" => "proc_1"}
+              }} = Jason.decode(terminate_line)
+
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(terminate_id, %{"terminated" => true})
+      )
+
+      assert {:ok, %{"terminated" => true}} = Task.await(terminate_task, 200)
+    end
+
+    test "permission_profile_list/2 encodes pagination params", %{conn: conn} do
+      task =
+        Task.async(fn -> AppServer.permission_profile_list(conn, limit: 5, cursor: "next") end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok,
+              %{
+                "id" => req_id,
+                "method" => "permissionProfile/list",
+                "params" => %{"limit" => 5, "cursor" => "next"}
+              }} = Jason.decode(request_line)
+
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(req_id, %{"data" => [], "nextCursor" => nil})
+      )
+
+      assert {:ok, %{"data" => []}} = Task.await(task, 200)
+    end
+
+    test "model_provider_capabilities_read/1 sends an empty request", %{conn: conn} do
+      task = Task.async(fn -> AppServer.model_provider_capabilities_read(conn) end)
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok, %{"id" => req_id, "method" => "modelProvider/capabilities/read"}} =
+               Jason.decode(request_line)
+
+      AppServerSubprocess.send_stdout(
+        Protocol.encode_response(req_id, %{
+          "namespaceTools" => true,
+          "imageGeneration" => true,
+          "webSearch" => false
+        })
+      )
+
+      assert {:ok, %{"namespaceTools" => true}} = Task.await(task, 200)
+    end
+
+    test "thread_realtime_start/4 encodes flushTranscriptTailOnSessionEnd", %{conn: conn} do
+      task =
+        Task.async(fn ->
+          AppServer.thread_realtime_start(conn, "thr_1", "hello",
+            flush_transcript_tail_on_session_end: true
+          )
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+      assert {:ok, %{"id" => req_id, "params" => params}} = Jason.decode(request_line)
+      assert params["flushTranscriptTailOnSessionEnd"] == true
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(req_id, %{"status" => "ok"}))
+      assert {:ok, %{"status" => "ok"}} = Task.await(task, 200)
+    end
+
+    test "thread_realtime_append_speech/3 and thread_realtime_list_voices/1 encode params", %{
+      conn: conn
+    } do
+      speech_task =
+        Task.async(fn ->
+          AppServer.thread_realtime_append_speech(conn, "thr_1", "hello there")
+        end)
+
+      assert_receive {:app_server_subprocess_send, ^conn, speech_line}
+
+      assert {:ok,
+              %{
+                "id" => speech_id,
+                "method" => "thread/realtime/appendSpeech",
+                "params" => %{"threadId" => "thr_1", "text" => "hello there"}
+              }} = Jason.decode(speech_line)
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(speech_id, %{}))
+      assert {:ok, %{}} = Task.await(speech_task, 200)
+
+      voices_task = Task.async(fn -> AppServer.thread_realtime_list_voices(conn) end)
+      assert_receive {:app_server_subprocess_send, ^conn, voices_line}
+
+      assert {:ok,
+              %{"id" => voices_id, "method" => "thread/realtime/listVoices", "params" => %{}}} =
+               Jason.decode(voices_line)
+
+      AppServerSubprocess.send_stdout(Protocol.encode_response(voices_id, %{"voices" => []}))
+      assert {:ok, %{"voices" => []}} = Task.await(voices_task, 200)
     end
   end
 end

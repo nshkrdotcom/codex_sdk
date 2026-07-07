@@ -994,6 +994,10 @@ defmodule Codex.AppServer do
         |> Params.realtime_output_modality()
       )
       |> Params.put_optional("sessionId", Keyword.get(opts, :session_id))
+      |> Params.put_optional(
+        "flushTranscriptTailOnSessionEnd",
+        Keyword.get(opts, :flush_transcript_tail_on_session_end)
+      )
 
     Connection.request(conn, "thread/realtime/start", params, timeout_ms: 30_000)
   end
@@ -1027,6 +1031,148 @@ defmodule Codex.AppServer do
     Connection.request(conn, "thread/realtime/stop", %{"threadId" => thread_id},
       timeout_ms: 30_000
     )
+  end
+
+  @spec thread_delete(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def thread_delete(conn, thread_id) when is_pid(conn) and is_binary(thread_id) do
+    Connection.request(conn, "thread/delete", %{"threadId" => thread_id}, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Updates persistent settings for subsequent turns on a thread.
+
+  Accepts `cwd`, `approval_policy`, `approvals_reviewer`, `sandbox_policy`,
+  `permissions`, `model`, `service_tier` (double-option: omit to leave
+  unchanged, pass `nil`/`:clear` to explicitly clear it), `effort`, `summary`,
+  and `collaboration_mode`. The app-server only acknowledges the update is
+  queued; wait for the `thread/settings/updated` notification for the
+  applied result.
+  """
+  @spec thread_settings_update(connection(), String.t(), map() | keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_settings_update(conn, thread_id, params \\ [])
+      when is_pid(conn) and is_binary(thread_id) do
+    params = Params.normalize_map(params)
+
+    sandbox_policy =
+      params |> fetch_any([:sandbox_policy, "sandbox_policy"]) |> Params.sandbox_policy()
+
+    permissions = permissions_param(params)
+
+    with :ok <- reject_conflicting_permissions(permissions, sandbox_policy, :sandbox_policy),
+         {:ok, approval_policy} <-
+           params
+           |> fetch_any([:approval_policy, "approval_policy"])
+           |> Params.ask_for_approval() do
+      wire_params =
+        %{"threadId" => thread_id}
+        |> Params.put_optional("cwd", fetch_any(params, [:cwd, "cwd"]))
+        |> Params.put_optional("approvalPolicy", approval_policy)
+        |> Params.put_optional(
+          "approvalsReviewer",
+          params
+          |> fetch_any([:approvals_reviewer, "approvals_reviewer"])
+          |> Params.approvals_reviewer()
+        )
+        |> Params.put_optional("sandboxPolicy", sandbox_policy)
+        |> Params.put_optional("permissions", permissions)
+        |> Params.put_optional("model", fetch_any(params, [:model, "model"]))
+        |> put_service_tier(params)
+        |> Params.put_optional(
+          "effort",
+          params |> fetch_any([:effort, "effort"]) |> Params.reasoning_effort()
+        )
+        |> Params.put_optional("summary", fetch_any(params, [:summary, "summary"]))
+        |> Params.put_optional(
+          "collaborationMode",
+          params
+          |> fetch_any([:collaboration_mode, "collaboration_mode"])
+          |> Params.collaboration_mode()
+        )
+
+      Connection.request(conn, "thread/settings/update", wire_params, timeout_ms: 30_000)
+    end
+  end
+
+  @spec thread_background_terminals_clean(connection(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_background_terminals_clean(conn, thread_id)
+      when is_pid(conn) and is_binary(thread_id) do
+    Connection.request(
+      conn,
+      "thread/backgroundTerminals/clean",
+      %{"threadId" => thread_id},
+      timeout_ms: 30_000
+    )
+  end
+
+  @spec thread_background_terminals_list(connection(), String.t(), map() | keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_background_terminals_list(conn, thread_id, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) do
+    opts_map = Params.normalize_map(opts)
+
+    params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("cursor", fetch_any(opts_map, [:cursor, "cursor"]))
+      |> Params.put_optional("limit", fetch_any(opts_map, [:limit, "limit"]))
+
+    Connection.request(conn, "thread/backgroundTerminals/list", params, timeout_ms: 30_000)
+  end
+
+  @spec thread_background_terminals_terminate(connection(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_background_terminals_terminate(conn, thread_id, process_id)
+      when is_pid(conn) and is_binary(thread_id) and is_binary(process_id) do
+    Connection.request(
+      conn,
+      "thread/backgroundTerminals/terminate",
+      %{"threadId" => thread_id, "processId" => process_id},
+      timeout_ms: 30_000
+    )
+  end
+
+  @doc """
+  Lists available named permission profiles (id, description, allowed status).
+  """
+  @spec permission_profile_list(connection(), map() | keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def permission_profile_list(conn, opts \\ []) when is_pid(conn) do
+    opts_map = Params.normalize_map(opts)
+
+    params =
+      %{}
+      |> Params.put_optional("cursor", fetch_any(opts_map, [:cursor, "cursor"]))
+      |> Params.put_optional("limit", fetch_any(opts_map, [:limit, "limit"]))
+      |> Params.put_optional("cwd", fetch_any(opts_map, [:cwd, "cwd"]))
+
+    Connection.request(conn, "permissionProfile/list", params, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads the active model provider's capability flags (namespace tools, image
+  generation, web search).
+  """
+  @spec model_provider_capabilities_read(connection()) :: {:ok, map()} | {:error, term()}
+  def model_provider_capabilities_read(conn) when is_pid(conn) do
+    Connection.request(conn, "modelProvider/capabilities/read", %{}, timeout_ms: 30_000)
+  end
+
+  @spec thread_realtime_append_speech(connection(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_realtime_append_speech(conn, thread_id, text)
+      when is_pid(conn) and is_binary(thread_id) and is_binary(text) do
+    Connection.request(
+      conn,
+      "thread/realtime/appendSpeech",
+      %{"threadId" => thread_id, "text" => text},
+      timeout_ms: 30_000
+    )
+  end
+
+  @spec thread_realtime_list_voices(connection()) :: {:ok, map()} | {:error, term()}
+  def thread_realtime_list_voices(conn) when is_pid(conn) do
+    Connection.request(conn, "thread/realtime/listVoices", %{}, timeout_ms: 30_000)
   end
 
   @spec skills_list(connection(), keyword()) :: {:ok, map()} | {:error, term()}

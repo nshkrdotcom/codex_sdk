@@ -89,6 +89,48 @@ defmodule Codex.AppServer.Account do
     Connection.request(conn, "account/sendAddCreditsNudgeEmail", params, timeout_ms: 30_000)
   end
 
+  @doc """
+  Reads account token usage (lifetime/streak summary plus optional daily buckets).
+  """
+  @spec usage(connection()) :: {:ok, map()} | {:error, term()}
+  def usage(conn) when is_pid(conn) do
+    Connection.request(conn, "account/usage/read", nil, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Reads active workspace messages (headlines/announcements) for the account.
+  """
+  @spec workspace_messages(connection()) :: {:ok, map()} | {:error, term()}
+  def workspace_messages(conn) when is_pid(conn) do
+    Connection.request(conn, "account/workspaceMessages/read", nil, timeout_ms: 30_000)
+  end
+
+  @doc """
+  Consumes a rate-limit reset credit.
+
+  Pass `credit_id:` to redeem a specific credit (from `rate_limits/1`'s
+  `rateLimitResetCredits.credits` list); omit it to let the backend
+  auto-select the next available credit.
+  """
+  @spec consume_rate_limit_reset_credit(connection(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def consume_rate_limit_reset_credit(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
+    credit_id = Keyword.get(opts, :credit_id, Keyword.get(opts, :creditId))
+    idempotency_key = Keyword.get(opts, :idempotency_key, Keyword.get(opts, :idempotencyKey))
+
+    params =
+      %{}
+      |> Params.put_optional("creditId", credit_id)
+      |> Params.put_optional("idempotencyKey", idempotency_key)
+
+    Connection.request(
+      conn,
+      "account/rateLimitResetCredit/consume",
+      params,
+      timeout_ms: 30_000
+    )
+  end
+
   defp enforce_login_constraints(login_type, params, opts) do
     with {:ok, %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id}} <-
            load_forced_login_config(opts),
