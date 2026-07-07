@@ -418,8 +418,8 @@ Start simple.
 - use `gpt-5.4` for the parent and for agents handling harder reasoning or
   ambiguous work
 - use `gpt-5.4-mini` for faster, lower-cost day-to-day parent/child examples
-- use `gpt-5.3-codex-spark` only when your account/runtime exposes it and you
-  want a faster read-heavy or summarization-focused agent
+- use `gpt-5.3-codex` for a coding-optimized agent when `gpt-5.4` is more than
+  the task needs
 - use `medium` reasoning effort as the default unless you have a clear reason
   to go lower or higher
 

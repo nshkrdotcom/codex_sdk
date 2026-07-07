@@ -1690,7 +1690,7 @@ Thread-specific configuration.
 - `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
-- `permission_profile`: App-server full permissions profile override, forwarded as `permissionProfile`
+- `permissions`: App-server named permissions profile override, forwarded as `permissions` (upstream's current field; `permission_profile`/`permissionProfile` remain accepted as input aliases). Cannot be combined with `sandbox`/`sandbox_policy`.
 - `working_directory`: Working directory passed to codex (`--cd` / `cwd`)
 - `additional_directories`: Extra writable roots (`--add-dir`)
 - `skip_git_repo_check`: Allow running outside a Git repo

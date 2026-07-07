@@ -7,25 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-06
+
 ### Added
 
 - App-server dynamic host tool support through `Codex.Thread.Options.dynamic_tools`,
   rendering upstream `dynamicTools` on both `thread/start` and `thread/resume`,
   plus live documentation and `examples/live_app_server_dynamic_tools.exs` for
   `DynamicToolCallRequested` / `Codex.AppServer.respond/3` handling.
-
-### Changed
-
-- Added governed authority refs for Codex options, exec, app-server remote
-  auth, OAuth context, and account-login config resolution. Standalone env,
-  saved CLI auth, and native login behavior remain the default, while governed
-  paths ignore or reject unmanaged ambient Codex auth/base-url/model env and
-  require materialized child env for bounded effects.
-
-## [0.17.0] - 2026-04-16
-
-### Added
-
 - App-server parity wrappers for `marketplace/add`, `thread/inject_items`,
   `thread/memoryMode/set`, `memory/reset`, `fs/watch`, `fs/unwatch`,
   `mcpServer/resource/read`, and `mcpServer/tool/call`, plus MCP server-status
@@ -39,6 +28,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command surface.
 - A new operational workflows guide and a real marketplace-management example
   covering isolated `CODEX_HOME` marketplace acquisition flows.
+- Upstream `permissions` support: `thread_start/2`, `thread_resume/3`,
+  `thread_fork/3`, and `turn_start/4` accept `:permissions` (with
+  `:permission_profile`/`:permissionProfile` back-compat aliases), rejecting
+  conflicting `sandbox`/`sandbox_policy` combinations before sending.
+- Reasoning effort `:max` and `:ultra`, plus custom non-empty string
+  passthrough for models newer than the SDK's known effort set
+  (`Codex.Models.reasoning_efforts/0`, app-server `effort` param).
+- Explicit double-option `serviceTier` semantics on `thread_start`,
+  `thread_resume`, `thread_fork`, `turn_start`, and the new
+  `thread_settings_update/3`: omitted leaves it unchanged, explicit `nil`
+  clears it.
+- `environment_add/2`, `environment_info/2` (experimental remote-environment
+  registration and shell/cwd discovery), `thread_items_list/3`,
+  `thread_search/2`, and fork `last_turn_id`.
+- New P1 app-server wrappers: `thread_delete/2`, `thread_settings_update/3`,
+  `thread_background_terminals_clean/2`, `thread_background_terminals_list/2`,
+  `thread_background_terminals_terminate/3`, `permission_profile_list/2`,
+  `model_provider_capabilities_read/1`, `thread_realtime_append_speech/3`,
+  `thread_realtime_list_voices/1`, and account `usage/1` /
+  `workspace_messages/1` / `consume_rate_limit_reset_credit/2` (the latter
+  accepts an optional `credit_id` to redeem a specific rate-limit reset
+  credit from `rate_limits/1`'s `rateLimitResetCredits.credits` list).
+- `thread_realtime_start/4` accepts `flush_transcript_tail_on_session_end`.
+- `Codex.Events.AttestationGenerateRequested` and
+  `Codex.Events.CurrentTimeReadRequested`, the two server-request types that
+  previously had no SDK-side representation at all.
+- `Codex.Options` accepts `allow_unknown_model` (default `true`, matching the
+  installed `codex` CLI, which does not itself validate `--model` against
+  the SDK's bundled registry): a model newer than the bundled
+  `cli_subprocess_core` catalog now passes through with a logged warning
+  instead of hard-failing on `Codex.Options.new/1`, matching
+  `Codex.Thread.Options`'s existing behavior. Pass `allow_unknown_model:
+  false` to restore strict rejection.
+- `Codex.Protocol.Plugin.Summary` gains a typed `version` field
+  (remote-marketplace advertised version, distinct from any locally
+  materialized package version), and `plugin/list` accepts
+  `marketplace_kinds`.
+- Refreshed the bundled `cli_subprocess_core` Codex model catalog (added
+  `codex-auto-review`, dropped the no-longer-upstream
+  `gpt-5.3-codex-spark`, added `upgrade` hints to `gpt-5.3-codex`/`gpt-5.2`)
+  and added a matching `allow_unknown` opt-in to
+  `CliSubprocessCore.ModelRegistry.resolve/3` so every consumer of that
+  shared core (this SDK, `claude_agent_sdk`, `agent_session_manager`) can
+  pass through a model newer than its bundled catalog consistently.
 
 ### Changed
 
@@ -46,13 +79,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
   while preserving Codex-native scaffold and write defaults.
 - The bundled visible model catalog and docs now match the current upstream
-  picker surface: `gpt-5.4`, `gpt-5.5`, `gpt-5.4-mini`,
-  `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and `gpt-5.2`.
+  picker surface: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`,
+  `gpt-5.2`, and the internal `codex-auto-review`.
 - README, guides, examples, and the example runner now document and exercise
   the expanded app-server, marketplace, MCP, guardian-review, realtime
   transcript, and thread-management surface.
 - HexDocs/package metadata now includes the guides and examples directories so
   published docs can keep the guide menu intact.
+- Added governed authority refs for Codex options, exec, app-server remote
+  auth, OAuth context, and account-login config resolution. Standalone env,
+  saved CLI auth, and native login behavior remain the default, while governed
+  paths ignore or reject unmanaged ambient Codex auth/base-url/model env and
+  require materialized child env for bounded effects.
+- Bumped the `zoi` dependency requirement to `~> 0.18` to match
+  `cli_subprocess_core`'s current requirement.
 
 ### Fixed
 
@@ -66,6 +106,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App-server `Thread.run_turn/3` failures now surface as `{:error,
   {:turn_failed, ...}}` instead of returning an empty successful result with a
   `nil` final response.
+- Removed a dead `permissionProfile` param from `command_exec/3` -
+  upstream's `CommandExecParams` schema never defined this field.
+- Fixed a dialyzer `contract_supertype` warning on
+  `Codex.Models.reasoning_efforts/0` (spec had loosened to `atom()` instead
+  of the closed reasoning-effort union).
+
+### Deferred
+
+- Remote-control (`remoteControl/*`) and process (`process/*`) app-server
+  wrappers are not yet implemented. Both surfaces remain
+  `#[experimental(...)]` upstream; revisit once they stabilize.
+- Dedicated `Codex.CLI` helpers for `plugin`, `plugin marketplace`,
+  `remote-control`, `doctor`, `archive`/`delete`/`unarchive`, and
+  `exec-server` are not yet implemented. All remain reachable today through
+  `Codex.CLI.run/2`.
+- The server-request "handler registry" from the original parity plan was
+  implemented as an extension of the SDK's existing event +
+  `Codex.AppServer.respond/3` pattern (every request type now has a typed
+  event) rather than a new, parallel callback-registry abstraction.
 
 ## [0.16.1] - 2026-04-09
 

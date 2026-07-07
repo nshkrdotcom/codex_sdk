@@ -16,6 +16,10 @@ layer of the configuration stack.
 # Override reasoning effort
 {:ok, opts} = Codex.Options.new(%{model: "gpt-5.2", reasoning_effort: :high})
 
+# A model newer than the bundled registry passes through by default (with a
+# logged warning) - see "Models Newer Than The Bundled Registry" below
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.7-not-yet-bundled"})
+
 # Use the realtime default model
 agent = %Codex.Realtime.Agent{model: Codex.Realtime.Agent.default_model()}
 ```
@@ -72,29 +76,65 @@ Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.4",
 #=>   "gpt-5.5",
+#=>   "gpt-5.4",
 #=>   "gpt-5.4-mini",
 #=>   "gpt-5.3-codex",
-#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2"
 #=> ]
 
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.4",
 #=>   "gpt-5.5",
+#=>   "gpt-5.4",
 #=>   "gpt-5.4-mini",
 #=>   "gpt-5.3-codex",
-#=>   "gpt-5.3-codex-spark",
 #=>   "gpt-5.2"
 #=> ]
 ```
 
 That is the bundled picker-visible snapshot shipped with this repo and the
-order `Codex.Models.list_visible/1` exposes locally. If upstream ships a newer
-runtime-only model before the bundled catalog is refreshed here, pass it
-explicitly via `model:` or `CODEX_MODEL`.
+order `Codex.Models.list_visible/1` exposes locally. The catalog also carries
+an internal `codex-auto-review` entry (visibility `:internal`) that
+`list_visible/1` omits by default, matching upstream's "hide" visibility for
+that model.
+
+### Models Newer Than The Bundled Registry
+
+The bundled catalog is a vendored snapshot - it lags real upstream releases
+between SDK versions. `Codex.Options` does not need to wait for a catalog
+refresh to use a new model: pass it explicitly via `model:` or `CODEX_MODEL`
+and it passes through as-is, because `allow_unknown_model` defaults to `true`
+(matching the installed `codex` CLI, which does not itself validate `--model`
+against this registry):
+
+```elixir
+iex> {:ok, opts} = Codex.Options.new(%{model: "gpt-5.7-not-yet-bundled"})
+16:20:00.000 [warning] Codex model "gpt-5.7-not-yet-bundled" is not in the
+bundled model registry; passing it through as-is. ...
+iex> opts.model
+"gpt-5.7-not-yet-bundled"
+iex> opts.model_payload.extra["unregistered"]
+true
+```
+
+Reasoning-effort coercion and upgrade metadata are unavailable for a
+passthrough model (`supported_reasoning_efforts/1` returns `[]`,
+`get_upgrade/1` returns `nil`), since neither exists in the bundled catalog
+for it - but the model id itself reaches the CLI/app-server unchanged.
+
+Pass `allow_unknown_model: false` to restore strict rejection (useful for
+catching a typo'd `CODEX_MODEL`/`model:` early rather than silently sending
+it to the CLI):
+
+```elixir
+iex> Codex.Options.new(%{model: "gpt-5.7-not-yet-bundled", allow_unknown_model: false})
+{:error, {:unknown_model, "gpt-5.7-not-yet-bundled", [...known ids...], :codex}}
+```
+
+`Codex.Thread.Options` (the `:app_server` transport) has always accepted any
+model string without registry validation at all - there is no
+`allow_unknown_model` flag there because there is nothing to opt out of.
 
 Each model preset includes:
 
@@ -121,9 +161,16 @@ and cost.
 | `:medium` | `"medium"` | Balanced speed and reasoning depth (default) |
 | `:high` | `"high"` | Greater reasoning depth for complex problems |
 | `:xhigh` | `"xhigh"` | Extra-high reasoning for the most complex problems |
+| `:max` | `"max"` | Upstream's highest first-class effort level |
+| `:ultra` | `"ultra"` | Upstream's highest-yet first-class effort level |
 
 Aliases `"extra_high"` and `"extra-high"` are also accepted and normalize to
-`:xhigh`.
+`:xhigh`. Any other non-empty string is accepted and passed through
+unchanged (e.g. a model-specific effort value newer than this list) - only
+`normalize_reasoning_effort/1` rejects blank/empty input. None of the
+currently bundled Codex models advertise `:max`/`:ultra` support in their own
+`supported_reasoning_efforts/1`; those two levels exist for models that
+declare support for them, whether bundled or passed through explicitly.
 
 ### Setting Reasoning Effort
 
@@ -297,6 +344,15 @@ Some models have upgrade paths to newer versions. Query them with:
 ```elixir
 iex> Codex.Models.get_upgrade("gpt-5.5")
 nil
+
+iex> Codex.Models.get_upgrade("gpt-5.3-codex")
+%{
+  id: "gpt-5.4",
+  reasoning_effort_mapping: nil,
+  migration_config_key: "gpt-5.4",
+  model_link: nil,
+  upgrade_copy: "Introducing GPT-5.4\n\n..."
+}
 ```
 
 Upgrade targets come from the bundled/current catalog and can change across
