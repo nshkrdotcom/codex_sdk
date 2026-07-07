@@ -7,14 +7,14 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the bundled registry default model metadata (currently gpt-5.4)
+# Use the bundled registry default model metadata (currently gpt-5.5)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.5"})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.4"})
 
 # Override reasoning effort
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.2", reasoning_effort: :high})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.4-mini", reasoning_effort: :high})
 
 # A model newer than the bundled registry passes through by default (with a
 # logged warning) - see "Models Newer Than The Bundled Registry" below
@@ -44,7 +44,7 @@ explicit model from user input, `CODEX_MODEL`, or an OSS provider route.
 
 The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
-to `gpt-5.4`.
+to `gpt-5.5` (default reasoning effort `:xhigh`).
 
 The active offline catalog lives in
 `../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is kept as a
@@ -78,18 +78,14 @@ iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.5",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
-#=>   "gpt-5.3-codex",
-#=>   "gpt-5.2"
+#=>   "gpt-5.4-mini"
 #=> ]
 
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.5",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
-#=>   "gpt-5.3-codex",
-#=>   "gpt-5.2"
+#=>   "gpt-5.4-mini"
 #=> ]
 ```
 
@@ -98,6 +94,16 @@ order `Codex.Models.list_visible/1` exposes locally. The catalog also carries
 an internal `codex-auto-review` entry (visibility `:internal`) that
 `list_visible/1` omits by default, matching upstream's "hide" visibility for
 that model.
+
+This catalog was last verified 2026-07-06 against a live `model/list`
+JSON-RPC probe (including `includeHidden: true`) run directly against an
+authenticated, real `codex` CLI install - the vendored `codex-rs` source
+snapshot on its own listed two additional models (`gpt-5.3-codex`,
+`gpt-5.2`) that the live backend no longer serves at all. If you notice the
+bundled catalog drifting from what your own installed `codex` actually
+offers, the same probe works from any Elixir REPL with a running
+app-server connection: `Codex.AppServer.model_list(conn, include_hidden:
+true)`.
 
 ### Models Newer Than The Bundled Registry
 
@@ -345,13 +351,13 @@ Some models have upgrade paths to newer versions. Query them with:
 iex> Codex.Models.get_upgrade("gpt-5.5")
 nil
 
-iex> Codex.Models.get_upgrade("gpt-5.3-codex")
+iex> Codex.Models.get_upgrade("gpt-5.4")
 %{
-  id: "gpt-5.4",
+  id: "gpt-5.5",
   reasoning_effort_mapping: nil,
-  migration_config_key: "gpt-5.4",
+  migration_config_key: "gpt-5.5",
   model_link: nil,
-  upgrade_copy: "Introducing GPT-5.4\n\n..."
+  upgrade_copy: "Introducing GPT-5.5\n\n..."
 }
 ```
 

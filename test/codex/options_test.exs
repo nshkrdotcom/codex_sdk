@@ -234,7 +234,7 @@ defmodule Codex.OptionsTest do
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == nil
       assert opts.model == default_model()
-      assert opts.reasoning_effort == :medium
+      assert opts.reasoning_effort == :xhigh
     end
 
     test "execution_model/1 omits implicit shared-core defaults" do

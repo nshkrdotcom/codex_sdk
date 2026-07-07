@@ -1385,7 +1385,7 @@ defmodule Codex.AppServerTransportTest do
     refute Map.has_key?(params, "permissionProfile")
 
     assert %{"features.remote_models" => true} = params["config"]
-    assert params["config"]["model_reasoning_effort"] == "medium"
+    assert params["config"]["model_reasoning_effort"] == "xhigh"
     assert params["baseInstructions"] == "base"
     assert params["developerInstructions"] == "dev"
     assert params["persistExtendedHistory"] == true

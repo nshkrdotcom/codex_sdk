@@ -382,7 +382,7 @@ defmodule Codex.ThreadTest do
 
       assert Enum.chunk_every(args, 2)
              |> Enum.any?(fn
-               ["--config", ~s(model_reasoning_effort="medium")] -> true
+               ["--config", ~s(model_reasoning_effort="xhigh")] -> true
                _ -> false
              end)
     end

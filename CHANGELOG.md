@@ -65,10 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (remote-marketplace advertised version, distinct from any locally
   materialized package version), and `plugin/list` accepts
   `marketplace_kinds`.
-- Refreshed the bundled `cli_subprocess_core` Codex model catalog (added
-  `codex-auto-review`, dropped the no-longer-upstream
-  `gpt-5.3-codex-spark`, added `upgrade` hints to `gpt-5.3-codex`/`gpt-5.2`)
-  and added a matching `allow_unknown` opt-in to
+- Refreshed the bundled `cli_subprocess_core` Codex model catalog and
+  corrected it against a live `model/list` probe (including hidden
+  entries) run against an authenticated, real `codex` CLI install: the
+  catalog now carries `gpt-5.5` (default, `xhigh` reasoning effort),
+  `gpt-5.4` (upgrade -> `gpt-5.5`), `gpt-5.4-mini`, and the internal
+  `codex-auto-review`. `gpt-5.3-codex`, `gpt-5.2`, and the no-longer-upstream
+  `gpt-5.3-codex-spark` are gone - the vendored `codex-rs` source snapshot
+  still defines the first two, but the live backend does not serve them at
+  all (confirmed with `includeHidden: true`, not just hidden from the
+  default picker). Also added a matching `allow_unknown` opt-in to
   `CliSubprocessCore.ModelRegistry.resolve/3` so every consumer of that
   shared core (this SDK, `claude_agent_sdk`, `agent_session_manager`) can
   pass through a model newer than its bundled catalog consistently.
@@ -78,9 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local plugin path handling now accepts alternate discoverable
   `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
   while preserving Codex-native scaffold and write defaults.
-- The bundled visible model catalog and docs now match the current upstream
-  picker surface: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`,
-  `gpt-5.2`, and the internal `codex-auto-review`.
+- The bundled visible model catalog and docs now match the live model
+  lineup: `gpt-5.5` (new default), `gpt-5.4`, `gpt-5.4-mini`, and the
+  internal `codex-auto-review`.
 - README, guides, examples, and the example runner now document and exercise
   the expanded app-server, marketplace, MCP, guardian-review, realtime
   transcript, and thread-management surface.

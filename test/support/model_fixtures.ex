@@ -18,7 +18,7 @@ defmodule Codex.Test.ModelFixtures do
   def default_model, do: Models.default_model(:api)
 
   @doc "A non-default model suitable for testing model-override paths."
-  def alt_model, do: "gpt-5.5"
+  def alt_model, do: "gpt-5.4"
 
   @doc "The frontier complex-work model."
   def max_model, do: "gpt-5.5"
