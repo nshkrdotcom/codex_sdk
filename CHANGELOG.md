@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.17.0] - 2026-07-06
+## [0.17.0] - 2026-07-09
 
 ### Added
 
+- GPT-5.6 Sol, Terra, and Luna projections from the shared core catalog, with
+  model-specific `max`/`ultra` reasoning support (`ultra` is not valid for
+  Luna).
+- Current app-server ChatGPT login presentation options: `app_brand`,
+  `codex_streamlined_login`, and `use_hosted_login_success_page`.
+- Typed plugin `install_policy_source` support for `WORKSPACE_SETTING` and
+  `IMPLICIT_CANONICAL_APP`.
 - App-server dynamic host tool support through `Codex.Thread.Options.dynamic_tools`,
   rendering upstream `dynamicTools` on both `thread/start` and `thread/resume`,
   plus live documentation and `examples/live_app_server_dynamic_tools.exs` for
@@ -65,28 +72,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (remote-marketplace advertised version, distinct from any locally
   materialized package version), and `plugin/list` accepts
   `marketplace_kinds`.
-- Refreshed the bundled `cli_subprocess_core` Codex model catalog and
-  corrected it against a live `model/list` probe (including hidden
-  entries) run against an authenticated, real `codex` CLI install: the
-  catalog now carries `gpt-5.5` (default, `xhigh` reasoning effort),
-  `gpt-5.4` (upgrade -> `gpt-5.5`), `gpt-5.4-mini`, and the internal
-  `codex-auto-review`. `gpt-5.3-codex`, `gpt-5.2`, and the no-longer-upstream
-  `gpt-5.3-codex-spark` are gone - the vendored `codex-rs` source snapshot
-  still defines the first two, but the live backend does not serve them at
-  all (confirmed with `includeHidden: true`, not just hidden from the
-  default picker). Also added a matching `allow_unknown` opt-in to
+- Refreshed the bundled `cli_subprocess_core` Codex model catalog against an
+  authenticated `codex-cli 0.144.0` `model/list` probe with hidden entries.
+  The current public lineup is `gpt-5.5` (default), `gpt-5.6-sol`,
+  `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.4`, and `gpt-5.4-mini`, plus the
+  internal `codex-auto-review`; source-only `gpt-5.2` remains excluded. Also
+  added a matching `allow_unknown` opt-in to
   `CliSubprocessCore.ModelRegistry.resolve/3` so every consumer of that
   shared core (this SDK, `claude_agent_sdk`, `agent_session_manager`) can
   pass through a model newer than its bundled catalog consistently.
 
 ### Changed
 
+- The bundled Codex catalog now matches a live authenticated
+  `codex-cli 0.144.0` `model/list` probe from 2026-07-09. `gpt-5.5` remains the
+  live default; the three explicit GPT-5.6 variants are added without a
+  `gpt-5.6` compatibility alias.
+- Synced `priv/models.json` to upstream Codex commit `3380969a29` and updated
+  active guides/examples for the current CLI contract.
+- Refreshed all compatible dependencies, including Zoi 0.18.5 and patched
+  Bandit/Plug/Mint/Req HTTP-stack releases.
 - Local plugin path handling now accepts alternate discoverable
   `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` layouts
   while preserving Codex-native scaffold and write defaults.
 - The bundled visible model catalog and docs now match the live model
-  lineup: `gpt-5.5` (new default), `gpt-5.4`, `gpt-5.4-mini`, and the
-  internal `codex-auto-review`.
+  lineup: `gpt-5.5` (default), the three explicit GPT-5.6 variants,
+  `gpt-5.4`, `gpt-5.4-mini`, and the internal `codex-auto-review`.
 - README, guides, examples, and the example runner now document and exercise
   the expanded app-server, marketplace, MCP, guardian-review, realtime
   transcript, and thread-management surface.

@@ -11,10 +11,10 @@ layer of the configuration stack.
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.4"})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-sol"})
 
 # Override reasoning effort
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.4-mini", reasoning_effort: :high})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-terra", reasoning_effort: :ultra})
 
 # A model newer than the bundled registry passes through by default (with a
 # logged warning) - see "Models Newer Than The Bundled Registry" below
@@ -47,9 +47,8 @@ the bundled catalog vendored in this repo, both text auth modes currently resolv
 to `gpt-5.5` (default reasoning effort `:xhigh`).
 
 The active offline catalog lives in
-`../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is kept as a
-local snapshot of the installed CLI's visible model metadata for compatibility
-with older docs and tools.
+`../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is the
+synced upstream source-registry snapshot used for parity review.
 
 Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
 selection. Memory-only external app-server auth is connection-local and does not
@@ -77,6 +76,9 @@ Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.5",
+#=>   "gpt-5.6-sol",
+#=>   "gpt-5.6-terra",
+#=>   "gpt-5.6-luna",
 #=>   "gpt-5.4",
 #=>   "gpt-5.4-mini"
 #=> ]
@@ -84,6 +86,9 @@ iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
 #=>   "gpt-5.5",
+#=>   "gpt-5.6-sol",
+#=>   "gpt-5.6-terra",
+#=>   "gpt-5.6-luna",
 #=>   "gpt-5.4",
 #=>   "gpt-5.4-mini"
 #=> ]
@@ -95,15 +100,25 @@ an internal `codex-auto-review` entry (visibility `:internal`) that
 `list_visible/1` omits by default, matching upstream's "hide" visibility for
 that model.
 
-This catalog was last verified 2026-07-06 against a live `model/list`
+This catalog was last verified 2026-07-09 against a live `model/list`
 JSON-RPC probe (including `includeHidden: true`) run directly against an
-authenticated, real `codex` CLI install - the vendored `codex-rs` source
-snapshot on its own listed two additional models (`gpt-5.3-codex`,
-`gpt-5.2`) that the live backend no longer serves at all. If you notice the
-bundled catalog drifting from what your own installed `codex` actually
-offers, the same probe works from any Elixir REPL with a running
-app-server connection: `Codex.AppServer.model_list(conn, include_hidden:
-true)`.
+authenticated `codex-cli 0.144.0` install. The pulled upstream source snapshot
+already placed GPT-5.6 Sol first and still listed `gpt-5.2`; the live backend
+kept `gpt-5.5` as its default and did not serve `gpt-5.2`. The bundled catalog
+therefore follows the live current CLI contract. Repeat the probe with
+`Codex.AppServer.model_list(conn, include_hidden: true)` when the installed CLI
+changes.
+
+The three GPT-5.6 Codex IDs are explicit:
+
+| Model | Role | Default effort | Supported efforts |
+| --- | --- | --- | --- |
+| `gpt-5.6-sol` | Frontier agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
+| `gpt-5.6-terra` | Balanced everyday agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
+| `gpt-5.6-luna` | Fast agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max` |
+
+The OpenAI API's `gpt-5.6` family alias is not added to this Codex CLI catalog.
+Select one of the explicit IDs reported by `model/list`.
 
 ### Models Newer Than The Bundled Registry
 
@@ -173,10 +188,9 @@ and cost.
 Aliases `"extra_high"` and `"extra-high"` are also accepted and normalize to
 `:xhigh`. Any other non-empty string is accepted and passed through
 unchanged (e.g. a model-specific effort value newer than this list) - only
-`normalize_reasoning_effort/1` rejects blank/empty input. None of the
-currently bundled Codex models advertise `:max`/`:ultra` support in their own
-`supported_reasoning_efforts/1`; those two levels exist for models that
-declare support for them, whether bundled or passed through explicitly.
+`normalize_reasoning_effort/1` rejects blank/empty input. GPT-5.6 Sol and Terra
+advertise both `:max` and `:ultra`; Luna advertises `:max` but not `:ultra`.
+Validation is model-specific.
 
 ### Setting Reasoning Effort
 
@@ -352,13 +366,7 @@ iex> Codex.Models.get_upgrade("gpt-5.5")
 nil
 
 iex> Codex.Models.get_upgrade("gpt-5.4")
-%{
-  id: "gpt-5.5",
-  reasoning_effort_mapping: nil,
-  migration_config_key: "gpt-5.5",
-  model_link: nil,
-  upgrade_copy: "Introducing GPT-5.5\n\n..."
-}
+nil
 ```
 
 Upgrade targets come from the bundled/current catalog and can change across

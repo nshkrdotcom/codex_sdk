@@ -4,7 +4,7 @@
 #
 # Usage:
 #   mix run examples/promotion_path/sdk_direct_codex.exs \
-#     --model gpt-5.4 \
+#     --model gpt-5.6-sol \
 #     --prompt "Reply with exactly: codex sdk direct ok"
 #
 # Optional:

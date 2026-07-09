@@ -21,7 +21,7 @@ defmodule Codex.Test.ModelFixtures do
   def alt_model, do: "gpt-5.4"
 
   @doc "The frontier complex-work model."
-  def max_model, do: "gpt-5.5"
+  def max_model, do: "gpt-5.6-sol"
 
   @doc "The default realtime model."
   def realtime_model, do: RealtimeAgent.default_model()

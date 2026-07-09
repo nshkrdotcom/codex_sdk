@@ -66,12 +66,12 @@ Example:
 ```elixir
 {:ok, opts} =
   Codex.Options.new(%{
-    model: "gpt-5.4-mini",
-    reasoning_effort: :medium
+    model: "gpt-5.6-sol",
+    reasoning_effort: :max
   })
 
 opts.model_payload.resolved_model
-# => "gpt-5.4-mini"
+# => "gpt-5.6-sol"
 ```
 
 Local Ollama through the shared core contract:
@@ -1557,7 +1557,7 @@ Global Codex configuration.
 - `api_key`: OpenAI API key (overrides `CODEX_API_KEY`; optional if CLI login is present)
 - `telemetry_prefix`: Telemetry prefix for metrics/events (defaults to `[:codex]`)
 - `model`: Model override. If omitted, live exec/app-server runs leave model selection to the installed `codex` CLI default, while `Codex.Models.default_model/0` remains the bundled registry reader.
-- `reasoning_effort`: Reasoning effort override (`:none`, `:minimal`, `:low`, `:medium`, `:high`, or `:xhigh`; defaults to `Codex.Models.default_reasoning_effort/1`)
+- `reasoning_effort`: Reasoning effort override (`:none`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`, or `:ultra`; defaults to `Codex.Models.default_reasoning_effort/1` and is validated per model)
 - `model_personality`: Personality preference (`:friendly`, `:pragmatic`, or `:none`)
 - `model_reasoning_summary`: Reasoning summary setting (`auto`, `concise`, `detailed`, `none`)
 - `model_verbosity`: Response verbosity (`low`, `medium`, `high`)

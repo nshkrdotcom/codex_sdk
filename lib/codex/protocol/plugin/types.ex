@@ -526,9 +526,21 @@ defmodule Codex.Protocol.Plugin.Summary do
   use TypedStruct
 
   alias CliSubprocessCore.Schema.Conventions
-  alias Codex.Protocol.Plugin.{AuthPolicy, Helpers, InstallPolicy, Interface, Source}
 
-  @key_mapping %{"install_policy" => "installPolicy", "auth_policy" => "authPolicy"}
+  alias Codex.Protocol.Plugin.{
+    AuthPolicy,
+    Helpers,
+    InstallPolicy,
+    InstallPolicySource,
+    Interface,
+    Source
+  }
+
+  @key_mapping %{
+    "install_policy" => "installPolicy",
+    "install_policy_source" => "installPolicySource",
+    "auth_policy" => "authPolicy"
+  }
   @known_fields [
     "id",
     "name",
@@ -536,6 +548,7 @@ defmodule Codex.Protocol.Plugin.Summary do
     "installed",
     "enabled",
     "installPolicy",
+    "installPolicySource",
     "authPolicy",
     "interface",
     "version"
@@ -548,6 +561,7 @@ defmodule Codex.Protocol.Plugin.Summary do
               "installed" => Zoi.boolean(),
               "enabled" => Zoi.boolean(),
               "installPolicy" => InstallPolicy.schema(),
+              "installPolicySource" => Zoi.optional(InstallPolicySource.schema()),
               "authPolicy" => AuthPolicy.schema(),
               "interface" => Helpers.optional_map(),
               "version" => Helpers.optional_string()
@@ -562,6 +576,7 @@ defmodule Codex.Protocol.Plugin.Summary do
     field(:installed, boolean(), enforce: true)
     field(:enabled, boolean(), enforce: true)
     field(:install_policy, InstallPolicy.t(), enforce: true)
+    field(:install_policy_source, InstallPolicySource.t() | nil)
     field(:auth_policy, AuthPolicy.t(), enforce: true)
     field(:interface, Interface.t() | nil)
     # Remote-marketplace advertised version, distinct from any locally
@@ -601,6 +616,10 @@ defmodule Codex.Protocol.Plugin.Summary do
       "installPolicy" => InstallPolicy.to_wire(value.install_policy),
       "authPolicy" => AuthPolicy.to_wire(value.auth_policy)
     }
+    |> Helpers.maybe_put(
+      "installPolicySource",
+      encode_install_policy_source(value.install_policy_source)
+    )
     |> Helpers.maybe_put("interface", Helpers.encode_nested(value.interface, Interface))
     |> Helpers.maybe_put("version", value.version)
     |> Map.merge(value.extra)
@@ -616,12 +635,16 @@ defmodule Codex.Protocol.Plugin.Summary do
       installed: Map.fetch!(known, "installed"),
       enabled: Map.fetch!(known, "enabled"),
       install_policy: Map.fetch!(known, "installPolicy"),
+      install_policy_source: Map.get(known, "installPolicySource"),
       auth_policy: Map.fetch!(known, "authPolicy"),
       interface: Helpers.parse_nested(Map.get(known, "interface"), Interface),
       version: Map.get(known, "version"),
       extra: extra
     }
   end
+
+  defp encode_install_policy_source(nil), do: nil
+  defp encode_install_policy_source(value), do: InstallPolicySource.to_wire(value)
 end
 
 defmodule Codex.Protocol.Plugin.Marketplace do

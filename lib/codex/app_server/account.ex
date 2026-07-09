@@ -28,10 +28,26 @@ defmodule Codex.AppServer.Account do
     login_start(conn, params, [])
   end
 
+  @doc """
+  Starts an account login with current app-server presentation options.
+
+  ChatGPT login accepts `:app_brand`, `:codex_streamlined_login`, and
+  `:use_hosted_login_success_page`.
+  """
   @spec login_start(connection(), :chatgpt | {:api_key, String.t()} | map(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def login_start(conn, :chatgpt, opts) when is_pid(conn) and is_list(opts) do
-    params = %{"type" => "chatgpt"}
+    params =
+      %{"type" => "chatgpt"}
+      |> Params.put_optional("appBrand", normalize_login_app_brand(Keyword.get(opts, :app_brand)))
+      |> Params.put_optional(
+        "codexStreamlinedLogin",
+        enabled_option(Keyword.get(opts, :codex_streamlined_login))
+      )
+      |> Params.put_optional(
+        "useHostedLoginSuccessPage",
+        enabled_option(Keyword.get(opts, :use_hosted_login_success_page))
+      )
 
     with :ok <- enforce_login_constraints(:chatgpt, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
@@ -263,6 +279,13 @@ defmodule Codex.AppServer.Account do
       _ -> {:error, {:governed_codex_home_required, :app_server_account}}
     end
   end
+
+  defp normalize_login_app_brand(value) when value in [:codex, "codex"], do: "codex"
+  defp normalize_login_app_brand(value) when value in [:chatgpt, "chatgpt"], do: "chatgpt"
+  defp normalize_login_app_brand(_value), do: nil
+
+  defp enabled_option(true), do: true
+  defp enabled_option(_value), do: nil
 
   defp fetch_workspace_id(params) do
     Map.get(params, "workspaceId") ||

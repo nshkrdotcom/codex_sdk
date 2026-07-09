@@ -127,6 +127,20 @@ Memory mode works like this:
 Set `auto_refresh: false` when you want to subscribe and respond to refresh
 requests yourself.
 
+For the current browser-login presentation contract, pass the app-server
+options directly to the account login helper:
+
+```elixir
+Codex.AppServer.Account.login_start(conn, :chatgpt,
+  app_brand: :chatgpt,
+  codex_streamlined_login: true,
+  use_hosted_login_success_page: true
+)
+```
+
+`app_brand` accepts `:codex` or `:chatgpt`. The boolean fields are emitted only
+when enabled, matching `codex-cli 0.144.0`'s `account/login/start` request.
+
 Remote websocket app-server connections use the same external-auth shape:
 
 ```elixir

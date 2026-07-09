@@ -118,6 +118,31 @@ defmodule Codex.Protocol.PluginTest do
            )
   end
 
+  test "plugin summary parses and round-trips install policy source" do
+    payload = %{
+      "id" => "demo-plugin@codex-curated",
+      "name" => "demo-plugin",
+      "source" => %{"type" => "local", "path" => "/tmp/plugins/demo-plugin"},
+      "installed" => true,
+      "enabled" => true,
+      "installPolicy" => "AVAILABLE",
+      "installPolicySource" => "WORKSPACE_SETTING",
+      "authPolicy" => "ON_INSTALL"
+    }
+
+    assert {:ok, %Plugin.Summary{install_policy_source: :workspace_setting}} =
+             Plugin.Summary.parse(payload)
+
+    assert %{"installPolicySource" => "WORKSPACE_SETTING"} =
+             Plugin.Summary.to_map(Plugin.Summary.from_map(payload))
+
+    assert {:ok, %Plugin.Summary{install_policy_source: :implicit_canonical_app}} =
+             Plugin.Summary.parse(%{
+               payload
+               | "installPolicySource" => "IMPLICIT_CANONICAL_APP"
+             })
+  end
+
   test "read response parses app needsAuth and preserves unknown plugin metadata" do
     payload = %{
       "plugin" => %{

@@ -92,6 +92,8 @@ Plugin install and auth policies normalize known upstream values into atoms:
 - `AVAILABLE` -> `:available`
 - `NOT_AVAILABLE` -> `:not_available`
 - `INSTALLED_BY_DEFAULT` -> `:installed_by_default`
+- `WORKSPACE_SETTING` -> `:workspace_setting` (`install_policy_source`)
+- `IMPLICIT_CANONICAL_APP` -> `:implicit_canonical_app` (`install_policy_source`)
 - `ON_INSTALL` -> `:on_install`
 - `ON_USE` -> `:on_use`
 

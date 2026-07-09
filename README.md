@@ -545,7 +545,7 @@ demonstrates Codex-native `sandbox` and `skip_git_repo_check` controls:
 
 ```bash
 mix run examples/promotion_path/sdk_direct_codex.exs \
-  --model gpt-5.4 \
+  --model gpt-5.6-sol \
   --prompt "Reply with exactly: codex sdk direct ok"
 ```
 
@@ -854,8 +854,8 @@ can list them and apply or undo diffs locally:
     api_key: System.fetch_env!("CODEX_API_KEY"),
     codex_path_override: "/custom/path/to/codex",
     telemetry_prefix: [:codex, :sdk],
-    model: "gpt-5.4",
-    reasoning_effort: :high,  # :none | :minimal | :low | :medium | :high | :xhigh
+    model: "gpt-5.6-sol",
+    reasoning_effort: :max,
     model_personality: :friendly,
     review_model: Codex.Models.default_model(),
     tool_output_token_limit: 512,

@@ -63,6 +63,9 @@ defmodule Codex.ModelsTest do
 
       assert Enum.map(models, & &1.id) == [
                "gpt-5.5",
+               "gpt-5.6-sol",
+               "gpt-5.6-terra",
+               "gpt-5.6-luna",
                "gpt-5.4",
                "gpt-5.4-mini"
              ]
@@ -76,10 +79,10 @@ defmodule Codex.ModelsTest do
       refute Enum.any?(models, &(&1.id == "gpt-5.3-codex-spark"))
       refute Enum.any?(models, &(&1.id == "codex-auto-review"))
       # Confirmed genuinely absent (not even hidden) via a live `model/list`
-      # probe against an authenticated codex CLI install, 2026-07-06.
+      # probe against an authenticated codex-cli 0.144.0 install, 2026-07-09.
       refute Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2"))
-      assert length(models) == 3
+      assert length(models) == 6
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
@@ -93,10 +96,12 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
       assert Models.supported_in_api?("gpt-5.5")
+      assert Models.supported_in_api?("gpt-5.6-sol")
       assert Models.supported_in_api?("gpt-5.4-mini")
       refute Models.supported_in_api?("gpt-5.3-codex-spark")
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
       assert Models.default_reasoning_effort(default_model()) == :xhigh
+      assert Models.default_reasoning_effort("gpt-5.6-sol") == :xhigh
     end)
   end
 
@@ -133,12 +138,15 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
       assert Enum.any?(models, &(&1.id == "gpt-5.4"))
       assert Enum.any?(models, &(&1.id == "gpt-5.5"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.6-sol"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.6-terra"))
+      assert Enum.any?(models, &(&1.id == "gpt-5.6-luna"))
       assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5-codex"))
-      assert length(models) == 3
+      assert length(models) == 6
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)
@@ -204,6 +212,21 @@ defmodule Codex.ModelsTest do
     assert Models.supported_in_api?(default_model()) == true
     assert Models.tool_enabled?("gpt-5.5")
     refute Models.tool_enabled?("gpt-5.1")
+  end
+
+  test "projects GPT-5.6 model-specific reasoning efforts" do
+    assert Models.supported_reasoning_efforts("gpt-5.6-sol") |> Enum.map(& &1.effort) ==
+             [:low, :medium, :high, :xhigh, :max, :ultra]
+
+    assert Models.supported_reasoning_efforts("gpt-5.6-terra") |> Enum.map(& &1.effort) ==
+             [:low, :medium, :high, :xhigh, :max, :ultra]
+
+    assert Models.supported_reasoning_efforts("gpt-5.6-luna") |> Enum.map(& &1.effort) ==
+             [:low, :medium, :high, :xhigh, :max]
+
+    assert Models.display_name("gpt-5.6-sol") == "GPT-5.6-Sol"
+    assert Models.display_name("gpt-5.6-terra") == "GPT-5.6-Terra"
+    assert Models.display_name("gpt-5.6-luna") == "GPT-5.6-Luna"
   end
 
   test "coerces reasoning effort to supported values" do

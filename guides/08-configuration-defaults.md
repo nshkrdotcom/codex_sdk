@@ -153,8 +153,8 @@ not satisfy governed authority.
 
 | Function | Default |
 |----------|---------|
-| `default_api_model/0` | `"gpt-5.4"` |
-| `default_chatgpt_model/0` | `"gpt-5.4"` |
+| `default_api_model/0` | `"gpt-5.5"` |
+| `default_chatgpt_model/0` | `"gpt-5.5"` |
 | `remote_models_cache_ttl_seconds/0` | 300 |
 
 ### Protocol Constants

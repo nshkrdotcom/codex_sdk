@@ -61,6 +61,56 @@ defmodule Codex.Protocol.Plugin.InstallPolicy do
   def to_wire(value) when is_atom(value), do: Atom.to_string(value)
 end
 
+defmodule Codex.Protocol.Plugin.InstallPolicySource do
+  @moduledoc """
+  Source that established a plugin's install policy.
+  """
+
+  alias Codex.Schema
+
+  @mapping %{
+    "WORKSPACE_SETTING" => :workspace_setting,
+    "IMPLICIT_CANONICAL_APP" => :implicit_canonical_app
+  }
+  @schema Zoi.any() |> Zoi.transform({__MODULE__, :normalize_zoi, []})
+
+  @type t :: :workspace_setting | :implicit_canonical_app | String.t()
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
+
+  @spec parse(term()) ::
+          {:ok, t()}
+          | {:error,
+             {:invalid_plugin_install_policy_source, CliSubprocessCore.Schema.error_detail()}}
+  def parse(value), do: Schema.parse(@schema, value, :invalid_plugin_install_policy_source)
+
+  @spec parse!(term()) :: t()
+  def parse!(value),
+    do: Schema.parse!(@schema, value, :invalid_plugin_install_policy_source)
+
+  @spec normalize_zoi(term(), keyword()) :: {:ok, t()} | {:error, String.t()}
+  def normalize_zoi(value, _opts), do: normalize(value)
+
+  @spec normalize(term()) :: {:ok, t()} | {:error, String.t()}
+  def normalize(value) when is_atom(value), do: normalize(to_wire(value))
+
+  def normalize(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:error, "expected a non-empty install policy source"}
+      normalized -> {:ok, Map.get(@mapping, normalized, normalized)}
+    end
+  end
+
+  def normalize(_value), do: {:error, "expected an install policy source string"}
+
+  @spec to_wire(t()) :: String.t()
+  def to_wire(:workspace_setting), do: "WORKSPACE_SETTING"
+  def to_wire(:implicit_canonical_app), do: "IMPLICIT_CANONICAL_APP"
+  def to_wire(value) when is_binary(value), do: value
+  def to_wire(value) when is_atom(value), do: Atom.to_string(value)
+end
+
 defmodule Codex.Protocol.Plugin.AuthPolicy do
   @moduledoc """
   Plugin auth policy values returned by the app-server plugin APIs.

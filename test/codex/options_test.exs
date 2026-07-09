@@ -477,6 +477,22 @@ defmodule Codex.OptionsTest do
       assert opts.reasoning_effort == :low
     end
 
+    test "accepts current GPT-5.6 max and ultra reasoning boundaries" do
+      assert {:ok, %Options{model: "gpt-5.6-sol", reasoning_effort: :max}} =
+               Options.new(%{model: "gpt-5.6-sol", reasoning_effort: :max})
+
+      assert {:ok, %Options{model: "gpt-5.6-terra", reasoning_effort: :ultra}} =
+               Options.new(%{model: "gpt-5.6-terra", reasoning_effort: :ultra})
+
+      assert {:ok, %Options{model: "gpt-5.6-luna", reasoning_effort: :max}} =
+               Options.new(%{model: "gpt-5.6-luna", reasoning_effort: :max})
+
+      assert {:error,
+              {:invalid_reasoning_effort, :ultra, ["high", "low", "max", "medium", "xhigh"],
+               :codex}} =
+               Options.new(%{model: "gpt-5.6-luna", reasoning_effort: :ultra})
+    end
+
     test "accepts reasoning summary and verbosity options" do
       {:ok, opts} =
         Options.new(%{

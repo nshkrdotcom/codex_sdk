@@ -2652,6 +2652,41 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"type" => "chatgptAuthTokens"}} = Task.await(task3, 200)
   end
 
+  test "account login_start encodes current ChatGPT login presentation options", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.Account.login_start(conn, :chatgpt,
+          app_brand: :chatgpt,
+          codex_streamlined_login: true,
+          use_hosted_login_success_page: true
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request_line}
+
+    assert {:ok,
+            %{
+              "id" => req_id,
+              "method" => "account/login/start",
+              "params" => %{
+                "type" => "chatgpt",
+                "appBrand" => "chatgpt",
+                "codexStreamlinedLogin" => true,
+                "useHostedLoginSuccessPage" => true
+              }
+            }} = Jason.decode(request_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(req_id, %{
+        "type" => "chatgpt",
+        "loginId" => "login_1",
+        "authUrl" => "https://example.com"
+      })
+    )
+
+    assert {:ok, %{"type" => "chatgpt"}} = Task.await(task, 200)
+  end
+
   test "account add credits nudge email encodes credit type", %{conn: conn} do
     task =
       Task.async(fn ->
