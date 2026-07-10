@@ -7,7 +7,7 @@ layer of the configuration stack.
 ## Quick Reference
 
 ```elixir
-# Use the bundled registry default model metadata (currently gpt-5.5)
+# Use the bundled registry default model metadata (currently gpt-5.6-sol)
 {:ok, opts} = Codex.Options.new(%{})
 
 # Explicitly choose a model
@@ -44,7 +44,7 @@ explicit model from user input, `CODEX_MODEL`, or an OSS provider route.
 
 The exact text default is catalog-derived, not a permanent public contract. With
 the bundled catalog vendored in this repo, both text auth modes currently resolve
-to `gpt-5.5` (default reasoning effort `:xhigh`).
+to `gpt-5.6-sol` (default reasoning effort `:low`).
 
 The active offline catalog lives in
 `../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is the
@@ -65,7 +65,7 @@ selection implicit for the installed `codex` CLI runtime:
 3. `CODEX_MODEL_DEFAULT`
 
 ```bash
-CODEX_MODEL=gpt-5.5 mix run my_script.exs
+CODEX_MODEL=gpt-5.6-sol mix run my_script.exs
 ```
 
 ## Available Models
@@ -75,22 +75,24 @@ Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
 ```elixir
 iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.5",
 #=>   "gpt-5.6-sol",
 #=>   "gpt-5.6-terra",
 #=>   "gpt-5.6-luna",
+#=>   "gpt-5.5",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini"
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.3-codex-spark"
 #=> ]
 
 iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
 #=> [
-#=>   "gpt-5.5",
 #=>   "gpt-5.6-sol",
 #=>   "gpt-5.6-terra",
 #=>   "gpt-5.6-luna",
+#=>   "gpt-5.5",
 #=>   "gpt-5.4",
-#=>   "gpt-5.4-mini"
+#=>   "gpt-5.4-mini",
+#=>   "gpt-5.3-codex-spark"
 #=> ]
 ```
 
@@ -100,25 +102,30 @@ an internal `codex-auto-review` entry (visibility `:internal`) that
 `list_visible/1` omits by default, matching upstream's "hide" visibility for
 that model.
 
-This catalog was last verified 2026-07-09 against a live `model/list`
+This catalog was last verified 2026-07-10 against a live `model/list`
 JSON-RPC probe (including `includeHidden: true`) run directly against an
-authenticated `codex-cli 0.144.0` install. The pulled upstream source snapshot
-already placed GPT-5.6 Sol first and still listed `gpt-5.2`; the live backend
-kept `gpt-5.5` as its default and did not serve `gpt-5.2`. The bundled catalog
-therefore follows the live current CLI contract. Repeat the probe with
+authenticated `codex-cli 0.144.1` install. The pulled upstream source snapshot
+placed GPT-5.6 Sol first and still listed `gpt-5.2`; the live backend made Sol
+the default, exposed Spark, and did not serve `gpt-5.2`. A live Spark exec also
+returned the expected response. The bundled catalog therefore follows the
+live current CLI contract. Repeat the probe with
 `Codex.AppServer.model_list(conn, include_hidden: true)` when the installed CLI
 changes.
 
-The three GPT-5.6 Codex IDs are explicit:
+The current specialized Codex IDs are explicit:
 
 | Model | Role | Default effort | Supported efforts |
 | --- | --- | --- | --- |
-| `gpt-5.6-sol` | Frontier agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
-| `gpt-5.6-terra` | Balanced everyday agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
-| `gpt-5.6-luna` | Fast agentic coding | `:xhigh` | `:low`, `:medium`, `:high`, `:xhigh`, `:max` |
+| `gpt-5.6-sol` | Frontier agentic coding | `:low` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
+| `gpt-5.6-terra` | Balanced everyday agentic coding | `:medium` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
+| `gpt-5.6-luna` | Fast agentic coding | `:medium` | `:low`, `:medium`, `:high`, `:xhigh`, `:max` |
+| `gpt-5.3-codex-spark` | Near-instant text-only ChatGPT Pro preview | `:high` | `:low`, `:medium`, `:high`, `:xhigh` |
 
 The OpenAI API's `gpt-5.6` family alias is not added to this Codex CLI catalog.
 Select one of the explicit IDs reported by `model/list`.
+Spark is a ChatGPT Pro research preview with a separate usage limit and is not
+available through the OpenAI API at launch; inspect `supported_in_api` before
+presenting it in API-key-only product UI.
 
 ### Models Newer Than The Bundled Registry
 

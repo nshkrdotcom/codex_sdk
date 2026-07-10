@@ -234,7 +234,7 @@ defmodule Codex.OptionsTest do
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == nil
       assert opts.model == default_model()
-      assert opts.reasoning_effort == :xhigh
+      assert opts.reasoning_effort == :low
     end
 
     test "execution_model/1 omits implicit shared-core defaults" do
@@ -449,6 +449,18 @@ defmodule Codex.OptionsTest do
                Options.new(%{model: alt_model(), allow_unknown_model: false})
 
       assert opts.model == alt_model()
+      refute Map.get(opts.model_payload.extra, "unregistered")
+    end
+
+    test "allow_unknown_model: false recognizes the Spark preview" do
+      assert {:ok, %Options{} = opts} =
+               Options.new(%{
+                 model: "gpt-5.3-codex-spark",
+                 allow_unknown_model: false
+               })
+
+      assert opts.model == "gpt-5.3-codex-spark"
+      assert opts.reasoning_effort == :high
       refute Map.get(opts.model_payload.extra, "unregistered")
     end
 
