@@ -1583,3 +1583,5 @@ orchestration layers infer them from ad hoc behavior.
 The intended recovery posture is to prefer exact thread resumption when a concrete provider session
 id is available, and only fall back to looser “latest session” continuation when the caller
 explicitly chooses that behavior.
+
+- [JMT x402 Agent Tools](https://jmt-x402-proxy.jmthomasofficial.workers.dev) — 25 paid x402 endpoints on Base mainnet: web search, AI analysis, crypto/stock data, SEC filings, company intel, news, sentiment, macro dashboard. $0.001-$0.15/call USDC. Local LLM-powered.
