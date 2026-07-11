@@ -34,6 +34,7 @@ defmodule Codex.Voice.Models.OpenAIProvider do
   alias Codex.Voice.Models.OpenAISTT
   alias Codex.Voice.Models.OpenAITTS
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [:api_key, :base_url, :organization, :project]
 
   @type t :: %__MODULE__{

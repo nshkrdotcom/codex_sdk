@@ -12,6 +12,7 @@ defmodule Codex.MCP.Transport.StreamableHTTP do
   defmodule State do
     @moduledoc false
 
+    @derive {Inspect, except: [:bearer_token, :http_headers, :env_http_headers, :oauth_tokens]}
     defstruct [
       :url,
       :server_name,

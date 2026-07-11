@@ -25,6 +25,7 @@ defmodule Codex.Options do
   alias Codex.GovernedAuthority
   alias Codex.Models
 
+  @derive {Inspect, except: [:api_key]}
   @enforce_keys []
   defstruct api_key: nil,
             base_url: BaseURL.default(),

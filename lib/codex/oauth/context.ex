@@ -10,6 +10,7 @@ defmodule Codex.OAuth.Context do
   alias Codex.OAuth.Provider.OpenAI
   alias Codex.Runtime.Env, as: RuntimeEnv
 
+  @derive {Inspect, except: [:child_process_env, :effective_config]}
   @enforce_keys [
     :cwd,
     :codex_home,

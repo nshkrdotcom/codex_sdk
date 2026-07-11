@@ -8,6 +8,7 @@ defmodule Codex.OAuth.Session do
     Pending browser-based OAuth login state returned by `Codex.OAuth.begin_login/1`.
     """
 
+    @derive {Inspect, except: [:context, :authorize_url, :state, :pkce, :loopback_server]}
     @enforce_keys [
       :provider,
       :flow,
@@ -51,6 +52,7 @@ defmodule Codex.OAuth.Session do
     Pending device-code OAuth login state returned by `Codex.OAuth.begin_login/1`.
     """
 
+    @derive {Inspect, except: [:context, :user_code, :device_code]}
     @enforce_keys [
       :provider,
       :flow,
@@ -88,6 +90,7 @@ defmodule Codex.OAuth.Session do
           }
   end
 
+  @derive {Inspect, except: [:context, :auth_record]}
   @enforce_keys [:provider, :flow, :storage, :context, :auth_record]
   defstruct [
     :provider,

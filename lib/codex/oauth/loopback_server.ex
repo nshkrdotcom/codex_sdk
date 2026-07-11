@@ -5,6 +5,7 @@ defmodule Codex.OAuth.LoopbackServer do
 
   alias Codex.OAuth.CallbackPlug
 
+  @derive {Inspect, except: [:expected_state]}
   defstruct [:pid, :callback_url, :port, :callback_path, :expected_state]
 
   @type t :: %__MODULE__{
@@ -18,6 +19,7 @@ defmodule Codex.OAuth.LoopbackServer do
   defmodule State do
     @moduledoc false
 
+    @derive {Inspect, except: [:expected_state, :result]}
     defstruct [
       :bandit_pid,
       :callback_url,

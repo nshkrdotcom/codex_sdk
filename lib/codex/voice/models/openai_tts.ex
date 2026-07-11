@@ -43,6 +43,7 @@ defmodule Codex.Voice.Models.OpenAITTS do
   alias Codex.Net.CA
   alias Codex.Voice.Config.TTSSettings
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [:model, :client, :api_key, :base_url]
 
   @type t :: %__MODULE__{

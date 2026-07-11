@@ -1,6 +1,7 @@
 defmodule Codex.OAuth.PKCE do
   @moduledoc false
 
+  @derive {Inspect, except: [:verifier]}
   @enforce_keys [:verifier, :challenge, :method]
   defstruct [:verifier, :challenge, :method]
 

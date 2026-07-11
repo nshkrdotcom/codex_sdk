@@ -13,6 +13,7 @@ defmodule Codex.Auth.Store do
   defmodule Tokens do
     @moduledoc false
 
+    @derive {Inspect, except: [:access_token, :refresh_token, :id_token]}
     @enforce_keys []
     defstruct access_token: nil,
               refresh_token: nil,
@@ -50,6 +51,7 @@ defmodule Codex.Auth.Store do
   defmodule Record do
     @moduledoc false
 
+    @derive {Inspect, except: [:openai_api_key, :bedrock_api_key, :tokens]}
     @enforce_keys []
     defstruct auth_mode: nil,
               openai_api_key: nil,

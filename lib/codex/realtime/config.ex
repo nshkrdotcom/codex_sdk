@@ -280,6 +280,7 @@ defmodule Codex.Realtime.Config do
     alias Codex.Config.Defaults
     alias Codex.Realtime.Config.SessionModelSettings
 
+    @derive {Inspect, except: [:api_key, :headers]}
     defstruct [
       :api_key,
       :url,

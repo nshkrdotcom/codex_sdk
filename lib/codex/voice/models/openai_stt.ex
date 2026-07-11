@@ -31,6 +31,7 @@ defmodule Codex.Voice.Models.OpenAISTT do
   alias Codex.Voice.Input.StreamedAudioInput
   alias Codex.Voice.Models.OpenAISTTSession
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [:model, :client, :api_key, :base_url]
 
   @type t :: %__MODULE__{
@@ -211,6 +212,7 @@ defmodule Codex.Voice.Models.OpenAISTTSession do
 
   @behaviour Codex.Voice.Model.StreamedTranscriptionSession
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [
     :input,
     :settings,
