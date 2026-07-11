@@ -397,7 +397,7 @@ defmodule Codex.Events do
     defstruct auth_mode: nil, plan_type: nil
 
     @type t :: %__MODULE__{
-            auth_mode: String.t() | nil,
+            auth_mode: atom() | String.t() | nil,
             plan_type: atom() | String.t() | nil
           }
   end
@@ -2364,7 +2364,7 @@ defmodule Codex.Events do
 
   def parse!(%{"type" => "account/updated"} = map) do
     %AccountUpdated{
-      auth_mode: Map.get(map, "auth_mode") || Map.get(map, "authMode"),
+      auth_mode: normalize_auth_mode(Map.get(map, "auth_mode") || Map.get(map, "authMode")),
       plan_type:
         map
         |> Map.get("plan_type")
@@ -2753,7 +2753,7 @@ defmodule Codex.Events do
     %{
       "type" => "account/updated"
     }
-    |> put_optional("auth_mode", event.auth_mode)
+    |> put_optional("auth_mode", encode_auth_mode(event.auth_mode))
     |> put_optional("plan_type", encode_plan_type(event.plan_type))
   end
 
@@ -3800,9 +3800,15 @@ defmodule Codex.Events do
   defp normalize_plan_type(type) when is_atom(type), do: type
   defp normalize_plan_type(type), do: type
 
+  defp normalize_auth_mode("bedrockApiKey"), do: :bedrock_api_key
+  defp normalize_auth_mode(mode), do: mode
+
   defp encode_plan_type(nil), do: nil
   defp encode_plan_type(type) when is_atom(type), do: Atom.to_string(type)
   defp encode_plan_type(type), do: type
+
+  defp encode_auth_mode(:bedrock_api_key), do: "bedrockApiKey"
+  defp encode_auth_mode(mode), do: mode
 
   defp normalize_model_reroute_reason(nil), do: nil
   defp normalize_model_reroute_reason("highRiskCyberActivity"), do: :high_risk_cyber_activity

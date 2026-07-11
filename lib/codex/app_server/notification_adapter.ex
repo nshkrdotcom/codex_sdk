@@ -5,6 +5,8 @@ defmodule Codex.AppServer.NotificationAdapter do
   alias Codex.Events
   alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
 
+  @auth_mode_map %{"bedrockApiKey" => :bedrock_api_key}
+
   @spec to_event(String.t(), map() | nil) :: {:ok, Events.t()}
   def to_event("error", %{} = params) do
     error = Map.get(params, "error") || %{}
@@ -341,7 +343,10 @@ defmodule Codex.AppServer.NotificationAdapter do
   def to_event("account/updated", %{} = params) do
     {:ok,
      %Events.AccountUpdated{
-       auth_mode: Map.get(params, "authMode") || Map.get(params, "auth_mode"),
+       auth_mode:
+         params
+         |> fetch("authMode", "auth_mode")
+         |> normalize_auth_mode(),
        plan_type: normalize_plan_type(Map.get(params, "planType") || Map.get(params, "plan_type"))
      }}
   end
@@ -705,6 +710,9 @@ defmodule Codex.AppServer.NotificationAdapter do
   defp normalize_plan_type("enterprise"), do: :enterprise
   defp normalize_plan_type("api"), do: :api
   defp normalize_plan_type(value), do: value
+
+  defp normalize_auth_mode(mode) when is_binary(mode), do: Map.get(@auth_mode_map, mode, mode)
+  defp normalize_auth_mode(mode), do: mode
 
   defp normalize_model_reroute_reason("highRiskCyberActivity"), do: :high_risk_cyber_activity
   defp normalize_model_reroute_reason(value), do: value

@@ -3,9 +3,10 @@ defmodule Codex.Auth.Store do
 
   alias Codex.Config.LayerStack
 
-  @type auth_mode :: :api_key | :chatgpt | :chatgpt_auth_tokens
+  @type auth_mode :: :api_key | :bedrock_api_key | :chatgpt | :chatgpt_auth_tokens
   @type credentials_store_mode :: :file | :keyring | :auto
   @api_auth_modes ~w(apikey apiKey api_key api)
+  @bedrock_auth_modes ~w(bedrockApiKey bedrock_api_key)
   @chatgpt_auth_modes ~w(chatgpt)
   @chatgpt_token_auth_modes ~w(chatgptAuthTokens chatgpt_auth_tokens)
 
@@ -36,12 +37,23 @@ defmodule Codex.Auth.Store do
           }
   end
 
+  defmodule BedrockCredentials do
+    @moduledoc false
+
+    @derive {Inspect, except: [:api_key]}
+    @enforce_keys [:api_key, :region]
+    defstruct [:api_key, :region]
+
+    @type t :: %__MODULE__{api_key: String.t(), region: String.t()}
+  end
+
   defmodule Record do
     @moduledoc false
 
     @enforce_keys []
     defstruct auth_mode: nil,
               openai_api_key: nil,
+              bedrock_api_key: nil,
               tokens: nil,
               last_refresh: nil,
               path: nil
@@ -49,6 +61,7 @@ defmodule Codex.Auth.Store do
     @type t :: %__MODULE__{
             auth_mode: Codex.Auth.Store.auth_mode(),
             openai_api_key: String.t() | nil,
+            bedrock_api_key: Codex.Auth.Store.BedrockCredentials.t() | nil,
             tokens: Codex.Auth.Store.Tokens.t() | nil,
             last_refresh: DateTime.t() | nil,
             path: String.t() | nil
@@ -147,6 +160,7 @@ defmodule Codex.Auth.Store do
 
   @spec infer_auth_mode(Record.t() | nil) :: :api | :chatgpt
   def infer_auth_mode(%Record{auth_mode: :api_key}), do: :api
+  def infer_auth_mode(%Record{auth_mode: :bedrock_api_key}), do: :api
   def infer_auth_mode(%Record{}), do: :chatgpt
   def infer_auth_mode(nil), do: :chatgpt
 
@@ -157,6 +171,7 @@ defmodule Codex.Auth.Store do
     %Record{
       auth_mode: Keyword.get(opts, :auth_mode, resolve_auth_mode(nil, openai_api_key)),
       openai_api_key: openai_api_key,
+      bedrock_api_key: decode_bedrock_credentials(Keyword.get(opts, :bedrock_api_key)),
       tokens:
         decode_tokens(
           %{}
@@ -196,6 +211,7 @@ defmodule Codex.Auth.Store do
     %Record{
       auth_mode: resolve_auth_mode(Map.get(decoded, "auth_mode"), openai_api_key),
       openai_api_key: openai_api_key,
+      bedrock_api_key: decode_bedrock_credentials(Map.get(decoded, "bedrock_api_key")),
       tokens: tokens,
       last_refresh: decode_datetime(Map.get(decoded, "last_refresh")),
       path: path
@@ -228,6 +244,7 @@ defmodule Codex.Auth.Store do
     %{}
     |> put_optional("auth_mode", encode_auth_mode(record.auth_mode))
     |> put_optional("OPENAI_API_KEY", normalize_string(record.openai_api_key))
+    |> put_optional("bedrock_api_key", encode_bedrock_credentials(record.bedrock_api_key))
     |> put_optional("tokens", encode_tokens(record.tokens))
     |> put_optional("last_refresh", encode_datetime(record.last_refresh))
   end
@@ -241,6 +258,25 @@ defmodule Codex.Auth.Store do
     |> put_optional("refresh_token", normalize_string(tokens.refresh_token))
     |> put_optional("account_id", normalize_string(tokens.account_id))
   end
+
+  defp decode_bedrock_credentials(%BedrockCredentials{} = credentials), do: credentials
+
+  defp decode_bedrock_credentials(%{} = credentials) do
+    api_key = normalize_string(Map.get(credentials, "api_key") || Map.get(credentials, :api_key))
+    region = normalize_string(Map.get(credentials, "region") || Map.get(credentials, :region))
+
+    if api_key && region do
+      %BedrockCredentials{api_key: api_key, region: region}
+    end
+  end
+
+  defp decode_bedrock_credentials(_), do: nil
+
+  defp encode_bedrock_credentials(%BedrockCredentials{} = credentials) do
+    %{"api_key" => credentials.api_key, "region" => credentials.region}
+  end
+
+  defp encode_bedrock_credentials(_), do: nil
 
   defp write_atomic_json(tmp_path, path, payload) do
     encoded = Jason.encode_to_iodata!(payload)
@@ -274,6 +310,9 @@ defmodule Codex.Auth.Store do
       normalized_auth_mode in @api_auth_modes ->
         :api_key
 
+      normalized_auth_mode in @bedrock_auth_modes ->
+        :bedrock_api_key
+
       normalized_auth_mode in @chatgpt_auth_modes ->
         :chatgpt
 
@@ -289,6 +328,7 @@ defmodule Codex.Auth.Store do
   end
 
   defp encode_auth_mode(:api_key), do: "apikey"
+  defp encode_auth_mode(:bedrock_api_key), do: "bedrockApiKey"
   defp encode_auth_mode(:chatgpt), do: "chatgpt"
   defp encode_auth_mode(:chatgpt_auth_tokens), do: "chatgptAuthTokens"
   defp encode_auth_mode(_), do: nil

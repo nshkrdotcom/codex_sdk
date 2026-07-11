@@ -9,8 +9,23 @@ defmodule Codex.AppServer.Account do
   alias Codex.Runtime.Env, as: RuntimeEnv
 
   @type connection :: pid()
+  @login_type_map %{
+    "chatgpt" => :chatgpt,
+    "chatgptAuthTokens" => :chatgpt,
+    "chatgpt_auth_tokens" => :chatgpt,
+    "apiKey" => :api_key,
+    "api_key" => :api_key,
+    "api" => :api_key,
+    "amazonBedrock" => :bedrock_api_key
+  }
 
-  @spec login_start(connection(), :chatgpt | {:api_key, String.t()} | map()) ::
+  @type login_method ::
+          :chatgpt
+          | {:api_key, String.t()}
+          | {:amazon_bedrock, String.t(), String.t()}
+          | map()
+
+  @spec login_start(connection(), login_method()) ::
           {:ok, map()} | {:error, term()}
   def login_start(conn, :chatgpt) when is_pid(conn) do
     login_start(conn, :chatgpt, [])
@@ -24,6 +39,11 @@ defmodule Codex.AppServer.Account do
     login_start(conn, {:api_key, api_key}, [])
   end
 
+  def login_start(conn, {:amazon_bedrock, api_key, region})
+      when is_pid(conn) and is_binary(api_key) and is_binary(region) do
+    login_start(conn, {:amazon_bedrock, api_key, region}, [])
+  end
+
   def login_start(conn, %{} = params) when is_pid(conn) do
     login_start(conn, params, [])
   end
@@ -33,8 +53,12 @@ defmodule Codex.AppServer.Account do
 
   ChatGPT login accepts `:app_brand`, `:codex_streamlined_login`, and
   `:use_hosted_login_success_page`.
+
+  Amazon Bedrock login is an unstable upstream app-server API. Its connection must
+  have been initialized with `experimental_api: true`. The current upstream server
+  publishes the request schema but returns an unimplemented error when it is used.
   """
-  @spec login_start(connection(), :chatgpt | {:api_key, String.t()} | map(), keyword()) ::
+  @spec login_start(connection(), login_method(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def login_start(conn, :chatgpt, opts) when is_pid(conn) and is_list(opts) do
     params =
@@ -63,6 +87,16 @@ defmodule Codex.AppServer.Account do
     params = %{"type" => "apiKey", "apiKey" => api_key}
 
     with :ok <- enforce_login_constraints(:api_key, params, opts) do
+      Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
+    end
+  end
+
+  def login_start(conn, {:amazon_bedrock, api_key, region}, opts)
+      when is_pid(conn) and is_binary(api_key) and is_binary(region) and is_list(opts) do
+    params = %{"type" => "amazonBedrock", "apiKey" => api_key, "region" => region}
+
+    with :ok <- validate_amazon_bedrock_login(api_key, region),
+         :ok <- enforce_login_constraints(:bedrock_api_key, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
     end
   end
@@ -158,6 +192,7 @@ defmodule Codex.AppServer.Account do
   defp enforce_forced_login_method(nil, _login_type), do: :ok
   defp enforce_forced_login_method("chatgpt", :chatgpt), do: :ok
   defp enforce_forced_login_method("api", :api_key), do: :ok
+  defp enforce_forced_login_method("api", :bedrock_api_key), do: :ok
 
   defp enforce_forced_login_method(forced, login_type) do
     {:error, {:forced_login_method, forced, login_type}}
@@ -166,6 +201,7 @@ defmodule Codex.AppServer.Account do
   defp enforce_forced_workspace_id(nil, _login_type, _params), do: :ok
 
   defp enforce_forced_workspace_id(_workspace_id, :api_key, _params), do: :ok
+  defp enforce_forced_workspace_id(_workspace_id, :bedrock_api_key, _params), do: :ok
 
   defp enforce_forced_workspace_id(workspace_id, :chatgpt, params) do
     case fetch_workspace_id(params) do
@@ -188,14 +224,28 @@ defmodule Codex.AppServer.Account do
   defp normalize_add_credits_nudge_credit_type(value), do: to_string(value)
 
   defp infer_login_type(%{} = params) do
-    case Map.get(params, "type") || Map.get(params, :type) do
-      "chatgpt" -> {:ok, :chatgpt}
-      "chatgptAuthTokens" -> {:ok, :chatgpt}
-      "chatgpt_auth_tokens" -> {:ok, :chatgpt}
-      "apiKey" -> {:ok, :api_key}
-      "api_key" -> {:ok, :api_key}
-      "api" -> {:ok, :api_key}
-      other -> {:error, {:invalid_login_type, other}}
+    type = Map.get(params, "type") || Map.get(params, :type)
+
+    case Map.fetch(@login_type_map, type) do
+      {:ok, login_type} -> {:ok, login_type}
+      :error -> {:error, {:invalid_login_type, type}}
+    end
+  end
+
+  defp validate_amazon_bedrock_login(api_key, _region) when byte_size(api_key) == 0 do
+    {:error, {:invalid_amazon_bedrock_login, :api_key_required}}
+  end
+
+  defp validate_amazon_bedrock_login(api_key, region) do
+    cond do
+      String.trim(api_key) == "" ->
+        {:error, {:invalid_amazon_bedrock_login, :api_key_required}}
+
+      String.trim(region) == "" ->
+        {:error, {:invalid_amazon_bedrock_login, :region_required}}
+
+      true ->
+        :ok
     end
   end
 
