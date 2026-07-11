@@ -128,7 +128,10 @@ defmodule Codex.Events do
 
   defmodule TurnCompleted do
     @moduledoc """
-    Final event for a turn, optionally carrying final response and usage data.
+    Final event for a turn, optionally carrying response, usage, and timing data.
+
+    App-server completions with `status: "failed"` carry terminal failure
+    details in `error`. This is distinct from exec JSONL's `TurnFailed` event.
     """
 
     defstruct thread_id: nil,
@@ -137,7 +140,11 @@ defmodule Codex.Events do
               final_response: nil,
               usage: nil,
               status: nil,
-              error: nil
+              error: nil,
+              started_at: nil,
+              completed_at: nil,
+              duration_ms: nil,
+              time_to_first_token_ms: nil
 
     @type t :: %__MODULE__{
             thread_id: String.t() | nil,
@@ -146,7 +153,11 @@ defmodule Codex.Events do
             final_response: Items.AgentMessage.t() | map() | nil,
             usage: map() | nil,
             status: String.t() | nil,
-            error: map() | nil
+            error: map() | nil,
+            started_at: integer() | nil,
+            completed_at: integer() | nil,
+            duration_ms: integer() | nil,
+            time_to_first_token_ms: integer() | nil
           }
   end
 
@@ -1254,14 +1265,24 @@ defmodule Codex.Events do
 
   defmodule TurnAborted do
     @moduledoc """
-    Event emitted when a turn is aborted.
+    Core/legacy event emitted when a turn is aborted, including optional timing.
+
+    Current app-server interruption instead terminates through `TurnCompleted`
+    with an interrupted status.
     """
 
-    defstruct turn_id: nil, reason: nil
+    defstruct turn_id: nil,
+              reason: nil,
+              started_at: nil,
+              completed_at: nil,
+              duration_ms: nil
 
     @type t :: %__MODULE__{
             turn_id: String.t() | nil,
-            reason: String.t() | atom() | map() | nil
+            reason: String.t() | atom() | map() | nil,
+            started_at: integer() | nil,
+            completed_at: integer() | nil,
+            duration_ms: integer() | nil
           }
   end
 
@@ -1787,7 +1808,11 @@ defmodule Codex.Events do
       final_response: Map.get(map, "final_response"),
       usage: Map.get(map, "usage"),
       status: Map.get(map, "status"),
-      error: Map.get(map, "error")
+      error: Map.get(map, "error"),
+      started_at: Map.get(map, "started_at"),
+      completed_at: Map.get(map, "completed_at"),
+      duration_ms: Map.get(map, "duration_ms"),
+      time_to_first_token_ms: Map.get(map, "time_to_first_token_ms")
     }
   end
 
@@ -2041,7 +2066,10 @@ defmodule Codex.Events do
       when type in ["turn_aborted", "turnAborted", "turn.aborted"] do
     %TurnAborted{
       turn_id: Map.get(map, "turn_id") || Map.get(map, "turnId"),
-      reason: Map.get(map, "reason")
+      reason: Map.get(map, "reason"),
+      started_at: Map.get(map, "started_at") || Map.get(map, "startedAt"),
+      completed_at: Map.get(map, "completed_at") || Map.get(map, "completedAt"),
+      duration_ms: Map.get(map, "duration_ms") || Map.get(map, "durationMs")
     }
   end
 
@@ -2443,6 +2471,17 @@ defmodule Codex.Events do
   end
 
   @doc """
+  Returns a terminal turn's duration in milliseconds when it can be determined.
+
+  An explicit `duration_ms` value takes precedence. Otherwise the helper uses
+  the difference between the Unix-second `started_at` and `completed_at`
+  timestamps. It returns `nil` when either timestamp is absent.
+  """
+  @spec turn_duration_ms(TurnCompleted.t() | TurnAborted.t()) :: integer() | nil
+  def turn_duration_ms(%TurnCompleted{} = turn), do: calculate_turn_duration_ms(turn)
+  def turn_duration_ms(%TurnAborted{} = turn), do: calculate_turn_duration_ms(turn)
+
+  @doc """
   Converts a typed event struct back into the JSON-serializable map representation.
   """
   @spec to_map(t()) :: map()
@@ -2529,6 +2568,10 @@ defmodule Codex.Events do
     |> put_optional("usage", event.usage)
     |> put_optional("status", event.status)
     |> put_optional("error", event.error)
+    |> put_optional("started_at", event.started_at)
+    |> put_optional("completed_at", event.completed_at)
+    |> put_optional("duration_ms", event.duration_ms)
+    |> put_optional("time_to_first_token_ms", event.time_to_first_token_ms)
   end
 
   def to_map(%HookCompleted{} = event) do
@@ -3141,6 +3184,9 @@ defmodule Codex.Events do
     }
     |> put_optional("turn_id", event.turn_id)
     |> put_optional("reason", event.reason)
+    |> put_optional("started_at", event.started_at)
+    |> put_optional("completed_at", event.completed_at)
+    |> put_optional("duration_ms", event.duration_ms)
   end
 
   def to_map(%ShutdownComplete{}) do
@@ -3763,6 +3809,15 @@ defmodule Codex.Events do
   defp normalize_model_reroute_reason("high_risk_cyber_activity"), do: :high_risk_cyber_activity
   defp normalize_model_reroute_reason(reason) when is_atom(reason), do: reason
   defp normalize_model_reroute_reason(reason), do: reason
+
+  defp calculate_turn_duration_ms(%{duration_ms: duration_ms}) when is_integer(duration_ms),
+    do: duration_ms
+
+  defp calculate_turn_duration_ms(%{started_at: started_at, completed_at: completed_at})
+       when is_integer(started_at) and is_integer(completed_at),
+       do: (completed_at - started_at) * 1_000
+
+  defp calculate_turn_duration_ms(_turn), do: nil
 
   defp encode_model_reroute_reason(nil), do: nil
   defp encode_model_reroute_reason(:high_risk_cyber_activity), do: "highRiskCyberActivity"

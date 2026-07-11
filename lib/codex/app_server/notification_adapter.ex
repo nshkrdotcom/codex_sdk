@@ -150,7 +150,10 @@ defmodule Codex.AppServer.NotificationAdapter do
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: Map.get(turn, "id"),
        status: normalize_turn_status(Map.get(turn, "status")),
-       error: Map.get(turn, "error")
+       error: Map.get(turn, "error"),
+       started_at: fetch(turn, "startedAt", "started_at"),
+       completed_at: fetch(turn, "completedAt", "completed_at"),
+       duration_ms: fetch(turn, "durationMs", "duration_ms")
      }}
   end
 
