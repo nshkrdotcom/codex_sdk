@@ -68,6 +68,11 @@ Codex execution requires explicit authority refs and materialized env for one
 bounded effect; normal layered config, shell env, and saved CLI auth files do
 not satisfy governed authority.
 
+An explicit layered `personality = "none"` is meaningful upstream. When the
+selected model supports personality instructions, Codex removes the catalog's
+`# Personality` section instead of treating `none` as a literal personality;
+an explicit `base_instructions` override remains untouched.
+
 ## Defaults Reference
 
 ### Transport Timeouts

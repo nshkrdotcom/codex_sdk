@@ -117,6 +117,7 @@ Current parity notes:
 - `resume/2` accepts `include_non_interactive: true`
 - `app_server/1` accepts websocket auth options: `ws_auth`, `ws_token_file`, `ws_shared_secret_file`, `ws_issuer`, `ws_audience`, and `ws_max_clock_skew_seconds`
 - `ws_auth` atoms normalize to the upstream CLI spellings such as `:capability_token -> capability-token`
+- upstream removed the legacy exec-policy matcher, while `execpolicy_check/2` continues to invoke the current `codex execpolicy check` subcommand
 
 `run/2` and the synchronous wrappers execute through the shared
 `CliSubprocessCore.Command` lane.

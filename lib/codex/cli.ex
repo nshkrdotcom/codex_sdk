@@ -213,6 +213,9 @@ defmodule Codex.CLI do
 
   @doc """
   Runs `codex execpolicy check`.
+
+  Upstream removed its legacy policy engine, but this current `execpolicy check`
+  subcommand remains supported.
   """
   @spec execpolicy_check([String.t()] | String.t(), keyword()) ::
           {:ok, result()} | {:error, term()}

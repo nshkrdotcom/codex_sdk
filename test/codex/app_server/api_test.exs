@@ -1720,6 +1720,25 @@ defmodule Codex.AppServer.ApiTest do
              Task.await(failure_task, 200)
   end
 
+  test "environment responses surface additive registration metadata unchanged", %{conn: conn} do
+    add_task =
+      Task.async(fn ->
+        AppServer.environment_add(conn, "env_pending", "ws://127.0.0.1:9002")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, add_line}
+    assert {:ok, %{"id" => add_id, "method" => "environment/add"}} = Jason.decode(add_line)
+
+    response = %{
+      "environmentId" => "env_pending",
+      "registrationStatus" => "pending",
+      "futureRegistrationField" => %{"retryAfterMs" => 250}
+    }
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(add_id, response))
+    assert {:ok, ^response} = Task.await(add_task, 200)
+  end
+
   test "marketplace_remove/2 and marketplace_upgrade/2 encode current params", %{conn: conn} do
     remove_task = Task.async(fn -> AppServer.marketplace_remove(conn, "debug") end)
 

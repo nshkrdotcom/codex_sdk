@@ -46,6 +46,11 @@ The exact text default is catalog-derived, not a permanent public contract.
 With the shared catalog selected for this SDK, both text auth modes currently
 resolve to `gpt-5.6-sol` (default reasoning effort `:low`).
 
+Upstream's separate Amazon Bedrock catalog also prioritizes GPT-5.6 Sol as its
+provider default, followed by Terra and Luna. That catalog behavior is distinct
+from the experimental Bedrock login request, which current upstream still
+reports as unimplemented.
+
 The active offline catalog is owned by `CliSubprocessCore.ModelRegistry`. In a
 sibling development checkout its Codex data lives at
 `../cli_subprocess_core/priv/models/codex.json`; standalone and released builds
@@ -129,6 +134,10 @@ Spark is a ChatGPT Pro research preview with a separate usage limit and is not
 available through the OpenAI API at launch; inspect `supported_in_api` before
 presenting it in API-key-only product UI.
 
+Upstream model-availability announcements now consider only the first eligible
+catalog entry. Once that announcement reaches its display limit, Codex shows no
+announcement instead of falling back to an older model's announcement.
+
 ### Dependency And Release Ordering
 
 Development dependency selection prefers a real sibling path, then the GitHub
@@ -205,6 +214,14 @@ Each model preset includes:
 Reasoning effort controls how much "thinking" the model does before responding.
 Higher effort produces better answers for complex problems but increases latency
 and cost.
+
+Current upstream Responses requests always include a reasoning object and ask
+for encrypted reasoning content, using configured effort or the selected
+model's default. Reasoning summaries are still capability-aware: Codex omits
+the summary parameter and its streaming-delivery option when the final selected
+model does not support reasoning summaries. These are CLI transport behaviors;
+the SDK continues to pass the corresponding model and reasoning configuration
+through without duplicating that capability gate.
 
 ### Valid Levels
 

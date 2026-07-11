@@ -162,6 +162,17 @@ defmodule Codex.CLITest do
     end)
   end
 
+  test "execpolicy_check/2 survives removal of the upstream legacy policy engine" do
+    args_path = tmp_path("argv_execpolicy_current")
+    script_path = probe_script(args_path, stdout: "ok\n")
+    {:ok, codex_opts} = Options.new(%{api_key: "test", codex_path_override: script_path})
+
+    assert {:ok, %{success: true}} =
+             CLI.execpolicy_check(["git", "status"], codex_opts: codex_opts)
+
+    assert argv(args_path) == ["execpolicy", "check", "--", "git", "status"]
+  end
+
   test "login wrapper can pipe an API key over stdin" do
     args_path = tmp_path("argv_api_key")
     stdin_path = tmp_path("stdin_api_key")

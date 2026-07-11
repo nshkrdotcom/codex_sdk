@@ -119,3 +119,10 @@ If you need the literal CLI marketplace surface instead of JSON-RPC, use
 `Codex.CLI.marketplace_add/2`.
 
 The SDK does not route normal local authoring through app-server `fs/*`.
+
+Upstream treats hooks from newly installed or updated materialized workspace
+plugins as trusted only after the effective-plugin refresh succeeds and their
+current hook hashes are written for the active account. The update is
+fail-closed: an account change or config-write failure leaves those hooks
+untrusted. This runtime trust transition does not change the SDK's local
+authoring or manifest-validation APIs.

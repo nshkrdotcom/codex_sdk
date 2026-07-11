@@ -180,6 +180,25 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               }} = NotificationAdapter.to_event("item/autoApprovalReview/completed", params)
     end
 
+    test "tolerates a future hook decision source in guardian review metadata" do
+      params = %{
+        "threadId" => "thr_hook",
+        "turnId" => "turn_hook",
+        "reviewId" => "review_hook",
+        "decisionSource" => "hook",
+        "review" => %{"status" => "approved"},
+        "action" => %{"type" => "allow", "resolvedBy" => "permissionHook"}
+      }
+
+      assert {:ok,
+              %Events.GuardianApprovalReviewCompleted{
+                decision_source: "hook",
+                review: %Events.GuardianApprovalReview{status: :approved},
+                action: %{"resolvedBy" => "permissionHook"}
+              }} =
+               NotificationAdapter.to_event("item/autoApprovalReview/completed", params)
+    end
+
     test "maps resolved server requests" do
       assert {:ok, %Events.ServerRequestResolved{thread_id: "thr_1", request_id: "req_1"}} =
                NotificationAdapter.to_event("serverRequest/resolved", %{
