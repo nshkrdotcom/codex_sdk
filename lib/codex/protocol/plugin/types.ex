@@ -718,6 +718,227 @@ defmodule Codex.Protocol.Plugin.Marketplace do
   end
 end
 
+defmodule Codex.Protocol.Plugin.ScheduledTaskSchedule do
+  @moduledoc """
+  Tagged schedule metadata for a plugin-provided scheduled task.
+
+  Known tags are validated against the current hourly, daily, weekdays, and
+  weekly shapes. Unknown string tags remain lossless for additive compatibility.
+  Weekday values remain wire strings such as `"MO"` and `"WE"`.
+  """
+
+  use TypedStruct
+
+  alias Codex.Protocol.Plugin.Helpers
+
+  @key_mapping %{"interval_hours" => "intervalHours"}
+  @known_fields ["type", "intervalHours", "days", "time"]
+  @schema Zoi.map(
+            %{
+              "type" => Helpers.required_string(),
+              "intervalHours" => Zoi.optional(Zoi.nullish(Zoi.integer())),
+              "days" => Zoi.optional(Zoi.nullish(Zoi.array(Helpers.required_string()))),
+              "time" => Helpers.optional_string()
+            },
+            unrecognized_keys: :preserve
+          )
+          |> Zoi.transform({__MODULE__, :validate_zoi, []})
+
+  typedstruct do
+    field(:type, String.t(), enforce: true)
+    field(:interval_hours, non_neg_integer() | nil)
+    field(:days, [String.t()] | nil)
+    field(:time, String.t() | nil)
+    field(:extra, map(), default: %{})
+  end
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
+
+  @spec parse(map() | keyword() | t()) ::
+          {:ok, t()}
+          | {:error,
+             {:invalid_plugin_scheduled_task_schedule, CliSubprocessCore.Schema.error_detail()}}
+  def parse(%__MODULE__{} = value), do: {:ok, value}
+
+  def parse(data) do
+    Helpers.parse(
+      @schema,
+      data,
+      :invalid_plugin_scheduled_task_schedule,
+      @key_mapping,
+      &build/1
+    )
+  end
+
+  @spec parse!(map() | keyword() | t()) :: t()
+  def parse!(%__MODULE__{} = value), do: value
+
+  def parse!(data) do
+    Helpers.parse!(
+      @schema,
+      data,
+      :invalid_plugin_scheduled_task_schedule,
+      @key_mapping,
+      &build/1
+    )
+  end
+
+  @spec from_map(map() | keyword() | t()) :: t()
+  def from_map(data), do: parse!(data)
+
+  @spec to_map(t()) :: map()
+  def to_map(%__MODULE__{} = value) do
+    value
+    |> known_wire_fields()
+    |> Map.merge(value.extra)
+  end
+
+  @doc false
+  @spec validate_zoi(map(), keyword()) :: {:ok, map()} | {:error, String.t()}
+  def validate_zoi(%{"type" => "hourly", "intervalHours" => interval_hours} = value, _opts)
+      when is_integer(interval_hours) and interval_hours >= 0,
+      do: {:ok, value}
+
+  def validate_zoi(%{"type" => type, "time" => time} = value, _opts)
+      when type in ["daily", "weekdays"] and is_binary(time),
+      do: {:ok, value}
+
+  def validate_zoi(%{"type" => "weekly", "days" => days, "time" => time} = value, _opts)
+      when is_list(days) and is_binary(time),
+      do: {:ok, value}
+
+  def validate_zoi(%{"type" => type} = value, _opts)
+      when type not in ["hourly", "daily", "weekdays", "weekly"],
+      do: {:ok, value}
+
+  def validate_zoi(%{"type" => type}, _opts),
+    do: {:error, "invalid fields for scheduled task schedule type #{inspect(type)}"}
+
+  defp build(parsed) do
+    {known, extra} = Helpers.split_extra(parsed, @known_fields)
+
+    %__MODULE__{
+      type: Map.fetch!(known, "type"),
+      interval_hours: Map.get(known, "intervalHours"),
+      days: Map.get(known, "days"),
+      time: Map.get(known, "time"),
+      extra: extra
+    }
+  end
+
+  defp known_wire_fields(%__MODULE__{type: "hourly"} = value) do
+    %{
+      "type" => value.type,
+      "intervalHours" => value.interval_hours,
+      "days" => value.days
+    }
+  end
+
+  defp known_wire_fields(%__MODULE__{type: type} = value)
+       when type in ["daily", "weekdays"] do
+    %{"type" => type, "time" => value.time}
+  end
+
+  defp known_wire_fields(%__MODULE__{type: "weekly"} = value) do
+    %{"type" => value.type, "days" => value.days, "time" => value.time}
+  end
+
+  defp known_wire_fields(%__MODULE__{} = value) do
+    %{"type" => value.type}
+    |> Helpers.maybe_put("intervalHours", value.interval_hours)
+    |> Helpers.maybe_put("days", value.days)
+    |> Helpers.maybe_put("time", value.time)
+  end
+end
+
+defmodule Codex.Protocol.Plugin.ScheduledTaskSummary do
+  @moduledoc """
+  A named plugin scheduled task and its typed schedule.
+  """
+
+  use TypedStruct
+
+  alias Codex.Protocol.Plugin.{Helpers, ScheduledTaskSchedule}
+
+  @known_fields ["key", "name", "prompt", "schedule"]
+  @schema Zoi.map(
+            %{
+              "key" => Helpers.required_string(),
+              "name" => Helpers.required_string(),
+              "prompt" => Helpers.required_string(),
+              "schedule" => Helpers.any_map()
+            },
+            unrecognized_keys: :preserve
+          )
+
+  typedstruct do
+    field(:key, String.t(), enforce: true)
+    field(:name, String.t(), enforce: true)
+    field(:prompt, String.t(), enforce: true)
+    field(:schedule, ScheduledTaskSchedule.t(), enforce: true)
+    field(:extra, map(), default: %{})
+  end
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
+
+  @spec parse(map() | keyword() | t()) ::
+          {:ok, t()}
+          | {:error,
+             {:invalid_plugin_scheduled_task_summary, CliSubprocessCore.Schema.error_detail()}}
+  def parse(%__MODULE__{} = value), do: {:ok, value}
+
+  def parse(data) do
+    Helpers.parse(
+      @schema,
+      data,
+      :invalid_plugin_scheduled_task_summary,
+      %{},
+      &build/1
+    )
+  end
+
+  @spec parse!(map() | keyword() | t()) :: t()
+  def parse!(%__MODULE__{} = value), do: value
+
+  def parse!(data) do
+    Helpers.parse!(
+      @schema,
+      data,
+      :invalid_plugin_scheduled_task_summary,
+      %{},
+      &build/1
+    )
+  end
+
+  @spec from_map(map() | keyword() | t()) :: t()
+  def from_map(data), do: parse!(data)
+
+  @spec to_map(t()) :: map()
+  def to_map(%__MODULE__{} = value) do
+    %{
+      "key" => value.key,
+      "name" => value.name,
+      "prompt" => value.prompt,
+      "schedule" => ScheduledTaskSchedule.to_map(value.schedule)
+    }
+    |> Map.merge(value.extra)
+  end
+
+  defp build(parsed) do
+    {known, extra} = Helpers.split_extra(parsed, @known_fields)
+
+    %__MODULE__{
+      key: Map.fetch!(known, "key"),
+      name: Map.fetch!(known, "name"),
+      prompt: Map.fetch!(known, "prompt"),
+      schedule: Helpers.parse_nested(Map.fetch!(known, "schedule"), ScheduledTaskSchedule),
+      extra: extra
+    }
+  end
+end
+
 defmodule Codex.Protocol.Plugin.Detail do
   @moduledoc """
   Plugin detail payload returned by `plugin/read`.
@@ -725,12 +946,19 @@ defmodule Codex.Protocol.Plugin.Detail do
 
   use TypedStruct
 
-  alias Codex.Protocol.Plugin.{AppSummary, Helpers, SkillSummary, Summary}
+  alias Codex.Protocol.Plugin.{
+    AppSummary,
+    Helpers,
+    ScheduledTaskSummary,
+    SkillSummary,
+    Summary
+  }
 
   @key_mapping %{
     "marketplace_name" => "marketplaceName",
     "marketplace_path" => "marketplacePath",
-    "mcp_servers" => "mcpServers"
+    "mcp_servers" => "mcpServers",
+    "scheduled_tasks" => "scheduledTasks"
   }
   @known_fields [
     "marketplaceName",
@@ -739,7 +967,8 @@ defmodule Codex.Protocol.Plugin.Detail do
     "description",
     "skills",
     "apps",
-    "mcpServers"
+    "mcpServers",
+    "scheduledTasks"
   ]
   @schema Zoi.map(
             %{
@@ -749,7 +978,8 @@ defmodule Codex.Protocol.Plugin.Detail do
               "description" => Helpers.optional_string(),
               "skills" => Helpers.default_array(Helpers.any_map()),
               "apps" => Helpers.default_array(Helpers.any_map()),
-              "mcpServers" => Helpers.default_string_list()
+              "mcpServers" => Helpers.default_string_list(),
+              "scheduledTasks" => Zoi.optional(Zoi.nullish(Zoi.array(Helpers.any_map())))
             },
             unrecognized_keys: :preserve
           )
@@ -762,6 +992,7 @@ defmodule Codex.Protocol.Plugin.Detail do
     field(:skills, [SkillSummary.t()], default: [])
     field(:apps, [AppSummary.t()], default: [])
     field(:mcp_servers, [String.t()], default: [])
+    field(:scheduled_tasks, [ScheduledTaskSummary.t()] | nil)
     field(:extra, map(), default: %{})
   end
 
@@ -795,6 +1026,7 @@ defmodule Codex.Protocol.Plugin.Detail do
       "mcpServers" => value.mcp_servers
     }
     |> Helpers.maybe_put("description", value.description)
+    |> Helpers.maybe_put("scheduledTasks", encode_scheduled_tasks(value.scheduled_tasks))
     |> Map.merge(value.extra)
   end
 
@@ -809,7 +1041,18 @@ defmodule Codex.Protocol.Plugin.Detail do
       skills: Helpers.parse_list(Map.get(known, "skills"), SkillSummary),
       apps: Helpers.parse_list(Map.get(known, "apps"), AppSummary),
       mcp_servers: Map.get(known, "mcpServers", []),
+      scheduled_tasks: parse_scheduled_tasks(Map.get(known, "scheduledTasks")),
       extra: extra
     }
   end
+
+  defp parse_scheduled_tasks(nil), do: nil
+
+  defp parse_scheduled_tasks(values),
+    do: Helpers.parse_list(values, ScheduledTaskSummary)
+
+  defp encode_scheduled_tasks(nil), do: nil
+
+  defp encode_scheduled_tasks(values),
+    do: Helpers.encode_list(values, ScheduledTaskSummary)
 end
