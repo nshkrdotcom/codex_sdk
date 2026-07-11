@@ -42,13 +42,15 @@ overrides and it does not force live exec/app-server runs to use that model.
 Those live runtime surfaces only pin a model when `Codex.Options` resolves an
 explicit model from user input, `CODEX_MODEL`, or an OSS provider route.
 
-The exact text default is catalog-derived, not a permanent public contract. With
-the bundled catalog vendored in this repo, both text auth modes currently resolve
-to `gpt-5.6-sol` (default reasoning effort `:low`).
+The exact text default is catalog-derived, not a permanent public contract.
+With the shared catalog selected for this SDK, both text auth modes currently
+resolve to `gpt-5.6-sol` (default reasoning effort `:low`).
 
-The active offline catalog lives in
-`../cli_subprocess_core/priv/models/codex.json`. `priv/models.json` is the
-synced upstream source-registry snapshot used for parity review.
+The active offline catalog is owned by `CliSubprocessCore.ModelRegistry`. In a
+sibling development checkout its Codex data lives at
+`../cli_subprocess_core/priv/models/codex.json`; standalone and released builds
+consume the same catalog from their selected `cli_subprocess_core` dependency.
+This SDK does not ship or read a second model-data copy.
 
 Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
 selection. Memory-only external app-server auth is connection-local and does not
@@ -126,6 +128,31 @@ Select one of the explicit IDs reported by `model/list`.
 Spark is a ChatGPT Pro research preview with a separate usage limit and is not
 available through the OpenAI API at launch; inspect `supported_in_api` before
 presenting it in API-key-only product UI.
+
+### Dependency And Release Ordering
+
+Development dependency selection prefers a real sibling path, then the GitHub
+source, then Hex. Release tasks intentionally select Hex, so a release consumes
+the catalog published by `cli_subprocess_core`, not an arbitrary workspace
+copy. Publish the dependency chain bottom-up:
+
+1. `ground_plane_contracts` and `ground_plane_persistence_policy`
+2. `execution_plane`, `execution_plane_jsonrpc`, and `execution_plane_process`
+3. `cli_subprocess_core`
+4. `codex_sdk`
+
+Publishing `codex_sdk` 0.17.0 is currently blocked because those five Ground
+Plane and Execution Plane packages are not yet available on Hex, and publish
+mode cannot lock the current core dependency graph. This SDK must not be
+published until that chain is released and verified from a clean Hex-only
+consumer.
+
+The recommended installed CLI remains `codex-cli 0.144.1`; no stable 0.145
+release is available. The SDK also carries additive parser coverage derived
+from newer protocol source. Those optional fields are harmless when absent and
+become available when the connected CLI emits them. A live app-server build
+reporting 0.144.1 already exposed turn timing, while the current exec JSONL
+terminal event still exposes usage only.
 
 ### Models Newer Than The Bundled Registry
 

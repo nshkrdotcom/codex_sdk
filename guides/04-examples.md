@@ -813,7 +813,7 @@ end
 
 Configure based on environment.
 
-The SDK default model is derived from the shared `CliSubprocessCore.ModelRegistry` catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the bundled catalog shipped in this repo, that currently resolves to `gpt-5.6-sol`. The SDK keeps `priv/models.json` as the synced upstream source-registry snapshot, while the active registry lives in `../cli_subprocess_core/priv/models/codex.json`. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
+The SDK default model is derived from the shared `CliSubprocessCore.ModelRegistry` catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the shared catalog selected for this SDK, that currently resolves to `gpt-5.6-sol`. Model data is owned by the selected `cli_subprocess_core` dependency; this SDK does not ship a second catalog copy. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
 For provider parity, layered config also honors `openai_base_url` and user-defined
 `[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and

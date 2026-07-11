@@ -503,6 +503,12 @@ defmodule Codex.OptionsTest do
               {:invalid_reasoning_effort, :ultra, ["high", "low", "max", "medium", "xhigh"],
                :codex}} =
                Options.new(%{model: "gpt-5.6-luna", reasoning_effort: :ultra})
+
+      for effort <- [:max, :ultra] do
+        assert {:error,
+                {:invalid_reasoning_effort, ^effort, ["high", "low", "medium", "xhigh"], :codex}} =
+                 Options.new(%{model: "gpt-5.3-codex-spark", reasoning_effort: effort})
+      end
     end
 
     test "accepts reasoning summary and verbosity options" do

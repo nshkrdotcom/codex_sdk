@@ -111,6 +111,7 @@ defmodule Codex.ModelsTest do
 
   test "default model remains consistent across credential sources" do
     with_temp_codex_home(fn home ->
+      assert Models.default_model() == "gpt-5.6-sol"
       assert Models.default_model() == default_model()
 
       Env.put("CODEX_API_KEY", "sk-test")

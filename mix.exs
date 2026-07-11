@@ -262,7 +262,7 @@ defmodule CodexSdk.MixProject do
       description: description(),
       readme: "README.md",
       files:
-        ~w(lib config build_support priv/models.json assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
+        ~w(lib config build_support assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/nshkrdotcom/codex_sdk",
