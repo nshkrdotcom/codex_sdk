@@ -13,6 +13,20 @@
 
 An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support and comprehensive event handling.
 
+## Upstream Parity Snapshot
+
+This unreleased `0.17.0` head implements the protocol catch-up through upstream
+`openai/codex` commit `5c19155cbd` and was re-swept through current
+`origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
+surface. The installed and recommended stable CLI remains `codex-cli 0.144.1`.
+
+The SDK intentionally ships additive parsers ahead of that CLI for terminal
+turn timing/errors, plugin scheduled tasks, opaque prefixed item IDs, rollout
+ordinals, and experimental Bedrock auth shapes. Live 0.144.1 app-server output
+already includes turn start/completion/duration values, while exec JSONL remains
+usage-only. Unknown event types, fields, schedule tags, and auth-mode strings
+continue to pass through without dynamic atom creation.
+
 ## Documentation Menu
 
 - `README.md` - installation, quick start, and runtime boundaries
@@ -24,6 +38,8 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 - `guides/12-operational-workflows.md` - marketplace add, MCP runtime helpers, memory controls, and filesystem watches
 - `guides/13-plugin-authoring.md` - local manifest writes, scaffold helpers, and scope rules
 - `guides/14-plugin-marketplaces.md` - local marketplace modeling, merge behavior, and verification workflows
+- `guides/15-atom-safety.md` - wire-data atom policy and automated guardrails
+- `guides/16-env-and-secrets.md` - runtime env boundaries, Inspect redaction, and repository secret policy
 - `guides/provider_behavior_manifest.md` - evidence for Codex-native feature
   translation
 - `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls

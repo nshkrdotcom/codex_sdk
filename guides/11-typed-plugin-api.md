@@ -85,6 +85,28 @@ such as:
 - `marketplaceLoadErrors`
 - app `needsAuth`
 
+### Scheduled tasks
+
+`Plugin.Detail.scheduled_tasks` projects optional upstream `scheduledTasks`
+metadata into `%Plugin.ScheduledTaskSummary{}` values. Each summary contains a
+key, name, prompt, and `%Plugin.ScheduledTaskSchedule{}`. Known schedule types
+are:
+
+- hourly, with `interval_hours` and optional `days`
+- daily or weekdays, with `time`
+- weekly, with `days` and `time`
+
+```elixir
+case plugin.scheduled_tasks do
+  nil -> IO.puts("This app-server did not provide scheduled-task metadata")
+  tasks -> Enum.each(tasks, &IO.inspect(&1, label: "scheduled task"))
+end
+```
+
+Missing metadata remains `nil`, while an explicitly empty wire list remains
+`[]`. Unknown schedule tags and fields stay string-keyed in `extra` and
+round-trip without creating atoms.
+
 ## Policies And Compatibility
 
 Plugin install and auth policies normalize known upstream values into atoms:

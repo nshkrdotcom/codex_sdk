@@ -83,6 +83,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CliSubprocessCore.ModelRegistry.resolve/3` so every consumer of that
   shared core (this SDK, `claude_agent_sdk`, `agent_session_manager`) can
   pass through a model newer than its bundled catalog consistently.
+- Additive terminal-turn timing and failure metadata: `TurnCompleted` now
+  carries lane-appropriate `started_at`, `completed_at`, `duration_ms`,
+  `time_to_first_token_ms`, and `error` values, while `TurnAborted` carries its
+  available timing fields. Both event parsers remain absence-tolerant;
+  authenticated `codex-cli 0.144.1` app-server capture already includes
+  start/completion/duration values, while its exec JSONL completion remains
+  usage-only and the parser-ahead exec shapes are source-derived fixtures.
+- Typed plugin `scheduledTasks` metadata through
+  `Codex.Protocol.Plugin.ScheduledTaskSummary` and
+  `ScheduledTaskSchedule`, including hourly, daily, weekdays, and weekly
+  schedules with lossless unknown-tag fallback.
+- Opaque response-item ID regression coverage for both bare and newer prefixed
+  forms, plus rollout/thread-history `ordinal` projection through session
+  metadata.
+- Experimental Amazon Bedrock login request support via
+  `login_start(conn, {:amazon_bedrock, api_key, region})`, exact
+  `amazonBedrock` wire encoding, `bedrockApiKey` auth-mode recognition, and
+  auth-store persistence. The API requires `experimental_api: true`; current
+  upstream publishes the schema but still returns an unimplemented error.
+- Lossless unknown exec-event fallback and atom-safety enforcement through
+  `.credo.exs`, `Credo.Check.Warning.UnsafeToAtom`, and
+  `scripts/atom_guard.sh` in `mix ci`.
+- `scripts/secrets_guard.sh` in `mix ci`, `.env` ignore policy, an
+  environment-and-secrets guide, and a VERSION-to-Mix-project consistency
+  test.
 
 ### Changed
 
@@ -90,8 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `codex-cli 0.144.1` `model/list` probe from 2026-07-10. `gpt-5.6-sol` is the
   live default, Spark is public but non-API, and no `gpt-5.6` compatibility
   alias is added.
-- Synced `priv/models.json` to upstream Codex commit `3380969a29` and updated
-  active guides/examples for the current CLI contract.
+- Removed the unused SDK-local `priv/models.json` and its package entry.
+  `CliSubprocessCore.ModelRegistry` is now the sole runtime and packaged Codex
+  catalog source; stale local dependency-cache evidence was also pruned.
 - Refreshed all compatible dependencies, including Zoi 0.18.5 and patched
   Bandit/Plug/Mint/Req HTTP-stack releases.
 - Local plugin path handling now accepts alternate discoverable
@@ -112,6 +138,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   require materialized child env for bounded effects.
 - Bumped the `zoi` dependency requirement to `~> 0.18` to match
   `cli_subprocess_core`'s current requirement.
+- Hardened `mix ci` with atom and secrets guards. Runtime environment
+  materialization now takes a named allowlist instead of copying the entire OS
+  environment; callers can still pass explicit `env`/`process_env` overrides
+  for additional bounded values.
+- Documented current upstream behavior for reasoning payloads and summary
+  support, `personality = "none"`, Bedrock model ordering, model-announcement
+  fallback, workspace-plugin hook trust, and the surviving `execpolicy check`
+  command after removal of the legacy policy engine.
+
+### Security
+
+- Redacted credentials from `Inspect` output for auth tokens/records and
+  Bedrock credentials, global/realtime/MCP/voice client configuration, and
+  OAuth PKCE, browser, device, loopback, context, and session state.
+- Added a secrets guard that rejects whole-environment runtime snapshots and
+  unredacted secret-named struct fields. Removed tracked demo path residue and
+  relocated the out-of-place constitution prose under `docs/archive/`.
 
 ### Fixed
 

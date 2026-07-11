@@ -513,6 +513,26 @@ Current upstream builds also emit `mcpServer/startupStatus/updated`. The SDK
 maps that notification to `%Codex.Events.McpServerStartupStatusUpdated{}`,
 normalizing the startup `status` and any optional error payload.
 
+### Terminal turn timing and errors
+
+The `turn/completed` adapter projects optional terminal metadata onto
+`%Codex.Events.TurnCompleted{}`:
+
+- `started_at`, `completed_at`, and `duration_ms`
+- `status` and the terminal `error` payload
+
+The unified event struct also has `time_to_first_token_ms` for terminal frames
+that provide it; current app-server `turn/completed` does not, so that field is
+normally `nil` on this lane.
+
+Use `Codex.Events.turn_duration_ms/1` to prefer an explicit duration and fall
+back to the start/completion timestamps. Every field is absence-tolerant.
+Authenticated `codex-cli 0.144.1` app-server capture already emitted
+`startedAt`, `completedAt`, and `durationMs`; its exec JSONL completion remained
+usage-only. A failed app-server completion carries failure detail in `error`,
+whereas current exec JSONL reports failure through its separate `TurnFailed`
+event.
+
 ### Request user input
 
 When the agent calls `request_user_input`, app-server sends an

@@ -141,6 +141,33 @@ Codex.AppServer.Account.login_start(conn, :chatgpt,
 `app_brand` accepts `:codex` or `:chatgpt`. The boolean fields are emitted only
 when enabled, matching `codex-cli 0.144.0`'s `account/login/start` request.
 
+### Experimental Amazon Bedrock login
+
+The upstream app-server schema includes an unstable Bedrock request variant:
+
+```elixir
+{:ok, conn} =
+  Codex.AppServer.connect(codex_opts,
+    experimental_api: true,
+    process_env: %{"CODEX_HOME" => "/tmp/codex-home"}
+  )
+
+Codex.AppServer.Account.login_start(
+  conn,
+  {:amazon_bedrock, bedrock_api_key, "us-east-1"}
+)
+```
+
+The exact request is `type: "amazonBedrock"` with required `apiKey` and
+`region` fields. `credentialSource` belongs to returned account state and is
+not a login input. `bedrockApiKey` auth records persist their key and region in
+the nested `bedrock_api_key` object, with all SDK Inspect paths redacted.
+
+This surface is parser/request ready, not a claim that login currently works:
+the current upstream account processor still returns “Amazon Bedrock login is
+not implemented.” Do not log or inspect the supplied credential, and keep the
+connection opted into `experimental_api: true` while the API remains unstable.
+
 Remote websocket app-server connections use the same external-auth shape:
 
 ```elixir

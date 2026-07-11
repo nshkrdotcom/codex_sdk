@@ -78,11 +78,26 @@ defmodule CodexExamples.LiveAppServerStreaming do
     end
   end
 
-  defp print_event(%Events.TurnCompleted{status: status}) do
-    IO.puts("\n[turn.completed] status=#{inspect(status)}")
+  defp print_event(%Events.TurnCompleted{} = event) do
+    IO.puts("""
+
+    [turn.completed]
+      status: #{inspect(event.status)}
+      started_at: #{optional_field(event.started_at)}
+      completed_at: #{optional_field(event.completed_at)}
+      duration_ms: #{optional_field(Events.turn_duration_ms(event))}
+      time_to_first_token_ms: #{optional_field(event.time_to_first_token_ms)}
+      terminal_error: #{optional_error(event.error)}
+    """)
   end
 
   defp print_event(_other), do: :ok
+
+  defp optional_field(nil), do: "not emitted by this CLI/lane"
+  defp optional_field(value), do: inspect(value)
+
+  defp optional_error(nil), do: "none"
+  defp optional_error(error), do: inspect(error)
 end
 
 CodexExamples.LiveAppServerStreaming.main(System.argv())
