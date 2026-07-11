@@ -1,0 +1,3 @@
+# SYNTHETIC — verify against the first CLI release that ships scheduledTasks (>0.144.1).
+# Source: codex-rs/app-server-protocol/src/protocol/v2/plugin.rs:655-715 at 431ad23be4.
+{"plugin":{"marketplaceName":"codex-curated","marketplacePath":"/tmp/marketplace.json","summary":{"id":"demo-plugin@codex-curated","name":"demo-plugin","source":{"type":"local","path":"/tmp/plugins/demo-plugin"},"installed":true,"enabled":true,"installPolicy":"AVAILABLE","authPolicy":"ON_INSTALL"},"description":"Demo plugin","skills":[],"apps":[],"mcpServers":[],"scheduledTasks":[{"key":"weekly-summary","name":"Weekly summary","prompt":"Summarize the week","schedule":{"type":"weekly","days":["MO","WE"],"time":"09:00"}}],"futurePluginField":"kept"}}

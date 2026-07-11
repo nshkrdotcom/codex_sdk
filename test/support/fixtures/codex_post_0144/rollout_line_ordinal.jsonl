@@ -1,0 +1,3 @@
+# SYNTHETIC — verify against the first CLI release that ships rollout ordinals (>0.144.1).
+# Source: codex-rs/protocol/src/protocol.rs:3139-3154,3334-3340 at 5c19155cbd.
+{"timestamp":"2026-07-10T00:00:00.000Z","ordinal":42,"type":"response_item","payload":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"ok"}]}}

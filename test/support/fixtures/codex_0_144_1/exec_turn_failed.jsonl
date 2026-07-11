@@ -1,0 +1,2 @@
+# LIVE CAPTURE — codex-cli 0.144.1, 2026-07-11. A rejected reasoning effort produced the terminal failure.
+{"type":"turn.failed","error":{"message":"Invalid value: 'max'. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', and 'xhigh'."}}

@@ -1,0 +1,2 @@
+# LIVE CAPTURE — codex-cli 0.144.1, 2026-07-11, `codex exec --json -m gpt-5.4-mini -c model_reasoning_effort="low"`.
+{"type":"turn.completed","usage":{"input_tokens":11277,"cached_input_tokens":4480,"output_tokens":17,"reasoning_output_tokens":10}}

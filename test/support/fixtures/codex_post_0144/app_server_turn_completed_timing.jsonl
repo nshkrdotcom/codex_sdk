@@ -1,0 +1,3 @@
+# SYNTHETIC — verify terminal-error shape against the first CLI release that ships it (>0.144.1); timing was already observed live on the reported 0.144.1 build.
+# Source: codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs:228-275 at c4318c386d.
+{"method":"turn/completed","params":{"threadId":"thread_synthetic","futureNotificationField":"kept","turn":{"id":"turn_synthetic_failed","items":[],"itemsView":"full","status":"failed","error":{"message":"provider failed","additionalDetails":"request id synthetic"},"startedAt":1783123200,"completedAt":1783123205,"durationMs":5000,"futureTurnField":"kept"}}}

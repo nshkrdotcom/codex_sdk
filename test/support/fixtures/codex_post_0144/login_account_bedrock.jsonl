@@ -1,0 +1,5 @@
+# SYNTHETIC — verify against the first CLI release that ships managed Bedrock login (>0.144.1).
+# Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs:17-50,64-113 and protocol/common.rs:49-53 at b45fef0774.
+# CORRECTION: login params carry apiKey + region; credentialSource belongs to the returned Account variant.
+{"kind":"loginParams","params":{"type":"amazonBedrock","apiKey":"<redacted>","region":"us-east-1"}}
+{"kind":"accountStatus","account":{"type":"amazonBedrock","credentialSource":"awsManaged"},"authMode":"bedrockApiKey"}

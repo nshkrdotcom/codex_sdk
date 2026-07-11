@@ -1,0 +1,3 @@
+# LIVE CAPTURE — codex-cli 0.144.1, 2026-07-11, app-server thread/start -> turn/start.
+# CORRECTION: this reported 0.144.1 build already emits startedAt/completedAt/durationMs/itemsView.
+{"method":"turn/completed","params":{"threadId":"019f522f-037c-7901-977d-ca2168826d62","turn":{"completedAt":1783790247,"durationMs":4532,"error":null,"id":"019f522f-0c7e-7323-89f1-188fd6aec84e","items":[],"itemsView":"notLoaded","startedAt":1783790242,"status":"completed"}}}

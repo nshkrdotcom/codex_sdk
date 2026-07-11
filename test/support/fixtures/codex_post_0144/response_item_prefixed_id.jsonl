@@ -1,0 +1,3 @@
+# SYNTHETIC — verify against the first CLI release that creates all outbound IDs with prefixes (>0.144.1).
+# Source: codex-rs/protocol/src/response_item_id.rs:9-39 and models.rs ResponseItem id_prefix() at c9d52de5ca. Deserialization remains permissive for legacy bare IDs.
+{"type":"item.completed","thread_id":"thread_synthetic","turn_id":"turn_synthetic","item":{"id":"msg_1","type":"agent_message","text":"ok","futureItemField":"kept"}}

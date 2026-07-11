@@ -1,0 +1,3 @@
+# BASELINE COPY — representative plugin/read response from test/codex/protocol/plugin_test.exs; live 0.144.1 plugin/list capability confirmed 2026-07-11.
+# scheduledTasks is intentionally absent.
+{"plugin":{"marketplaceName":"codex-curated","marketplacePath":"/tmp/marketplace.json","summary":{"id":"demo-plugin@codex-curated","name":"demo-plugin","source":{"type":"local","path":"/tmp/plugins/demo-plugin"},"installed":true,"enabled":true,"installPolicy":"AVAILABLE","authPolicy":"ON_INSTALL"},"description":"Demo plugin","skills":[],"apps":[],"mcpServers":[]}}
