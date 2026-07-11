@@ -20,10 +20,15 @@ defmodule Codex.EventsTest do
              } = event
     end
 
-    test "raises for unknown event type" do
-      assert_raise ArgumentError, fn ->
-        Events.parse!(%{"type" => "unknown.event"})
-      end
+    test "preserves unknown wire events without atomizing keys" do
+      raw = %{
+        "type" => "future.event",
+        "never_seen_key" => "future-value",
+        "nested" => %{"another_future_key" => true}
+      }
+
+      assert %Events.Unknown{type: "future.event", raw: ^raw} = event = Events.parse!(raw)
+      assert raw == Events.to_map(event)
     end
 
     test "parses turn.completed with error payloads" do

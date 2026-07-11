@@ -640,6 +640,23 @@ defmodule Codex.Events do
           }
   end
 
+  defmodule Unknown do
+    @moduledoc """
+    Lossless wrapper for a wire event type that this SDK does not yet recognize.
+
+    The original string-keyed map is retained so newer additive event variants
+    can flow through older SDK releases without creating atoms or losing data.
+    """
+
+    @enforce_keys [:type, :raw]
+    defstruct [:type, :raw]
+
+    @type t :: %__MODULE__{
+            type: String.t(),
+            raw: map()
+          }
+  end
+
   defmodule TurnCompaction do
     @moduledoc """
     Signals that Codex compacted a turn's history.
@@ -1537,6 +1554,7 @@ defmodule Codex.Events do
     ThreadRealtimeError,
     ThreadRealtimeClosed,
     RawResponseItemCompleted,
+    Unknown,
     Error,
     TurnFailed,
     SessionConfigured,
@@ -1625,6 +1643,7 @@ defmodule Codex.Events do
           | ThreadRealtimeError.t()
           | ThreadRealtimeClosed.t()
           | RawResponseItemCompleted.t()
+          | Unknown.t()
           | Error.t()
           | TurnFailed.t()
           | ToolCallRequested.t()
@@ -1673,7 +1692,10 @@ defmodule Codex.Events do
   }
 
   @doc """
-  Parses a JSON-decoded map into a typed event struct, raising on unknown event types.
+  Parses a JSON-decoded map into a typed event struct.
+
+  Unknown string event types are returned as `Unknown` wrappers so additive
+  wire variants remain lossless. Non-event values still raise.
   """
   @spec parse!(map()) :: t()
   def parse!(%{"type" => "thread.started"} = map) do
@@ -2412,8 +2434,8 @@ defmodule Codex.Events do
     }
   end
 
-  def parse!(%{"type" => unknown}) do
-    raise ArgumentError, "unsupported codex event #{inspect(unknown)}"
+  def parse!(%{"type" => unknown} = map) when is_binary(unknown) do
+    %Unknown{type: unknown, raw: map}
   end
 
   def parse!(other) do
@@ -2424,6 +2446,8 @@ defmodule Codex.Events do
   Converts a typed event struct back into the JSON-serializable map representation.
   """
   @spec to_map(t()) :: map()
+  def to_map(%Unknown{raw: raw}), do: raw
+
   def to_map(%ThreadStarted{} = event) do
     %{
       "type" => "thread.started",

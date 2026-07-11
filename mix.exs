@@ -109,6 +109,7 @@ defmodule CodexSdk.MixProject do
         "guides/12-operational-workflows.md": [title: "Operational Workflows"],
         "guides/13-plugin-authoring.md": [title: "Plugin Authoring"],
         "guides/14-plugin-marketplaces.md": [title: "Plugin Marketplaces"],
+        "guides/15-atom-safety.md": [title: "Atom Safety"],
         "guides/provider_behavior_manifest.md": [title: "Provider Behavior Manifest"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
@@ -129,6 +130,7 @@ defmodule CodexSdk.MixProject do
           "guides/12-operational-workflows.md",
           "guides/13-plugin-authoring.md",
           "guides/14-plugin-marketplaces.md",
+          "guides/15-atom-safety.md",
           "guides/provider_behavior_manifest.md"
         ],
         "Models & Configuration": [
@@ -289,6 +291,7 @@ defmodule CodexSdk.MixProject do
       ci: [
         "format --check-formatted",
         "compile --warnings-as-errors",
+        "cmd ./scripts/atom_guard.sh",
         "credo --strict",
         "test"
       ]
