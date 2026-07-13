@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.17.0] - 2026-07-10
+## [0.17.0] - 2026-07-13
 
 ### Added
 
@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Prepared the Hex release against `cli_subprocess_core ~> 0.2.0`, retaining
+  the shared core as the package's only internal runtime dependency, and set
+  the supported Elixir line to `~> 1.19`. Publish mode selects the released
+  Hex dependency while local development retains path/GitHub/Hex fallback.
 - The bundled Codex catalog now matches a live authenticated
   `codex-cli 0.144.1` `model/list` probe from 2026-07-10. `gpt-5.6-sol` is the
   live default, Spark is public but non-API, and no `gpt-5.6` compatibility

@@ -5,8 +5,8 @@
 # Codex SDK for Elixir
 
 [![CI](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml)
-[![Elixir](https://img.shields.io/badge/elixir-1.18.3-purple.svg)](https://elixir-lang.org)
-[![OTP](https://img.shields.io/badge/otp-27.3.3-blue.svg)](https://www.erlang.org)
+[![Elixir](https://img.shields.io/badge/elixir-1.19.5-purple.svg)](https://elixir-lang.org)
+[![OTP](https://img.shields.io/badge/otp-28.3.1-blue.svg)](https://www.erlang.org)
 [![Hex.pm](https://img.shields.io/hexpm/v/codex_sdk.svg)](https://hex.pm/packages/codex_sdk)
 [![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/codex_sdk)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE)
@@ -73,6 +73,11 @@ def deps do
   ]
 end
 ```
+
+The 0.17 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.2.0`
+as its sole internal runtime dependency. The SDK continues to expose
+Codex-native APIs and core facades; callers do not need to depend directly on
+the underlying execution substrate.
 
 ## Prerequisites
 

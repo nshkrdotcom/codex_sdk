@@ -145,16 +145,17 @@ source, then Hex. Release tasks intentionally select Hex, so a release consumes
 the catalog published by `cli_subprocess_core`, not an arbitrary workspace
 copy. Publish the dependency chain bottom-up:
 
-1. `ground_plane_contracts` and `ground_plane_persistence_policy`
-2. `execution_plane`, `execution_plane_jsonrpc`, and `execution_plane_process`
-3. `cli_subprocess_core`
-4. `codex_sdk`
+1. `ground_plane_contracts` and `ground_plane_persistence_policy` 0.1.0
+2. `execution_plane` 0.1.0, whose generated package contains its core,
+   JSON-RPC, and process applications
+3. `cli_subprocess_core` 0.2.0
+4. `codex_sdk` 0.17.0
 
-Publishing `codex_sdk` 0.17.0 is currently blocked because those five Ground
-Plane and Execution Plane packages are not yet available on Hex, and publish
-mode cannot lock the current core dependency graph. This SDK must not be
-published until that chain is released and verified from a clean Hex-only
-consumer.
+Publishing `codex_sdk` 0.17.0 remains blocked until those four prerequisite
+packages are available on Hex. Publish mode must lock the ordinary Hex graph;
+the SDK cannot substitute sibling paths or the Execution Plane projection for
+that proof. After each parent release, verify the chain again from a clean
+Hex-only consumer before publishing this SDK.
 
 The recommended installed CLI remains `codex-cli 0.144.1`; no stable 0.145
 release is available. The SDK also carries additive parser coverage derived
