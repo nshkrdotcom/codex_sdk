@@ -111,6 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Standardized the release README on the 200px package SVG plus GitHub and MIT
+  badges while retaining the established 2025 MIT copyright notice.
 - Prepared the Hex release against `cli_subprocess_core ~> 0.2.0`, retaining
   the shared core as the package's only internal runtime dependency, and set
   the supported Elixir line to `~> 1.19`. Publish mode selects the released

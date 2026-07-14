@@ -4,12 +4,10 @@
 
 # Codex SDK for Elixir
 
-[![CI](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/nshkrdotcom/codex_sdk/actions/workflows/ci.yml)
-[![Elixir](https://img.shields.io/badge/elixir-1.19.5-purple.svg)](https://elixir-lang.org)
-[![OTP](https://img.shields.io/badge/otp-28.3.1-blue.svg)](https://www.erlang.org)
-[![Hex.pm](https://img.shields.io/hexpm/v/codex_sdk.svg)](https://hex.pm/packages/codex_sdk)
-[![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/codex_sdk)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE)
+<p align="center">
+  <a href="https://github.com/nshkrdotcom/codex_sdk"><img src="https://img.shields.io/badge/GitHub-nshkrdotcom%2Fcodex_sdk-24292e?logo=github" alt="GitHub"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
+</p>
 
 An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support and comprehensive event handling.
 
