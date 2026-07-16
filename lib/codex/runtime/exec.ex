@@ -251,7 +251,7 @@ defmodule Codex.Runtime.Exec do
   end
 
   defp base_session_options(opts, %ExecOptions{} = exec_opts, config_values, subcommand_args) do
-    [
+    base = [
       provider: :codex,
       profile: Codex.Runtime.Exec.Profile,
       metadata: session_metadata(opts, exec_opts),
@@ -281,8 +281,23 @@ defmodule Codex.Runtime.Exec do
       session_event_tag: @default_session_event_tag,
       headless_timeout_ms: :infinity,
       max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
-    ] ++ Options.execution_surface_options(exec_opts.execution_surface)
+    ]
+
+    base
+    |> governed_session_options(exec_opts)
+    |> Kernel.++(Options.execution_surface_options(exec_opts.execution_surface))
   end
+
+  defp governed_session_options(
+         options,
+         %ExecOptions{codex_opts: %Options{governed_authority: %GovernedAuthority{} = authority}}
+       ) do
+    options
+    |> Keyword.drop([:working_directory, :env, :clear_env?, :config_values])
+    |> Keyword.put(:governed_authority, authority)
+  end
+
+  defp governed_session_options(options, %ExecOptions{}), do: options
 
   defp session_metadata(opts, %ExecOptions{codex_opts: %Options{} = codex_opts}) do
     model = normalize_option_string(codex_opts.model)
@@ -497,6 +512,11 @@ defmodule Codex.Runtime.Exec do
     Overrides.derived_overrides(opts, thread_opts)
   end
 
+  defp build_env(%ExecOptions{
+         codex_opts: %Options{governed_authority: %GovernedAuthority{} = authority}
+       }),
+       do: GovernedAuthority.child_env(authority)
+
   defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env}) do
     RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
     |> Map.merge(payload_env_overrides(opts), fn _key, _base, payload -> payload end)
@@ -509,7 +529,10 @@ defmodule Codex.Runtime.Exec do
        ) do
     env = build_env(exec_opts)
 
-    with :ok <- GovernedAuthority.validate_clear_env(authority, exec_opts.clear_env?, :exec),
+    with :ok <- GovernedAuthority.validate_current(authority),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(authority, exec_opts.execution_surface),
+         :ok <- GovernedAuthority.validate_clear_env(authority, exec_opts.clear_env?, :exec),
          :ok <- GovernedAuthority.validate_runtime_env(authority, env),
          :ok <- GovernedAuthority.reject_config_overrides(authority, config_values, :exec) do
       GovernedAuthority.validate_command_override(authority, opts.codex_path_override, :exec)

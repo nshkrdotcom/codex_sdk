@@ -6,6 +6,7 @@ defmodule Codex.AppServer.RemoteConnection do
   require Logger
 
   alias Codex.AppServer.Protocol
+  alias Codex.AppServer.Sanitizer
   alias Codex.Config.Defaults
 
   @default_init_timeout_ms Defaults.app_server_init_timeout_ms()
@@ -234,7 +235,13 @@ defmodule Codex.AppServer.RemoteConnection do
         handle_incoming_result(handle_incoming_message(state, message))
 
       {:error, reason} ->
-        failure = {:app_server_down, %{reason: {:invalid_jsonrpc, reason}, message: text}}
+        failure =
+          {:app_server_down,
+           %{
+             reason: {:invalid_jsonrpc, Sanitizer.term(reason)},
+             message: "[invalid JSON-RPC payload redacted]"
+           }}
+
         state = fail_transport_waiters(state, failure)
         {:stop, {:shutdown, failure}, state}
     end
@@ -301,23 +308,27 @@ defmodule Codex.AppServer.RemoteConnection do
     case Protocol.message_type(message) do
       :notification ->
         method = Map.get(message, "method")
-        params = Map.get(message, "params") || %{}
+        params = message |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
         {:ok, buffer_or_broadcast_notification(state, method, params)}
 
       :request ->
         id = Map.get(message, "id")
         method = Map.get(message, "method")
-        params = Map.get(message, "params") || %{}
+        params = message |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
         {:ok, buffer_or_broadcast_request(state, id, method, params)}
 
       :response ->
         handle_response(state, Map.get(message, "id"), {:ok, Map.get(message, "result")})
 
       :error ->
-        handle_response(state, Map.get(message, "id"), {:error, Map.get(message, "error")})
+        handle_response(
+          state,
+          Map.get(message, "id"),
+          {:error, message |> Map.get("error") |> Sanitizer.term()}
+        )
 
       :unknown ->
-        Logger.debug("Ignoring unknown remote JSON-RPC message: #{inspect(message)}")
+        Logger.debug("Ignoring unknown remote JSON-RPC message: #{Sanitizer.inspect(message)}")
         {:ok, state}
     end
   end
@@ -516,7 +527,7 @@ defmodule Codex.AppServer.RemoteConnection do
 
   defp app_server_down_failure(%State{} = state, reason) do
     details =
-      %{reason: normalize_disconnect_reason(reason)}
+      %{reason: reason |> normalize_disconnect_reason() |> Sanitizer.term()}
       |> maybe_put_detail(:message, disconnect_message(state.disconnect_info))
 
     {:app_server_down, details}
@@ -526,7 +537,7 @@ defmodule Codex.AppServer.RemoteConnection do
   defp normalize_disconnect_reason(reason), do: reason
 
   defp disconnect_message(%{reason: reason}) do
-    inspect(reason)
+    Sanitizer.inspect(reason)
   end
 
   defp disconnect_message(_), do: nil

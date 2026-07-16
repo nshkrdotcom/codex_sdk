@@ -186,10 +186,21 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
     send(
       socket_pid,
-      {:push_json, %{"method" => "thread/started", "params" => %{"threadId" => "thr_1"}}}
+      {:push_json,
+       %{
+         "method" => "thread/started",
+         "params" => %{
+           "threadId" => "thr_1",
+           "apiKey" => "LEAK-REMOTE-NOTIFICATION",
+           "outputTokens" => 21
+         }
+       }}
     )
 
-    assert_receive {:codex_notification, "thread/started", %{"threadId" => "thr_1"}}, 1_000
+    assert_receive {:codex_notification, "thread/started", params}, 1_000
+    assert params["apiKey"] == "[REDACTED]"
+    assert params["outputTokens"] == 21
+    refute inspect(params) =~ "LEAK-REMOTE-NOTIFICATION"
 
     send(
       socket_pid,
@@ -261,7 +272,7 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert :ok = AppServer.disconnect(conn)
   end
 
-  test "connect_remote/2 rejects governed ambient auth_token_env fallback" do
+  test "connect_remote/2 rejects governed ambient and explicit auth supplementation" do
     previous = System.get_env("CODEX_REMOTE_TOKEN")
     Env.put("CODEX_REMOTE_TOKEN", "ambient-remote-secret")
 
@@ -272,9 +283,21 @@ defmodule Codex.AppServer.RemoteConnectionTest do
       end
     end)
 
-    assert {:error, {:missing_auth_token_env, "CODEX_REMOTE_TOKEN"}} =
+    assert {:error, {:governed_option_supplementation, :remote_app_server, :auth_token_env}} =
              AppServer.connect_remote("ws://127.0.0.1:4500",
                auth_token_env: "CODEX_REMOTE_TOKEN",
+               governed_authority: GovernedAuthority.refs()
+             )
+
+    assert {:error, {:governed_option_supplementation, :remote_app_server, :auth_token}} =
+             AppServer.connect_remote("ws://127.0.0.1:4500",
+               auth_token: "explicit-remote-secret",
+               governed_authority: GovernedAuthority.refs()
+             )
+
+    assert {:error, {:governed_option_supplementation, :remote_app_server, :process_env}} =
+             AppServer.connect_remote("ws://127.0.0.1:4500",
+               process_env: %{"CODEX_REMOTE_TOKEN" => "explicit-remote-secret"},
                governed_authority: GovernedAuthority.refs()
              )
   end

@@ -8,6 +8,7 @@ defmodule Codex.ExecTest do
   alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
+  alias Codex.Exec.CancellationRegistry
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec, as: RuntimeExec
   alias Codex.TestSupport.FixtureScripts
@@ -110,9 +111,16 @@ defmodule Codex.ExecTest do
 
     {:ok, codex_opts} =
       Options.new(%{
-        governed_authority: GovernedAuthority.command_refs(),
-        api_key: "materialized-key",
-        codex_path_override: script_path
+        governed_authority:
+          GovernedAuthority.command_refs(
+            command: script_path,
+            env: %{
+              "CODEX_HOME" => "/tmp/materialized-codex-home",
+              "CODEX_API_KEY" => "materialized-key",
+              "OPENAI_API_KEY" => "materialized-key",
+              "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+            }
+          )
       })
 
     assert {:ok, exec_opts} = ExecOptions.new(%{codex_opts: codex_opts, clear_env?: true})
@@ -133,17 +141,22 @@ defmodule Codex.ExecTest do
 
       {:ok, codex_opts} =
         Options.new(%{
-          governed_authority: GovernedAuthority.command_refs(),
-          api_key: "materialized-key",
-          base_url: "https://materialized.example.com/v1",
-          codex_path_override: script_path
+          governed_authority:
+            GovernedAuthority.command_refs(
+              command: script_path,
+              env: %{
+                "CODEX_HOME" => "/tmp/materialized-codex-home",
+                "CODEX_API_KEY" => "materialized-key",
+                "OPENAI_API_KEY" => "materialized-key",
+                "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+              }
+            )
         })
 
       assert {:ok, exec_opts} =
                ExecOptions.new(%{
                  codex_opts: codex_opts,
-                 clear_env?: true,
-                 env: %{"CODEX_HOME" => "/tmp/materialized-codex-home"}
+                 clear_env?: true
                })
 
       assert {:ok, rendered} = RuntimeExec.render_for_test(exec_opts: exec_opts, input: "hi")
@@ -153,16 +166,44 @@ defmodule Codex.ExecTest do
       assert rendered.env["OPENAI_BASE_URL"] == "https://materialized.example.com/v1"
       assert rendered.env["CODEX_HOME"] == "/tmp/materialized-codex-home"
 
-      assert {:ok, unsafe_exec_opts} =
+      assert {:error, {:governed_clear_env_required, :exec, false}} =
+               ExecOptions.new(%{codex_opts: codex_opts, clear_env?: false})
+
+      assert {:error, {:governed_option_supplementation, :exec, :env}} =
                ExecOptions.new(%{
                  codex_opts: codex_opts,
-                 clear_env?: false,
-                 env: %{"CODEX_HOME" => "/tmp/materialized-codex-home"}
+                 env: %{"OPENAI_API_KEY" => "smuggled-key"}
                })
 
-      assert {:error, {:governed_clear_env_required, :exec, false}} =
-               RuntimeExec.render_for_test(exec_opts: unsafe_exec_opts, input: "hi")
+      assert {:error, {:governed_execution_surface_mismatch, :surface_kind}} =
+               ExecOptions.new(%{
+                 codex_opts: codex_opts,
+                 execution_surface: %{
+                   surface_kind: :ssh_exec,
+                   transport_options: [destination: "smuggled.example"],
+                   target_id: "target-codex-test",
+                   lease_ref: "lease-codex-test"
+                 }
+               })
     end)
+  end
+
+  test "governed exec revalidates expiry at the launch boundary" do
+    assert {:ok, codex_opts} =
+             Options.new(%{governed_authority: GovernedAuthority.command_refs()})
+
+    expired_authority = %{
+      codex_opts.governed_authority
+      | expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
+    }
+
+    assert {:ok, exec_opts} =
+             ExecOptions.new(%{
+               codex_opts: %{codex_opts | governed_authority: expired_authority}
+             })
+
+    assert {:error, :expired_governed_materialization} =
+             RuntimeExec.render_for_test(exec_opts: exec_opts, input: "expired")
   end
 
   test "forwards cancellation token flag to codex exec" do
@@ -189,6 +230,39 @@ defmodule Codex.ExecTest do
     idx = Enum.find_index(args, &(&1 == "--cancellation-token"))
     assert idx
     assert Enum.at(args, idx + 1) == "cancel-me"
+  end
+
+  test "governed exec unregisters cancellation state after exact materialization exits" do
+    script_path =
+      temp_script("""
+      #!/usr/bin/env bash
+      echo '{"type":"turn.completed","turn_id":"turn_governed","thread_id":"thread_governed","final_response":{"type":"text","text":"done"}}'
+      """)
+      |> tap(&on_exit(fn -> File.rm_rf(&1) end))
+
+    token = "governed-cancel-#{System.unique_integer([:positive])}"
+
+    authority =
+      GovernedAuthority.command_refs(
+        command: script_path,
+        env: %{
+          "CODEX_HOME" => "/tmp/materialized-codex-home",
+          "CODEX_API_KEY" => "CANCEL-MATERIALIZED-SECRET",
+          "OPENAI_API_KEY" => "CANCEL-MATERIALIZED-SECRET",
+          "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+        }
+      )
+
+    assert {:ok, codex_opts} = Options.new(%{governed_authority: authority})
+
+    assert {:ok, _result} =
+             Exec.run("cancel cleanup", %{
+               codex_opts: codex_opts,
+               cancellation_token: token
+             })
+
+    assert CancellationRegistry.transports_for_token(token) == []
+    refute inspect(codex_opts) =~ "CANCEL-MATERIALIZED-SECRET"
   end
 
   test "exec preserves execution_surface over fake SSH" do

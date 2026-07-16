@@ -25,7 +25,7 @@ defmodule Codex.Options do
   alias Codex.GovernedAuthority
   alias Codex.Models
 
-  @derive {Inspect, except: [:api_key]}
+  @derive {Inspect, except: [:api_key, :governed_authority]}
   @enforce_keys []
   defstruct api_key: nil,
             base_url: BaseURL.default(),
@@ -81,7 +81,7 @@ defmodule Codex.Options do
           config_overrides: [
             String.t() | {String.t(), config_override_value()}
           ],
-          governed_authority: map() | nil,
+          governed_authority: GovernedAuthority.t() | nil,
           allow_unknown_model: boolean()
         }
 
@@ -96,10 +96,16 @@ defmodule Codex.Options do
     attrs = Map.new(attrs)
 
     with {:ok, governed_authority} <- fetch_governed_authority(attrs),
+         :ok <- reject_governed_supplementation(attrs, governed_authority),
          {:ok, api_key} <- fetch_api_key(attrs, governed_authority),
          {:ok, base_url} <- fetch_base_url(attrs, governed_authority),
-         {:ok, override} <- fetch_codex_path_override(attrs),
+         {:ok, override} <- fetch_codex_path_override(attrs, governed_authority),
          {:ok, execution_surface} <- fetch_execution_surface(attrs),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(
+             governed_authority,
+             execution_surface
+           ),
          {:ok, telemetry_prefix} <- fetch_telemetry_prefix(attrs),
          {:ok, allow_unknown_model} <- fetch_allow_unknown_model(attrs),
          {:ok, model_input} <-
@@ -185,6 +191,13 @@ defmodule Codex.Options do
            effective_command_execution_surface(opts, execution_surface_override) do
       resolve_codex_command_spec(opts, execution_surface)
     end
+  end
+
+  defp resolve_codex_command_spec(
+         %__MODULE__{governed_authority: %GovernedAuthority{} = authority},
+         %ExecutionSurface{}
+       ) do
+    {:ok, CommandSpec.new(GovernedAuthority.command(authority))}
   end
 
   defp resolve_codex_command_spec(
@@ -277,12 +290,7 @@ defmodule Codex.Options do
     end
   end
 
-  defp fetch_api_key(attrs, %{} = _governed_authority) do
-    case normalize_string(pick(attrs, [:api_key, "api_key"])) do
-      nil -> {:ok, nil}
-      key -> {:ok, key}
-    end
-  end
+  defp fetch_api_key(_attrs, %GovernedAuthority{}), do: {:ok, nil}
 
   defp fetch_base_url(attrs, nil) do
     case BaseURL.resolve(attrs) do
@@ -291,14 +299,12 @@ defmodule Codex.Options do
     end
   end
 
-  defp fetch_base_url(attrs, %{} = _governed_authority) do
-    case BaseURL.resolve_explicit(attrs) || BaseURL.default() do
-      url when is_binary(url) and url != "" -> {:ok, url}
-      _ -> {:error, :invalid_base_url}
-    end
-  end
+  defp fetch_base_url(_attrs, %GovernedAuthority{base_url: base_url}), do: {:ok, base_url}
 
-  defp fetch_codex_path_override(attrs) do
+  defp fetch_codex_path_override(_attrs, %GovernedAuthority{command: command}),
+    do: {:ok, command}
+
+  defp fetch_codex_path_override(attrs, nil) do
     case pick(attrs, [:codex_path_override, "codex_path_override", :codex_path, "codex_path"]) do
       nil -> {:ok, nil}
       "" -> {:error, :invalid_codex_path}
@@ -597,6 +603,31 @@ defmodule Codex.Options do
   end
 
   defp normalize_string(_), do: nil
+
+  defp reject_governed_supplementation(_attrs, nil), do: :ok
+
+  defp reject_governed_supplementation(attrs, %GovernedAuthority{}) do
+    supplemental_fields = [
+      :api_key,
+      "api_key",
+      :base_url,
+      "base_url",
+      :codex_path,
+      "codex_path",
+      :codex_path_override,
+      "codex_path_override"
+    ]
+
+    case Enum.find(supplemental_fields, fn key ->
+           case Map.get(attrs, key) do
+             value when value in [nil, ""] -> false
+             _value -> true
+           end
+         end) do
+      nil -> :ok
+      key -> {:error, {:governed_option_supplementation, :options, key}}
+    end
+  end
 
   defp normalize_reasoning_summary(value),
     do: OptionNormalizers.normalize_reasoning_summary(value, :invalid_model_reasoning_summary)

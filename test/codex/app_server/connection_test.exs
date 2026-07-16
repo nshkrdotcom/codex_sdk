@@ -138,22 +138,24 @@ defmodule Codex.AppServer.ConnectionTest do
       end
     end)
 
-    {:ok, base_opts} =
-      Options.new(%{
-        governed_authority: GovernedAuthority.command_refs(),
-        api_key: "materialized-key"
-      })
+    authority =
+      GovernedAuthority.command_refs(
+        command: AppServerSubprocess.command_path(AppServerSubprocess.current!()),
+        env:
+          Map.merge(AppServerSubprocess.process_env(AppServerSubprocess.current!()), %{
+            "CODEX_HOME" => "/tmp/materialized-codex-home",
+            "CODEX_API_KEY" => "materialized-key",
+            "OPENAI_API_KEY" => "materialized-key",
+            "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+          })
+      )
+
+    {:ok, base_opts} = Options.new(%{governed_authority: authority})
 
     codex_opts = AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
 
     assert {:ok, conn} =
              Connection.start_link(codex_opts,
-               process_env:
-                 Map.put(
-                   AppServerSubprocess.process_env(AppServerSubprocess.current!()),
-                   "CODEX_HOME",
-                   "/tmp/materialized-codex-home"
-                 ),
                clear_env?: true,
                init_timeout_ms: 200
              )
@@ -174,32 +176,45 @@ defmodule Codex.AppServer.ConnectionTest do
       previous = Process.flag(:trap_exit, true)
       on_exit(fn -> Process.flag(:trap_exit, previous) end)
 
-      {:ok, base_opts} =
-        Options.new(%{
-          governed_authority: GovernedAuthority.command_refs(),
-          api_key: "materialized-key",
-          base_url: "https://materialized.example.com/v1"
-        })
+      authority =
+        GovernedAuthority.command_refs(
+          command: AppServerSubprocess.command_path(AppServerSubprocess.current!()),
+          env:
+            Map.merge(AppServerSubprocess.process_env(AppServerSubprocess.current!()), %{
+              "CODEX_HOME" => "/tmp/materialized-codex-home",
+              "CODEX_API_KEY" => "materialized-key",
+              "OPENAI_API_KEY" => "materialized-key",
+              "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+            })
+        )
+
+      {:ok, base_opts} = Options.new(%{governed_authority: authority})
 
       codex_opts = AppServerSubprocess.codex_opts(base_opts, AppServerSubprocess.current!())
 
-      process_env =
-        Map.merge(AppServerSubprocess.process_env(AppServerSubprocess.current!()), %{
-          "CODEX_HOME" => "/tmp/materialized-codex-home",
-          "HOME" => "/tmp/materialized-home",
-          "USERPROFILE" => "/tmp/materialized-home"
-        })
-
       assert {:error, {:governed_clear_env_required, :app_server, false}} =
                Connection.start_link(codex_opts,
-                 process_env: process_env,
                  clear_env?: false,
+                 init_timeout_ms: 200
+               )
+
+      assert {:error, {:governed_option_supplementation, :app_server, :process_env}} =
+               Connection.start_link(codex_opts,
+                 process_env: %{"OPENAI_API_KEY" => "smuggled-key"},
+                 init_timeout_ms: 200
+               )
+
+      assert {:error, {:governed_option_supplementation, :app_server, :execution_surface}} =
+               Connection.start_link(codex_opts,
+                 execution_surface: %{
+                   surface_kind: :ssh_exec,
+                   transport_options: [destination: "smuggled.example"]
+                 },
                  init_timeout_ms: 200
                )
 
       assert {:ok, conn} =
                Connection.start_link(codex_opts,
-                 process_env: process_env,
                  clear_env?: true,
                  init_timeout_ms: 200
                )
@@ -496,15 +511,15 @@ defmodule Codex.AppServer.ConnectionTest do
     ready_task = Task.async(fn -> Connection.await_ready(conn, 200) end)
     wait_for_ready_waiter(conn, 1)
 
-    :ok = AppServerSubprocess.send_stderr("bootstrap stderr")
+    :ok = AppServerSubprocess.send_stderr("OPENAI_API_KEY=LEAK-BOOTSTRAP-SECRET")
     :ok = AppServerSubprocess.exit(1)
 
-    assert {:error, {:app_server_down, %{reason: _reason, stderr: "bootstrap stderr"}}} =
+    assert {:error, {:app_server_down, %{reason: _reason, stderr: "OPENAI_API_KEY=[REDACTED]"}}} =
              Task.await(ready_task, 200)
 
     assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
                     {:shutdown,
-                     {:app_server_down, %{reason: _reason, stderr: "bootstrap stderr"}}}},
+                     {:app_server_down, %{reason: _reason, stderr: "OPENAI_API_KEY=[REDACTED]"}}}},
                    200
   end
 
@@ -571,14 +586,19 @@ defmodule Codex.AppServer.ConnectionTest do
     chunk = [
       Protocol.encode_notification("turn/started", %{
         "threadId" => "thr_1",
-        "turn" => %{"id" => "t1"}
+        "turn" => %{"id" => "t1"},
+        "apiKey" => "LEAK-NOTIFICATION-SECRET",
+        "inputTokens" => 42
       }),
       Protocol.encode_response(request_id, %{"data" => [], "nextCursor" => nil})
     ]
 
     AppServerSubprocess.send_stdout(chunk)
 
-    assert_receive {:codex_notification, "turn/started", %{"threadId" => "thr_1"}}
+    assert_receive {:codex_notification, "turn/started", params}
+    assert params["apiKey"] == "[REDACTED]"
+    assert params["inputTokens"] == 42
+    refute inspect(params) =~ "LEAK-NOTIFICATION-SECRET"
     assert {:ok, %{"data" => [], "nextCursor" => nil}} = Task.await(task, 200)
   end
 

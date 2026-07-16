@@ -6,6 +6,7 @@ defmodule Codex.AppServer.Connection do
   require Logger
 
   alias CliSubprocessCore.{Command, JSONRPC, TaskSupport}
+  alias Codex.AppServer.Sanitizer
   alias Codex.Config.Defaults
   alias Codex.GovernedAuthority
   alias Codex.Options
@@ -125,16 +126,21 @@ defmodule Codex.AppServer.Connection do
     init_params =
       initialize_params(client_name, client_version, client_title, experimental_api)
 
-    with {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
+    with {:ok, cwd} <- launch_cwd(codex_opts, opts),
          {:ok, env} <- build_env(codex_opts, opts),
          :ok <- validate_governed_runtime(codex_opts, opts, env),
          {:ok, execution_surface} <- effective_execution_surface(codex_opts, opts),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(
+             codex_opts.governed_authority,
+             execution_surface
+           ),
          {:ok, command_spec} <- build_command(codex_opts, execution_surface),
          invocation <-
            Command.new(command_spec, app_server_args(codex_opts),
              cwd: cwd,
              env: env,
-             clear_env?: Keyword.get(opts, :clear_env?, false)
+             clear_env?: launch_clear_env?(codex_opts, opts)
            ),
          {:ok, session} <- start_protocol_session(invocation, execution_surface) do
       {:ok,
@@ -251,13 +257,13 @@ defmodule Codex.AppServer.Connection do
   def handle_info({:jsonrpc_notification, notification}, %State{} = state)
       when is_map(notification) do
     method = Map.get(notification, "method")
-    params = Map.get(notification, "params") || %{}
+    params = notification |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
     {:noreply, broadcast_notification(state, method, params)}
   end
 
   def handle_info({:jsonrpc_peer_request, id, %{} = request}, %State{} = state) do
     method = Map.get(request, "method")
-    params = Map.get(request, "params") || %{}
+    params = request |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
 
     case mark_peer_request_announced(state, id) do
       {:already_announced, next_state} ->
@@ -310,7 +316,7 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_info({:jsonrpc_protocol_error, reason}, %State{} = state) do
-    Logger.debug("Ignoring app-server protocol error: #{inspect(reason)}")
+    Logger.debug("Ignoring app-server protocol error: #{Sanitizer.inspect(reason)}")
     {:noreply, state}
   end
 
@@ -318,7 +324,7 @@ defmodule Codex.AppServer.Connection do
     cond do
       ref == state.session_monitor_ref and pid == state.session ->
         failure = app_server_down_failure(state, reason)
-        Logger.warning("codex app-server exited: #{inspect(failure)}")
+        Logger.warning("codex app-server exited: #{Sanitizer.inspect(failure)}")
         {:stop, {:shutdown, failure}, fail_transport_waiters(state, failure)}
 
       ref == state.init_task_ref ->
@@ -592,7 +598,7 @@ defmodule Codex.AppServer.Connection do
 
   defp handle_init_task_result(%State{} = state, ref, {:error, reason}) do
     next_state = clear_init_task(state, ref)
-    reason = normalize_session_error(next_state, reason)
+    reason = next_state |> normalize_session_error(reason) |> Sanitizer.term()
 
     case reason do
       {:app_server_down, _} = failure ->
@@ -620,7 +626,7 @@ defmodule Codex.AppServer.Connection do
         next_state
 
       {%{from: from}, next_state} ->
-        GenServer.reply(from, {:error, {:request_task_exit, reason}})
+        GenServer.reply(from, {:error, {:request_task_exit, Sanitizer.term(reason)}})
         next_state
     end
   end
@@ -636,7 +642,7 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp normalize_request_result(%State{} = state, _request, {:error, reason}) do
-    {:error, normalize_session_error(state, reason)}
+    {:error, state |> normalize_session_error(reason) |> Sanitizer.term()}
   end
 
   defp normalize_request_result(%State{}, _request, other), do: {:ok, other}
@@ -686,7 +692,7 @@ defmodule Codex.AppServer.Connection do
 
   defp app_server_down_failure(%State{} = state, reason) do
     details =
-      %{reason: failure_reason(reason)}
+      %{reason: reason |> failure_reason() |> Sanitizer.term()}
       |> maybe_put_detail(:stderr, failure_stderr(state, reason))
 
     {:app_server_down, details}
@@ -695,7 +701,17 @@ defmodule Codex.AppServer.Connection do
   defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
   defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)
 
-  defp build_env(%Options{} = codex_opts, opts) when is_list(opts) do
+  defp build_env(
+         %Options{governed_authority: %GovernedAuthority{} = authority},
+         opts
+       )
+       when is_list(opts) do
+    with :ok <- GovernedAuthority.reject_option_supplementation(authority, opts, :app_server) do
+      {:ok, GovernedAuthority.child_env(authority)}
+    end
+  end
+
+  defp build_env(%Options{governed_authority: nil} = codex_opts, opts) when is_list(opts) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
 
     with {:ok, custom_env} <- RuntimeEnv.normalize_overrides(process_env) do
@@ -712,18 +728,26 @@ defmodule Codex.AppServer.Connection do
          opts,
          env
        ) do
-    with :ok <-
+    with :ok <- GovernedAuthority.validate_current(authority),
+         :ok <-
            GovernedAuthority.validate_clear_env(
              authority,
-             Keyword.get(opts, :clear_env?, false),
+             Keyword.get(opts, :clear_env?, not is_nil(authority)),
              :app_server
            ),
          :ok <- GovernedAuthority.validate_runtime_env(authority, env) do
-      GovernedAuthority.validate_command_override(
-        authority,
-        codex_opts.codex_path_override,
-        :app_server
-      )
+      with :ok <-
+             GovernedAuthority.validate_command_override(
+               authority,
+               codex_opts.codex_path_override,
+               :app_server
+             ) do
+        GovernedAuthority.reject_config_overrides(
+          authority,
+          app_server_config_values(codex_opts),
+          :app_server
+        )
+      end
     end
   end
 
@@ -819,9 +843,9 @@ defmodule Codex.AppServer.Connection do
   defp failure_reason(reason), do: reason
 
   defp failure_stderr(_state, {:channel_exit, %{stderr: stderr}}) when stderr not in [nil, ""],
-    do: stderr
+    do: Sanitizer.text(stderr)
 
-  defp failure_stderr(%State{stderr: stderr}, _reason), do: stderr
+  defp failure_stderr(%State{stderr: stderr}, _reason), do: Sanitizer.text(stderr)
 
   defp default_client_version, do: Defaults.client_version()
 
@@ -836,8 +860,19 @@ defmodule Codex.AppServer.Connection do
 
   defp normalize_cwd(cwd), do: {:error, {:invalid_cwd, cwd}}
 
+  defp launch_cwd(%Options{governed_authority: %GovernedAuthority{} = authority}, opts) do
+    with :ok <- GovernedAuthority.reject_option_supplementation(authority, opts, :app_server) do
+      {:ok, GovernedAuthority.child_cwd(authority)}
+    end
+  end
+
+  defp launch_cwd(%Options{}, opts), do: normalize_cwd(Keyword.get(opts, :cwd))
+
+  defp launch_clear_env?(%Options{governed_authority: %GovernedAuthority{}}, _opts), do: true
+  defp launch_clear_env?(%Options{}, opts), do: Keyword.get(opts, :clear_env?, false)
+
   defp append_stderr(current, chunk, limit) when is_binary(current) and is_integer(limit) do
-    combined = current <> IO.iodata_to_binary(chunk)
+    combined = current <> Sanitizer.text(chunk)
 
     if byte_size(combined) <= limit do
       combined
@@ -968,10 +1003,11 @@ defmodule Codex.AppServer.Connection do
     }
   end
 
-  defp encode_peer_error(code, message, nil), do: %{"code" => code, "message" => message}
+  defp encode_peer_error(code, message, nil),
+    do: %{"code" => code, "message" => Sanitizer.text(message)}
 
   defp encode_peer_error(code, message, data) do
-    %{"code" => code, "message" => message, "data" => data}
+    %{"code" => code, "message" => Sanitizer.text(message), "data" => Sanitizer.term(data)}
   end
 
   defp close_session(session) when is_pid(session) do

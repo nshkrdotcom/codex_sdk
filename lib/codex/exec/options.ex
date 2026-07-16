@@ -2,6 +2,7 @@ defmodule Codex.Exec.Options do
   @moduledoc false
 
   alias Codex.Files.Attachment
+  alias Codex.GovernedAuthority
   alias Codex.Options
   alias Codex.Runtime.Env, as: RuntimeEnv
 
@@ -77,8 +78,8 @@ defmodule Codex.Exec.Options do
          {:ok, attachments} <- ensure_list(attachments, :attachments),
          {:ok, tool_outputs} <- ensure_list(tool_outputs, :tool_outputs),
          {:ok, tool_failures} <- ensure_list(tool_failures, :tool_failures),
-         {:ok, env} <- normalize_env(env),
-         {:ok, clear_env?} <- validate_optional_boolean(clear_env?, :clear_env?),
+         {:ok, env} <- normalize_env(env, codex_opts),
+         {:ok, clear_env?} <- normalize_clear_env(clear_env?, codex_opts),
          :ok <- validate_cancellation_token(cancellation_token),
          :ok <- validate_timeout(timeout_ms),
          :ok <- validate_optional_timeout(stream_idle_timeout_ms, :stream_idle_timeout_ms),
@@ -110,11 +111,26 @@ defmodule Codex.Exec.Options do
   defp ensure_codex_opts(%Options{} = opts), do: {:ok, opts}
   defp ensure_codex_opts(_), do: {:error, :missing_options}
 
-  defp ensure_execution_surface(nil, %Options{} = codex_opts),
-    do: {:ok, codex_opts.execution_surface}
+  defp ensure_execution_surface(nil, %Options{} = codex_opts) do
+    with :ok <-
+           GovernedAuthority.validate_execution_surface(
+             codex_opts.governed_authority,
+             codex_opts.execution_surface
+           ) do
+      {:ok, codex_opts.execution_surface}
+    end
+  end
 
-  defp ensure_execution_surface(value, _codex_opts),
-    do: Options.normalize_execution_surface(value)
+  defp ensure_execution_surface(value, %Options{} = codex_opts) do
+    with {:ok, execution_surface} <- Options.normalize_execution_surface(value),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(
+             codex_opts.governed_authority,
+             execution_surface
+           ) do
+      {:ok, execution_surface}
+    end
+  end
 
   defp ensure_map(value, _field) when is_map(value), do: {:ok, value}
   defp ensure_map(nil, _field), do: {:ok, %{}}
@@ -124,7 +140,25 @@ defmodule Codex.Exec.Options do
   defp ensure_list(nil, _field), do: {:ok, []}
   defp ensure_list(value, field), do: {:error, {:invalid_list, field, value}}
 
-  defp normalize_env(env), do: RuntimeEnv.normalize_overrides(env)
+  defp normalize_env(env, %Options{governed_authority: %GovernedAuthority{} = authority})
+       when env in [nil, %{}, []],
+       do: {:ok, GovernedAuthority.child_env(authority)}
+
+  defp normalize_env(_env, %Options{governed_authority: %GovernedAuthority{}}),
+    do: {:error, {:governed_option_supplementation, :exec, :env}}
+
+  defp normalize_env(env, %Options{}), do: RuntimeEnv.normalize_overrides(env)
+
+  defp normalize_clear_env(nil, %Options{governed_authority: %GovernedAuthority{}}),
+    do: {:ok, true}
+
+  defp normalize_clear_env(true, %Options{governed_authority: %GovernedAuthority{}}),
+    do: {:ok, true}
+
+  defp normalize_clear_env(_value, %Options{governed_authority: %GovernedAuthority{}}),
+    do: {:error, {:governed_clear_env_required, :exec, false}}
+
+  defp normalize_clear_env(value, %Options{}), do: validate_optional_boolean(value, :clear_env?)
 
   defp validate_cancellation_token(nil), do: :ok
 

@@ -75,6 +75,7 @@ defmodule Codex.AppServer do
     init_timeout_ms = Keyword.get(opts, :init_timeout_ms, @default_init_timeout_ms)
 
     with {:ok, _pid} <- ensure_connection_supervisor(),
+         :ok <- reject_governed_connect_opts(codex_opts, opts),
          :ok <- AppServerAuth.ensure_before_connect(opts),
          {:ok, conn} <- start_connection(codex_opts, opts),
          {:ok, ^conn} <- await_connection_ready(conn, init_timeout_ms) do
@@ -2062,16 +2063,17 @@ defmodule Codex.AppServer do
 
   defp resolve_remote_auth_token(opts) when is_list(opts) do
     with {:ok, governed_authority} <- GovernedAuthority.fetch(opts),
-         {:ok, process_env} <-
-           RuntimeEnv.normalize_overrides(
-             Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
-           ) do
+         {:ok, process_env} <- remote_process_env(opts, governed_authority) do
       auth_token =
         opts
         |> Keyword.get(:auth_token)
         |> normalize_remote_auth_token()
 
       case {auth_token, Keyword.get(opts, :auth_token_env)} do
+        {token, _auth_token_env}
+        when is_binary(token) and is_struct(governed_authority, GovernedAuthority) ->
+          {:error, {:governed_option_supplementation, :remote_app_server, :auth_token}}
+
         {token, _auth_token_env} when is_binary(token) ->
           {:ok, Keyword.put(opts, :auth_token, token)}
 
@@ -2110,8 +2112,8 @@ defmodule Codex.AppServer do
     end
   end
 
-  defp remote_auth_token_env_value(process_env, auth_token_env, %{}) do
-    Map.get(process_env, auth_token_env)
+  defp remote_auth_token_env_value(_process_env, auth_token_env, %GovernedAuthority{} = authority) do
+    authority |> GovernedAuthority.child_env() |> Map.get(auth_token_env)
   end
 
   defp remote_auth_token_env_value(process_env, auth_token_env, nil) do
@@ -2121,7 +2123,7 @@ defmodule Codex.AppServer do
     end
   end
 
-  defp standalone_remote_auth_env_present?(_auth_token_env, %{}), do: false
+  defp standalone_remote_auth_env_present?(_auth_token_env, %GovernedAuthority{}), do: false
 
   defp standalone_remote_auth_env_present?(auth_token_env, nil),
     do: Codex.Env.get(auth_token_env) != nil
@@ -2132,6 +2134,31 @@ defmodule Codex.AppServer do
   end
 
   defp normalize_remote_auth_token(_value), do: nil
+
+  defp reject_governed_connect_opts(
+         %Options{governed_authority: %GovernedAuthority{} = authority},
+         opts
+       ) do
+    with :ok <- GovernedAuthority.validate_current(authority) do
+      GovernedAuthority.reject_option_supplementation(authority, opts, :app_server)
+    end
+  end
+
+  defp reject_governed_connect_opts(%Options{}, _opts), do: :ok
+
+  defp remote_process_env(opts, %GovernedAuthority{} = authority) do
+    with :ok <- GovernedAuthority.validate_current(authority),
+         :ok <-
+           GovernedAuthority.reject_option_supplementation(authority, opts, :remote_app_server) do
+      {:ok, GovernedAuthority.child_env(authority)}
+    end
+  end
+
+  defp remote_process_env(opts, nil) do
+    opts
+    |> Keyword.get(:process_env, Keyword.get(opts, :env, %{}))
+    |> RuntimeEnv.normalize_overrides()
+  end
 
   defp validate_remote_auth_transport(_websocket_url, nil), do: :ok
 

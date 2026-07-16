@@ -5,7 +5,7 @@ defmodule Codex.OptionsTest do
 
   alias CliSubprocessCore.ExecutionSurface
   alias CliSubprocessCore.ModelRegistry.Selection
-  alias Codex.Config.BaseURL
+  alias Codex.GovernedAuthority, as: CodexAuthority
   alias Codex.Options
   alias Codex.TestSupport.GovernedAuthority
   import Codex.Test.ModelFixtures
@@ -144,25 +144,33 @@ defmodule Codex.OptionsTest do
 
       assert {:ok, opts} = Options.new(%{governed_authority: GovernedAuthority.refs()})
 
-      assert opts.governed_authority["authority_ref"] == "authz-codex-test"
+      assert opts.governed_authority.authority_ref == "authz-codex-test"
       assert opts.api_key == nil
-      assert opts.base_url == BaseURL.default()
+      assert opts.base_url == "https://materialized.example.com/v1"
       assert opts.model == default_model()
     end
 
-    test "governed authority accepts explicit materialized auth and command refs" do
+    test "governed authority rejects supplemental auth, routing, and command options" do
+      for {key, value} <- [
+            api_key: "supplemental-key",
+            base_url: "https://supplemental.example.com/v1",
+            codex_path_override: "/opt/supplemental/codex"
+          ] do
+        assert {:error, {:governed_option_supplementation, :options, ^key}} =
+                 Options.new(
+                   Map.put(%{governed_authority: GovernedAuthority.command_refs()}, key, value)
+                 )
+      end
+
       assert {:ok, opts} =
                Options.new(%{
                  governed_authority: GovernedAuthority.command_refs(),
-                 api_key: "materialized-key",
-                 base_url: "https://materialized.example.com/v1",
-                 codex_path_override: "/opt/materialized/codex",
                  model: alt_model()
                })
 
-      assert opts.api_key == "materialized-key"
+      assert opts.api_key == nil
       assert opts.base_url == "https://materialized.example.com/v1"
-      assert opts.codex_path_override == "/opt/materialized/codex"
+      assert opts.codex_path_override == "/bin/true"
       assert opts.model == alt_model()
     end
 
@@ -173,7 +181,13 @@ defmodule Codex.OptionsTest do
                    GovernedAuthority.refs(
                      native_auth_assertion_ref: "native-codex-root-a",
                      provider_account_ref: "provider-account-codex-root-a",
-                     materialization_ref: "materialization-codex-root-a"
+                     materialization_ref: "materialization-codex-root-a",
+                     config_root: "/tmp/codex-root-a",
+                     auth_root: "/tmp/codex-root-a",
+                     env: %{
+                       "CODEX_HOME" => "/tmp/codex-root-a",
+                       "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+                     }
                    )
                })
 
@@ -183,51 +197,166 @@ defmodule Codex.OptionsTest do
                    GovernedAuthority.refs(
                      native_auth_assertion_ref: "native-codex-root-b",
                      provider_account_ref: "provider-account-codex-root-b",
-                     materialization_ref: "materialization-codex-root-b"
+                     materialization_ref: "materialization-codex-root-b",
+                     config_root: "/tmp/codex-root-b",
+                     auth_root: "/tmp/codex-root-b",
+                     env: %{
+                       "CODEX_HOME" => "/tmp/codex-root-b",
+                       "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+                     }
                    )
                })
 
-      assert root_a.governed_authority["provider_account_ref"] ==
+      assert root_a.governed_authority.provider_account_ref ==
                "provider-account-codex-root-a"
 
-      assert root_b.governed_authority["provider_account_ref"] ==
+      assert root_b.governed_authority.provider_account_ref ==
                "provider-account-codex-root-b"
 
-      refute root_a.governed_authority["native_auth_assertion_ref"] ==
-               root_b.governed_authority["native_auth_assertion_ref"]
+      refute root_a.governed_authority.native_auth_assertion_ref ==
+               root_b.governed_authority.native_auth_assertion_ref
+
+      refute root_a.governed_authority.config_root == root_b.governed_authority.config_root
     end
 
     test "governed authority rejects incomplete authority refs" do
-      assert {:error, {:missing_governed_authority_refs, missing}} =
+      assert {:error, {:missing_governed_materialization_fields, missing}} =
                Options.new(%{governed_authority: %{authority_ref: "authz-only"}})
 
-      assert "credential_lease_ref" in missing
-      assert "connector_instance_ref" in missing
-      assert "operation_policy_ref" in missing
-      assert "materialization_ref" in missing
+      assert :credential_lease_ref in missing
+      assert :connector_instance_ref in missing
+      assert :operation_policy_ref in missing
+      assert :materialization_ref in missing
     end
 
     test "governed authority rejects raw secret-shaped fields" do
       authority = Map.put(GovernedAuthority.refs(), :api_key, "sk-raw")
 
-      assert {:error, {:raw_secret_field_in_governed_authority, "api_key"}} =
+      assert {:error, :invalid_governed_materialization} =
                Options.new(%{governed_authority: authority})
     end
 
     test "governed authority rejects secret config overrides" do
-      assert {:error, {:governed_secret_config_override, :options, "api_key"}} =
+      assert {:error, {:governed_config_override_forbidden, :options, "api_key"}} =
                Options.new(%{
                  governed_authority: GovernedAuthority.refs(),
                  config: %{"api_key" => "raw"}
                })
     end
 
-    test "governed authority rejects command override without command ref" do
-      assert {:error, {:governed_command_ref_required, :options}} =
+    test "governed authority rejects command override" do
+      assert {:error, {:governed_option_supplementation, :options, :codex_path_override}} =
                Options.new(%{
                  governed_authority: GovernedAuthority.refs(),
                  codex_path_override: "/opt/materialized/codex"
                })
+    end
+
+    test "governed authority rejects direct remote execution routing" do
+      assert {:error, {:governed_execution_surface_mismatch, :surface_kind}} =
+               Options.new(%{
+                 governed_authority: GovernedAuthority.refs(),
+                 execution_surface: %{
+                   surface_kind: :ssh_exec,
+                   transport_options: [destination: "smuggled.example"],
+                   target_id: "target-codex-test",
+                   lease_ref: "lease-codex-test"
+                 }
+               })
+    end
+
+    test "builds exact Codex materialization from frozen Jido contract maps" do
+      now = DateTime.utc_now()
+
+      request = %{
+        materialization_ref: "materialization-1",
+        lease_id: "lease-1",
+        account: %{
+          provider_family: "codex",
+          account_ref: "account-1",
+          endpoint_ref: "endpoint-1",
+          generation: 7,
+          fence: 3
+        },
+        authority_ref: "authority-1",
+        endpoint_ref: "endpoint-1",
+        target_ref: "target-1",
+        operation_ref: "operation-1",
+        issued_at: now,
+        expires_at: DateTime.add(now, 300, :second)
+      }
+
+      secret = %{
+        materialization_ref: "materialization-1",
+        provider_family: "codex",
+        account_ref: "account-1",
+        generation: 7,
+        payload: %{api_key: "EXACT-MATERIALIZED-SECRET"}
+      }
+
+      launch = %{
+        native_auth_assertion_ref: "native-1",
+        connector_instance_ref: "connector-1",
+        connector_binding_ref: "binding-1",
+        operation_policy_ref: "policy-1",
+        command: "/opt/codex/bin/codex",
+        cwd: "/tmp/workspace-1",
+        config_root: "/tmp/codex-home-1",
+        auth_root: "/tmp/codex-home-1",
+        base_url: "https://codex.example/v1",
+        env: %{
+          "CODEX_HOME" => "/tmp/codex-home-1",
+          "OPENAI_BASE_URL" => "https://codex.example/v1"
+        }
+      }
+
+      assert {:ok, authority} = CodexAuthority.new(request, secret, launch)
+      assert authority.provider_account_ref == "account-1"
+      assert authority.account_namespace == "account-1"
+      assert authority.credential_lease_ref == "lease-1"
+      assert authority.generation == 7
+      assert authority.fence == 3
+      assert authority.env["CODEX_API_KEY"] == "EXACT-MATERIALIZED-SECRET"
+      assert authority.env["OPENAI_API_KEY"] == "EXACT-MATERIALIZED-SECRET"
+    end
+
+    test "rejects cross-account and non-Codex contract materialization" do
+      now = DateTime.utc_now()
+
+      request = %{
+        materialization_ref: "materialization-1",
+        lease_id: "lease-1",
+        account: %{
+          provider_family: "codex",
+          account_ref: "account-1",
+          endpoint_ref: "endpoint-1",
+          generation: 1,
+          fence: 0
+        },
+        authority_ref: "authority-1",
+        endpoint_ref: "endpoint-1",
+        target_ref: "target-1",
+        operation_ref: "operation-1",
+        issued_at: now,
+        expires_at: DateTime.add(now, 300, :second)
+      }
+
+      secret = %{
+        materialization_ref: "materialization-1",
+        provider_family: "codex",
+        account_ref: "account-2",
+        generation: 1,
+        payload: %{api_key: "SECRET"}
+      }
+
+      assert {:error, :materialization_account_mismatch} =
+               CodexAuthority.new(request, secret, %{})
+
+      gemini_request = put_in(request, [:account, :provider_family], "gemini")
+      gemini_secret = %{secret | provider_family: "gemini", account_ref: "account-1"}
+
+      assert {:error, :invalid_codex_provider_family} =
+               CodexAuthority.new(gemini_request, gemini_secret, %{})
     end
 
     test "allows API key to be omitted" do

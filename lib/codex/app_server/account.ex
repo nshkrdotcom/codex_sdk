@@ -73,7 +73,8 @@ defmodule Codex.AppServer.Account do
         enabled_option(Keyword.get(opts, :use_hosted_login_success_page))
       )
 
-    with :ok <- enforce_login_constraints(:chatgpt, params, opts) do
+    with :ok <- reject_governed_login(opts),
+         :ok <- enforce_login_constraints(:chatgpt, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
     end
   end
@@ -86,7 +87,8 @@ defmodule Codex.AppServer.Account do
       when is_pid(conn) and is_binary(api_key) and is_list(opts) do
     params = %{"type" => "apiKey", "apiKey" => api_key}
 
-    with :ok <- enforce_login_constraints(:api_key, params, opts) do
+    with :ok <- reject_governed_login(opts),
+         :ok <- enforce_login_constraints(:api_key, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
     end
   end
@@ -95,7 +97,8 @@ defmodule Codex.AppServer.Account do
       when is_pid(conn) and is_binary(api_key) and is_binary(region) and is_list(opts) do
     params = %{"type" => "amazonBedrock", "apiKey" => api_key, "region" => region}
 
-    with :ok <- validate_amazon_bedrock_login(api_key, region),
+    with :ok <- reject_governed_login(opts),
+         :ok <- validate_amazon_bedrock_login(api_key, region),
          :ok <- enforce_login_constraints(:bedrock_api_key, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
     end
@@ -104,7 +107,8 @@ defmodule Codex.AppServer.Account do
   def login_start(conn, %{} = params, opts) when is_pid(conn) and is_list(opts) do
     normalized = Params.normalize_map(params)
 
-    with {:ok, login_type} <- infer_login_type(normalized),
+    with :ok <- reject_governed_login(opts),
+         {:ok, login_type} <- infer_login_type(normalized),
          :ok <- enforce_login_constraints(login_type, normalized, opts) do
       Connection.request(conn, "account/login/start", normalized, timeout_ms: 30_000)
     end
@@ -253,7 +257,7 @@ defmodule Codex.AppServer.Account do
     with {:ok, authority} <- GovernedAuthority.fetch(opts),
          {:ok, child_process_env} <- resolve_child_env(opts, authority),
          :ok <- GovernedAuthority.validate_runtime_env(authority, child_process_env),
-         {:ok, cwd} <- resolve_cwd(opts),
+         {:ok, cwd} <- resolve_cwd(opts, authority),
          {:ok, codex_home} <- resolve_codex_home(opts, child_process_env, authority),
          {:ok, layers} <- LayerStack.load(codex_home, cwd) do
       {:ok, forced_login_config(LayerStack.effective_config(layers))}
@@ -292,12 +296,17 @@ defmodule Codex.AppServer.Account do
     end
   end
 
-  defp resolve_child_env(opts, %{}) do
-    process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
-    RuntimeEnv.normalize_overrides(process_env)
+  defp resolve_child_env(opts, %GovernedAuthority{} = authority) do
+    with :ok <-
+           GovernedAuthority.reject_option_supplementation(authority, opts, :app_server_account) do
+      {:ok, GovernedAuthority.child_env(authority)}
+    end
   end
 
-  defp resolve_cwd(opts) do
+  defp resolve_cwd(_opts, %GovernedAuthority{} = authority),
+    do: {:ok, GovernedAuthority.child_cwd(authority)}
+
+  defp resolve_cwd(opts, nil) do
     case Keyword.get(opts, :cwd) do
       nil ->
         case File.cwd() do
@@ -323,10 +332,19 @@ defmodule Codex.AppServer.Account do
     end
   end
 
-  defp resolve_codex_home(opts, child_process_env, %{}) do
-    case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
-      value when is_binary(value) and value != "" -> {:ok, value}
-      _ -> {:error, {:governed_codex_home_required, :app_server_account}}
+  defp resolve_codex_home(_opts, _child_process_env, %GovernedAuthority{config_root: root}),
+    do: {:ok, root}
+
+  defp reject_governed_login(opts) do
+    case GovernedAuthority.fetch(opts) do
+      {:ok, nil} ->
+        :ok
+
+      {:ok, %GovernedAuthority{}} ->
+        {:error, {:governed_account_mutation_forbidden, :login_start}}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 

@@ -2,12 +2,15 @@ defmodule Codex.SecretsRedactionTest do
   use ExUnit.Case, async: true
 
   alias Codex.Auth.Store
+  alias Codex.AppServer.Sanitizer
+  alias Codex.GovernedAuthority
   alias Codex.MCP.Transport.StreamableHTTP
   alias Codex.OAuth
   alias Codex.Realtime.Config
   alias Codex.Voice.Models.OpenAIProvider
   alias Codex.Voice.Models.OpenAISTT
   alias Codex.Voice.Models.OpenAITTS
+  alias Codex.TestSupport.GovernedAuthority, as: GovernedAuthorityFixture
 
   test "auth credentials never appear in inspect output" do
     tokens = %Store.Tokens{
@@ -131,6 +134,53 @@ defmodule Codex.SecretsRedactionTest do
       "LEAK-CONTEXT-CONFIG",
       "LEAK-SESSION-AUTH"
     ])
+  end
+
+  test "governed materialization cannot expose or encode transient launch secrets" do
+    sentinel = "LEAK-GOVERNED-MATERIALIZATION"
+
+    attrs =
+      GovernedAuthorityFixture.refs(
+        command: "/secret/path/#{sentinel}/codex",
+        cwd: "/tmp/#{sentinel}/workspace",
+        config_root: "/tmp/#{sentinel}/home",
+        auth_root: "/tmp/#{sentinel}/home",
+        base_url: "https://#{sentinel}.example/v1",
+        env: %{
+          "CODEX_HOME" => "/tmp/#{sentinel}/home",
+          "OPENAI_BASE_URL" => "https://#{sentinel}.example/v1",
+          "OPENAI_API_KEY" => sentinel
+        }
+      )
+
+    assert {:ok, authority} = GovernedAuthority.new(attrs)
+    refute inspect(authority) =~ sentinel
+
+    assert_raise ArgumentError, ~r/transient and cannot be encoded/, fn ->
+      Jason.encode!(authority)
+    end
+
+    redacted = GovernedAuthority.redacted(authority)
+    refute inspect(redacted) =~ sentinel
+    assert redacted.env_keys == ["CODEX_HOME", "OPENAI_API_KEY", "OPENAI_BASE_URL"]
+  end
+
+  test "app-server sanitizer redacts credential fields and text sentinels but preserves usage" do
+    sanitized =
+      Sanitizer.term(%{
+        "apiKey" => "LEAK-API-KEY",
+        "nested" => %{"refreshToken" => "LEAK-REFRESH"},
+        "inputTokens" => 13,
+        "credentialRef" => "credential-ref-safe",
+        "message" => "Authorization: Bearer LEAK-BEARER"
+      })
+
+    assert sanitized["apiKey"] == "[REDACTED]"
+    assert sanitized["nested"]["refreshToken"] == "[REDACTED]"
+    assert sanitized["inputTokens"] == 13
+    assert sanitized["credentialRef"] == "credential-ref-safe"
+    assert sanitized["message"] == "Authorization: [REDACTED]"
+    refute inspect(sanitized) =~ "LEAK-"
   end
 
   test "VERSION file matches mix.exs" do

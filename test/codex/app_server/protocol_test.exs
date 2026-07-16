@@ -44,6 +44,19 @@ defmodule Codex.AppServer.ProtocolTest do
       assert log =~ "Failed to decode JSON line"
       assert log =~ "not-json"
     end
+
+    test "redacts malformed JSON-RPC lines before logging or returning them" do
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          assert {[], "", ["OPENAI_API_KEY=[REDACTED]"]} =
+                   Protocol.decode_lines("", "OPENAI_API_KEY=LEAK-MALFORMED-SECRET\n")
+        end)
+
+      assert log =~ "OPENAI_API_KEY=[REDACTED]"
+      refute log =~ "LEAK-MALFORMED-SECRET"
+    end
   end
 
   describe "message_type/1" do
@@ -57,5 +70,34 @@ defmodule Codex.AppServer.ProtocolTest do
                "error" => %{"code" => -32_000, "message" => "boom"}
              }) == :error
     end
+  end
+
+  test "encode_error/4 redacts secret-bearing error data without erasing usage" do
+    encoded =
+      Protocol.encode_error(
+        7,
+        -32_000,
+        "request failed with Bearer LEAK-BEARER-TOKEN",
+        %{
+          "apiKey" => "LEAK-API-KEY",
+          "inputTokens" => 11,
+          "credentialRef" => "credential-safe-ref"
+        }
+      )
+      |> IO.iodata_to_binary()
+
+    refute encoded =~ "LEAK-BEARER-TOKEN"
+    refute encoded =~ "LEAK-API-KEY"
+
+    assert %{
+             "error" => %{
+               "message" => "request failed with Bearer [REDACTED]",
+               "data" => %{
+                 "apiKey" => "[REDACTED]",
+                 "inputTokens" => 11,
+                 "credentialRef" => "credential-safe-ref"
+               }
+             }
+           } = Jason.decode!(encoded)
   end
 end

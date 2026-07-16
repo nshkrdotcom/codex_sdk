@@ -1,14 +1,25 @@
 defmodule Codex.AppServer.Protocol do
   @moduledoc false
 
+  alias Codex.AppServer.Sanitizer
   alias Codex.IO.Buffer
+
+  require Logger
 
   @type message :: map()
   @type message_type :: :request | :notification | :response | :error | :unknown
 
   @spec decode_lines(String.t(), iodata()) :: {[message()], String.t(), [String.t()]}
   def decode_lines(buffer, chunk) when is_binary(buffer) do
-    Buffer.decode_json_lines(buffer, chunk)
+    data = buffer <> IO.iodata_to_binary(chunk)
+    {lines, rest} = Buffer.split_lines(data)
+
+    {messages, non_json} =
+      lines
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.reduce({[], []}, &decode_line/2)
+
+    {Enum.reverse(messages), rest, Enum.reverse(non_json)}
   end
 
   @spec message_type(message()) :: message_type()
@@ -46,6 +57,9 @@ defmodule Codex.AppServer.Protocol do
   @spec encode_error(String.t() | integer(), integer(), String.t(), map() | nil) :: iolist()
   def encode_error(id, code, message, data \\ nil)
       when is_integer(code) and is_binary(message) do
+    message = Sanitizer.text(message)
+    data = Sanitizer.term(data)
+
     %{
       "id" => id,
       "error" =>
@@ -62,4 +76,23 @@ defmodule Codex.AppServer.Protocol do
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, _key, []), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)
+
+  defp decode_line(line, {messages, non_json}) do
+    case Jason.decode(line) do
+      {:ok, decoded} when is_map(decoded) ->
+        {[decoded | messages], non_json}
+
+      {:ok, decoded} ->
+        Logger.debug("Ignoring non-object JSON line: #{Sanitizer.inspect(decoded)}")
+        {messages, [Sanitizer.text(line) | non_json]}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Failed to decode JSON line: #{Sanitizer.inspect(reason)} " <>
+            "(#{Sanitizer.text(line)})"
+        )
+
+        {messages, [Sanitizer.text(line) | non_json]}
+    end
+  end
 end

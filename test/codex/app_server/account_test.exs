@@ -47,8 +47,8 @@ defmodule Codex.AppServer.AccountTest do
              Account.login_start(self(), {:api_key, "sk-test"})
   end
 
-  test "ignores ambient CODEX_HOME as governed account authority" do
-    assert {:error, {:governed_codex_home_required, :app_server_account}} =
+  test "forbids governed login instead of consulting ambient CODEX_HOME" do
+    assert {:error, {:governed_account_mutation_forbidden, :login_start}} =
              Account.login_start(self(), :chatgpt, governed_authority: GovernedAuthority.refs())
   end
 
@@ -100,7 +100,7 @@ defmodule Codex.AppServer.AccountTest do
              )
   end
 
-  test "login_start/3 accepts governed account config from materialized child env", %{
+  test "login_start/3 cannot mutate an exactly materialized governed account", %{
     codex_home: codex_home
   } do
     GovernedAuthority.with_clean_ambient(fn ->
@@ -111,16 +111,19 @@ defmodule Codex.AppServer.AccountTest do
       forced_login_method = "chatgpt"
       """)
 
-      assert {:error, {:forced_login_method, "chatgpt", :api_key}} =
-               Account.login_start(self(), {:api_key, "sk-test"},
-                 governed_authority: GovernedAuthority.refs(),
-                 cwd: child_home,
-                 process_env: [
-                   CODEX_HOME: child_home,
-                   HOME: child_home,
-                   USERPROFILE: child_home
-                 ]
-               )
+      authority =
+        GovernedAuthority.refs(
+          cwd: child_home,
+          config_root: child_home,
+          auth_root: child_home,
+          env: %{
+            "CODEX_HOME" => child_home,
+            "OPENAI_BASE_URL" => "https://materialized.example.com/v1"
+          }
+        )
+
+      assert {:error, {:governed_account_mutation_forbidden, :login_start}} =
+               Account.login_start(self(), {:api_key, "sk-test"}, governed_authority: authority)
     end)
   end
 end

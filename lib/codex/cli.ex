@@ -15,9 +15,11 @@ defmodule Codex.CLI do
 
   alias CliSubprocessCore.Command
   alias CliSubprocessCore.Command.RunResult
+  alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
   alias Codex.CLI.Session
   alias Codex.Config.Defaults
   alias Codex.Config.Overrides
+  alias Codex.GovernedAuthority
   alias Codex.Options
   alias Codex.ProcessExit
   alias Codex.Runtime.Env, as: RuntimeEnv
@@ -33,11 +35,17 @@ defmodule Codex.CLI do
 
     with {:ok, timeout_ms} <-
            normalize_timeout_ms(Keyword.get(opts, :timeout_ms, Defaults.exec_timeout_ms())),
-         {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
          {:ok, codex_opts} <- normalize_codex_opts(opts),
+         {:ok, cwd} <- launch_cwd(codex_opts, opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(
+             codex_opts.governed_authority,
+             execution_surface
+           ),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
+         :ok <- validate_governed_args(codex_opts.governed_authority, args),
          {:ok, result} <-
            Command.run(
              Command.new(command_spec, normalize_args(args),
@@ -46,6 +54,7 @@ defmodule Codex.CLI do
                clear_env?: env_spec.clear_env?
              ),
              Options.execution_surface_options(execution_surface) ++
+               governed_command_options(codex_opts) ++
                [
                  stdin: input,
                  timeout: timeout_ms,
@@ -61,11 +70,18 @@ defmodule Codex.CLI do
   """
   @spec start([String.t()], keyword()) :: {:ok, Session.t()} | {:error, term()}
   def start(args, opts \\ []) when is_list(args) and is_list(opts) do
-    with {:ok, cwd} <- normalize_cwd(Keyword.get(opts, :cwd)),
-         {:ok, codex_opts} <- normalize_codex_opts(opts),
+    with {:ok, codex_opts} <- normalize_codex_opts(opts),
+         {:ok, cwd} <- launch_cwd(codex_opts, opts),
          {:ok, execution_surface} <- effective_execution_surface(opts, codex_opts),
+         :ok <-
+           GovernedAuthority.validate_execution_surface(
+             codex_opts.governed_authority,
+             execution_surface
+           ),
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
-         {:ok, env_spec} <- build_env_spec(codex_opts, opts) do
+         {:ok, env_spec} <- build_env_spec(codex_opts, opts),
+         :ok <- validate_governed_args(codex_opts.governed_authority, args),
+         :ok <- validate_core_invocation(codex_opts.governed_authority, command_spec, args, cwd) do
       session_opts = [
         receiver: Keyword.get(opts, :receiver, self()),
         stdin: Keyword.get(opts, :stdin, false),
@@ -509,6 +525,8 @@ defmodule Codex.CLI do
         Options.new(%{
           api_key: Keyword.get(opts, :api_key),
           base_url: Keyword.get(opts, :base_url),
+          governed_authority:
+            Keyword.get(opts, :governed_authority, Keyword.get(opts, :governed_materialization)),
           execution_surface: Keyword.get(opts, :execution_surface),
           codex_path_override:
             Keyword.get(opts, :codex_path_override, Keyword.get(opts, :codex_path))
@@ -529,7 +547,7 @@ defmodule Codex.CLI do
     end
   end
 
-  defp build_env_spec(%Options{} = codex_opts, opts) do
+  defp build_env_spec(%Options{governed_authority: nil} = codex_opts, opts) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
     clear_env? = Keyword.get(opts, :clear_env?, false)
 
@@ -549,6 +567,26 @@ defmodule Codex.CLI do
     end
   end
 
+  defp build_env_spec(
+         %Options{governed_authority: %GovernedAuthority{} = authority},
+         opts
+       ) do
+    clear_env? = Keyword.get(opts, :clear_env?, true)
+
+    with :ok <- GovernedAuthority.validate_current(authority),
+         :ok <- GovernedAuthority.reject_option_supplementation(authority, opts, :cli),
+         :ok <- GovernedAuthority.validate_clear_env(authority, clear_env?, :cli),
+         {:ok, config_cli_args} <- config_args(opts),
+         :ok <-
+           GovernedAuthority.reject_config_overrides(
+             authority,
+             config_values_from_args(config_cli_args),
+             :cli
+           ) do
+      {:ok, %{env: GovernedAuthority.child_env(authority), clear_env?: true}}
+    end
+  end
+
   defp preserved_env do
     Defaults.preserved_env_keys()
     |> Enum.reduce(%{}, fn key, acc ->
@@ -562,6 +600,84 @@ defmodule Codex.CLI do
   defp build_session_env(%{env: env, clear_env?: clear_env?}) when is_map(env) do
     env = Map.to_list(env)
     if clear_env?, do: [:clear | env], else: env
+  end
+
+  defp launch_cwd(%Options{governed_authority: %GovernedAuthority{} = authority}, opts) do
+    with :ok <- GovernedAuthority.reject_option_supplementation(authority, opts, :cli) do
+      {:ok, GovernedAuthority.child_cwd(authority)}
+    end
+  end
+
+  defp launch_cwd(%Options{}, opts), do: normalize_cwd(Keyword.get(opts, :cwd))
+
+  defp governed_command_options(%Options{governed_authority: %GovernedAuthority{} = authority}),
+    do: [governed_authority: authority]
+
+  defp governed_command_options(%Options{}), do: []
+
+  defp validate_core_invocation(nil, _command_spec, _args, _cwd), do: :ok
+
+  defp validate_core_invocation(%GovernedAuthority{} = authority, command_spec, args, cwd) do
+    invocation =
+      Command.new(command_spec, normalize_args(args),
+        cwd: cwd,
+        env: authority.env,
+        clear_env?: true
+      )
+
+    with {:ok, core_authority} <- CoreGovernedAuthority.new(authority) do
+      CoreGovernedAuthority.enforce_invocation(invocation, core_authority)
+    end
+  end
+
+  defp validate_governed_args(nil, _args), do: :ok
+
+  defp validate_governed_args(%GovernedAuthority{} = authority, args) do
+    args = normalize_args(args)
+
+    case governed_arg_violation(args) do
+      nil ->
+        args
+        |> config_values_from_args()
+        |> then(&GovernedAuthority.reject_config_overrides(authority, &1, :cli_args))
+
+      key ->
+        {:error, {:governed_argument_supplementation, key}}
+    end
+  end
+
+  defp governed_arg_violation(args) do
+    Enum.find(
+      [
+        "--add-dir",
+        "--ask-for-approval",
+        "--cd",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--disable",
+        "--enable",
+        "--full-auto",
+        "--image",
+        "--oss",
+        "--profile",
+        "--remote",
+        "--remote-auth-token-env",
+        "--sandbox",
+        "--search",
+        "--ws-auth",
+        "--ws-shared-secret-file",
+        "--ws-token-file"
+      ],
+      &(&1 in args)
+    )
+  end
+
+  defp config_values_from_args(args) do
+    args
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn
+      ["--config", value] -> [value]
+      _other -> []
+    end)
   end
 
   defp global_args(opts) do
