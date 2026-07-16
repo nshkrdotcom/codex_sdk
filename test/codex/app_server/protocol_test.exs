@@ -2,6 +2,7 @@ defmodule Codex.AppServer.ProtocolTest do
   use ExUnit.Case, async: true
 
   alias Codex.AppServer.Protocol
+  alias Codex.AppServer.Sanitizer
 
   describe "decode_lines/2" do
     test "buffers partial lines across chunks" do
@@ -56,6 +57,34 @@ defmodule Codex.AppServer.ProtocolTest do
 
       assert log =~ "OPENAI_API_KEY=[REDACTED]"
       refute log =~ "LEAK-MALFORMED-SECRET"
+    end
+
+    test "redacts bare dynamic values in valid and malformed JSON-RPC while preserving usage" do
+      import ExUnit.CaptureLog
+
+      sentinel = "LEAK-GOVERNED-MATERIALIZATION"
+      redaction_values = Sanitizer.values([sentinel])
+
+      chunk =
+        Jason.encode!(%{
+          "method" => "turn/failed",
+          "params" => %{"message" => "failed #{sentinel}", "inputTokens" => 13}
+        }) <>
+          "\nmalformed #{sentinel}\n"
+
+      log =
+        capture_log(fn ->
+          assert {[message], "", ["malformed [REDACTED]"]} =
+                   Protocol.decode_lines("", chunk, redaction_values)
+
+          assert message["params"] == %{
+                   "message" => "failed [REDACTED]",
+                   "inputTokens" => 13
+                 }
+        end)
+
+      refute log =~ sentinel
+      assert log =~ "malformed [REDACTED]"
     end
   end
 

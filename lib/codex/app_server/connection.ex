@@ -34,7 +34,8 @@ defmodule Codex.AppServer.Connection do
       :pending_peer_requests,
       :pending_peer_request_refs,
       :stderr,
-      :stderr_limit
+      :stderr_limit,
+      :redaction_values
     ]
   end
 
@@ -143,6 +144,8 @@ defmodule Codex.AppServer.Connection do
              clear_env?: launch_clear_env?(codex_opts, opts)
            ),
          {:ok, session} <- start_protocol_session(invocation, execution_surface) do
+      redaction_values = governed_redaction_values(codex_opts, env)
+
       {:ok,
        %State{
          codex_opts: codex_opts,
@@ -158,7 +161,8 @@ defmodule Codex.AppServer.Connection do
          pending_peer_requests: %{},
          pending_peer_request_refs: %{},
          stderr: "",
-         stderr_limit: @default_stderr_limit
+         stderr_limit: @default_stderr_limit,
+         redaction_values: redaction_values
        }, {:continue, {:initialize, init_timeout_ms, init_params}}}
     else
       {:error, reason} ->
@@ -243,7 +247,7 @@ defmodule Codex.AppServer.Connection do
     case deliver_or_store_peer_request_reply(
            state,
            id,
-           {:error, encode_peer_error(code, message, data)}
+           {:error, encode_peer_error(code, message, data, state.redaction_values)}
          ) do
       {:ok, next_state} ->
         {:reply, :ok, next_state}
@@ -256,21 +260,40 @@ defmodule Codex.AppServer.Connection do
   @impl true
   def handle_info({:jsonrpc_notification, notification}, %State{} = state)
       when is_map(notification) do
-    method = Map.get(notification, "method")
-    params = notification |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
+    method =
+      notification
+      |> Map.get("method")
+      |> sanitize_dynamic_term(state.redaction_values)
+
+    params =
+      notification
+      |> Map.get("params")
+      |> then(&(&1 || %{}))
+      |> Sanitizer.term(state.redaction_values)
+
     {:noreply, broadcast_notification(state, method, params)}
   end
 
   def handle_info({:jsonrpc_peer_request, id, %{} = request}, %State{} = state) do
-    method = Map.get(request, "method")
-    params = request |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
+    method =
+      request
+      |> Map.get("method")
+      |> sanitize_dynamic_term(state.redaction_values)
+
+    announced_id = sanitize_dynamic_term(id, state.redaction_values)
+
+    params =
+      request
+      |> Map.get("params")
+      |> then(&(&1 || %{}))
+      |> Sanitizer.term(state.redaction_values)
 
     case mark_peer_request_announced(state, id) do
       {:already_announced, next_state} ->
         {:noreply, next_state}
 
       {:announced, next_state} ->
-        {:noreply, broadcast_request(next_state, id, method, params)}
+        {:noreply, broadcast_request(next_state, announced_id, method, params)}
     end
   end
 
@@ -312,11 +335,17 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_info({:jsonrpc_stderr, chunk}, %State{} = state) do
-    {:noreply, %{state | stderr: append_stderr(state.stderr, chunk, state.stderr_limit)}}
+    stderr =
+      append_stderr(state.stderr, chunk, state.stderr_limit, state.redaction_values)
+
+    {:noreply, %{state | stderr: stderr}}
   end
 
   def handle_info({:jsonrpc_protocol_error, reason}, %State{} = state) do
-    Logger.debug("Ignoring app-server protocol error: #{Sanitizer.inspect(reason)}")
+    Logger.debug(
+      "Ignoring app-server protocol error: #{Sanitizer.inspect(reason, state.redaction_values)}"
+    )
+
     {:noreply, state}
   end
 
@@ -324,7 +353,11 @@ defmodule Codex.AppServer.Connection do
     cond do
       ref == state.session_monitor_ref and pid == state.session ->
         failure = app_server_down_failure(state, reason)
-        Logger.warning("codex app-server exited: #{Sanitizer.inspect(failure)}")
+
+        Logger.warning(
+          "codex app-server exited: #{Sanitizer.inspect(failure, state.redaction_values)}"
+        )
+
         {:stop, {:shutdown, failure}, fail_transport_waiters(state, failure)}
 
       ref == state.init_task_ref ->
@@ -598,7 +631,11 @@ defmodule Codex.AppServer.Connection do
 
   defp handle_init_task_result(%State{} = state, ref, {:error, reason}) do
     next_state = clear_init_task(state, ref)
-    reason = next_state |> normalize_session_error(reason) |> Sanitizer.term()
+
+    reason =
+      next_state
+      |> normalize_session_error(reason)
+      |> Sanitizer.term(next_state.redaction_values)
 
     case reason do
       {:app_server_down, _} = failure ->
@@ -626,12 +663,15 @@ defmodule Codex.AppServer.Connection do
         next_state
 
       {%{from: from}, next_state} ->
-        GenServer.reply(from, {:error, {:request_task_exit, Sanitizer.term(reason)}})
+        sanitized_reason = Sanitizer.term(reason, next_state.redaction_values)
+        GenServer.reply(from, {:error, {:request_task_exit, sanitized_reason}})
         next_state
     end
   end
 
-  defp normalize_request_result(%State{} = _state, _request, {:ok, _result} = ok), do: ok
+  defp normalize_request_result(%State{} = state, _request, {:ok, result}) do
+    {:ok, sanitize_dynamic_term(result, state.redaction_values)}
+  end
 
   defp normalize_request_result(
          %State{} = _state,
@@ -642,10 +682,17 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp normalize_request_result(%State{} = state, _request, {:error, reason}) do
-    {:error, state |> normalize_session_error(reason) |> Sanitizer.term()}
+    sanitized_reason =
+      state
+      |> normalize_session_error(reason)
+      |> Sanitizer.term(state.redaction_values)
+
+    {:error, sanitized_reason}
   end
 
-  defp normalize_request_result(%State{}, _request, other), do: {:ok, other}
+  defp normalize_request_result(%State{} = state, _request, other) do
+    {:ok, sanitize_dynamic_term(other, state.redaction_values)}
+  end
 
   defp normalize_session_error(%State{} = state, reason) do
     reason = unwrap_session_error(reason)
@@ -692,7 +739,7 @@ defmodule Codex.AppServer.Connection do
 
   defp app_server_down_failure(%State{} = state, reason) do
     details =
-      %{reason: reason |> failure_reason() |> Sanitizer.term()}
+      %{reason: reason |> failure_reason() |> Sanitizer.term(state.redaction_values)}
       |> maybe_put_detail(:stderr, failure_stderr(state, reason))
 
     {:app_server_down, details}
@@ -842,10 +889,15 @@ defmodule Codex.AppServer.Connection do
   defp failure_reason({:channel_error, reason}), do: reason
   defp failure_reason(reason), do: reason
 
-  defp failure_stderr(_state, {:channel_exit, %{stderr: stderr}}) when stderr not in [nil, ""],
-    do: Sanitizer.text(stderr)
+  defp failure_stderr(
+         %State{redaction_values: redaction_values},
+         {:channel_exit, %{stderr: stderr}}
+       )
+       when stderr not in [nil, ""],
+       do: Sanitizer.text(stderr, redaction_values)
 
-  defp failure_stderr(%State{stderr: stderr}, _reason), do: Sanitizer.text(stderr)
+  defp failure_stderr(%State{stderr: stderr, redaction_values: redaction_values}, _reason),
+    do: Sanitizer.text(stderr, redaction_values)
 
   defp default_client_version, do: Defaults.client_version()
 
@@ -871,8 +923,9 @@ defmodule Codex.AppServer.Connection do
   defp launch_clear_env?(%Options{governed_authority: %GovernedAuthority{}}, _opts), do: true
   defp launch_clear_env?(%Options{}, opts), do: Keyword.get(opts, :clear_env?, false)
 
-  defp append_stderr(current, chunk, limit) when is_binary(current) and is_integer(limit) do
-    combined = current <> Sanitizer.text(chunk)
+  defp append_stderr(current, chunk, limit, redaction_values)
+       when is_binary(current) and is_integer(limit) do
+    combined = current <> Sanitizer.text(chunk, redaction_values)
 
     if byte_size(combined) <= limit do
       combined
@@ -1003,11 +1056,26 @@ defmodule Codex.AppServer.Connection do
     }
   end
 
-  defp encode_peer_error(code, message, nil),
-    do: %{"code" => code, "message" => Sanitizer.text(message)}
+  defp encode_peer_error(code, message, nil, redaction_values),
+    do: %{"code" => code, "message" => Sanitizer.text(message, redaction_values)}
 
-  defp encode_peer_error(code, message, data) do
-    %{"code" => code, "message" => Sanitizer.text(message), "data" => Sanitizer.term(data)}
+  defp encode_peer_error(code, message, data, redaction_values) do
+    %{
+      "code" => code,
+      "message" => Sanitizer.text(message, redaction_values),
+      "data" => Sanitizer.term(data, redaction_values)
+    }
+  end
+
+  defp governed_redaction_values(%Options{governed_authority: %GovernedAuthority{}}, env),
+    do: Sanitizer.values(env)
+
+  defp governed_redaction_values(%Options{}, _env), do: Sanitizer.empty_values()
+
+  defp sanitize_dynamic_term(value, redaction_values) do
+    if Sanitizer.empty?(redaction_values),
+      do: value,
+      else: Sanitizer.term(value, redaction_values)
   end
 
   defp close_session(session) when is_pid(session) do

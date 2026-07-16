@@ -183,6 +183,29 @@ defmodule Codex.SecretsRedactionTest do
     refute inspect(sanitized) =~ "LEAK-"
   end
 
+  test "app-server sanitizer keeps bounded dynamic values transient and redacts bare substrings" do
+    sentinel = "LEAK-GOVERNED-MATERIALIZATION"
+    redaction_values = Sanitizer.values([sentinel])
+
+    refute inspect(redaction_values) =~ sentinel
+
+    assert_raise ArgumentError, ~r/transient and cannot be encoded/, fn ->
+      Jason.encode!(redaction_values)
+    end
+
+    sanitized =
+      Sanitizer.term(
+        %{
+          "message" => "failed #{sentinel}",
+          "outputTokens" => 21
+        },
+        redaction_values
+      )
+
+    assert sanitized == %{"message" => "failed [REDACTED]", "outputTokens" => 21}
+    assert Sanitizer.text(sentinel, redaction_values) == "[REDACTED]"
+  end
+
   test "VERSION file matches mix.exs" do
     assert File.read!("VERSION") |> String.trim() == Mix.Project.config()[:version]
   end

@@ -24,7 +24,8 @@ defmodule Codex.AppServer.RemoteConnection do
       :subscribers,
       :subscriber_refs,
       :buffered_events,
-      :disconnect_info
+      :disconnect_info,
+      :redaction_values
     ]
   end
 
@@ -101,7 +102,9 @@ defmodule Codex.AppServer.RemoteConnection do
     client_title = Keyword.get(opts, :client_title)
     client_version = Keyword.get(opts, :client_version, Defaults.client_version())
     experimental_api = Keyword.get(opts, :experimental_api, false)
-    auth_headers = authorization_headers(Keyword.get(opts, :auth_token))
+    auth_token = Keyword.get(opts, :auth_token)
+    auth_headers = authorization_headers(auth_token)
+    redaction_values = Sanitizer.values(auth_token)
 
     init_params =
       initialize_params(client_name, client_version, client_title, experimental_api)
@@ -129,7 +132,8 @@ defmodule Codex.AppServer.RemoteConnection do
          subscribers: %{},
          subscriber_refs: %{},
          buffered_events: [],
-         disconnect_info: nil
+         disconnect_info: nil,
+         redaction_values: redaction_values
        }}
     else
       {:error, _} = error -> error
@@ -192,6 +196,9 @@ defmodule Codex.AppServer.RemoteConnection do
   end
 
   def handle_call({:respond_error, id, code, message, data}, _from, %State{} = state) do
+    message = Sanitizer.text(message, state.redaction_values)
+    data = Sanitizer.term(data, state.redaction_values)
+
     case send_text_frame(state.websocket_pid, Protocol.encode_error(id, code, message, data)) do
       :ok -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -238,7 +245,7 @@ defmodule Codex.AppServer.RemoteConnection do
         failure =
           {:app_server_down,
            %{
-             reason: {:invalid_jsonrpc, Sanitizer.term(reason)},
+             reason: {:invalid_jsonrpc, Sanitizer.term(reason, state.redaction_values)},
              message: "[invalid JSON-RPC payload redacted]"
            }}
 
@@ -251,7 +258,8 @@ defmodule Codex.AppServer.RemoteConnection do
         {:remote_socket, websocket_pid, {:disconnected, status_map}},
         %State{websocket_pid: websocket_pid} = state
       ) do
-    {:noreply, %State{state | disconnect_info: status_map}}
+    disconnect_info = Sanitizer.term(status_map, state.redaction_values)
+    {:noreply, %State{state | disconnect_info: disconnect_info}}
   end
 
   def handle_info({:DOWN, ref, :process, pid, _reason}, %State{} = state) do
@@ -307,28 +315,51 @@ defmodule Codex.AppServer.RemoteConnection do
   defp handle_incoming_message(%State{} = state, message) when is_map(message) do
     case Protocol.message_type(message) do
       :notification ->
-        method = Map.get(message, "method")
-        params = message |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
+        method =
+          message
+          |> Map.get("method")
+          |> sanitize_dynamic_term(state.redaction_values)
+
+        params =
+          message
+          |> Map.get("params")
+          |> then(&(&1 || %{}))
+          |> Sanitizer.term(state.redaction_values)
+
         {:ok, buffer_or_broadcast_notification(state, method, params)}
 
       :request ->
-        id = Map.get(message, "id")
-        method = Map.get(message, "method")
-        params = message |> Map.get("params") |> then(&(&1 || %{})) |> Sanitizer.term()
+        id = message |> Map.get("id") |> sanitize_dynamic_term(state.redaction_values)
+
+        method =
+          message
+          |> Map.get("method")
+          |> sanitize_dynamic_term(state.redaction_values)
+
+        params =
+          message
+          |> Map.get("params")
+          |> then(&(&1 || %{}))
+          |> Sanitizer.term(state.redaction_values)
+
         {:ok, buffer_or_broadcast_request(state, id, method, params)}
 
       :response ->
-        handle_response(state, Map.get(message, "id"), {:ok, Map.get(message, "result")})
+        result = sanitize_dynamic_term(Map.get(message, "result"), state.redaction_values)
+        handle_response(state, Map.get(message, "id"), {:ok, result})
 
       :error ->
         handle_response(
           state,
           Map.get(message, "id"),
-          {:error, message |> Map.get("error") |> Sanitizer.term()}
+          {:error, message |> Map.get("error") |> Sanitizer.term(state.redaction_values)}
         )
 
       :unknown ->
-        Logger.debug("Ignoring unknown remote JSON-RPC message: #{Sanitizer.inspect(message)}")
+        Logger.debug(
+          "Ignoring unknown remote JSON-RPC message: #{Sanitizer.inspect(message, state.redaction_values)}"
+        )
+
         {:ok, state}
     end
   end
@@ -352,7 +383,10 @@ defmodule Codex.AppServer.RemoteConnection do
   defp handle_response(%State{} = state, id, reply) do
     case Map.pop(state.pending, id) do
       {nil, _pending} ->
-        Logger.debug("Ignoring response for unknown remote request id: #{inspect(id)}")
+        Logger.debug(
+          "Ignoring response for unknown remote request id: #{Sanitizer.inspect(id, state.redaction_values)}"
+        )
+
         {:ok, state}
 
       {%{from: :init, timer_ref: timer_ref}, pending} ->
@@ -527,8 +561,16 @@ defmodule Codex.AppServer.RemoteConnection do
 
   defp app_server_down_failure(%State{} = state, reason) do
     details =
-      %{reason: reason |> normalize_disconnect_reason() |> Sanitizer.term()}
-      |> maybe_put_detail(:message, disconnect_message(state.disconnect_info))
+      %{
+        reason:
+          reason
+          |> normalize_disconnect_reason()
+          |> Sanitizer.term(state.redaction_values)
+      }
+      |> maybe_put_detail(
+        :message,
+        disconnect_message(state.disconnect_info, state.redaction_values)
+      )
 
     {:app_server_down, details}
   end
@@ -536,11 +578,17 @@ defmodule Codex.AppServer.RemoteConnection do
   defp normalize_disconnect_reason({:shutdown, reason}), do: normalize_disconnect_reason(reason)
   defp normalize_disconnect_reason(reason), do: reason
 
-  defp disconnect_message(%{reason: reason}) do
-    Sanitizer.inspect(reason)
+  defp disconnect_message(%{reason: reason}, redaction_values) do
+    Sanitizer.inspect(reason, redaction_values)
   end
 
-  defp disconnect_message(_), do: nil
+  defp disconnect_message(_, _redaction_values), do: nil
+
+  defp sanitize_dynamic_term(value, redaction_values) do
+    if Sanitizer.empty?(redaction_values),
+      do: value,
+      else: Sanitizer.term(value, redaction_values)
+  end
 
   defp maybe_put_detail(details, _key, value) when value in [nil, ""], do: details
   defp maybe_put_detail(details, key, value), do: Map.put(details, key, value)

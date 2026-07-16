@@ -124,7 +124,7 @@ defmodule Codex.AppServer.ConnectionTest do
     refute Map.has_key?(env, "CODEX_SHOULD_NOT_INHERIT")
   end
 
-  test "governed app-server ignores ambient API env when clear_env materializes auth" do
+  test "governed app-server redacts materialized auth from messages and stderr" do
     previous = Process.flag(:trap_exit, true)
     previous_openai = System.get_env("OPENAI_API_KEY")
     Env.put("OPENAI_API_KEY", "ambient-openai-key")
@@ -169,6 +169,33 @@ defmodule Codex.AppServer.ConnectionTest do
 
     assert env["OPENAI_API_KEY"] == "materialized-key"
     refute env["OPENAI_API_KEY"] == "ambient-openai-key"
+
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{}))
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    :ok = Connection.subscribe(conn)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_notification("turn/failed", %{
+        "message" => "failed materialized-key",
+        "outputTokens" => 21
+      })
+    )
+
+    assert_receive {:codex_notification, "turn/failed",
+                    %{"message" => "failed [REDACTED]", "outputTokens" => 21}}
+
+    monitor_ref = Process.monitor(conn)
+    :ok = AppServerSubprocess.send_stderr("failed materialized-key")
+    :ok = AppServerSubprocess.exit(1)
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown,
+                     {:app_server_down, %{reason: _reason, stderr: "failed [REDACTED]"}}}},
+                   200
   end
 
   test "governed app-server requires clear_env and materialized child env" do

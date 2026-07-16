@@ -87,6 +87,10 @@ defmodule Codex.AppServer.RemoteConnectionTest do
       {:push, {:text, Jason.encode!(payload)}, state}
     end
 
+    def handle_info({:push_text, payload}, state) when is_binary(payload) do
+      {:push, {:text, payload}, state}
+    end
+
     def handle_info(:close, state) do
       {:stop, :normal, state}
     end
@@ -232,7 +236,46 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert_receive {:remote_upgrade_headers, headers}, 1_000
     assert headers["authorization"] == "Bearer secret-token"
 
+    assert_receive {:remote_socket_connected, socket_pid}, 1_000
+    assert :ok = AppServer.subscribe(conn)
+
+    send(
+      socket_pid,
+      {:push_json,
+       %{
+         "method" => "turn/failed",
+         "params" => %{"message" => "failed secret-token", "outputTokens" => 21}
+       }}
+    )
+
+    assert_receive {:codex_notification, "turn/failed",
+                    %{"message" => "failed [REDACTED]", "outputTokens" => 21}},
+                   1_000
+
     assert :ok = AppServer.disconnect(conn)
+  end
+
+  test "remote malformed payloads cannot expose the authorization token", %{url: url} do
+    auth_token = "LEAK-REMOTE-AUTH-TOKEN"
+
+    assert {:ok, conn} =
+             AppServer.connect_remote(url, auth_token: auth_token, init_timeout_ms: 500)
+
+    assert_receive {:remote_socket_connected, socket_pid}, 1_000
+    monitor_ref = Process.monitor(conn)
+
+    send(socket_pid, {:push_text, "malformed #{auth_token}"})
+
+    assert_receive {:DOWN, ^monitor_ref, :process, ^conn,
+                    {:shutdown,
+                     {:app_server_down,
+                      %{
+                        reason: {:invalid_jsonrpc, _reason},
+                        message: "[invalid JSON-RPC payload redacted]"
+                      }} = failure}},
+                   1_000
+
+    refute inspect(failure) =~ auth_token
   end
 
   test "connect_remote/2 resolves auth_token_env from process_env", %{url: url} do
