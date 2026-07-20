@@ -6,6 +6,7 @@ defmodule Codex.ExecTest do
   import ExUnit.CaptureLog
 
   alias CliSubprocessCore.TestSupport.FakeSSH
+  alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
   alias Codex.Exec.CancellationRegistry
@@ -165,6 +166,18 @@ defmodule Codex.ExecTest do
       assert rendered.env["OPENAI_API_KEY"] == "materialized-key"
       assert rendered.env["OPENAI_BASE_URL"] == "https://materialized.example.com/v1"
       assert rendered.env["CODEX_HOME"] == "/tmp/materialized-codex-home"
+
+      assert {:ok, session_opts} =
+               RuntimeExec.build_session_options(
+                 exec_opts: exec_opts,
+                 input: "hi",
+                 subscriber: self()
+               )
+
+      assert %CoreGovernedAuthority{} = core_authority = session_opts[:governed_authority]
+      assert core_authority.authority_ref == codex_opts.governed_authority.authority_ref
+      assert core_authority.env == codex_opts.governed_authority.env
+      refute is_struct(core_authority, Codex.GovernedAuthority)
 
       assert {:error, {:governed_clear_env_required, :exec, false}} =
                ExecOptions.new(%{codex_opts: codex_opts, clear_env?: false})

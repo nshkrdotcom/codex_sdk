@@ -8,6 +8,7 @@ defmodule Codex.Runtime.Exec do
   require Logger
 
   alias CliSubprocessCore.Event, as: CoreEvent
+  alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
   alias CliSubprocessCore.Payload
   alias CliSubprocessCore.ProcessExit, as: CoreProcessExit
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
@@ -176,14 +177,15 @@ defmodule Codex.Runtime.Exec do
          {:ok, command_spec} <-
            Options.codex_command_spec(exec_opts.codex_opts, exec_opts.execution_surface),
          {:ok, config_values} <- config_values(exec_opts),
-         :ok <- validate_governed_runtime(exec_opts, config_values) do
+         :ok <- validate_governed_runtime(exec_opts, config_values),
+         {:ok, core_authority} <- cli_core_authority(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
 
       session_opts =
         opts
-        |> base_session_options(exec_opts, config_values, subcommand_args)
+        |> base_session_options(exec_opts, config_values, subcommand_args, core_authority)
         |> Keyword.put(:subscriber, subscriber)
-        |> Keyword.put(:command_spec, command_spec)
+        |> maybe_put_command_spec(command_spec, core_authority)
         |> Keyword.put(:stdin, normalize_prompt(input))
 
       {:ok, session_opts}
@@ -218,9 +220,12 @@ defmodule Codex.Runtime.Exec do
 
     with %ExecOptions{} = exec_opts <- exec_opts,
          {:ok, config_values} <- config_values(exec_opts),
-         :ok <- validate_governed_runtime(exec_opts, config_values) do
+         :ok <- validate_governed_runtime(exec_opts, config_values),
+         {:ok, core_authority} <- cli_core_authority(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
-      session_opts = base_session_options(opts, exec_opts, config_values, subcommand_args)
+
+      session_opts =
+        base_session_options(opts, exec_opts, config_values, subcommand_args, core_authority)
 
       {:ok,
        %{
@@ -250,11 +255,17 @@ defmodule Codex.Runtime.Exec do
     end
   end
 
-  defp base_session_options(opts, %ExecOptions{} = exec_opts, config_values, subcommand_args) do
+  defp base_session_options(
+         opts,
+         %ExecOptions{} = exec_opts,
+         config_values,
+         subcommand_args,
+         core_authority
+       ) do
     base = [
       provider: :codex,
       profile: Codex.Runtime.Exec.Profile,
-      metadata: session_metadata(opts, exec_opts),
+      metadata: session_metadata(opts, exec_opts, core_authority),
       cli_profile: exec_opt(exec_opts, :profile),
       oss: payload_oss?(exec_opts),
       local_provider: payload_local_provider(exec_opts),
@@ -284,22 +295,60 @@ defmodule Codex.Runtime.Exec do
     ]
 
     base
-    |> governed_session_options(exec_opts)
+    |> governed_session_options(core_authority)
     |> Kernel.++(Options.execution_surface_options(exec_opts.execution_surface))
   end
 
-  defp governed_session_options(
-         options,
-         %ExecOptions{codex_opts: %Options{governed_authority: %GovernedAuthority{} = authority}}
-       ) do
+  defp governed_session_options(options, %CoreGovernedAuthority{} = authority) do
     options
-    |> Keyword.drop([:working_directory, :env, :clear_env?, :config_values])
+    |> project_governed_provider_controls()
+    |> Keyword.drop([
+      :working_directory,
+      :env,
+      :clear_env?,
+      :config_values,
+      :continuation_token,
+      :cancellation_token
+    ])
     |> Keyword.put(:governed_authority, authority)
   end
 
-  defp governed_session_options(options, %ExecOptions{}), do: options
+  defp governed_session_options(options, nil), do: options
 
-  defp session_metadata(opts, %ExecOptions{codex_opts: %Options{} = codex_opts}) do
+  defp project_governed_provider_controls(options) do
+    subcommand_args =
+      options
+      |> Keyword.fetch!(:subcommand_args)
+      |> append_provider_control(
+        "--continuation-token",
+        Keyword.get(options, :continuation_token)
+      )
+      |> append_provider_control(
+        "--cancellation-token",
+        Keyword.get(options, :cancellation_token)
+      )
+
+    Keyword.put(options, :subcommand_args, subcommand_args)
+  end
+
+  defp append_provider_control(args, _flag, nil), do: args
+  defp append_provider_control(args, flag, value), do: args ++ [flag, value]
+
+  defp maybe_put_command_spec(options, _command_spec, %CoreGovernedAuthority{}), do: options
+
+  defp maybe_put_command_spec(options, command_spec, nil),
+    do: Keyword.put(options, :command_spec, command_spec)
+
+  defp cli_core_authority(%ExecOptions{
+         codex_opts: %Options{governed_authority: authority}
+       }),
+       do: GovernedAuthority.to_cli_core(authority)
+
+  defp session_metadata(
+         opts,
+         %ExecOptions{codex_opts: %Options{} = codex_opts},
+         core_authority
+       ) do
     model = normalize_option_string(codex_opts.model)
     reasoning_effort = normalize_reasoning_value(codex_opts.reasoning_effort)
 
@@ -309,8 +358,14 @@ defmodule Codex.Runtime.Exec do
     |> Map.put_new(:lane, :codex_sdk)
     |> put_if_missing("model", model)
     |> put_reasoning_if_missing(reasoning_effort)
-    |> put_reasoning_config_if_missing(reasoning_effort)
+    |> maybe_put_reasoning_config(reasoning_effort, core_authority)
   end
+
+  defp maybe_put_reasoning_config(metadata, _reasoning_effort, %CoreGovernedAuthority{}),
+    do: metadata
+
+  defp maybe_put_reasoning_config(metadata, reasoning_effort, nil),
+    do: put_reasoning_config_if_missing(metadata, reasoning_effort)
 
   defp normalize_session_metadata(metadata) when is_map(metadata), do: metadata
   defp normalize_session_metadata(_metadata), do: %{}

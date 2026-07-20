@@ -46,6 +46,8 @@ defmodule Codex.CLI do
          {:ok, command_spec} <- Options.codex_command_spec(codex_opts, execution_surface),
          {:ok, env_spec} <- build_env_spec(codex_opts, opts),
          :ok <- validate_governed_args(codex_opts.governed_authority, args),
+         {:ok, core_authority} <-
+           GovernedAuthority.to_cli_core(codex_opts.governed_authority),
          {:ok, result} <-
            Command.run(
              Command.new(command_spec, normalize_args(args),
@@ -54,7 +56,7 @@ defmodule Codex.CLI do
                clear_env?: env_spec.clear_env?
              ),
              Options.execution_surface_options(execution_surface) ++
-               governed_command_options(codex_opts) ++
+               governed_command_options(core_authority) ++
                [
                  stdin: input,
                  timeout: timeout_ms,
@@ -610,10 +612,10 @@ defmodule Codex.CLI do
 
   defp launch_cwd(%Options{}, opts), do: normalize_cwd(Keyword.get(opts, :cwd))
 
-  defp governed_command_options(%Options{governed_authority: %GovernedAuthority{} = authority}),
+  defp governed_command_options(%CoreGovernedAuthority{} = authority),
     do: [governed_authority: authority]
 
-  defp governed_command_options(%Options{}), do: []
+  defp governed_command_options(nil), do: []
 
   defp validate_core_invocation(nil, _command_spec, _args, _cwd), do: :ok
 
@@ -625,7 +627,7 @@ defmodule Codex.CLI do
         clear_env?: true
       )
 
-    with {:ok, core_authority} <- CoreGovernedAuthority.new(authority) do
+    with {:ok, core_authority} <- GovernedAuthority.to_cli_core(authority) do
       CoreGovernedAuthority.enforce_invocation(invocation, core_authority)
     end
   end

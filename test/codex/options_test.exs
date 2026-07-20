@@ -4,6 +4,7 @@ defmodule Codex.OptionsTest do
   alias Codex.TestSupport.Env
 
   alias CliSubprocessCore.ExecutionSurface
+  alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
   alias CliSubprocessCore.ModelRegistry.Selection
   alias Codex.GovernedAuthority, as: CodexAuthority
   alias Codex.Options
@@ -234,6 +235,46 @@ defmodule Codex.OptionsTest do
 
       assert {:error, :invalid_governed_materialization} =
                Options.new(%{governed_authority: authority})
+    end
+
+    test "Codex authority projects explicitly into the narrower CLI runtime contract" do
+      assert {:ok, opts} =
+               Options.new(%{governed_authority: GovernedAuthority.command_refs()})
+
+      codex_authority = opts.governed_authority
+
+      assert {:error, {:invalid_governed_authority_field, :unknown_fields, rejected_fields}} =
+               CoreGovernedAuthority.new(codex_authority)
+
+      assert "__struct__" in rejected_fields
+      assert "materialization_ref" in rejected_fields
+      assert "operation_ref" in rejected_fields
+
+      assert {:ok, %CoreGovernedAuthority{} = core_authority} =
+               CodexAuthority.to_cli_core(codex_authority)
+
+      assert core_authority.authority_ref == codex_authority.authority_ref
+      assert core_authority.credential_lease_ref == codex_authority.credential_lease_ref
+      assert core_authority.command == codex_authority.command
+      assert core_authority.cwd == codex_authority.cwd
+      assert core_authority.env == codex_authority.env
+      assert core_authority.clear_env? == true
+
+      projected_fields = core_authority |> Map.from_struct() |> Map.keys()
+      refute :materialization_ref in projected_fields
+      refute :operation_ref in projected_fields
+      refute :generation in projected_fields
+      refute :expires_at in projected_fields
+
+      assert {:error, :invalid_governed_materialization} =
+               CodexAuthority.to_cli_core(Map.from_struct(codex_authority))
+
+      assert {:error,
+              {:invalid_governed_authority_field, :unknown_fields, ["materialization_ref"]}} =
+               core_authority
+               |> Map.from_struct()
+               |> Map.put(:materialization_ref, "smuggled-materialization")
+               |> CoreGovernedAuthority.new()
     end
 
     test "governed authority rejects secret config overrides" do

@@ -9,6 +9,7 @@ defmodule Codex.GovernedAuthority do
   """
 
   alias Codex.Runtime.Env, as: RuntimeEnv
+  alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
 
   @reference_fields [
     :authority_ref,
@@ -220,6 +221,42 @@ defmodule Codex.GovernedAuthority do
 
   @spec command(t()) :: String.t()
   def command(%__MODULE__{command: command}), do: command
+
+  @doc """
+  Projects a validated Codex materialization into the narrower governed
+  authority accepted by the shared CLI runtime.
+
+  Provider-specific identity, lifecycle, and account fields intentionally do
+  not cross this boundary. Maps and unrelated structs must first pass through
+  `new/1`; this function never treats them as CLI runtime authority.
+  """
+  @spec to_cli_core(t() | nil) ::
+          {:ok, CoreGovernedAuthority.t() | nil} | {:error, term()}
+  def to_cli_core(nil), do: {:ok, nil}
+
+  def to_cli_core(%__MODULE__{} = authority) do
+    with :ok <- validate_current(authority) do
+      CoreGovernedAuthority.new(%{
+        authority_ref: authority.authority_ref,
+        credential_lease_ref: authority.credential_lease_ref,
+        connector_instance_ref: authority.connector_instance_ref,
+        connector_binding_ref: authority.connector_binding_ref,
+        provider_account_ref: authority.provider_account_ref,
+        native_auth_assertion_ref: authority.native_auth_assertion_ref,
+        target_ref: authority.target_ref,
+        operation_policy_ref: authority.operation_policy_ref,
+        command: authority.command,
+        cwd: authority.cwd,
+        env: authority.env,
+        clear_env?: authority.clear_env?,
+        config_root: authority.config_root,
+        auth_root: authority.auth_root,
+        base_url: authority.base_url
+      })
+    end
+  end
+
+  def to_cli_core(_other), do: {:error, :invalid_governed_materialization}
 
   @spec redacted(t() | nil) :: map() | nil
   def redacted(nil), do: nil

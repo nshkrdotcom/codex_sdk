@@ -3,9 +3,11 @@ defmodule Codex.SecretsRedactionTest do
 
   alias Codex.Auth.Store
   alias Codex.AppServer.Sanitizer
+  alias Codex.CLI
   alias Codex.GovernedAuthority
   alias Codex.MCP.Transport.StreamableHTTP
   alias Codex.OAuth
+  alias Codex.Options
   alias Codex.Realtime.Config
   alias Codex.Voice.Models.OpenAIProvider
   alias Codex.Voice.Models.OpenAISTT
@@ -163,6 +165,32 @@ defmodule Codex.SecretsRedactionTest do
     redacted = GovernedAuthority.redacted(authority)
     refute inspect(redacted) =~ sentinel
     assert redacted.env_keys == ["CODEX_HOME", "OPENAI_API_KEY", "OPENAI_BASE_URL"]
+  end
+
+  test "governed CLI one-shot projects exact authority without exposing its secret" do
+    sentinel = "CLI-ONE-SHOT-MATERIALIZED-SECRET"
+    command = Path.join(System.tmp_dir!(), "codex-governed-cli-#{System.unique_integer()}")
+    File.write!(command, "#!/bin/sh\nprintf 'projected\\n'\n")
+    File.chmod!(command, 0o755)
+    on_exit(fn -> File.rm(command) end)
+
+    authority =
+      GovernedAuthorityFixture.command_refs(
+        command: command,
+        env: %{
+          "CODEX_HOME" => "/tmp/materialized-codex-home",
+          "OPENAI_BASE_URL" => "https://materialized.example.com/v1",
+          "OPENAI_API_KEY" => sentinel
+        }
+      )
+
+    assert {:ok, codex_opts} = Options.new(%{governed_authority: authority})
+
+    assert {:ok, %{success: true, stdout: "projected\n"} = result} =
+             CLI.run([], codex_opts: codex_opts)
+
+    refute inspect(codex_opts) =~ sentinel
+    refute inspect(result) =~ sentinel
   end
 
   test "app-server sanitizer redacts credential fields and text sentinels but preserves usage" do
