@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Publish preflight now verifies the exact local sibling release on Hex, so an
+  older package version cannot falsely satisfy release readiness. Nested
+  package tasks resolve the helper-owning repository, and manifest self-entries
+  are excluded from prerequisites.
 - **Orphan reaping is enabled on the exec lane.** `Codex.Runtime.Exec` passed
   `headless_timeout_ms: :infinity` to the shared session, which disabled the
   transport's headless window — the only mechanism that removes a subprocess
