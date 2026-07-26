@@ -5,10 +5,15 @@ end
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
+  @version "0.18.0"
+  @source_url "https://github.com/nshkrdotcom/codex_sdk"
+  @homepage_url "https://hex.pm/packages/codex_sdk"
+  @docs_url "https://hexdocs.pm/codex_sdk"
+
   def project do
     [
       app: :codex_sdk,
-      version: "0.17.0",
+      version: @version,
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -17,8 +22,8 @@ defmodule CodexSdk.MixProject do
       description: description(),
       package: package(),
       name: "Codex SDK",
-      source_url: "https://github.com/nshkrdotcom/codex_sdk",
-      homepage_url: "https://hex.pm/packages/codex_sdk",
+      source_url: @source_url,
+      homepage_url: @homepage_url,
       test_coverage: [tool: ExCoveralls],
       dialyzer: [
         plt_add_apps: [:mix],
@@ -88,9 +93,9 @@ defmodule CodexSdk.MixProject do
     [
       main: "readme",
       name: "Codex SDK",
-      source_ref: "v0.17.0",
-      source_url: "https://github.com/nshkrdotcom/codex_sdk",
-      homepage_url: "https://hex.pm/packages/codex_sdk",
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      homepage_url: @docs_url,
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
       extras: [
@@ -267,10 +272,11 @@ defmodule CodexSdk.MixProject do
         ~w(lib config build_support assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/nshkrdotcom/codex_sdk",
-        "Hex" => "https://hex.pm/packages/codex_sdk",
-        "HexDocs" => "https://hexdocs.pm/codex_sdk",
-        "Changelog" => "https://github.com/nshkrdotcom/codex_sdk/blob/main/CHANGELOG.md",
+        "GitHub" => @source_url,
+        "Hex" => @homepage_url,
+        "HexDocs" => @docs_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
+        "License" => "#{@source_url}/blob/main/LICENSE",
         "OpenAI Codex" => "https://github.com/openai/codex"
       },
       maintainers: ["nshkrdotcom"],

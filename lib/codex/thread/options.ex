@@ -22,6 +22,8 @@ defmodule Codex.Thread.Options do
             auto_run: false,
             transport: :exec,
             ephemeral: nil,
+            ignore_user_config: false,
+            ignore_rules: false,
             approval_policy: nil,
             approval_hook: nil,
             approval_timeout_ms: Defaults.approval_timeout_ms(),
@@ -163,6 +165,8 @@ defmodule Codex.Thread.Options do
 
   @invalid_field_tags %{
     ephemeral: :invalid_ephemeral,
+    ignore_user_config: :invalid_ignore_user_config,
+    ignore_rules: :invalid_ignore_rules,
     auto_run: :invalid_auto_run,
     working_directory: :invalid_working_directory,
     skip_git_repo_check: :invalid_skip_git_repo_check,
@@ -219,6 +223,8 @@ defmodule Codex.Thread.Options do
           auto_run: boolean(),
           transport: transport(),
           ephemeral: boolean() | nil,
+          ignore_user_config: boolean(),
+          ignore_rules: boolean(),
           approval_policy: module() | nil,
           approval_hook: module() | nil,
           approval_timeout_ms: pos_integer(),
@@ -299,6 +305,11 @@ defmodule Codex.Thread.Options do
     auto_run = Map.get(attrs, :auto_run, Map.get(attrs, "auto_run", false))
     transport = Map.get(attrs, :transport, Map.get(attrs, "transport"))
     ephemeral = Map.get(attrs, :ephemeral, Map.get(attrs, "ephemeral"))
+
+    ignore_user_config =
+      Map.get(attrs, :ignore_user_config, Map.get(attrs, "ignore_user_config", false))
+
+    ignore_rules = Map.get(attrs, :ignore_rules, Map.get(attrs, "ignore_rules", false))
     approval_policy = Map.get(attrs, :approval_policy, Map.get(attrs, "approval_policy"))
     approval_hook = Map.get(attrs, :approval_hook, Map.get(attrs, "approval_hook"))
 
@@ -652,6 +663,8 @@ defmodule Codex.Thread.Options do
            normalize_permission_profile(permission_profile),
          :ok <- validate_boolean(auto_run, :auto_run),
          {:ok, ephemeral} <- validate_optional_boolean(ephemeral, :ephemeral),
+         :ok <- validate_boolean(ignore_user_config, :ignore_user_config),
+         :ok <- validate_boolean(ignore_rules, :ignore_rules),
          :ok <- validate_optional_string(working_directory, :working_directory),
          {:ok, additional_directories} <-
            normalize_string_list(additional_directories, :additional_directories),
@@ -763,6 +776,8 @@ defmodule Codex.Thread.Options do
          auto_run: auto_run,
          transport: transport,
          ephemeral: ephemeral,
+         ignore_user_config: ignore_user_config,
+         ignore_rules: ignore_rules,
          approval_policy: approval_policy,
          approval_hook: approval_hook,
          approval_timeout_ms: approval_timeout_ms,

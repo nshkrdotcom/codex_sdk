@@ -240,6 +240,9 @@ defmodule Codex.Runtime.Exec do
          config_values: config_values,
          provider_native: %{
            sandbox: fetch_thread_opt(exec_opts.thread, :sandbox),
+           ephemeral: fetch_thread_opt(exec_opts.thread, :ephemeral) == true,
+           ignore_user_config: fetch_thread_opt(exec_opts.thread, :ignore_user_config) == true,
+           ignore_rules: fetch_thread_opt(exec_opts.thread, :ignore_rules) == true,
            working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
            additional_directories:
              normalize_string_list(fetch_thread_opt(exec_opts.thread, :additional_directories)),
@@ -278,6 +281,9 @@ defmodule Codex.Runtime.Exec do
       color: normalize_option_string(exec_opt(exec_opts, :color)),
       output_last_message: exec_opt(exec_opts, :output_last_message),
       sandbox: sandbox_mode(fetch_thread_opt(exec_opts.thread, :sandbox)),
+      ephemeral: fetch_thread_opt(exec_opts.thread, :ephemeral) == true,
+      ignore_user_config: fetch_thread_opt(exec_opts.thread, :ignore_user_config) == true,
+      ignore_rules: fetch_thread_opt(exec_opts.thread, :ignore_rules) == true,
       working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
       additional_directories:
         normalize_string_list(fetch_thread_opt(exec_opts.thread, :additional_directories)),

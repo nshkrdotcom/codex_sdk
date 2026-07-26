@@ -371,6 +371,7 @@ defmodule Codex.GovernedAuthority do
   end
 
   defimpl Jason.Encoder do
+    @spec encode(term(), term()) :: no_return()
     def encode(_authority, _opts) do
       raise ArgumentError, "governed Codex materialization is transient and cannot be encoded"
     end
@@ -384,8 +385,6 @@ defmodule Codex.GovernedAuthority do
       {:ok, authority}
     end
   end
-
-  defp validate(other), do: {:error, {:invalid_governed_materialization, other}}
 
   defp materialization_from_attrs(attrs) do
     %__MODULE__{
@@ -618,7 +617,6 @@ defmodule Codex.GovernedAuthority do
   defp env_keys(env) when is_map(env),
     do: env |> Map.keys() |> Enum.map(&to_string/1) |> Enum.sort()
 
-  defp env_keys(_env), do: []
   defp redact_value(nil), do: nil
   defp redact_value(value) when is_binary(value), do: "[redacted:#{byte_size(value)}]"
   defp redact_value(_value), do: "[redacted]"

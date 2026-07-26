@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-25
+
 ### Fixed
 
 - **Orphan reaping is enabled on the exec lane.** `Codex.Runtime.Exec` passed
@@ -14,20 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transport's headless window — the only mechanism that removes a subprocess
   whose owning process has died. It now passes the declared
   `transport_headless_timeout_ms` (5 s).
-- `Codex.AppServer.Sanitizer` no longer redacts the `isSecret` protocol flag.
+- The app-server sanitizer no longer redacts the `isSecret` protocol flag.
   `Macro.underscore("isSecret")` is `is_secret`, which matched the
   secret-key heuristic and replaced a boolean with `"[REDACTED]"`, so the
   schema then correctly rejected the payload. `is_secret` is a rendering flag
   telling the client to mask the answer it collects, never credential material.
 - The sanitizer's five redactions are reimplemented as literal binary scanners.
   Behavior is byte-identical, verified by a parity harness over 40,056 inputs.
-- `Codex.OAuth.Context.resolve/1` no longer requires the child environment to
+- OAuth context resolution no longer requires the child environment to
   equal the authority's materialized launch environment. Resolving an OAuth
   context launches no child process and legitimately reads a caller-supplied
   `process_env`, as `guides/09-oauth-and-login.md` documents. The launch-time
   invariant is unchanged and still enforced at its three real call sites.
 
-## [Unreleased]
+### Changed
+
+- The exec lane carries typed ephemeral, user-config, and rules-isolation
+  options through to `codex exec`, allowing completion-only callers to exclude
+  ambient configuration, MCP servers, hooks, and policy rules.
+- Validated the new exec isolation flags against the installed
+  `codex-cli 0.145.0` command surface without claiming a new live model-list
+  probe.
+- Refreshed release locks to `zoi` 0.18.7, patched Bandit 1.12.3, patched Mint
+  1.9.3, and PlugCrypto 2.2.0.
+- Release metadata now targets `cli_subprocess_core ~> 0.3.0`.
 
 ## [0.17.0] - 2026-07-13
 
@@ -1065,7 +1077,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.14.0...v0.16.0

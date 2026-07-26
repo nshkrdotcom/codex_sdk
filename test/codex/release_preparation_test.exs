@@ -7,8 +7,9 @@ defmodule Codex.ReleasePreparationTest do
     project = Mix.Project.config()
     package_files = project[:package][:files]
 
-    assert project[:version] == "0.17.0"
-    assert project[:docs][:source_ref] == "v0.17.0"
+    assert project[:version] == "0.18.0"
+    assert project[:docs][:source_ref] == "v0.18.0"
+    assert project[:docs][:homepage_url] == "https://hexdocs.pm/codex_sdk"
     assert project[:docs][:assets] == %{"assets" => "assets"}
     assert project[:docs][:logo] == "assets/codex_sdk.svg"
 
@@ -16,6 +17,9 @@ defmodule Codex.ReleasePreparationTest do
           ~w(lib assets build_support guides examples mix.exs README.md LICENSE CHANGELOG.md) do
       assert required in package_files
     end
+
+    assert project[:package][:links]["License"] ==
+             "https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE"
 
     refute ".formatter.exs" in package_files
   end

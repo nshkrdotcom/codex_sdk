@@ -19,6 +19,7 @@ defmodule Codex.AppServer.Sanitizer do
   end
 
   defimpl Jason.Encoder, for: Values do
+    @spec encode(term(), term()) :: no_return()
     def encode(_values, _opts) do
       raise ArgumentError, "redaction values are transient and cannot be encoded"
     end

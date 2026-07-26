@@ -13,10 +13,12 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 ## Upstream Parity Snapshot
 
-This unreleased `0.17.0` head implements the protocol catch-up through upstream
+The `0.18.0` release implements the protocol catch-up through upstream
 `openai/codex` commit `5c19155cbd` and was re-swept through current
 `origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
-surface. The installed and recommended stable CLI remains `codex-cli 0.144.1`.
+surface. The current installed CLI target is `codex-cli 0.145.0`. The bundled
+model-list snapshot was last live-verified against 0.144.1 on 2026-07-10; this
+release does not claim a newer live model-list probe.
 
 The SDK intentionally ships additive parsers ahead of that CLI for terminal
 turn timing/errors, plugin scheduled tasks, opaque prefixed item IDs, rollout
@@ -67,12 +69,12 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.17.0"}
+    {:codex_sdk, "~> 0.18.0"}
   ]
 end
 ```
 
-The 0.17 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.2.0`
+The 0.18 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.3.0`
 as its sole internal runtime dependency. The SDK continues to expose
 Codex-native APIs and core facades; callers do not need to depend directly on
 the underlying execution substrate.
@@ -442,6 +444,8 @@ App-server-only APIs include:
 On app-server transport, thread options now forward current upstream routing fields such as
 `ephemeral`, `service_name`, `service_tier`, and `session_start_source`; turn options can
 override `service_tier` and pass `responsesapi_client_metadata` per `Codex.Thread.run/3`.
+On exec transport, `ephemeral`, `ignore_user_config`, and `ignore_rules`
+render the corresponding isolation flags.
 App-server realtime start accepts `output_modality`. Raw plugin response maps still preserve
 newer upstream auth metadata such as `needsAuth`, while the typed plugin API projects those
 payloads into `Codex.Protocol.Plugin.*` structs and preserves unknown upstream fields in
@@ -890,7 +894,9 @@ can list them and apply or undo diffs locally:
     auto_run: true,
     sandbox: :strict,
     approval_timeout_ms: 45_000,
-    ephemeral: true,          # app-server thread/fork lifecycle hint
+    ephemeral: true,          # app-server lifecycle hint; exec session-persistence opt-out
+    ignore_user_config: true, # exec only: exclude ambient user config
+    ignore_rules: true,       # exec only: exclude ambient policy rules
     service_name: "my_app",   # app-server routing hint
     service_tier: :flex,      # :auto | :default | :flex | :priority
     web_search_mode: :cached,  # :disabled | :cached | :live (explicit :disabled forces disable override)

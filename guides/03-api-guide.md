@@ -266,6 +266,8 @@ plugin, and thread-shell helpers:
 Current app-server lifecycle fields are also forwarded through the high-level
 transport: `ephemeral`, `service_name`, and `service_tier` on thread options,
 plus per-turn `service_tier` on `Codex.Thread.run/3` / `run_streamed/3`.
+The exec lane separately renders `ephemeral`, `ignore_user_config`, and
+`ignore_rules` as the corresponding `codex exec` isolation flags.
 `plugin_install/4` and `plugin_uninstall/3` accept `force_remote_sync: true`,
 raw plugin maps preserve newer upstream fields such as `needsAuth`, and the
 typed plugin structs preserve forward-compatible fields in `extra` maps.
@@ -1597,6 +1599,8 @@ Thread-specific configuration.
   auto_run: boolean(),
   transport: :exec | {:app_server, pid()},
   ephemeral: boolean() | nil,
+  ignore_user_config: boolean(),
+  ignore_rules: boolean(),
   approval_policy: module() | nil,
   approval_hook: module() | nil,
   approval_timeout_ms: pos_integer(),
@@ -1688,7 +1692,10 @@ Thread-specific configuration.
   direct ownership of the Erlang `:exec` worker.
 - `approval_policy` / `approval_hook` / `approval_timeout_ms`: Approval gating for tool calls
 - `approvals_reviewer`: App-server review routing hint (`:user`, `:auto_review`, or legacy `:guardian_subagent`) for escalated approvals; requires an app-server connection created with `experimental_api: true`
-- `ephemeral`: App-server-only lifecycle hint forwarded on `thread/start` and `thread/fork`
+- `ephemeral`: App-server lifecycle hint on `thread/start`/`thread/fork`; on
+  exec, renders `--ephemeral` so session files are not persisted
+- `ignore_user_config`: Exec-only `--ignore-user-config`
+- `ignore_rules`: Exec-only `--ignore-rules`
 - `sandbox`: Exec CLI sandbox mode (e.g. `:strict`, `:workspace_write`, `:external_sandbox`)
 - `sandbox_policy`: App-server sandbox policy override (`type`, `writable_roots`, `network_access`)
 - `permissions`: App-server named permissions profile override, forwarded as `permissions` (upstream's current field; `permission_profile`/`permissionProfile` remain accepted as input aliases). Cannot be combined with `sandbox`/`sandbox_policy`.
