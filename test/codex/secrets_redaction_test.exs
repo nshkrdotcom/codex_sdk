@@ -1,18 +1,18 @@
 defmodule Codex.SecretsRedactionTest do
   use ExUnit.Case, async: true
 
-  alias Codex.Auth.Store
   alias Codex.AppServer.Sanitizer
+  alias Codex.Auth.Store
   alias Codex.CLI
   alias Codex.GovernedAuthority
   alias Codex.MCP.Transport.StreamableHTTP
   alias Codex.OAuth
   alias Codex.Options
   alias Codex.Realtime.Config
+  alias Codex.TestSupport.GovernedAuthority, as: GovernedAuthorityFixture
   alias Codex.Voice.Models.OpenAIProvider
   alias Codex.Voice.Models.OpenAISTT
   alias Codex.Voice.Models.OpenAITTS
-  alias Codex.TestSupport.GovernedAuthority, as: GovernedAuthorityFixture
 
   test "auth credentials never appear in inspect output" do
     tokens = %Store.Tokens{
@@ -158,9 +158,8 @@ defmodule Codex.SecretsRedactionTest do
     assert {:ok, authority} = GovernedAuthority.new(attrs)
     refute inspect(authority) =~ sentinel
 
-    assert_raise ArgumentError, ~r/transient and cannot be encoded/, fn ->
-      Jason.encode!(authority)
-    end
+    encode_error = assert_raise ArgumentError, fn -> Jason.encode!(authority) end
+    assert encode_error.message =~ "transient and cannot be encoded"
 
     redacted = GovernedAuthority.redacted(authority)
     refute inspect(redacted) =~ sentinel
@@ -200,6 +199,7 @@ defmodule Codex.SecretsRedactionTest do
         "nested" => %{"refreshToken" => "LEAK-REFRESH"},
         "inputTokens" => 13,
         "credentialRef" => "credential-ref-safe",
+        "isSecret" => true,
         "message" => "Authorization: Bearer LEAK-BEARER"
       })
 
@@ -207,6 +207,7 @@ defmodule Codex.SecretsRedactionTest do
     assert sanitized["nested"]["refreshToken"] == "[REDACTED]"
     assert sanitized["inputTokens"] == 13
     assert sanitized["credentialRef"] == "credential-ref-safe"
+    assert sanitized["isSecret"] == true
     assert sanitized["message"] == "Authorization: [REDACTED]"
     refute inspect(sanitized) =~ "LEAK-"
   end
@@ -217,9 +218,8 @@ defmodule Codex.SecretsRedactionTest do
 
     refute inspect(redaction_values) =~ sentinel
 
-    assert_raise ArgumentError, ~r/transient and cannot be encoded/, fn ->
-      Jason.encode!(redaction_values)
-    end
+    encode_error = assert_raise ArgumentError, fn -> Jason.encode!(redaction_values) end
+    assert encode_error.message =~ "transient and cannot be encoded"
 
     sanitized =
       Sanitizer.term(

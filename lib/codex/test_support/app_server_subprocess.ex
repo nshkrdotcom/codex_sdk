@@ -377,9 +377,17 @@ defmodule Codex.TestSupport.AppServerSubprocess do
     EXIT_STATUS = int(os.environ.get(#{inspect(@exit_status_env)}, "0"))
 
     def emit(event):
-        with open(EVENTS_PATH, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event) + "\\n")
-            handle.flush()
+        # The harness removes its temp root as soon as the owning test exits,
+        # which can happen while this process is still shutting down. A
+        # vanished events file is expected teardown, not a failure - mirror the
+        # control-file read below and keep quiet instead of raising
+        # FileNotFoundError from an orphaned child.
+        try:
+            with open(EVENTS_PATH, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event) + "\\n")
+                handle.flush()
+        except OSError:
+            pass
 
     def write_stream(stream, payload):
         stream.buffer.write(payload)

@@ -5,8 +5,8 @@ defmodule Codex.ExecTest do
 
   import ExUnit.CaptureLog
 
-  alias CliSubprocessCore.TestSupport.FakeSSH
   alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
+  alias CliSubprocessCore.TestSupport.FakeSSH
   alias Codex.Config.Defaults
   alias Codex.{Events, Exec, Items, Options, Thread}
   alias Codex.Exec.CancellationRegistry

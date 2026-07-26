@@ -8,8 +8,8 @@ defmodule Codex.GovernedAuthority do
   supplement any of its command, account, routing, root, or environment fields.
   """
 
-  alias Codex.Runtime.Env, as: RuntimeEnv
   alias CliSubprocessCore.GovernedAuthority, as: CoreGovernedAuthority
+  alias Codex.Runtime.Env, as: RuntimeEnv
 
   @reference_fields [
     :authority_ref,
@@ -354,17 +354,19 @@ defmodule Codex.GovernedAuthority do
   @spec governed_child_env(keyword(), atom()) :: {:ok, map()} | {:error, term()}
   def governed_child_env(opts, surface) when is_list(opts) do
     with {:ok, authority} <- fetch(opts) do
-      case authority do
-        nil ->
-          opts
-          |> Keyword.get(:process_env, Keyword.get(opts, :env, %{}))
-          |> RuntimeEnv.normalize_overrides()
+      child_env(authority, opts, surface)
+    end
+  end
 
-        %__MODULE__{} ->
-          with :ok <- reject_option_supplementation(authority, opts, surface) do
-            {:ok, authority.env}
-          end
-      end
+  defp child_env(nil, opts, _surface) do
+    opts
+    |> Keyword.get(:process_env, Keyword.get(opts, :env, %{}))
+    |> RuntimeEnv.normalize_overrides()
+  end
+
+  defp child_env(%__MODULE__{} = authority, opts, surface) do
+    with :ok <- reject_option_supplementation(authority, opts, surface) do
+      {:ok, authority.env}
     end
   end
 
@@ -445,6 +447,13 @@ defmodule Codex.GovernedAuthority do
   defp validate_times(_authority), do: {:error, :invalid_governed_materialization_expiry}
 
   defp validate_launch(authority) do
+    with :ok <- validate_launch_invocation(authority),
+         :ok <- validate_launch_roots(authority) do
+      validate_launch_environment(authority)
+    end
+  end
+
+  defp validate_launch_invocation(authority) do
     cond do
       not valid_env?(authority.env) ->
         {:error, :invalid_governed_environment}
@@ -455,12 +464,26 @@ defmodule Codex.GovernedAuthority do
       not absolute_path?(authority.cwd) ->
         {:error, :invalid_governed_working_directory}
 
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_launch_roots(authority) do
+    cond do
       not absolute_path?(authority.config_root) or not absolute_path?(authority.auth_root) ->
         {:error, :invalid_governed_account_roots}
 
       authority.config_root != authority.auth_root ->
         {:error, :governed_account_root_mismatch}
 
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_launch_environment(authority) do
+    cond do
       authority.clear_env? != true ->
         {:error, :governed_clear_env_required}
 

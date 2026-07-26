@@ -618,14 +618,16 @@ defmodule Codex.Options do
       "codex_path_override"
     ]
 
-    case Enum.find(supplemental_fields, fn key ->
-           case Map.get(attrs, key) do
-             value when value in [nil, ""] -> false
-             _value -> true
-           end
-         end) do
+    case Enum.find(supplemental_fields, &supplemented?(attrs, &1)) do
       nil -> :ok
       key -> {:error, {:governed_option_supplementation, :options, key}}
+    end
+  end
+
+  defp supplemented?(attrs, key) do
+    case Map.get(attrs, key) do
+      value when value in [nil, ""] -> false
+      _value -> true
     end
   end
 

@@ -61,11 +61,23 @@ defmodule Codex.OAuth.Context do
           browser_opener: term()
         }
 
+  @doc """
+  Resolves the OAuth context for a child Codex environment.
+
+  Under a governed authority this surface derives its context from the
+  materialized child environment the caller supplies (`:process_env` / `:env`)
+  and never from the ambient shell, and it refuses to continue without an
+  explicit `CODEX_HOME`. It deliberately does not apply
+  `GovernedAuthority.validate_runtime_env/2`: that invariant pins the exact
+  environment a governed child process is *launched* with (exec, app-server),
+  whereas resolving OAuth configuration launches nothing and reads an already
+  materialized child environment that legitimately differs from the
+  authority's own launch environment.
+  """
   @spec resolve(keyword()) :: {:ok, t()} | {:error, term()}
   def resolve(opts \\ []) when is_list(opts) do
     with {:ok, authority} <- GovernedAuthority.fetch(opts),
          {:ok, child_process_env} <- resolve_child_env(opts, authority),
-         :ok <- GovernedAuthority.validate_runtime_env(authority, child_process_env),
          {:ok, cwd} <- resolve_cwd(opts),
          {:ok, codex_home} <- resolve_codex_home(opts, child_process_env, authority),
          {:ok, layers} <- LayerStack.load(codex_home, cwd) do
@@ -120,7 +132,7 @@ defmodule Codex.OAuth.Context do
     end
   end
 
-  defp resolve_child_env(opts, %{}) do
+  defp resolve_child_env(opts, %GovernedAuthority{}) do
     process_env = Keyword.get(opts, :process_env, Keyword.get(opts, :env, %{}))
     RuntimeEnv.normalize_overrides(process_env)
   end
@@ -155,7 +167,7 @@ defmodule Codex.OAuth.Context do
     end
   end
 
-  defp resolve_codex_home(opts, child_process_env, %{}) do
+  defp resolve_codex_home(opts, child_process_env, %GovernedAuthority{}) do
     case Keyword.get(opts, :codex_home) || Map.get(child_process_env, "CODEX_HOME") do
       value when is_binary(value) and value != "" -> {:ok, value}
       _ -> {:error, {:governed_codex_home_required, :oauth_context}}
