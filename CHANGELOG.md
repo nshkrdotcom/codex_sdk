@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Orphan reaping is enabled on the exec lane.** `Codex.Runtime.Exec` passed
+  `headless_timeout_ms: :infinity` to the shared session, which disabled the
+  transport's headless window — the only mechanism that removes a subprocess
+  whose owning process has died. It now passes the declared
+  `transport_headless_timeout_ms` (5 s).
+- `Codex.AppServer.Sanitizer` no longer redacts the `isSecret` protocol flag.
+  `Macro.underscore("isSecret")` is `is_secret`, which matched the
+  secret-key heuristic and replaced a boolean with `"[REDACTED]"`, so the
+  schema then correctly rejected the payload. `is_secret` is a rendering flag
+  telling the client to mask the answer it collects, never credential material.
+- The sanitizer's five redactions are reimplemented as literal binary scanners.
+  Behavior is byte-identical, verified by a parity harness over 40,056 inputs.
+- `Codex.OAuth.Context.resolve/1` no longer requires the child environment to
+  equal the authority's materialized launch environment. Resolving an OAuth
+  context launches no child process and legitimately reads a caller-supplied
+  `process_env`, as `guides/09-oauth-and-login.md` documents. The launch-time
+  invariant is unchanged and still enforced at its three real call sites.
+
+## [Unreleased]
+
 ## [0.17.0] - 2026-07-13
 
 ### Added

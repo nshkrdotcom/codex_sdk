@@ -14,6 +14,7 @@ defmodule Codex.Runtime.Exec do
   alias CliSubprocessCore.ProviderProfiles.Codex, as: CoreCodex
   alias CliSubprocessCore.Session
   alias Codex.ApprovalPolicy
+  alias Codex.Config.Defaults
   alias Codex.Config.Overrides
   alias Codex.Events
   alias Codex.Exec.Options, as: ExecOptions
@@ -290,7 +291,10 @@ defmodule Codex.Runtime.Exec do
       env: build_env(exec_opts),
       clear_env?: exec_opts.clear_env?,
       session_event_tag: @default_session_event_tag,
-      headless_timeout_ms: :infinity,
+      # The transport self-stops this window after its subscriber disappears,
+      # and it is the only thing that reaps a child whose owner died. Setting
+      # it to :infinity disabled orphan reaping outright on this lane.
+      transport_headless_timeout_ms: Defaults.transport_headless_timeout_ms(),
       max_stderr_buffer_size: transport_stderr_buffer_size(exec_opts)
     ]
 

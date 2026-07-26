@@ -4,6 +4,7 @@ defmodule Codex.Runtime.ExecTest do
   import ExUnit.CaptureLog
 
   alias CliSubprocessCore.{Event, Payload, ProcessExit}
+  alias Codex.Config.Defaults
   alias Codex.{Events, Options}
   alias Codex.Exec.Options, as: ExecOptions
   alias Codex.Runtime.Exec
@@ -119,7 +120,12 @@ defmodule Codex.Runtime.ExecTest do
 
     assert Keyword.fetch!(session_opts, :provider) == :codex
     assert Keyword.fetch!(session_opts, :profile) == Codex.Runtime.Exec.Profile
-    assert Keyword.fetch!(session_opts, :headless_timeout_ms) == :infinity
+    # Orphan reaping must be on: this lane previously passed :infinity, which
+    # disabled the only net that removes a child whose owner is gone.
+    refute Keyword.get(session_opts, :headless_timeout_ms) == :infinity
+
+    assert Keyword.fetch!(session_opts, :transport_headless_timeout_ms) ==
+             Defaults.transport_headless_timeout_ms()
 
     assert Keyword.fetch!(session_opts, :metadata) == %{
              "config" => %{"model_reasoning_effort" => "medium"},
