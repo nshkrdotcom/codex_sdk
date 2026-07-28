@@ -5,7 +5,7 @@ end
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.18.0"
+  @version "0.18.1"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"

@@ -16,14 +16,14 @@ defmodule Codex.DependencyBoundaryTest do
   end
 
   test "publish mode resolves the released CLI core dependency" do
-    assert [{:cli_subprocess_core, "~> 0.3.0"}] =
+    assert [{:cli_subprocess_core, "~> 0.4.1"}] =
              DependencySources.deps(@repo_root, publish?: true)
   end
 
-  test "release coordinates match the 0.18.0 package contract" do
+  test "release coordinates match the 0.18.1 package contract" do
     project = Mix.Project.config()
 
-    assert project[:version] == "0.18.0"
+    assert project[:version] == "0.18.1"
     assert project[:elixir] == "~> 1.19"
   end
 

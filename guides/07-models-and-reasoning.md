@@ -148,10 +148,10 @@ copy. Publish the dependency chain bottom-up:
 1. `ground_plane_contracts` and `ground_plane_persistence_policy` 0.1.0
 2. `execution_plane`, `execution_plane_process`, and
    `execution_plane_jsonrpc` 0.1.0
-3. `cli_subprocess_core` 0.3.0
-4. `codex_sdk` 0.18.0
+3. `cli_subprocess_core` 0.4.1
+4. `codex_sdk` 0.18.1
 
-Publishing `codex_sdk` 0.18.0 remains blocked until those prerequisite
+The publish preflight blocks `codex_sdk` 0.18.1 until those prerequisite
 packages are available on Hex. Publish mode must lock the ordinary Hex graph;
 the SDK cannot substitute sibling paths or the Execution Plane projection for
 that proof. After each parent release, verify the chain again from a clean
