@@ -20,6 +20,9 @@ defmodule Codex.AgentRunner do
   alias Codex.ToolGuardrail
   alias Codex.Turn.Result
 
+  @app_server_cancel_registration :__codex_app_server_cancel_registration__
+  @transport_cancel_action :__codex_transport_cancel_action__
+
   defmodule State do
     @moduledoc false
 
@@ -137,8 +140,12 @@ defmodule Codex.AgentRunner do
 
       :ok =
         StreamingControl.set_cancel_handler(control, fn
-          :immediate -> Exec.cancel(cancellation_token)
-          :after_turn -> :ok
+          :immediate ->
+            :ok = Exec.cancel(cancellation_token)
+            invoke_transport_cancel(control)
+
+          :after_turn ->
+            :ok
         end)
 
       tuned_thread =
@@ -312,11 +319,54 @@ defmodule Codex.AgentRunner do
   end
 
   defp do_run_streamed_active(%State{} = state) do
-    case Thread.run_turn_streamed(state.thread, state.input, state.turn_opts) do
+    turn_opts = register_transport_cancellation(state)
+
+    case Thread.run_turn_streamed(state.thread, state.input, turn_opts) do
       {:ok, stream} -> do_run_streamed_with_stream(state, stream)
       {:error, _reason} = error -> close_queue(state.queue, error)
     end
   end
+
+  defp register_transport_cancellation(%State{
+         thread: %Thread{transport: {:app_server, conn}},
+         control: control,
+         turn_opts: turn_opts
+       })
+       when is_pid(conn) and is_pid(control) do
+    Map.put(turn_opts, @app_server_cancel_registration, fn action ->
+      set_transport_cancel_action(control, action)
+    end)
+  end
+
+  defp register_transport_cancellation(%State{turn_opts: turn_opts}), do: turn_opts
+
+  defp set_transport_cancel_action(control, action)
+       when is_pid(control) and (is_function(action, 0) or is_nil(action)) do
+    cancelled? =
+      Elixir.Agent.get_and_update(control, fn state ->
+        {Map.get(state, :cancel) == :immediate, Map.put(state, @transport_cancel_action, action)}
+      end)
+
+    if cancelled? and is_function(action, 0), do: invoke_cancel_action(action)
+    :ok
+  end
+
+  defp invoke_transport_cancel(control) when is_pid(control) do
+    control
+    |> Elixir.Agent.get(&Map.get(&1, @transport_cancel_action))
+    |> invoke_cancel_action()
+  end
+
+  defp invoke_cancel_action(action) when is_function(action, 0) do
+    _ = action.()
+    :ok
+  rescue
+    _error -> :ok
+  catch
+    _kind, _reason -> :ok
+  end
+
+  defp invoke_cancel_action(_action), do: :ok
 
   defp do_run_streamed_with_stream(%State{} = state, stream) do
     hooks = stream_hooks(state)

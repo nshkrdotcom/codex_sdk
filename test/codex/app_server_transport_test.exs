@@ -1338,6 +1338,94 @@ defmodule Codex.AppServerTransportTest do
     assert %{subscribers: %{}} = :sys.get_state(conn)
   end
 
+  test "immediate stream cancellation interrupts the accepted app-server turn" do
+    codex_opts = new_codex_opts!()
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+        init_timeout_ms: 200
+      )
+
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{transport: {:app_server, conn}, working_directory: "/tmp"})
+
+    thread = Thread.build(codex_opts, thread_opts)
+    {:ok, stream} = Thread.run_streamed(thread, "cancel this turn")
+
+    started_task =
+      Task.async(fn ->
+        Stream.repeatedly(fn -> Codex.RunResultStreaming.pop(stream, 1_000) end)
+        |> Enum.find(fn
+          {:ok,
+           %Codex.StreamEvent.RunItem{
+             event: %Codex.Events.TurnStarted{thread_id: "thr_cancel", turn_id: "turn_cancel"}
+           }} ->
+            true
+
+          _other ->
+            false
+        end)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start"}} =
+             Jason.decode(thread_start_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_cancel"}})
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start"}} =
+             Jason.decode(turn_start_line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{
+          "id" => "turn_cancel",
+          "items" => [],
+          "status" => "inProgress",
+          "error" => nil
+        }
+      })
+    )
+
+    assert {:ok,
+            %Codex.StreamEvent.RunItem{
+              event: %Codex.Events.TurnStarted{
+                thread_id: "thr_cancel",
+                turn_id: "turn_cancel"
+              }
+            }} = Task.await(started_task, 500)
+
+    cancel_task = Task.async(fn -> Codex.RunResultStreaming.cancel(stream, :immediate) end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, interrupt_line}
+
+    assert {:ok,
+            %{
+              "id" => interrupt_id,
+              "method" => "turn/interrupt",
+              "params" => %{"threadId" => "thr_cancel", "turnId" => "turn_cancel"}
+            }} = Jason.decode(interrupt_line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(interrupt_id, %{}))
+
+    assert :ok = Task.await(cancel_task, 500)
+    assert Process.alive?(conn)
+  end
+
   test "app-server thread start includes model/provider/config/instructions flags" do
     codex_opts = new_codex_opts!()
 

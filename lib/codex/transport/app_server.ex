@@ -17,6 +17,8 @@ defmodule Codex.Transport.AppServer do
   alias Codex.Transport.Support
   alias Codex.Turn.Result
 
+  @cancel_registration :__codex_app_server_cancel_registration__
+
   @impl true
   def run_turn(%Thread{transport: {:app_server, _pid}} = thread, input, turn_opts)
       when is_binary(input) or is_list(input) do
@@ -72,10 +74,17 @@ defmodule Codex.Transport.AppServer do
   end
 
   defp run_turn_streamed_once(%Thread{transport: {:app_server, conn}} = thread, input, turn_opts) do
+    :ok = register_cancel_action(turn_opts, fn -> AppServer.disconnect(conn) end)
+
     with {:ok, thread_id, started_event, thread_start_raw} <- ensure_thread(conn, thread),
          :ok <- Connection.subscribe(conn, thread_id: thread_id),
          {:ok, turn_id, turn_started_event, turn_start_raw} <-
-           start_turn(conn, thread, thread_id, input, turn_opts) do
+           start_turn(conn, thread, thread_id, input, turn_opts),
+         :ok <-
+           register_cancel_action(
+             turn_opts,
+             turn_interrupt_action(conn, thread_id, turn_id)
+           ) do
       thread = %Thread{thread | thread_id: thread_id}
 
       stream =
@@ -89,20 +98,57 @@ defmodule Codex.Transport.AppServer do
               done?: false,
               buffer: [started_event, turn_started_event],
               raw: %{thread_start: thread_start_raw, turn_start: turn_start_raw},
-              completion_timeout_ms: completion_timeout_ms(turn_opts)
+              completion_timeout_ms: completion_timeout_ms(turn_opts),
+              cancel_registration: cancel_registration(turn_opts)
             }
           end,
           &next_event/1,
-          fn %{conn: conn} -> Connection.unsubscribe(conn) end
+          &finish_stream/1
         )
 
       {:ok, stream}
     else
       {:error, _} = error ->
         Connection.unsubscribe(conn)
+        clear_cancel_action(turn_opts)
         error
     end
   end
+
+  defp turn_interrupt_action(conn, thread_id, turn_id) do
+    fn ->
+      case AppServer.turn_interrupt(conn, thread_id, turn_id) do
+        :ok -> :ok
+        {:error, _reason} -> AppServer.disconnect(conn)
+      end
+    end
+  end
+
+  defp finish_stream(%{conn: conn, cancel_registration: registration}) do
+    Connection.unsubscribe(conn)
+    register_cancel_action(registration, nil)
+  end
+
+  defp cancel_registration(turn_opts) do
+    fetch_opt(turn_opts, @cancel_registration)
+  end
+
+  defp clear_cancel_action(turn_opts) do
+    register_cancel_action(turn_opts, nil)
+  end
+
+  defp register_cancel_action(turn_opts, action) when is_map(turn_opts) do
+    turn_opts
+    |> cancel_registration()
+    |> register_cancel_action(action)
+  end
+
+  defp register_cancel_action(registration, action) when is_function(registration, 1) do
+    registration.(action)
+    :ok
+  end
+
+  defp register_cancel_action(_registration, _action), do: :ok
 
   @impl true
   def interrupt(%Thread{transport: {:app_server, conn}, thread_id: thread_id}, turn_id)
