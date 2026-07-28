@@ -197,6 +197,7 @@ defmodule Codex.SecretsRedactionTest do
       Sanitizer.term(%{
         "apiKey" => "LEAK-API-KEY",
         "nested" => %{"refreshToken" => "LEAK-REFRESH"},
+        "status" => %{"type" => "active", "activeFlags" => []},
         "inputTokens" => 13,
         "credentialRef" => "credential-ref-safe",
         "isSecret" => true,
@@ -205,6 +206,7 @@ defmodule Codex.SecretsRedactionTest do
 
     assert sanitized["apiKey"] == "[REDACTED]"
     assert sanitized["nested"]["refreshToken"] == "[REDACTED]"
+    assert sanitized["status"]["activeFlags"] == []
     assert sanitized["inputTokens"] == 13
     assert sanitized["credentialRef"] == "credential-ref-safe"
     assert sanitized["isSecret"] == true

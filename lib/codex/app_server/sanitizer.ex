@@ -162,6 +162,8 @@ defmodule Codex.AppServer.Sanitizer do
     end)
   end
 
+  def term([], %Values{}), do: []
+
   def term(list, %Values{} = values) when is_list(list) do
     if List.ascii_printable?(list) do
       list |> to_string() |> text(values)
