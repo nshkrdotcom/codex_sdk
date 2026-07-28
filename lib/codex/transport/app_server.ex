@@ -217,6 +217,9 @@ defmodule Codex.Transport.AppServer do
       thread.thread_opts.model ||
         default_model(thread, mode)
 
+    approval_policy = app_server_approval_policy(thread.thread_opts)
+    sandbox = app_server_sandbox(thread.thread_opts)
+
     %{}
     |> maybe_put(:model, model)
     |> maybe_put(
@@ -226,9 +229,9 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put(:allow_provider_model_fallback, thread.thread_opts.allow_provider_model_fallback)
     |> maybe_put(:working_directory, thread.thread_opts.working_directory)
     |> maybe_put(:runtime_workspace_roots, thread.thread_opts.runtime_workspace_roots)
-    |> maybe_put(:approval_policy, thread.thread_opts.ask_for_approval)
+    |> maybe_put(:approval_policy, approval_policy)
     |> maybe_put(:approvals_reviewer, thread.thread_opts.approvals_reviewer)
-    |> maybe_put(:sandbox, thread.thread_opts.sandbox)
+    |> maybe_put(:sandbox, sandbox)
     |> maybe_put(:permission_profile, thread.thread_opts.permission_profile)
     |> maybe_put(:config, config)
     |> maybe_put(:base_instructions, thread.thread_opts.base_instructions)
@@ -271,7 +274,7 @@ defmodule Codex.Transport.AppServer do
     |> maybe_put_kw(:model, select_turn_opt(turn_opts, :model, thread.thread_opts.model))
     |> maybe_put_kw(
       :approval_policy,
-      select_turn_opt(turn_opts, :approval_policy, thread.thread_opts.ask_for_approval)
+      select_turn_opt(turn_opts, :approval_policy, app_server_approval_policy(thread.thread_opts))
     )
     |> maybe_put_kw(
       :approvals_reviewer,
@@ -313,6 +316,14 @@ defmodule Codex.Transport.AppServer do
       value -> value
     end
   end
+
+  defp app_server_approval_policy(%{ask_for_approval: nil, full_auto: true}),
+    do: :on_request
+
+  defp app_server_approval_policy(thread_opts), do: thread_opts.ask_for_approval
+
+  defp app_server_sandbox(%{sandbox: :default, full_auto: true}), do: :workspace_write
+  defp app_server_sandbox(thread_opts), do: thread_opts.sandbox
 
   defp next_event(%{done?: true} = state), do: {:halt, state}
 
