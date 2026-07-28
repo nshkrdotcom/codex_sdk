@@ -1711,6 +1711,69 @@ defmodule Codex.AppServerTransportTest do
     assert {:ok, _result} = Task.await(task, 500)
   end
 
+  test "explicit automatic posture reaches both app-server start requests" do
+    codex_opts = new_codex_opts!()
+
+    {:ok, conn} =
+      Connection.start_link(codex_opts,
+        process_env: AppServerSubprocess.process_env(AppServerSubprocess.current!()),
+        init_timeout_ms: 200
+      )
+
+    :ok = AppServerSubprocess.attach(AppServerSubprocess.current!(), conn)
+    assert_receive {:app_server_subprocess_started, ^conn, _os_pid}
+    assert_receive {:app_server_subprocess_send, ^conn, init_line}
+    assert {:ok, %{"id" => 0}} = Jason.decode(init_line)
+    AppServerSubprocess.send_stdout(Protocol.encode_response(0, %{"userAgent" => "codex/0.0.0"}))
+    assert :ok == Connection.await_ready(conn, 200)
+    assert_receive {:app_server_subprocess_send, ^conn, _initialized_line}
+
+    {:ok, thread_opts} =
+      ThreadOptions.new(%{
+        transport: {:app_server, conn},
+        ask_for_approval: :never,
+        sandbox: :workspace_write,
+        full_auto: true
+      })
+
+    thread = Thread.build(codex_opts, thread_opts)
+    task = Task.async(fn -> Thread.run_turn(thread, "hello") end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, thread_start_line}
+
+    assert {:ok, %{"id" => thread_start_id, "method" => "thread/start", "params" => params}} =
+             Jason.decode(thread_start_line)
+
+    assert params["approvalPolicy"] == "never"
+    assert params["sandbox"] == "workspace-write"
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(thread_start_id, %{"thread" => %{"id" => "thr_1"}})
+    )
+
+    assert_receive {:app_server_subprocess_send, ^conn, turn_start_line}
+
+    assert {:ok, %{"id" => turn_start_id, "method" => "turn/start", "params" => turn_params}} =
+             Jason.decode(turn_start_line)
+
+    assert turn_params["approvalPolicy"] == "never"
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(turn_start_id, %{
+        "turn" => %{"id" => "turn_1", "items" => [], "status" => "inProgress", "error" => nil}
+      })
+    )
+
+    AppServerSubprocess.send_stdout([
+      Protocol.encode_notification("turn/completed", %{
+        "threadId" => "thr_1",
+        "turn" => %{"id" => "turn_1", "status" => "completed", "items" => [], "error" => nil}
+      })
+    ])
+
+    assert {:ok, _result} = Task.await(task, 500)
+  end
+
   test "app-server turn start includes sandbox policy overrides" do
     codex_opts = new_codex_opts!()
 
