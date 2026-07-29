@@ -961,7 +961,10 @@ JSON-RPC client for MCP-compatible servers (stdio or streamable HTTP).
 - `list_tools/2` — fetches tool metadata via `tools/list`, caches responses by default, and supports `allow`/`deny`/`filter` options plus `cache?: false` to bypass cached entries.
 - `list_resources/2` — fetches resources via `resources/list`.
 - `list_prompts/2` — fetches prompts via `prompts/list`.
-- `call_tool/4` — invokes a tool via `tools/call` with `retries`/`backoff` and optional `approval` callback.
+- `call_tool/4` — invokes a tool via `tools/call` with opt-in
+  `retries`/`backoff` and an optional `approval` callback. Retries default to
+  zero because a transport failure after request transmission can leave a
+  mutating tool's external result uncertain.
 
 ### MCP transports
 
