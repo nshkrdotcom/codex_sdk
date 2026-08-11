@@ -88,8 +88,8 @@ defmodule Codex.Config.DefaultsTest do
       assert Defaults.mcp_call_timeout_ms() == 60_000
     end
 
-    test "mcp_default_retries/0 returns 3" do
-      assert Defaults.mcp_default_retries() == 3
+    test "mcp_default_retries/0 returns 0" do
+      assert Defaults.mcp_default_retries() == 0
     end
 
     test "mcp_notification_timeout_ms/0 returns 10_000" do

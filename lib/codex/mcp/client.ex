@@ -16,7 +16,7 @@ defmodule Codex.MCP.Client do
 
   The `call_tool/4` function invokes tools on the MCP server with support for:
 
-    * **Retry Logic** - Configurable retries with exponential backoff
+    * **Opt-in Retry Logic** - Configurable retries with exponential backoff
     * **Approval Integration** - Optional approval callbacks before invocation
     * **Timeout Control** - Per-call timeout settings
     * **Telemetry** - Events emitted for observability
@@ -205,7 +205,9 @@ defmodule Codex.MCP.Client do
 
   ## Options
 
-    * `:retries` - Number of retry attempts (default: `#{@default_retries}`)
+    * `:retries` - Number of retry attempts (default: `#{@default_retries}`).
+      Opt in only when the tool is read-only or the destination provides an
+      idempotency guarantee for this operation.
     * `:backoff` - Backoff function `(attempt -> :ok)` (default: exponential backoff)
     * `:timeout_ms` - Request timeout in milliseconds (default: `#{@default_timeout_ms}`)
     * `:approval` - Approval callback function `(tool, args, context) -> :ok | {:deny, reason}`
@@ -213,8 +215,15 @@ defmodule Codex.MCP.Client do
 
   ## Backoff
 
-  The default backoff uses exponential delays: 100ms, 200ms, 400ms, 800ms, ... up to 5000ms max.
-  Provide a custom function to override: `backoff: fn attempt -> Process.sleep(attempt * 100) end`
+  When retries are enabled, the default backoff uses exponential delays:
+  100ms, 200ms, 400ms, 800ms, ... up to 5000ms max. Provide a custom function
+  to override: `backoff: fn attempt -> Process.sleep(attempt * 100) end`
+
+  A timeout or connection loss after sending `tools/call` is an ambiguous
+  outcome: a mutating tool may have completed its external effect before the
+  response was lost. The client therefore does not retry tool calls by default.
+  Reconcile destination state or use a stable provider idempotency key before
+  deliberately replaying such a call.
 
   ## Approval Callbacks
 
@@ -246,10 +255,10 @@ defmodule Codex.MCP.Client do
 
   ## Examples
 
-      # Basic invocation with defaults
+      # Basic invocation; no automatic replay
       {:ok, result} = Codex.MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
 
-      # With custom retry and backoff
+      # Explicit retry for a replay-safe read
       {:ok, result} = Codex.MCP.Client.call_tool(client, "fetch", %{"url" => url},
         retries: 5,
         backoff: fn attempt -> Process.sleep(attempt * 200) end,
