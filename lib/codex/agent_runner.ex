@@ -961,9 +961,6 @@ defmodule Codex.AgentRunner do
       %{is_final_output: false} ->
         :continue
 
-      %{is_final_output: other} = outcome when is_boolean(other) ->
-        if other, do: {:final, Map.get(outcome, :final_output)}, else: :continue
-
       other ->
         {:error, {:invalid_tool_use_behavior_result, other}}
     end

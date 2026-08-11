@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-11
+
+### Fixed
+
+- Interrupted app-server streams now complete instead of waiting indefinitely.
+- App-server sanitization preserves meaningful empty arrays.
+- Full-auto and explicit approval policies are projected consistently across
+  transports.
+- Fresh consumer builds no longer emit Codex-owned compiler warnings that had
+  been hidden by incremental repository builds.
+
+### Changed
+
+- Updated the runtime boundary to `cli_subprocess_core ~> 0.7.0`, making the
+  SDK compatible with the current Agent Session Manager dependency graph.
+- Release checks now prove that repository-only `build_support` tooling is
+  excluded from the published package.
+
 ## [0.18.1] - 2026-07-27
 
 ### Changed
@@ -1088,7 +1106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial design release.
 
-[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.16.1...v0.17.0

@@ -13,7 +13,7 @@ defmodule CodexSdk.MixProject do
 
   @workspace_checkout? File.regular?(Path.expand("build_support/dependency_sources.exs", __DIR__))
 
-  @version "0.18.1"
+  @version "0.19.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -87,7 +87,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep(:cli_subprocess_core, "~> 0.4.1")
+    workspace_dep(:cli_subprocess_core, "~> 0.7.0")
   end
 
   defp description do
@@ -124,6 +124,7 @@ defmodule CodexSdk.MixProject do
         "guides/14-plugin-marketplaces.md": [title: "Plugin Marketplaces"],
         "guides/15-atom-safety.md": [title: "Atom Safety"],
         "guides/16-env-and-secrets.md": [title: "Environment And Secrets"],
+        "guides/17-migrating-to-0.19.md": [title: "Migrating to 0.19"],
         "guides/provider_behavior_manifest.md": [title: "Provider Behavior Manifest"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
@@ -146,6 +147,7 @@ defmodule CodexSdk.MixProject do
           "guides/14-plugin-marketplaces.md",
           "guides/15-atom-safety.md",
           "guides/16-env-and-secrets.md",
+          "guides/17-migrating-to-0.19.md",
           "guides/provider_behavior_manifest.md"
         ],
         "Models & Configuration": [
@@ -271,7 +273,6 @@ defmodule CodexSdk.MixProject do
     ]
   end
 
-
   # In a source checkout the registry decides the source (path first). In a
   # published package there is no registry, and the requirement stated here is
   # the whole answer.
@@ -288,8 +289,7 @@ defmodule CodexSdk.MixProject do
       name: "codex_sdk",
       description: description(),
       readme: "README.md",
-      files:
-        ~w(lib config assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
+      files: ~w(lib config assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

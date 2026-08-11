@@ -273,18 +273,8 @@ defmodule Codex.Tools.ShellTool do
     {:error, {:invalid_argument, :command}}
   end
 
-  defp do_build_command_invocation(command, cwd) do
-    case normalize_command(command) do
-      {:ok, normalized} when is_list(normalized) ->
-        do_build_command_invocation(normalized, cwd)
-
-      {:ok, normalized} when is_binary(normalized) ->
-        do_build_command_invocation(normalized, cwd)
-
-      {:error, _reason} = error ->
-        error
-    end
-  end
+  defp do_build_command_invocation(_command, _cwd),
+    do: {:error, {:invalid_argument, :command}}
 
   defp normalize_timeout_ms(:infinity), do: {:ok, :infinity}
 

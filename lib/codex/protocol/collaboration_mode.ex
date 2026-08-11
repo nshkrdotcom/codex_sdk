@@ -142,7 +142,6 @@ defmodule Codex.Protocol.CollaborationMode do
   defp decode_effort(s) when is_binary(s) do
     case Codex.Models.normalize_reasoning_effort(s) do
       {:ok, effort} -> effort
-      _ -> nil
     end
   end
 

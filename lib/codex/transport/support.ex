@@ -80,7 +80,6 @@ defmodule Codex.Transport.Support do
   defp rate_limit_enabled?(nil, opts), do: opts != []
   defp rate_limit_enabled?(_other, _opts), do: false
 
-  defp normalize_opts(nil), do: []
   defp normalize_opts(list) when is_list(list), do: list
   defp normalize_opts(%{} = map), do: Map.to_list(map)
   defp normalize_opts(_), do: []

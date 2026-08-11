@@ -60,8 +60,6 @@ defmodule Codex.Realtime.Session do
   alias Codex.Realtime.OpenAIWebSocket
   alias Codex.Realtime.PlaybackTracker
 
-  require Logger
-
   defstruct [
     :agent,
     :websocket_pid,

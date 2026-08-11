@@ -278,9 +278,6 @@ defmodule Codex.OAuth do
 
         :device_code ->
           login_with_device_code(context, storage, warnings, opts)
-
-        :none ->
-          {:error, :interactive_login_unavailable}
       end
     end
   end
@@ -376,8 +373,6 @@ defmodule Codex.OAuth do
       {:ok, put_pending_warnings(pending, storage_warning(context, storage))}
     end
   end
-
-  defp begin_flow(_context, :none, _storage, _opts), do: {:error, :interactive_login_unavailable}
 
   defp storage_warning(context, :file) do
     if context.credentials_store_mode in [:keyring, :auto] and not Store.keyring_supported?() do

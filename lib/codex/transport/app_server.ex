@@ -418,10 +418,7 @@ defmodule Codex.Transport.AppServer do
     if has_reasoning_effort?(config) do
       config
     else
-      case effort do
-        nil -> config
-        _ -> Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))
-      end
+      Map.put(config, "model_reasoning_effort", Models.reasoning_effort_to_string(effort))
     end
   end
 

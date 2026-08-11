@@ -94,8 +94,6 @@ defmodule Codex.Protocol.CollabAgentState do
 
   defp encode_event_status(:pending_init), do: "pending_init"
   defp encode_event_status(:running), do: "running"
-  defp encode_event_status(:completed), do: "completed"
-  defp encode_event_status(:errored), do: "errored"
   defp encode_event_status(:shutdown), do: "shutdown"
   defp encode_event_status(:not_found), do: "not_found"
   defp encode_event_status(status) when is_binary(status), do: status
