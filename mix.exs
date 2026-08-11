@@ -1,9 +1,17 @@
-unless Code.ensure_loaded?(DependencySources) do
-  Code.require_file("build_support/dependency_sources.exs", __DIR__)
+# `build_support/` is not shipped in the published package, so its absence is
+# how this file knows it is running inside a consumer's deps/ rather than in a
+# source checkout. Guard on the file, not on a directory shape: a shape test
+# breaks when the repo is vendored at a different depth or used as a git dep.
+workspace_helper = Path.expand("build_support/dependency_sources.exs", __DIR__)
+
+if File.regular?(workspace_helper) and not Code.ensure_loaded?(DependencySources) do
+  Code.require_file(workspace_helper)
 end
 
 defmodule CodexSdk.MixProject do
   use Mix.Project
+
+  @workspace_checkout? File.regular?(Path.expand("build_support/dependency_sources.exs", __DIR__))
 
   @version "0.18.1"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
@@ -79,7 +87,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    DependencySources.dep(:cli_subprocess_core, __DIR__)
+    workspace_dep(:cli_subprocess_core, "~> 0.4.1")
   end
 
   defp description do
@@ -263,13 +271,25 @@ defmodule CodexSdk.MixProject do
     ]
   end
 
+
+  # In a source checkout the registry decides the source (path first). In a
+  # published package there is no registry, and the requirement stated here is
+  # the whole answer.
+  defp workspace_dep(app, hex_requirement, opts \\ []) do
+    if @workspace_checkout? do
+      apply(DependencySources, :dep, [app, __DIR__, opts])
+    else
+      if opts == [], do: {app, hex_requirement}, else: {app, hex_requirement, opts}
+    end
+  end
+
   defp package do
     [
       name: "codex_sdk",
       description: description(),
       readme: "README.md",
       files:
-        ~w(lib config build_support assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
+        ~w(lib config assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
