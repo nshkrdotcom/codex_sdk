@@ -15,9 +15,9 @@ defmodule Codex.DependencyBoundaryTest do
     assert_forbidden_deps_absent(Mix.Project.config()[:deps], @forbidden_deps)
   end
 
-  test "publish mode resolves the released CLI core dependency" do
-    assert [{:cli_subprocess_core, "~> 0.7.0"}] =
-             DependencySources.deps(@repo_root, publish?: true)
+  test "the standalone and publishable fallback uses the released CLI core" do
+    assert {:cli_subprocess_core, "~> 0.7.0"} =
+             List.keyfind(Mix.Project.config()[:deps], :cli_subprocess_core, 0)
   end
 
   test "release coordinates match the 0.19.0 package contract" do

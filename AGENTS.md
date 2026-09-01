@@ -35,10 +35,16 @@
 ## Execution Plane Stack
 - `codex_sdk` sits above `cli_subprocess_core`; it should not depend directly on or expose raw `ExecutionPlane.*` internals.
 - Use `CliSubprocessCore` facade modules for execution surfaces, transport errors, transport info, and process exits.
-- Dependency source selection is handled by `build_support/dependency_sources.exs` and `build_support/dependency_sources.config.exs`.
-- Local dependency overrides use `.dependency_sources.local.exs`.
-- Default dependency priority is `path -> GitHub -> Hex`; publish mode is Hex-only and must fail with exact blockers if an internal dep is unavailable on Hex.
-- Dependency source selection must not use environment variables.
+- Committed dependency tuples remain ordinary Hex requirements so standalone
+  clones and published consumers need no workspace tooling. Operator-managed
+  development loads the MWO bootstrap and resolves eligible local/GitHub/Hex
+  coordinates from Portfolio Registry; source preferences live in operator XDG
+  configuration, never in this repository.
+- MWO's process-scoped bootstrap pointer is the only dependency-management
+  environment input read by `mix.exs`; application runtime source selection
+  must not use environment variables.
+- Publish mode is Hex-only and must fail with exact blockers if an internal dep
+  is unavailable on Hex.
 - Weld maintains helper drift, manifests, clone checks, publish checks, and publish order, but this repo is not a Weld consumer in this pass and must not receive a blind Weld dependency.
 - Keep `cli_subprocess_core` dependency resolution publish-aware: local path deps for sibling development, GitHub fallback for standalone clones, and Hex constraints for release builds.
 - Runtime application code under `lib/**` must not call direct OS env APIs such as `System.get_env`, `System.fetch_env`, `System.put_env`, or `System.delete_env`.

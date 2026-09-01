@@ -23,7 +23,6 @@ codex_sdk-*/
 
 # Temporary files, for example, from tests.
 /tmp/
-.dependency_sources.local.exs
 
 # Cloned codex repository
 /codex/
