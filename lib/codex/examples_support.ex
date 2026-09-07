@@ -103,9 +103,7 @@ defmodule Codex.ExamplesSupport do
   @spec parse_argv([String.t()]) :: {:ok, SSHContext.t()} | {:error, String.t()}
   def parse_argv(argv) when is_list(argv) do
     {parsed, remaining, invalid} =
-      argv
-      |> Enum.reject(&(&1 == "--"))
-      |> OptionParser.parse(strict: @ssh_switches)
+      OptionParser.parse(argv, strict: @ssh_switches)
 
     if invalid != [] do
       {:error, invalid_options_message(invalid)}
@@ -632,8 +630,8 @@ defmodule Codex.ExamplesSupport do
   defp invalid_options_message(invalid) when is_list(invalid) do
     rendered =
       Enum.map_join(invalid, ", ", fn
-        {name, nil} -> "--#{name}"
-        {name, value} -> "--#{name}=#{value}"
+        {name, nil} -> name
+        {name, value} -> "#{name}=#{value}"
       end)
 
     "invalid example flags: #{rendered}. Supported flags: --cwd, --danger-full-access, --ssh-host, --ssh-user, --ssh-port, --ssh-identity-file"

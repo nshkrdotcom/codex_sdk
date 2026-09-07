@@ -50,7 +50,7 @@ defmodule Codex.ItemsIdAndOrdinalTest do
   defp read_frame(file) do
     @post_0144_dir
     |> Path.join(file)
-    |> File.stream!([], :line)
+    |> File.stream!(:line)
     |> Stream.map(&String.trim/1)
     |> Enum.find(&(&1 != "" and not String.starts_with?(&1, "#")))
     |> Jason.decode!()

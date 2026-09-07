@@ -1195,7 +1195,7 @@ defmodule Codex.AppServer.ApiTest do
     assert %{
              "mode" => "plan",
              "settings" => %{
-               "model" => "gpt-5.6-sol",
+               "model" => "gpt-6-astra",
                "reasoning_effort" => "medium"
              }
            } = params["collaborationMode"]

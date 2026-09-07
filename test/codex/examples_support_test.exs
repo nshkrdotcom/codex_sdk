@@ -83,6 +83,14 @@ defmodule Codex.ExamplesSupportTest do
   end
 
   describe "parse_argv/1" do
+    test "preserves example-specific flags after the separator" do
+      assert {:ok, context} =
+               ExamplesSupport.parse_argv(["--cwd", "/tmp", "--", "--no-cancel", "hello"])
+
+      assert context.example_cwd == "/tmp"
+      assert context.argv == ["--no-cancel", "hello"]
+    end
+
     test "keeps local defaults when ssh flags are absent" do
       assert {:ok, context} = ExamplesSupport.parse_argv(["--", "hello"])
 

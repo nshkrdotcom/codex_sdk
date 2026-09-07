@@ -1195,7 +1195,7 @@ defmodule Codex.EventsTest do
     test "thread_basic fixture encodes back to original maps" do
       raw_events =
         Path.join([File.cwd!(), "integration", "fixtures", "python", "thread_basic.jsonl"])
-        |> File.stream!([], :line)
+        |> File.stream!(:line)
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == ""))
         |> Enum.map(&Jason.decode!/1)

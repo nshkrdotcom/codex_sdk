@@ -16,9 +16,9 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 The `0.19.0` release implements the protocol catch-up through upstream
 `openai/codex` commit `5c19155cbd` and was re-swept through current
 `origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
-surface. The current installed CLI target is `codex-cli 0.145.0`. The bundled
-model-list snapshot was last live-verified against 0.144.1 on 2026-07-10; this
-release does not claim a newer live model-list probe.
+surface. Release 0.20.0 updates the shared model catalog against authenticated
+`codex-cli 0.153.4` on 2026-09-07. GPT-6 Astra is the default, with low reasoning
+effort. This model-list probe does not imply a complete protocol parity sweep.
 
 The SDK intentionally ships additive parsers ahead of that CLI for terminal
 turn timing/errors, plugin scheduled tasks, opaque prefixed item IDs, rollout
@@ -69,12 +69,12 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.19.0"}
+    {:codex_sdk, "~> 0.20.0"}
   ]
 end
 ```
 
-The 0.19 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.7.0`
+The 0.20 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.8.0`
 as its sole internal runtime dependency. The SDK continues to expose
 Codex-native APIs and core facades; callers do not need to depend directly on
 the underlying execution substrate.

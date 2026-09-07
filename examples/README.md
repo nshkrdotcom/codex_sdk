@@ -194,7 +194,7 @@ mix run examples/live_cli_session.exs -- --ssh-host example.internal --cwd /srv/
 - `examples/live_web_search_modes.exs` — demonstrates `web_search_mode` toggles, validates disabled/live behavior, and reports cached-mode search events when available
 - `examples/live_rate_limits.exs` — prints rate limit snapshots from token usage/account updates
 - `examples/live_session_walkthrough.exs` — multi-turn session with follow-ups and labels
-- `examples/live_exec_controls.exs` — demonstrates cancellation/controls on streaming turns
+- `examples/live_exec_controls.exs` — demonstrates cancellation/controls on streaming turns; put script-specific flags after `--`, for example `mix run examples/live_exec_controls.exs -- --no-cancel "Reply with exactly OK"`. Shared placement flags such as `--cwd` go before that separator.
 - `examples/live_tooling_stream.exs` — streams tool calls and approvals
 - `examples/live_telemetry_stream.exs` — emits telemetry events during streaming
 - `examples/live_usage_and_compaction.exs` — shows live usage accumulation

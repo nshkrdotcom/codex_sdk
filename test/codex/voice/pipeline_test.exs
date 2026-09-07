@@ -82,7 +82,7 @@ defmodule Codex.Voice.PipelineTest do
     test "creates pipeline with required workflow" do
       pipeline = Pipeline.new(workflow: %MockWorkflow{})
       assert pipeline.workflow == %MockWorkflow{}
-      assert pipeline.config != nil
+      assert pipeline.config == %Config{}
     end
 
     test "creates pipeline with custom config" do

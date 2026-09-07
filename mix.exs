@@ -3,7 +3,7 @@ if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_f
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.19.0"
+  @version "0.20.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -23,6 +23,7 @@ defmodule CodexSdk.MixProject do
       source_url: @source_url,
       homepage_url: @homepage_url,
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [&String.starts_with?(&1, "test/support/")],
       dialyzer: [
         plt_add_apps: [:mix],
         plt_core_path: "priv/plts/core",
@@ -77,7 +78,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep({:cli_subprocess_core, "~> 0.7.0"})
+    workspace_dep({:cli_subprocess_core, "~> 0.8.0"})
   end
 
   defp description do

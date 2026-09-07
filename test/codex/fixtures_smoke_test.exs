@@ -58,7 +58,7 @@ defmodule Codex.FixturesSmokeTest do
   defp read_frames(dir, file) do
     dir
     |> Path.join(file)
-    |> File.stream!([], :line)
+    |> File.stream!(:line)
     |> Stream.map(&String.trim/1)
     |> Stream.reject(&(&1 == "" or String.starts_with?(&1, "#")))
     |> Enum.map(&Jason.decode!/1)

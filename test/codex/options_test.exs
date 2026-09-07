@@ -622,16 +622,12 @@ defmodule Codex.OptionsTest do
       refute Map.get(opts.model_payload.extra, "unregistered")
     end
 
-    test "allow_unknown_model: false recognizes the Spark preview" do
-      assert {:ok, %Options{} = opts} =
+    test "allow_unknown_model: false rejects retired Spark preview" do
+      assert {:error, {:unknown_model, "gpt-5.3-codex-spark", _, :codex}} =
                Options.new(%{
                  model: "gpt-5.3-codex-spark",
                  allow_unknown_model: false
                })
-
-      assert opts.model == "gpt-5.3-codex-spark"
-      assert opts.reasoning_effort == :high
-      refute Map.get(opts.model_payload.extra, "unregistered")
     end
 
     test "rejects a non-boolean allow_unknown_model value" do
@@ -677,7 +673,7 @@ defmodule Codex.OptionsTest do
       for effort <- [:max, :ultra] do
         assert {:error,
                 {:invalid_reasoning_effort, ^effort, ["high", "low", "medium", "xhigh"], :codex}} =
-                 Options.new(%{model: "gpt-5.3-codex-spark", reasoning_effort: effort})
+                 Options.new(%{model: "gpt-5.4-mini", reasoning_effort: effort})
       end
     end
 

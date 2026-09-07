@@ -7,7 +7,7 @@ defmodule Codex.Voice.WorkflowTest do
   describe "SimpleWorkflow" do
     test "creates with handler function" do
       workflow = SimpleWorkflow.new(fn text -> ["Echo: #{text}"] end)
-      assert workflow.handler != nil
+      assert workflow.handler.("Hello") == ["Echo: Hello"]
     end
 
     test "run returns handler output" do

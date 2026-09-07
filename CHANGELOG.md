@@ -1,11 +1,23 @@
 # Changelog
 
+[0.20.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.19.0...v0.20.0
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.20.0] - 2026-09-07
+
+### Added
+
+- Support for GPT-6 Astra (`gpt-6-astra`, `gpt-6`, `astra`), OpenAI's frontier reasoning and autonomous agentic coding model.
+- Use `cli_subprocess_core ~> 0.8.0` and its authenticated CLI 0.153.4 catalog: Astra defaults to `:low` and supports through `:ultra` in the CLI.
+- Match live picker visibility, ordering, and reasoning defaults; retired picker entries remain eligible for explicit unknown-model passthrough.
+- Resolve Elixir 1.20 compiler and test deprecation warnings.
+- Preserve example-specific arguments after `--` while validating shared placement flags.
 
 ## [0.19.0] - 2026-08-11
 

@@ -65,8 +65,7 @@ defmodule Codex.Config.Constrained do
   end
 
   @doc "Attempt to set a value, returning error if constrained"
-  @spec set(t(value), value) :: {:ok, t(value)} | {:error, invalid_value_error()}
-        when value: any()
+  @spec set(t(), any()) :: {:ok, t()} | {:error, invalid_value_error()}
   def set(%__MODULE__{} = constrained, candidate) do
     if can_set?(constrained, candidate) do
       {:ok, %{constrained | value: candidate}}

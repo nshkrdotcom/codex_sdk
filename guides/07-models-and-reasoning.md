@@ -1,168 +1,75 @@
 # Models and Reasoning Configuration
 
-This guide explains how model selection and reasoning-effort levels work in the
-Codex SDK, where canonical defaults live, and how to override them at every
-layer of the configuration stack.
+The SDK reads model metadata from `CliSubprocessCore.ModelRegistry`; it does
+not maintain a second catalog. Version 0.20 requires CLI Core 0.8.
 
 ## Quick Reference
 
 ```elixir
-# Use the bundled registry default model metadata (currently gpt-5.6-sol)
-{:ok, opts} = Codex.Options.new(%{})
-
-# Explicitly choose a model
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-sol"})
-
-# Override reasoning effort
+{:ok, opts} = Codex.Options.new(%{model: "gpt-6-astra", reasoning_effort: :low})
 {:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-terra", reasoning_effort: :ultra})
-
-# A model newer than the bundled registry passes through by default (with a
-# logged warning) - see "Models Newer Than The Bundled Registry" below
-{:ok, opts} = Codex.Options.new(%{model: "gpt-5.7-not-yet-bundled"})
-
-# Use the realtime default model
-agent = %Codex.Realtime.Agent{model: Codex.Realtime.Agent.default_model()}
+Codex.Models.default_model() # "gpt-6-astra"
 ```
 
 ## Model Defaults
 
-The SDK derives bundled text-model metadata from the shared
-`CliSubprocessCore.ModelRegistry` catalog:
+Both auth modes expose the same bundled picker and registry default. Omitting
+an explicit model in a live invocation still lets the installed CLI choose;
+the registry reader itself does not apply environment overrides. Runtime
+configuration materializes `CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, and
+`CODEX_MODEL_DEFAULT` in that order when supplied.
 
-| Context | Default | Source |
-|---------|---------|--------|
-| API auth mode | `Codex.Models.default_model(:api)` | First picker-visible API-supported model from the active catalog, with `Codex.Config.Defaults.default_api_model/0` as fallback |
-| ChatGPT auth mode | `Codex.Models.default_model(:chatgpt)` | First picker-visible ChatGPT model from the active catalog, with `Codex.Config.Defaults.default_chatgpt_model/0` as fallback |
-| Realtime sessions | `Codex.Realtime.Agent.default_model()` | `@default_model` in `Codex.Realtime.Agent` |
-| Speech-to-text | `Codex.Voice.Models.OpenAISTT.model_name()` | `@default_model` in `OpenAISTT` |
-| Text-to-speech | `Codex.Voice.Models.OpenAITTS.model_name()` | `@default_model` in `OpenAITTS` |
-
-`Codex.Models.default_model/0` is a registry reader. It does not apply env
-overrides and it does not force live exec/app-server runs to use that model.
-Those live runtime surfaces only pin a model when `Codex.Options` resolves an
-explicit model from user input, `CODEX_MODEL`, or an OSS provider route.
-
-The exact text default is catalog-derived, not a permanent public contract.
-With the shared catalog selected for this SDK, both text auth modes currently
-resolve to `gpt-5.6-sol` (default reasoning effort `:low`).
-
-Upstream's separate Amazon Bedrock catalog also prioritizes GPT-5.6 Sol as its
-provider default, followed by Terra and Luna. That catalog behavior is distinct
-from the experimental Bedrock login request, which current upstream still
-reports as unimplemented.
-
-The active offline catalog is owned by `CliSubprocessCore.ModelRegistry`. In a
-sibling development checkout its Codex data lives at
-`../cli_subprocess_core/priv/models/codex.json`; standalone and released builds
-consume the same catalog from their selected `cli_subprocess_core` dependency.
-This SDK does not ship or read a second model-data copy.
-
-Persistent `Codex.OAuth` login participates in the same ChatGPT auth-mode model
-selection. Memory-only external app-server auth is connection-local and does not
-change the current BEAM process's default-model inference on its own.
-
-### Environment Overrides
-
-When you build `Codex.Options` without an explicit `:model`, the shared payload
-resolver checks these environment variables (in order) before leaving model
-selection implicit for the installed `codex` CLI runtime:
-
-1. `CODEX_MODEL`
-2. `OPENAI_DEFAULT_MODEL`
-3. `CODEX_MODEL_DEFAULT`
-
-```bash
-CODEX_MODEL=gpt-5.6-sol mix run my_script.exs
-```
+Realtime, speech-to-text, and text-to-speech use their own model defaults.
+A CLI catalog refresh does not change those separate API surfaces.
 
 ## Available Models
 
-Call `Codex.Models.list_visible/1` to see the bundled picker-visible catalog:
+Authenticated `codex-cli 0.153.4` `model/list` with `includeHidden: true`
+was captured on 2026-09-07. The shared Core fixture
+`test/fixtures/codex_model_list_20260907.json` records the response.
+
+| Picker model | Default effort | Allowed CLI efforts |
+| --- | --- | --- |
+| `gpt-6-astra` (default) | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-5.6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-5.6-terra` | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-5.6-luna` | `medium` | low, medium, high, xhigh, max |
+| `gpt-5.5` | `xhigh` | low, medium, high, xhigh |
+| `gpt-5.4-mini` | `medium` | low, medium, high, xhigh |
+
+`gpt-reserve` and `codex-auto-review` are internal and omitted from the
+picker. GPT-5.4 and Spark were absent from this live response and are no longer
+bundled entries; explicit unknown-model passthrough remains available.
+The SDK convenience aliases `astra` and `gpt-6` resolve to `gpt-6-astra`;
+they are not claims about provider API aliases.
 
 ```elixir
-iex> Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-#=> [
-#=>   "gpt-5.6-sol",
-#=>   "gpt-5.6-terra",
-#=>   "gpt-5.6-luna",
-#=>   "gpt-5.5",
-#=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
-#=>   "gpt-5.3-codex-spark"
-#=> ]
-
-iex> Codex.Models.list_visible(:chatgpt) |> Enum.map(& &1.id)
-#=> [
-#=>   "gpt-5.6-sol",
-#=>   "gpt-5.6-terra",
-#=>   "gpt-5.6-luna",
-#=>   "gpt-5.5",
-#=>   "gpt-5.4",
-#=>   "gpt-5.4-mini",
-#=>   "gpt-5.3-codex-spark"
-#=> ]
+Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
+# ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra",
+#  "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-mini"]
 ```
 
-That is the bundled picker-visible snapshot shipped with this repo and the
-order `Codex.Models.list_visible/1` exposes locally. The catalog also carries
-an internal `codex-auto-review` entry (visibility `:internal`) that
-`list_visible/1` omits by default, matching upstream's "hide" visibility for
-that model.
-
-This catalog was last verified 2026-07-10 against a live `model/list`
-JSON-RPC probe (including `includeHidden: true`) run directly against an
-authenticated `codex-cli 0.144.1` install. The pulled upstream source snapshot
-placed GPT-5.6 Sol first and still listed `gpt-5.2`; the live backend made Sol
-the default, exposed Spark, and did not serve `gpt-5.2`. A live Spark exec also
-returned the expected response. The bundled catalog therefore follows the
-live current CLI contract. Repeat the probe with
-`Codex.AppServer.model_list(conn, include_hidden: true)` when the installed CLI
-changes.
-
-The current specialized Codex IDs are explicit:
-
-| Model | Role | Default effort | Supported efforts |
-| --- | --- | --- | --- |
-| `gpt-5.6-sol` | Frontier agentic coding | `:low` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
-| `gpt-5.6-terra` | Balanced everyday agentic coding | `:medium` | `:low`, `:medium`, `:high`, `:xhigh`, `:max`, `:ultra` |
-| `gpt-5.6-luna` | Fast agentic coding | `:medium` | `:low`, `:medium`, `:high`, `:xhigh`, `:max` |
-| `gpt-5.3-codex-spark` | Near-instant text-only ChatGPT Pro preview | `:high` | `:low`, `:medium`, `:high`, `:xhigh` |
-
-The OpenAI API's `gpt-5.6` family alias is not added to this Codex CLI catalog.
-Select one of the explicit IDs reported by `model/list`.
-Spark is a ChatGPT Pro research preview with a separate usage limit and is not
-available through the OpenAI API at launch; inspect `supported_in_api` before
-presenting it in API-key-only product UI.
-
-Upstream model-availability announcements now consider only the first eligible
-catalog entry. Once that announcement reaches its display limit, Codex shows no
-announcement instead of falling back to an older model's announcement.
+The [official Astra API model page](https://developers.openai.com/api/docs/models/gpt-6-astra)
+lists low through max, a 1,050,000-token context, and 128,000 maximum output.
+The additional `ultra` effort above is authenticated **Codex CLI** evidence,
+not Responses API support. Registry effort multipliers are SDK normalization
+values, not measured cost ratios.
 
 ### Dependency And Release Ordering
 
-Development dependency selection prefers a real sibling path, then the GitHub
-source, then Hex. Release tasks intentionally select Hex, so a release consumes
-the catalog published by `cli_subprocess_core`, not an arbitrary workspace
-copy. Publish the dependency chain bottom-up:
+Committed dependencies are ordinary Hex requirements. Operator-managed local
+development uses the MWO bootstrap and Portfolio Registry source coordinates.
+Publish from ordinary standalone Hex mode in this order:
 
-1. `ground_plane_contracts` and `ground_plane_persistence_policy` 0.1.0
-2. `execution_plane`, `execution_plane_process`, and
-   `execution_plane_jsonrpc` 0.1.0
-3. `cli_subprocess_core` 0.7.0
-4. `codex_sdk` 0.19.0
+1. Publish GroundPlane Contracts 0.1.1. Existing Persistence Policy 0.1.0,
+   Execution Plane core 0.3.0, and JSON-RPC 0.2.0 remain prerequisites; do not republish them.
+2. Publish `execution_plane_process 0.3.1`.
+3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.8.0`.
+4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.20.0`.
 
-The publish preflight blocks `codex_sdk` 0.19.0 until those prerequisite
-packages are available on Hex. Publish mode must lock the ordinary Hex graph;
-the SDK cannot substitute sibling paths or the Execution Plane projection for
-that proof. After each parent release, verify the chain again from a clean
-Hex-only consumer before publishing this SDK.
-
-The recommended installed CLI remains `codex-cli 0.144.1`; no stable 0.145
-release is available. The SDK also carries additive parser coverage derived
-from newer protocol source. Those optional fields are harmless when absent and
-become available when the connected CLI emits them. A live app-server build
-reporting 0.144.1 already exposed turn timing, while the current exec JSONL
-terminal event still exposes usage only.
+Tag the exact published commit `v0.20.0` after verifying the Hex release.
+The vendored upstream source is historical protocol evidence; this model
+refresh does not assert full parity with every CLI 0.153.4 feature.
 
 ### Models Newer Than The Bundled Registry
 
@@ -231,7 +138,7 @@ through without duplicating that capability gate.
 | `:none` | `"none"` | No reasoning |
 | `:minimal` | `"minimal"` | Minimal reasoning |
 | `:low` | `"low"` | Fast responses with lighter reasoning |
-| `:medium` | `"medium"` | Balanced speed and reasoning depth (default) |
+| `:medium` | `"medium"` | Balanced speed and reasoning depth (model-dependent default) |
 | `:high` | `"high"` | Greater reasoning depth for complex problems |
 | `:xhigh` | `"xhigh"` | Extra-high reasoning for the most complex problems |
 | `:max` | `"max"` | Upstream's highest first-class effort level |

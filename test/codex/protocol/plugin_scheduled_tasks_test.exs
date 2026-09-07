@@ -93,7 +93,7 @@ defmodule Codex.Protocol.PluginScheduledTasksTest do
   defp read_frame(dir, file) do
     dir
     |> Path.join(file)
-    |> File.stream!([], :line)
+    |> File.stream!(:line)
     |> Stream.map(&String.trim/1)
     |> Enum.find(&(&1 != "" and not String.starts_with?(&1, "#")))
     |> Jason.decode!()

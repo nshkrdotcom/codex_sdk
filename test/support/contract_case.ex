@@ -52,7 +52,7 @@ defmodule Codex.ContractCase do
   @spec load_jsonl_fixture(Path.t()) :: [map()]
   def load_jsonl_fixture(path) do
     path
-    |> File.stream!([], :line)
+    |> File.stream!(:line)
     |> Stream.map(&String.trim/1)
     |> Stream.reject(&(&1 == ""))
     |> Enum.map(&decode_json!/1)
