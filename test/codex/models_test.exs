@@ -63,16 +63,19 @@ defmodule Codex.ModelsTest do
 
       assert Enum.map(models, & &1.id) == [
                "gpt-6-astra",
+               "gpt-6-sol",
+               "gpt-6-luna",
                "gpt-5.6-sol",
                "gpt-5.6-terra",
                "gpt-5.6-luna",
-               "gpt-5.5",
-               "gpt-5.4-mini"
+               "gpt-5.5"
              ]
 
       assert Enum.any?(models, &(&1.id == "gpt-6-astra"))
+      assert Enum.any?(models, &(&1.id == "gpt-6-sol"))
+      assert Enum.any?(models, &(&1.id == "gpt-6-luna"))
       assert Enum.any?(models, &(&1.id == "gpt-5.5"))
-      assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
+      refute Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-mini"))
@@ -83,7 +86,7 @@ defmodule Codex.ModelsTest do
       # codex-cli 0.144.1 install, 2026-07-10.
       refute Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2"))
-      assert length(models) == 6
+      assert length(models) == 7
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
@@ -102,6 +105,8 @@ defmodule Codex.ModelsTest do
       assert Models.supported_in_api?("gpt-5.4-mini")
       refute Models.supported_in_api?("gpt-5.3-codex-spark")
       assert Models.default_reasoning_effort("gpt-6-astra") == :low
+      assert Models.default_reasoning_effort("gpt-6-sol") == :medium
+      assert Models.default_reasoning_effort("gpt-6-luna") == :medium
       assert Models.default_reasoning_effort("gpt-5.4-mini") == :medium
       assert Models.default_reasoning_effort(default_model()) == :low
       assert Models.default_reasoning_effort("gpt-5.6-sol") == :medium
@@ -149,13 +154,13 @@ defmodule Codex.ModelsTest do
       assert Enum.any?(models, &(&1.id == "gpt-5.6-sol"))
       assert Enum.any?(models, &(&1.id == "gpt-5.6-terra"))
       assert Enum.any?(models, &(&1.id == "gpt-5.6-luna"))
-      assert Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
+      refute Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5.3-codex-spark"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5-codex"))
-      assert length(models) == 6
+      assert length(models) == 7
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)

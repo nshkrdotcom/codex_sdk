@@ -1,7 +1,7 @@
 # Models and Reasoning Configuration
 
 The SDK reads model metadata from `CliSubprocessCore.ModelRegistry`; it does
-not maintain a second catalog. Version 0.20 requires CLI Core 0.8.
+not maintain a second catalog. Version 0.21 requires CLI Core 0.9.
 
 ## Quick Reference
 
@@ -31,13 +31,14 @@ was captured on 2026-09-07. The shared Core fixture
 | Picker model | Default effort | Allowed CLI efforts |
 | --- | --- | --- |
 | `gpt-6-astra` (default) | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-6-sol` | `medium` | none, low, medium, high, xhigh, max |
+| `gpt-6-luna` | `medium` | none, low, medium, high, xhigh, max |
 | `gpt-5.6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-terra` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-luna` | `medium` | low, medium, high, xhigh, max |
 | `gpt-5.5` | `xhigh` | low, medium, high, xhigh |
-| `gpt-5.4-mini` | `medium` | low, medium, high, xhigh |
 
-`gpt-reserve` and `codex-auto-review` are internal and omitted from the
+`gpt-reserve`, `gpt-5.4-mini`, and `codex-auto-review` are internal and omitted from the
 picker. GPT-5.4 and Spark were absent from this live response and are no longer
 bundled entries; explicit unknown-model passthrough remains available.
 The SDK convenience aliases `astra` and `gpt-6` resolve to `gpt-6-astra`;
@@ -45,8 +46,8 @@ they are not claims about provider API aliases.
 
 ```elixir
 Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-# ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra",
-#  "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-mini"]
+# ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+#  "gpt-5.6-luna", "gpt-5.5"]
 ```
 
 The [official Astra API model page](https://developers.openai.com/api/docs/models/gpt-6-astra)
@@ -64,10 +65,10 @@ Publish from ordinary standalone Hex mode in this order:
 1. Publish GroundPlane Contracts 0.1.1. Existing Persistence Policy 0.1.0,
    Execution Plane core 0.3.0, and JSON-RPC 0.2.0 remain prerequisites; do not republish them.
 2. Publish `execution_plane_process 0.3.1`.
-3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.8.0`.
-4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.20.0`.
+3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.0`.
+4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.0`.
 
-Tag the exact published commit `v0.20.0` after verifying the Hex release.
+Tag the exact published commit `v0.21.0` after verifying the Hex release.
 The vendored upstream source is historical protocol evidence; this model
 refresh does not assert full parity with every CLI 0.153.4 feature.
 
