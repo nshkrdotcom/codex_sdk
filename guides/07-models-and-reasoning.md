@@ -66,9 +66,9 @@ Publish from ordinary standalone Hex mode in this order:
    Execution Plane core 0.3.0, and JSON-RPC 0.2.0 remain prerequisites; do not republish them.
 2. Publish `execution_plane_process 0.3.1`.
 3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.0`.
-4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.0`.
+4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.1`.
 
-Tag the exact published commit `v0.21.0` after verifying the Hex release.
+Tag the exact published commit `v0.21.1` after verifying the Hex release.
 The vendored upstream source is historical protocol evidence; this model
 refresh does not assert full parity with every CLI 0.153.4 feature.
 

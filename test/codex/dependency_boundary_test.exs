@@ -16,14 +16,14 @@ defmodule Codex.DependencyBoundaryTest do
   end
 
   test "the standalone and publishable fallback uses the released CLI core" do
-    assert {:cli_subprocess_core, "~> 0.9.0"} =
+    assert {:cli_subprocess_core, "~> 0.9.1"} =
              List.keyfind(standalone_deps(), :cli_subprocess_core, 0)
   end
 
-  test "release coordinates match the 0.21.0 package contract" do
+  test "release coordinates match the 0.21.1 package contract" do
     project = Mix.Project.config()
 
-    assert project[:version] == "0.21.0"
+    assert project[:version] == "0.21.1"
     assert project[:elixir] == "~> 1.19"
   end
 
