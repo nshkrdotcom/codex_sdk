@@ -158,8 +158,8 @@ an explicit `base_instructions` override remains untouched.
 
 | Function | Default |
 |----------|---------|
-| `default_api_model/0` | `"gpt-5.6-sol"` |
-| `default_chatgpt_model/0` | `"gpt-5.6-sol"` |
+| `default_api_model/0` | `"gpt-6.1-sol"` |
+| `default_chatgpt_model/0` | `"gpt-6.1-sol"` |
 | `remote_models_cache_ttl_seconds/0` | 300 |
 
 ### Protocol Constants

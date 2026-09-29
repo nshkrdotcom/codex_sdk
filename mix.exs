@@ -3,7 +3,7 @@ if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_f
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.21.1"
+  @version "0.21.2"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -78,7 +78,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep({:cli_subprocess_core, "~> 0.9.1"})
+    workspace_dep({:cli_subprocess_core, "~> 0.9.2"})
   end
 
   defp description do
@@ -117,6 +117,7 @@ defmodule CodexSdk.MixProject do
         "guides/16-env-and-secrets.md": [title: "Environment And Secrets"],
         "guides/17-migrating-to-0.19.md": [title: "Migrating to 0.19"],
         "guides/provider_behavior_manifest.md": [title: "Provider Behavior Manifest"],
+        "guides/release-train-2026-09-29.md": [title: "2026-09-29 Release Train"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
       ],

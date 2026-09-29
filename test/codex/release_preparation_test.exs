@@ -7,8 +7,8 @@ defmodule Codex.ReleasePreparationTest do
     project = Mix.Project.config()
     package_files = project[:package][:files]
 
-    assert project[:version] == "0.21.1"
-    assert project[:docs][:source_ref] == "v0.21.1"
+    assert project[:version] == "0.21.2"
+    assert project[:docs][:source_ref] == "v0.21.2"
     assert project[:docs][:homepage_url] == "https://hexdocs.pm/codex_sdk"
     assert project[:docs][:assets] == %{"assets" => "assets"}
     assert project[:docs][:logo] == "assets/codex_sdk.svg"

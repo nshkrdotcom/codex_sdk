@@ -26,7 +26,7 @@
 ## Model Registry and Auth Behavior
 - Auth mode inference order: `CODEX_API_KEY`, then `auth.json` `OPENAI_API_KEY`, else ChatGPT tokens.
 - Defaults must come from the shared `CliSubprocessCore.ModelRegistry` Codex catalog.
-- The bundled Codex picker models are `gpt-6-astra` (default, low effort), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, and `gpt-5.4-mini`; `gpt-reserve` and `codex-auto-review` are internal, non-picker entries. Verified with authenticated `codex-cli 0.153.4` `model/list` including hidden entries on 2026-09-07. The recorded fixture is in the shared Core repository. Do not substitute the vendored source catalog for live evidence.
+- The bundled Codex picker defaults to `gpt-6.1-sol` (low effort), followed by `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and `gpt-5.5`. `gpt-reserve` and `codex-auto-review` are internal. Verified with authenticated `codex-cli 0.159.0` `model/list` including hidden entries on 2026-09-29; the fixture is in Core. Do not substitute the vendored source catalog for live evidence.
 - Target the current installed Codex CLI only. Do not add compatibility aliases, retired model shims, or protocol fallbacks for older CLI versions.
 - `Codex.Options` accepts `allow_unknown_model` (default `true`) so a model newer than this bundled list still passes through; do not treat this list as a hard allowlist when reviewing model-related changes.
 - Remote model registry is gated by `features.remote_models` (default false) in `config.toml`.

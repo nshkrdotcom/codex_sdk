@@ -6,9 +6,9 @@ not maintain a second catalog. Version 0.21 requires CLI Core 0.9.
 ## Quick Reference
 
 ```elixir
-{:ok, opts} = Codex.Options.new(%{model: "gpt-6-astra", reasoning_effort: :low})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-6.1-sol", reasoning_effort: :low})
 {:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-terra", reasoning_effort: :ultra})
-Codex.Models.default_model() # "gpt-6-astra"
+Codex.Models.default_model() # "gpt-6.1-sol"
 ```
 
 ## Model Defaults
@@ -24,31 +24,36 @@ A CLI catalog refresh does not change those separate API surfaces.
 
 ## Available Models
 
-Authenticated `codex-cli 0.153.4` `model/list` with `includeHidden: true`
-was captured on 2026-09-07. The shared Core fixture
-`test/fixtures/codex_model_list_20260907.json` records the response.
+Authenticated `codex-cli 0.159.0` `model/list` with `includeHidden: true`
+was captured on 2026-09-29. The shared Core fixture
+`test/fixtures/codex_model_list_20260929.json` records the response.
 
 | Picker model | Default effort | Allowed CLI efforts |
 | --- | --- | --- |
-| `gpt-6-astra` (default) | `low` | low, medium, high, xhigh, max, ultra |
-| `gpt-6-sol` | `medium` | none, low, medium, high, xhigh, max |
-| `gpt-6-luna` | `medium` | none, low, medium, high, xhigh, max |
-| `gpt-5.6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-6.1-sol` (default) | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-6-astra` | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-6-luna` | `medium` | low, medium, high, xhigh, max |
+| `gpt-5.6-sol` | `low` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-terra` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-luna` | `medium` | low, medium, high, xhigh, max |
-| `gpt-5.5` | `xhigh` | low, medium, high, xhigh |
+| `gpt-5.5` | `medium` | low, medium, high, xhigh |
 
-`gpt-reserve`, `gpt-5.4-mini`, and `codex-auto-review` are internal and omitted from the
-picker. GPT-5.4 and Spark were absent from this live response and are no longer
+`gpt-reserve` and `codex-auto-review` are internal and omitted from the
+picker. GPT-5.4 Mini, GPT-5.4, and Spark were absent from this live response and are no longer
 bundled entries; explicit unknown-model passthrough remains available.
 The SDK convenience aliases `astra` and `gpt-6` resolve to `gpt-6-astra`;
 they are not claims about provider API aliases.
 
 ```elixir
 Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-# ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+# ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
 #  "gpt-5.6-luna", "gpt-5.5"]
 ```
+
+GPT-6.1 Sol uses low by default in Codex CLI and supports CLI `ultra`.
+The [official GPT-6.1 Sol API model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
+lists low through max; API requests do not support `none` or `minimal`.
 
 The [official Astra API model page](https://developers.openai.com/api/docs/models/gpt-6-astra)
 lists low through max, a 1,050,000-token context, and 128,000 maximum output.
@@ -65,12 +70,12 @@ Publish from ordinary standalone Hex mode in this order:
 1. Publish GroundPlane Contracts 0.1.1. Existing Persistence Policy 0.1.0,
    Execution Plane core 0.3.0, and JSON-RPC 0.2.0 remain prerequisites; do not republish them.
 2. Publish `execution_plane_process 0.3.1`.
-3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.0`.
-4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.1`.
+3. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.2`.
+4. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.2`.
 
-Tag the exact published commit `v0.21.1` after verifying the Hex release.
+Tag the exact published commit `v0.21.2` after verifying the Hex release.
 The vendored upstream source is historical protocol evidence; this model
-refresh does not assert full parity with every CLI 0.153.4 feature.
+refresh does not assert full parity with every CLI 0.159.0 feature.
 
 ### Models Newer Than The Bundled Registry
 
@@ -322,8 +327,8 @@ The `OpenAIProvider` delegates to the individual STT/TTS module defaults.
 Some models have upgrade paths to newer versions. Query them with:
 
 ```elixir
-iex> Codex.Models.get_upgrade("gpt-5.5")
-nil
+iex> Codex.Models.get_upgrade("gpt-5.5").id
+"gpt-5.6-sol"
 
 iex> Codex.Models.get_upgrade("gpt-5.4")
 nil
