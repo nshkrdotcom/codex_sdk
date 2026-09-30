@@ -3,7 +3,7 @@ if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_f
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.21.2"
+  @version "0.21.3"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -55,30 +55,30 @@ defmodule CodexSdk.MixProject do
   defp deps do
     [
       cli_subprocess_core_dep(),
-      {:jason, "~> 1.4"},
-      {:zoi, "~> 0.18"},
+      {:jason, "~> 1.4.5"},
+      {:zoi, "~> 0.18.11"},
       {:typed_struct, "~> 0.3.0"},
-      {:telemetry, "~> 1.4"},
-      {:opentelemetry, "~> 1.7"},
-      {:opentelemetry_exporter, "~> 1.10"},
-      {:req, "~> 0.5"},
-      {:oauth2, "~> 2.1"},
-      {:plug, "~> 1.19"},
-      {:bandit, "~> 1.10"},
+      {:telemetry, "~> 1.4.2"},
+      {:opentelemetry, "~> 1.7.0"},
+      {:opentelemetry_exporter, "~> 1.11.0"},
+      {:req, "~> 0.7.4"},
+      {:oauth2, "~> 2.1.1"},
+      {:plug, "~> 1.20.3"},
+      {:bandit, "~> 1.12.5"},
       {:websockex, "~> 0.5.1"},
-      {:toml, "~> 0.7"},
+      {:toml, "~> 0.7.0"},
       {:supertester, "~> 0.6.0", only: :test},
-      {:mox, "~> 1.2", only: :test},
-      {:stream_data, "~> 1.3", only: :test},
-      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:mox, "~> 1.3.2", only: :test},
+      {:stream_data, "~> 1.4.0", only: :test},
+      {:ex_doc, "~> 0.40.4", only: :dev, runtime: false},
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.8", only: [:dev], runtime: false},
+      {:excoveralls, "~> 0.18.5", only: :test}
     ]
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep({:cli_subprocess_core, "~> 0.9.2"})
+    workspace_dep({:cli_subprocess_core, "~> 0.9.3"})
   end
 
   defp description do

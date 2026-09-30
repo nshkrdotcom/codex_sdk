@@ -3,14 +3,14 @@
 Prepared versions, in publication order:
 
 1. `cli_subprocess_core 0.9.2`
-2. `codex_sdk 0.21.2` (requires Core `~> 0.9.2`)
-3. `agent_session_manager 0.17.2` (requires Core `~> 0.9.2`)
+2. `codex_sdk 0.21.3` (requires Core `~> 0.9.3`)
+3. `agent_session_manager 0.17.2` (requires Core `~> 0.9.3`)
 
 All three consume the shared GPT-6.1 Sol default with low CLI reasoning effort.
 The authenticated `codex-cli 0.159.0` catalog is recorded in Core's
 `test/fixtures/codex_model_list_20260929.json`. Existing lower Execution Plane
 and Ground Plane releases remain prerequisites and need no new release.
-ASM keeps provider SDKs optional and documents Codex SDK `~> 0.21.2` for callers
+ASM keeps provider SDKs optional and documents Codex SDK `~> 0.21.3` for callers
 who install its SDK lane.
 
 ## Publication handoff
@@ -35,10 +35,10 @@ env -u MIX_WORKSPACE_OPS_BOOTSTRAP mix hex.build
 ```
 
 Commit each refreshed `mix.lock` before publishing that package. Run
-`mix hex.publish` after validation. Confirm SDK 0.21.2 is
+`mix hex.publish` after validation. Confirm SDK 0.21.3 is
 available before publishing ASM. ASM has no direct SDK dependency or SDK lock
-to update; SDK consumers should update `codex_sdk` to 0.21.2 in their own locks.
-Tag each exact published commit `v0.9.2`, `v0.21.2`, or `v0.17.2` after verifying
+to update; SDK consumers should update `codex_sdk` to 0.21.3 in their own locks.
+Tag each exact published commit `v0.9.2`, `v0.21.3`, or `v0.17.2` after verifying
 its Hex release. A clean standalone Hex resolution after Core publication is
 the remaining release-time check; local source verification cannot replace it.
 
