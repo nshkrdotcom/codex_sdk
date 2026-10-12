@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release checks now prove that repository-only `build_support` tooling is
   excluded from the published package.
 
+### Changed
+
+- MCP `tools/call` retries now default to zero. Callers can still opt in for
+  read-only or provider-idempotent operations, while ambiguous mutating-tool
+  outcomes are no longer replayed automatically after a lost response.
+
 ## [0.18.1] - 2026-07-27
 
 ### Changed

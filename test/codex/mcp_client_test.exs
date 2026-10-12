@@ -56,7 +56,13 @@ defmodule Codex.MCPClientTest do
           other -> other
         end
 
-      {:reply, {:ok, reply}, %{state | response: rest}}
+      result =
+        case reply do
+          {:transport_error, reason} -> {:error, reason}
+          other -> {:ok, other}
+        end
+
+      {:reply, result, %{state | response: rest}}
     end
 
     def handle_call(:recv, _from, %{response: []} = state) do
@@ -488,7 +494,9 @@ defmodule Codex.MCPClientTest do
       :telemetry.detach("test-mcp-tool-call-failure")
     end
 
-    test "uses default retries of 3" do
+    test "does not replay an ambiguous tool outcome by default" do
+      {:ok, mutations} = Agent.start_link(fn -> 0 end)
+
       {:ok, transport} =
         FakeTransport.start_link([
           rpc_ok(%{
@@ -496,23 +504,20 @@ defmodule Codex.MCPClientTest do
             "protocolVersion" => "2025-06-18",
             "serverInfo" => %{"name" => "stub", "version" => "0.0.1"}
           }),
-          rpc_error(%{"code" => -32_000, "message" => "fail1"}),
-          rpc_error(%{"code" => -32_000, "message" => "fail2"}),
-          rpc_error(%{"code" => -32_000, "message" => "fail3"}),
-          rpc_ok(%{"ok" => true})
+          fn _request ->
+            Agent.update(mutations, &(&1 + 1))
+            {:transport_error, :timeout}
+          end
         ])
 
       transport_ref = {FakeTransport, transport}
       {:ok, client} = Client.handshake(transport_ref, client: "codex", version: @sdk_version)
 
-      # Use a no-op backoff to avoid test delays
-      backoff = fn _attempt -> :ok end
-
-      # Default retries is 3, so after initial attempt + 3 retries = 4 total attempts
-      assert {:ok, %{"ok" => true}} = Client.call_tool(client, "test_tool", %{}, backoff: backoff)
+      assert {:error, :timeout} = Client.call_tool(client, "create_record", %{"name" => "one"})
+      assert Agent.get(mutations, & &1) == 1
 
       sent = FakeTransport.sent(transport)
-      assert Enum.count(sent, &(&1["method"] == "tools/call")) == 4
+      assert Enum.count(sent, &(&1["method"] == "tools/call")) == 1
     end
 
     test "fails after exhausting retries" do

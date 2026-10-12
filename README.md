@@ -1298,13 +1298,14 @@ See `examples/file_search_tool.exs` for more examples.
 
 ### MCP Tool Invocation
 
-Invoke tools on MCP servers with built-in retry logic, approval callbacks, and telemetry:
+Invoke tools on MCP servers with approval callbacks, telemetry, and explicit
+retry controls:
 
 ```elixir
-# Basic invocation with default retries (3) and exponential backoff
+# Basic invocation; no automatic replay
 {:ok, result} = Codex.MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
 
-# Custom retry and timeout settings
+# Explicit retry for a replay-safe read
 {:ok, result} = Codex.MCP.Client.call_tool(client, "fetch", %{"url" => url},
   retries: 5,
   timeout_ms: 30_000,
@@ -1319,6 +1320,12 @@ Invoke tools on MCP servers with built-in retry logic, approval callbacks, and t
   context: %{user: current_user}
 )
 ```
+
+`tools/call` retries default to zero. A timeout or connection loss after the
+request was sent can mean a mutating tool committed its external effect but
+lost the response. Enable retries only for read-only calls or operations backed
+by a stable destination idempotency guarantee; otherwise reconcile destination
+state before replaying.
 
 Telemetry events are emitted for observability:
 - `[:codex, :mcp, :tool_call, :start]` - When a call begins
