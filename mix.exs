@@ -3,7 +3,7 @@ if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_f
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.21.3"
+  @version "0.21.4"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -56,15 +56,15 @@ defmodule CodexSdk.MixProject do
     [
       cli_subprocess_core_dep(),
       {:jason, "~> 1.4.5"},
-      {:zoi, "~> 0.18.11"},
+      {:zoi, "~> 0.19.0"},
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.4.2"},
       {:opentelemetry, "~> 1.7.0"},
       {:opentelemetry_exporter, "~> 1.11.0"},
-      {:req, "~> 0.7.4"},
+      {:req, "~> 0.7.5"},
       {:oauth2, "~> 2.1.1"},
       {:plug, "~> 1.20.3"},
-      {:bandit, "~> 1.12.5"},
+      {:bandit, "~> 1.14.0"},
       {:websockex, "~> 0.5.1"},
       {:toml, "~> 0.7.0"},
       {:supertester, "~> 0.6.0", only: :test},
@@ -73,12 +73,13 @@ defmodule CodexSdk.MixProject do
       {:ex_doc, "~> 0.40.4", only: :dev, runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.8", only: [:dev], runtime: false},
-      {:excoveralls, "~> 0.18.5", only: :test}
+      {:excoveralls, "~> 0.18.5", only: :test},
+      {:castore, "~> 1.0.22", only: :test}
     ]
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep({:cli_subprocess_core, "~> 0.9.3"})
+    workspace_dep({:cli_subprocess_core, "~> 0.9.5"})
   end
 
   defp description do

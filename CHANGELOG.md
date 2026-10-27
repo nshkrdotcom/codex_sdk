@@ -11,6 +11,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.4] - 2026-10-26
+
+### Fixed
+
+- Rank max and ultra reasoning efforts when coercing unsupported values, avoiding a crash with current model metadata.
+
+### Changed
+
+- Require `cli_subprocess_core ~> 0.9.5` for the current eight-model Codex catalog, including GPT-6.1 Terra, with GPT-6.1 Sol as the low-effort default.
+- Update all direct dependency requirements and the complete Hex lockfile to current stable releases, including Zoi 0.19.0.
+- Require Bandit 1.14.0 and Req 0.7.5 so consumers using current Bandit no longer need an override.
+- Supply CAStore for warning-free ExCoveralls compilation. gproc remains at the latest compatible 1.2.0 because current grpcbox requires `~> 1.2.0`.
+
 ## [0.21.3] - 2026-09-29
 
 ### Changed

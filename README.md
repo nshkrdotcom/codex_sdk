@@ -13,12 +13,12 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 ## Upstream Parity Snapshot
 
-The `0.21.3` release implements the protocol catch-up through upstream
+The `0.21.4` release implements the protocol catch-up through upstream
 `openai/codex` commit `5c19155cbd` and was re-swept through current
 `origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
 surface. The 0.21 line updates the shared model catalog against authenticated
-`codex-cli 0.159.0` on 2026-09-29. GPT-6.1 Sol is the default, with low reasoning
-effort. This model-list probe does not imply a complete protocol parity sweep.
+`codex-cli 0.164.0` on 2026-10-26, including GPT-6.1 Terra. GPT-6.1 Sol is
+the default, with low reasoning effort. This model-list probe does not imply a complete protocol parity sweep.
 
 The SDK intentionally ships additive parsers ahead of that CLI for terminal
 turn timing/errors, plugin scheduled tasks, opaque prefixed item IDs, rollout
@@ -69,12 +69,12 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.21.3"}
+    {:codex_sdk, "~> 0.21.4"}
   ]
 end
 ```
 
-The 0.21 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.9.3`
+The 0.21 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.9.5`
 as its sole internal runtime dependency. The SDK continues to expose
 Codex-native APIs and core facades; callers do not need to depend directly on
 the underlying execution substrate.

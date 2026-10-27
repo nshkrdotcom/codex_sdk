@@ -2958,7 +2958,7 @@ defmodule Codex.AppServer.ApiTest do
             approval_policy: :on_request,
             approvals_reviewer: :auto_review,
             sandbox_policy: %{type: :workspace_write, writable_roots: ["/tmp"]},
-            model: "gpt-5.5",
+            model: "gpt-6-luna",
             service_tier: nil,
             effort: :high,
             summary: :concise
@@ -2975,7 +2975,7 @@ defmodule Codex.AppServer.ApiTest do
       assert params["approvalPolicy"] == "on-request"
       assert params["approvalsReviewer"] == "auto_review"
       assert params["sandboxPolicy"]["type"] == "workspaceWrite"
-      assert params["model"] == "gpt-5.5"
+      assert params["model"] == "gpt-6-luna"
       assert Map.has_key?(params, "serviceTier")
       assert params["serviceTier"] == nil
       assert params["effort"] == "high"
@@ -2987,7 +2987,9 @@ defmodule Codex.AppServer.ApiTest do
 
     test "thread_settings_update/3 omits serviceTier entirely when not supplied", %{conn: conn} do
       task =
-        Task.async(fn -> AppServer.thread_settings_update(conn, "thr_123", model: "gpt-5.5") end)
+        Task.async(fn ->
+          AppServer.thread_settings_update(conn, "thr_123", model: "gpt-6-luna")
+        end)
 
       assert_receive {:app_server_subprocess_send, ^conn, request_line}
 

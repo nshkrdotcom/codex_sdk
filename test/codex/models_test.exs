@@ -64,18 +64,19 @@ defmodule Codex.ModelsTest do
       assert Enum.map(models, & &1.id) == [
                "gpt-6.1-sol",
                "gpt-6-astra",
+               "gpt-6.1-terra",
                "gpt-6-sol",
                "gpt-6-luna",
                "gpt-5.6-sol",
                "gpt-5.6-terra",
-               "gpt-5.6-luna",
-               "gpt-5.5"
+               "gpt-5.6-luna"
              ]
 
       assert Enum.any?(models, &(&1.id == "gpt-6-astra"))
       assert Enum.any?(models, &(&1.id == "gpt-6-sol"))
       assert Enum.any?(models, &(&1.id == "gpt-6-luna"))
-      assert Enum.any?(models, &(&1.id == "gpt-5.5"))
+      assert Enum.any?(models, &(&1.id == "gpt-6.1-terra"))
+      refute Enum.any?(models, &(&1.id == "gpt-5.5"))
       refute Enum.any?(models, &(&1.id == "gpt-5.4-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
@@ -101,14 +102,14 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:chatgpt)
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
       assert Models.supported_in_api?("gpt-6-astra")
-      assert Models.supported_in_api?("gpt-5.5")
+      assert Models.supported_in_api?("gpt-6-sol")
       assert Models.supported_in_api?("gpt-5.6-sol")
       refute Models.supported_in_api?("gpt-5.4-mini")
       refute Models.supported_in_api?("gpt-5.3-codex-spark")
       assert Models.default_reasoning_effort("gpt-6-astra") == :low
       assert Models.default_reasoning_effort("gpt-6-sol") == :medium
       assert Models.default_reasoning_effort("gpt-6-luna") == :medium
-      assert Models.default_reasoning_effort("gpt-5.5") == :medium
+      assert Models.default_reasoning_effort("gpt-6.1-terra") == :low
       assert Models.default_reasoning_effort(default_model()) == :low
       assert Models.default_reasoning_effort("gpt-5.6-sol") == :low
       assert Models.default_reasoning_effort("gpt-5.6-terra") == :medium
@@ -137,7 +138,7 @@ defmodule Codex.ModelsTest do
       Env.put("CODEX_MODEL", "gpt-5.4-mini")
 
       assert Models.default_model() == default_model()
-      assert Models.default_reasoning_effort("gpt-5.5") == :medium
+      assert Models.default_reasoning_effort("gpt-6.1-terra") == :low
     end)
   end
 
@@ -151,7 +152,8 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
       assert Enum.any?(models, &(&1.id == "gpt-6-astra"))
       refute Enum.any?(models, &(&1.id == "gpt-5.4"))
-      assert Enum.any?(models, &(&1.id == "gpt-5.5"))
+      assert Enum.any?(models, &(&1.id == "gpt-6.1-terra"))
+      refute Enum.any?(models, &(&1.id == "gpt-5.5"))
       assert Enum.any?(models, &(&1.id == "gpt-5.6-sol"))
       assert Enum.any?(models, &(&1.id == "gpt-5.6-terra"))
       assert Enum.any?(models, &(&1.id == "gpt-5.6-luna"))
@@ -204,8 +206,7 @@ defmodule Codex.ModelsTest do
         )
       ])
 
-      assert %{id: "gpt-5.6-sol", upgrade_copy: copy} = Models.get_upgrade("gpt-5.5")
-      assert copy =~ "October 14, 2026"
+      assert Models.get_upgrade("gpt-5.5") == nil
       assert Models.get_upgrade("gpt-5.2-codex") == nil
     end)
   end
@@ -226,11 +227,16 @@ defmodule Codex.ModelsTest do
     assert Models.normalize_reasoning_effort("provider-custom") == {:ok, "provider-custom"}
     assert Models.reasoning_effort_to_string("provider-custom") == "provider-custom"
     assert Models.supported_in_api?(default_model()) == true
-    assert Models.tool_enabled?("gpt-5.5")
+    assert Models.tool_enabled?("gpt-6.1-terra")
     refute Models.tool_enabled?("gpt-5.1")
   end
 
-  test "projects GPT-5.6 model-specific reasoning efforts" do
+  test "projects GPT-6.1 Terra and GPT-5.6 model-specific reasoning efforts" do
+    assert Models.supported_reasoning_efforts("gpt-6.1-terra") |> Enum.map(& &1.effort) ==
+             [:low, :medium, :high, :xhigh, :max, :ultra]
+
+    assert Models.display_name("gpt-6.1-terra") == "GPT-6.1 Terra"
+
     assert Models.supported_reasoning_efforts("gpt-5.6-sol") |> Enum.map(& &1.effort) ==
              [:low, :medium, :high, :xhigh, :max, :ultra]
 
@@ -252,9 +258,12 @@ defmodule Codex.ModelsTest do
   end
 
   test "coerces reasoning effort to supported values" do
-    assert Models.coerce_reasoning_effort("gpt-5.5", :minimal) == :low
-    assert Models.coerce_reasoning_effort("gpt-5.5", :xhigh) == :xhigh
-    assert Models.coerce_reasoning_effort("gpt-5.5", :none) == :low
+    assert Models.coerce_reasoning_effort("gpt-6.1-terra", :minimal) == :low
+    assert Models.coerce_reasoning_effort("gpt-6.1-terra", :xhigh) == :xhigh
+    assert Models.coerce_reasoning_effort("gpt-6.1-terra", :none) == :low
+    assert Models.coerce_reasoning_effort("gpt-6-luna", :ultra) == :max
+    assert Models.coerce_reasoning_effort("gpt-6.1-terra", :max) == :max
+    assert Models.coerce_reasoning_effort("gpt-6.1-terra", :ultra) == :ultra
     assert Models.coerce_reasoning_effort("unknown-model", :xhigh) == :xhigh
   end
 

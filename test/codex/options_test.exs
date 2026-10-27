@@ -583,11 +583,11 @@ defmodule Codex.OptionsTest do
     test "does not crash when CODEX_MODEL points at a cross-catalog model under api auth" do
       auth_path = Path.join(System.get_env("CODEX_HOME"), "auth.json")
       File.write!(auth_path, ~s({"OPENAI_API_KEY":"sk-test"}))
-      Env.put("CODEX_MODEL", "gpt-5.5")
+      Env.put("CODEX_MODEL", "gpt-6-luna")
 
       assert {:ok, opts} = Options.new(%{})
       assert opts.api_key == "sk-test"
-      assert opts.model == "gpt-5.5"
+      assert opts.model == "gpt-6-luna"
       assert opts.reasoning_effort == :medium
     end
 
@@ -637,21 +637,22 @@ defmodule Codex.OptionsTest do
 
     test "rejects unsupported reasoning effort values" do
       assert {:error,
-              {:invalid_reasoning_effort, :minimal, ["high", "low", "medium", "xhigh"], :codex}} =
+              {:invalid_reasoning_effort, :minimal, ["high", "low", "max", "medium", "xhigh"],
+               :codex}} =
                Options.new(%{
                  model: alt_model(),
                  reasoning_effort: :minimal
                })
     end
 
-    test "accepts low reasoning for gpt-5.5" do
+    test "accepts low reasoning for gpt-6.1-terra" do
       assert {:ok, %Options{} = opts} =
                Options.new(%{
-                 model: "gpt-5.5",
+                 model: "gpt-6.1-terra",
                  reasoning_effort: :low
                })
 
-      assert opts.model == "gpt-5.5"
+      assert opts.model == "gpt-6.1-terra"
       assert opts.reasoning_effort == :low
     end
 
@@ -671,9 +672,8 @@ defmodule Codex.OptionsTest do
                Options.new(%{model: "gpt-5.6-luna", reasoning_effort: :ultra})
 
       for effort <- [:max, :ultra] do
-        assert {:error,
-                {:invalid_reasoning_effort, ^effort, ["high", "low", "medium", "xhigh"], :codex}} =
-                 Options.new(%{model: "gpt-5.5", reasoning_effort: effort})
+        assert {:ok, %Options{model: "gpt-6.1-terra", reasoning_effort: ^effort}} =
+                 Options.new(%{model: "gpt-6.1-terra", reasoning_effort: effort})
       end
     end
 

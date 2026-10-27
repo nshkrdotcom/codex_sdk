@@ -8,7 +8,7 @@ defmodule Codex.RuntimeExecRenderTest do
       Options.new(%{
         api_key: "test-key",
         base_url: "https://api.openai.com/v1",
-        model: "gpt-5.5",
+        model: "gpt-6-luna",
         execution_surface: [
           surface_kind: :local_subprocess,
           observability: %{suite: :promotion_path}
@@ -56,7 +56,7 @@ defmodule Codex.RuntimeExecRenderTest do
 
     args = render.args
     assert Enum.take(args, 2) == ["exec", "--json"]
-    assert flag_value(args, "--model") == "gpt-5.5"
+    assert flag_value(args, "--model") == "gpt-6-luna"
     assert flag_value(args, "--sandbox") == "read-only"
     assert "--ephemeral" in args
     assert "--ignore-user-config" in args

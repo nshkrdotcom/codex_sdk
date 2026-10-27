@@ -391,6 +391,8 @@ defmodule Codex.Models do
   defp effort_rank(:medium), do: 3
   defp effort_rank(:high), do: 4
   defp effort_rank(:xhigh), do: 5
+  defp effort_rank(:max), do: 6
+  defp effort_rank(:ultra), do: 7
 
   defp models_url(cwd) do
     base = resolve_models_base_url(cwd) |> String.trim_trailing("/")
