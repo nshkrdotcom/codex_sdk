@@ -1995,7 +1995,7 @@ defmodule Codex.AppServer do
   end
 
   defp encode_typed_request_params(_method, %module{} = params) do
-    if function_exported?(module, :to_map, 1) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :to_map, 1) do
       {:ok, module.to_map(params)}
     else
       {:ok, Map.from_struct(params)}

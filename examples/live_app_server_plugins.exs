@@ -164,8 +164,7 @@ defmodule CodexExamples.LiveAppServerPlugins do
 
   defp request_or_skip({:ok, result}, _feature), do: {:ok, result}
 
-  defp request_or_skip({:error, %{"code" => code, "message" => message}}, feature)
-       when code in [-32_601, -32_600, -32601, -32600] do
+  defp request_or_skip({:error, %{"code" => -32_601, "message" => message}}, feature) do
     {:skip, "#{feature} APIs are not supported by this `codex app-server` build: #{message}"}
   end
 

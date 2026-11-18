@@ -278,7 +278,7 @@ run_example_group() {
   echo "==> Running ${group_name}"
   for ex in "$@"; do
     if [[ ${#example_args[@]} -gt 0 ]]; then
-      echo "==> mix run ${ex} -- ${example_args[*]}"
+      echo "==> mix run ${ex} ${example_args[*]}"
     else
       echo "==> mix run ${ex}"
     fi
@@ -287,14 +287,14 @@ run_example_group() {
 
     if [[ -n "${EXAMPLE_TIMEOUT_SECONDS:-}" ]] && command -v timeout >/dev/null 2>&1; then
       if [[ ${#example_args[@]} -gt 0 ]]; then
-        timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" -- "${example_args[@]}" ||
+        timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" "${example_args[@]}" ||
           rc=$?
       else
         timeout --foreground "${EXAMPLE_TIMEOUT_SECONDS}s" mix run "${ex}" || rc=$?
       fi
     else
       if [[ ${#example_args[@]} -gt 0 ]]; then
-        mix run "${ex}" -- "${example_args[@]}" || rc=$?
+        mix run "${ex}" "${example_args[@]}" || rc=$?
       else
         mix run "${ex}" || rc=$?
       fi

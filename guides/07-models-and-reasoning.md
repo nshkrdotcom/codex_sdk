@@ -71,9 +71,11 @@ Publish from ordinary standalone Hex mode in this order:
 3. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.5`.
 4. Refresh ASM's Hex lock and publish `agent_session_manager 0.17.5`.
 
-Tag the exact published commit `v0.21.4` after verifying the Hex release.
+Tag the 0.21.5 release commit `v0.21.5` after verifying the Hex release.
 The vendored upstream source is historical protocol evidence; this model
 refresh does not assert full parity with every CLI 0.170.0 feature.
+
+SDK 0.21.6 retains the same Core dependency and model catalog.
 
 ### Models Newer Than The Bundled Registry
 

@@ -1866,6 +1866,45 @@ defmodule Codex.AppServer.ApiTest do
     assert {:ok, %{"signatureDerBase64" => "sig"}} = Task.await(sign_task, 200)
   end
 
+  @tag :tmp_dir
+  test "request_typed/5 loads the wire encoder before the first request", %{
+    conn: conn,
+    tmp_dir: tmp_dir
+  } do
+    [{module, beam}] =
+      Code.compile_string("""
+      defmodule Codex.AppServer.ColdRequestParams do
+        defstruct [:plugin_name]
+        def to_map(params), do: %{"pluginName" => params.plugin_name}
+      end
+      """)
+
+    File.write!(Path.join(tmp_dir, "#{module}.beam"), beam)
+    assert :code.delete(module)
+    :code.purge(module)
+    assert Code.prepend_path(tmp_dir)
+    assert :code.is_loaded(module) == false
+
+    on_exit(fn ->
+      Code.delete_path(tmp_dir)
+      :code.delete(module)
+      :code.purge(module)
+    end)
+
+    params = %{__struct__: module, plugin_name: "demo-plugin"}
+
+    task =
+      Task.async(fn ->
+        AppServer.request_typed(conn, "plugin/read", params, Plugin.UninstallResponse)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, request}
+    assert %{"id" => id, "params" => %{"pluginName" => "demo-plugin"}} = Jason.decode!(request)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{}))
+    assert {:ok, %Plugin.UninstallResponse{}} = Task.await(task, 200)
+  end
+
   test "request_typed/5 encodes param structs and parses typed responses", %{
     conn: conn
   } do
