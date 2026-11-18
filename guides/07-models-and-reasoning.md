@@ -6,9 +6,9 @@ not maintain a second catalog. Version 0.21 requires CLI Core 0.9.
 ## Quick Reference
 
 ```elixir
-{:ok, opts} = Codex.Options.new(%{model: "gpt-6.1-sol", reasoning_effort: :low})
+{:ok, opts} = Codex.Options.new(%{model: "gpt-6.2-sol", reasoning_effort: :medium})
 {:ok, opts} = Codex.Options.new(%{model: "gpt-5.6-terra", reasoning_effort: :ultra})
-Codex.Models.default_model() # "gpt-6.1-sol"
+Codex.Models.default_model() # "gpt-6.2-sol"
 ```
 
 ## Model Defaults
@@ -24,18 +24,20 @@ A CLI catalog refresh does not change those separate API surfaces.
 
 ## Available Models
 
-Authenticated `codex-cli 0.164.0` `model/list` with `includeHidden: true`
-was captured on 2026-10-26. The shared Core fixture
-`test/fixtures/codex_model_list_20261026.json` records the response.
+Authenticated `codex-cli 0.170.0` `model/list` with `includeHidden: true`
+was captured on 2026-11-17. The shared Core fixture
+`test/fixtures/codex_model_list_20261117.json` records the response.
 
 | Picker model | Default effort | Allowed CLI efforts |
 | --- | --- | --- |
-| `gpt-6.1-sol` (default) | `low` | low, medium, high, xhigh, max, ultra |
-| `gpt-6-astra` | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-6.2-sol` (default) | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-6.2-astra` | `low` | low, medium, high, xhigh, max, ultra |
 | `gpt-6.1-terra` | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-6.1-sol` | `medium` | low, medium, high, xhigh, max, ultra |
+| `gpt-6-astra` | `low` | low, medium, high, xhigh, max, ultra |
 | `gpt-6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-6-luna` | `medium` | low, medium, high, xhigh, max |
-| `gpt-5.6-sol` | `low` | low, medium, high, xhigh, max, ultra |
+| `gpt-5.6-sol` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-terra` | `medium` | low, medium, high, xhigh, max, ultra |
 | `gpt-5.6-luna` | `medium` | low, medium, high, xhigh, max |
 
@@ -47,19 +49,15 @@ they are not claims about provider API aliases.
 
 ```elixir
 Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
-# ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
-#  "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+# ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra",
+#  "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
 ```
 
-GPT-6.1 Sol uses low by default in Codex CLI and supports CLI `ultra`.
-The [official GPT-6.1 Sol API model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
-lists low through max; API requests do not support `none` or `minimal`.
-
-The [official Astra API model page](https://developers.openai.com/api/docs/models/gpt-6-astra)
-lists low through max, a 1,050,000-token context, and 128,000 maximum output.
-The additional `ultra` effort above is authenticated **Codex CLI** evidence,
-not Responses API support. Registry effort multipliers are SDK normalization
-values, not measured cost ratios.
+The authenticated CLI lists reasoning through `ultra` for both GPT-6.2
+models. API model specifications and pricing are documented separately.
+[GPT-6.2 Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol),
+[GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra),
+[GPT-6.2 system card](https://deploymentsafety.openai.com/gpt-6-2-astra-sol).
 
 ### Dependency And Release Ordering
 
@@ -67,15 +65,15 @@ Committed dependencies are ordinary Hex requirements. Operator-managed local
 development uses the MWO bootstrap and Portfolio Registry source coordinates.
 Publish from ordinary standalone Hex mode in this order:
 
-1. Publish `execution_plane 0.3.1`, then `execution_plane_process 0.3.2` and
-   `execution_plane_jsonrpc 0.2.1`. Existing GroundPlane releases remain prerequisites.
-2. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.5`.
-3. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.4`.
-4. Refresh ASM's Hex lock and publish `agent_session_manager 0.17.4`.
+1. Publish `execution_plane 0.3.2`, then `execution_plane_process 0.3.3`,
+   `execution_plane_jsonrpc 0.2.2` and `execution_plane_http 0.2.1`. Existing GroundPlane releases remain prerequisites.
+2. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.6`.
+3. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.5`.
+4. Refresh ASM's Hex lock and publish `agent_session_manager 0.17.5`.
 
 Tag the exact published commit `v0.21.4` after verifying the Hex release.
 The vendored upstream source is historical protocol evidence; this model
-refresh does not assert full parity with every CLI 0.164.0 feature.
+refresh does not assert full parity with every CLI 0.170.0 feature.
 
 ### Models Newer Than The Bundled Registry
 

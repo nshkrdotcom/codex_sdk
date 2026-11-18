@@ -62,9 +62,11 @@ defmodule Codex.ModelsTest do
       models = Models.list_visible(:api)
 
       assert Enum.map(models, & &1.id) == [
+               "gpt-6.2-sol",
+               "gpt-6.2-astra",
+               "gpt-6.1-terra",
                "gpt-6.1-sol",
                "gpt-6-astra",
-               "gpt-6.1-terra",
                "gpt-6-sol",
                "gpt-6-luna",
                "gpt-5.6-sol",
@@ -88,7 +90,7 @@ defmodule Codex.ModelsTest do
       # codex-cli 0.144.1 install, 2026-07-10.
       refute Enum.any?(models, &(&1.id == "gpt-5.3-codex"))
       refute Enum.any?(models, &(&1.id == "gpt-5.2"))
-      assert length(models) == 8
+      assert length(models) == 10
 
       assert Enum.any?(models, &(&1.id == default_model() && &1.is_default))
     end)
@@ -110,8 +112,8 @@ defmodule Codex.ModelsTest do
       assert Models.default_reasoning_effort("gpt-6-sol") == :medium
       assert Models.default_reasoning_effort("gpt-6-luna") == :medium
       assert Models.default_reasoning_effort("gpt-6.1-terra") == :low
-      assert Models.default_reasoning_effort(default_model()) == :low
-      assert Models.default_reasoning_effort("gpt-5.6-sol") == :low
+      assert Models.default_reasoning_effort(default_model()) == :medium
+      assert Models.default_reasoning_effort("gpt-5.6-sol") == :medium
       assert Models.default_reasoning_effort("gpt-5.6-terra") == :medium
       assert Models.default_reasoning_effort("gpt-5.6-luna") == :medium
       assert Models.display_name("gpt-6-astra") == "GPT-6-Astra"
@@ -120,7 +122,7 @@ defmodule Codex.ModelsTest do
 
   test "default model remains consistent across credential sources" do
     with_temp_codex_home(fn home ->
-      assert Models.default_model() == "gpt-6.1-sol"
+      assert Models.default_model() == "gpt-6.2-sol"
       assert Models.default_model() == default_model()
 
       Env.put("CODEX_API_KEY", "sk-test")
@@ -163,7 +165,7 @@ defmodule Codex.ModelsTest do
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-max"))
       refute Enum.any?(models, &(&1.id == "gpt-5.1-codex-mini"))
       refute Enum.any?(models, &(&1.id == "gpt-5-codex"))
-      assert length(models) == 8
+      assert length(models) == 10
 
       write_config!(home, true)
       assert Enum.map(Models.list_visible(:api), & &1.id) == Enum.map(models, & &1.id)

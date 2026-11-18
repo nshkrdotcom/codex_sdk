@@ -16,14 +16,14 @@ defmodule Codex.DependencyBoundaryTest do
   end
 
   test "the standalone and publishable fallback uses the released CLI core" do
-    assert {:cli_subprocess_core, "~> 0.9.5"} =
+    assert {:cli_subprocess_core, "~> 0.9.6"} =
              List.keyfind(standalone_deps(), :cli_subprocess_core, 0)
   end
 
-  test "release coordinates match the 0.21.4 package contract" do
+  test "release coordinates match the 0.21.5 package contract" do
     project = Mix.Project.config()
 
-    assert project[:version] == "0.21.4"
+    assert project[:version] == "0.21.5"
     assert project[:elixir] == "~> 1.19"
   end
 
@@ -55,10 +55,15 @@ defmodule Codex.DependencyBoundaryTest do
 
   defp standalone_deps do
     code =
-      "Mix.Project.config()[:deps] |> :erlang.term_to_binary() |> Base.encode64() |> IO.puts()"
+      """
+      Mix.start()
+      Mix.Project.in_project(:codex_sdk, ".", fn _ ->
+        Mix.Project.config()[:deps] |> :erlang.term_to_binary() |> Base.encode64() |> IO.puts()
+      end)
+      """
 
     {output, 0} =
-      System.cmd("mix", ["run", "--no-start", "--no-compile", "--no-deps-check", "-e", code],
+      System.cmd("elixir", ["-e", code],
         cd: Path.expand("../..", __DIR__),
         env: [{"MIX_WORKSPACE_OPS_BOOTSTRAP", nil}, {"MIX_EXS", nil}],
         stderr_to_stdout: true
