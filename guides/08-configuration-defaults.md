@@ -98,7 +98,7 @@ an explicit `base_instructions` override remains untouched.
 | `mcp_init_timeout_ms/0` | 10,000 | Initialize handshake timeout |
 | `mcp_list_timeout_ms/0` | 30,000 | tools/list, resources/list timeout |
 | `mcp_call_timeout_ms/0` | 60,000 | tools/call timeout |
-| `mcp_default_retries/0` | 3 | Default retry count |
+| `mcp_default_retries/0` | 0 | Default retry count; opt in only for replay-safe tools |
 | `mcp_notification_timeout_ms/0` | 10,000 | Notification send timeout |
 | `mcp_server_request_timeout_ms/0` | 30,000 | App-server MCP request timeout |
 

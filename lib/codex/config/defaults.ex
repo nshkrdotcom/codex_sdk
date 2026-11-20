@@ -87,9 +87,9 @@ defmodule Codex.Config.Defaults do
   @spec mcp_call_timeout_ms() :: pos_integer()
   def mcp_call_timeout_ms, do: 60_000
 
-  @doc "Default number of retries for MCP tool calls (default: 3)."
+  @doc "Default MCP `tools/call` retries (default: 0; callers opt in for replay-safe tools)."
   @spec mcp_default_retries() :: non_neg_integer()
-  def mcp_default_retries, do: 3
+  def mcp_default_retries, do: 0
 
   @doc "MCP notification send timeout (default: 10,000ms)."
   @spec mcp_notification_timeout_ms() :: pos_integer()
