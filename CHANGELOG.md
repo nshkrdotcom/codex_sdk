@@ -1192,7 +1192,7 @@ verification.
 - Approval policies, hook behaviour, registry support, and telemetry events for tooling approvals
 - File staging registry, attachment helpers, parity fixtures, and harvesting script for Python SDK alignment
 - Comprehensive telemetry module with OTLP exporter gating, metrics, and approval instrumentation
-- Mix tasks (`mix codex.verify`, `mix codex.parity`), integration tests, and Supertester-powered contract suite
+- Codex verification and parity Mix tasks, integration tests, and Supertester-powered contract suite
 - Rich examples and documentation covering approvals, streaming, concurrency, observability, and design dossiers
 
 ### Changed

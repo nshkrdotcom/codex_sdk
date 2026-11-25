@@ -1,4 +1,3 @@
-# Covers ADR-013 (parity fixtures + status)
 Mix.Task.run("app.start")
 
 Code.require_file(Path.expand("support/example_helper.exs", __DIR__))
@@ -10,19 +9,7 @@ Support.init!()
 defmodule CodexExamples.LiveParityAndStatus do
   @moduledoc false
 
-  @adrs Path.expand("../docs/20251202/adrs", __DIR__)
-  @parity_notes Path.expand("../docs/20251202/python-parity", __DIR__)
-  @fixture_modules Path.expand("../test/support", __DIR__)
-
   def main(_argv) do
-    IO.puts("""
-    Parity snapshot (Elixir SDK vs Python):
-      ADRs: #{count(@adrs)} files at docs/20251202/adrs
-      Parity notes: #{count(@parity_notes)} documents at docs/20251202/python-parity
-      Fixtures/helpers: #{fixture_modules()} under test/support
-      Integration samples: integration/ and examples/ (live Codex CLI)
-    """)
-
     case Support.codex_options(%{}, missing_cli: :skip) do
       {:ok, opts} ->
         case opts.execution_surface do
@@ -47,26 +34,11 @@ defmodule CodexExamples.LiveParityAndStatus do
     end
 
     IO.puts("""
-    For fixture details, see:
-      - docs/20251202/python-parity/008-tests-and-fixtures.md
-      - test/support/parity_matrix.ex for the latest parity coverage tags
+    For CLI setup and authentication, see guides/01-getting-started.md.
+    For supported app-server calls, see guides/05-app-server-transport.md.
     """)
   end
 
-  defp count(path) do
-    if File.dir?(path) do
-      path |> File.ls!() |> length()
-    else
-      0
-    end
-  end
-
-  defp fixture_modules do
-    @fixture_modules
-    |> File.ls!()
-    |> Enum.filter(&String.ends_with?(&1, ".ex"))
-    |> Enum.join(", ")
-  end
 end
 
 CodexExamples.LiveParityAndStatus.main(System.argv())

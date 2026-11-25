@@ -206,7 +206,7 @@ mix run examples/live_cli_session.exs -- --ssh-host example.internal --cwd /srv/
 - `examples/live_attachments_and_search.exs` — stages attachments, returns structured file outputs, and runs hosted file_search. This example is local-only and does not support `--ssh-host`.
 - `examples/live_config_overrides.exs` — nested config override auto-flattening plus layered `openai_base_url` / `model_providers` parity
 - `examples/live_options_config_overrides.exs` — options-level global config overrides, precedence, runtime validation, and reserved-provider notes
-- `examples/live_parity_and_status.exs` — quick pointers to parity docs/fixtures and CLI availability
+- `examples/live_parity_and_status.exs` — check the configured CLI path or SSH route
 
 `examples/live_oauth_login.exs` remains local-only for its primary flow. The
 OAuth session storage, browser launch, and device-code UX are local host

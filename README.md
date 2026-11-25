@@ -6,50 +6,26 @@
 
 <p align="center">
   <a href="https://github.com/nshkrdotcom/codex_sdk"><img src="https://img.shields.io/badge/GitHub-nshkrdotcom%2Fcodex_sdk-24292e?logo=github" alt="GitHub"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
+  <a href="https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
 </p>
 
-An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and applications. This SDK wraps the `codex-rs` executable, providing a complete, production-ready interface with streaming support and comprehensive event handling.
+An Elixir SDK for embedding OpenAI's Codex agent in applications and workflows.
+The SDK wraps the installed Codex CLI and supports streaming turns, session
+resumption, and app-server requests.
 
-## Upstream Parity Snapshot
+SDK 0.22.0 targets Codex CLI 0.172.0.
 
-Version 0.22.0 extends SDK support for Codex CLI 0.172.0 with provider
-selection, thread goals, history search, scoped MCP, Bedrock setup, remote exec,
-and additional wire fields. The audit records the pinned source revisions,
-passing local checks, and remaining authenticated verification.
-[November parity audit](docs/20261125/parity-audit.md)
+## Guides
 
-The 0.21 line implements the protocol catch-up through upstream
-`openai/codex` commit `5c19155cbd` and was re-swept through current
-`origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
-surface. The 0.21 line updates the shared model catalog against authenticated
-`codex-cli 0.170.0` on 2026-11-17. The picker adds GPT-6.2 Sol and GPT-6.2 Astra.
-GPT-6.2 Sol defaults to medium reasoning. See the [GPT-6.2 system card](https://deploymentsafety.openai.com/gpt-6-2-astra-sol).
-
-The SDK intentionally ships additive parsers ahead of that CLI for terminal
-turn timing/errors, plugin scheduled tasks, opaque prefixed item IDs, rollout
-ordinals, and experimental Bedrock auth shapes. Live 0.144.1 app-server output
-already includes turn start/completion/duration values, while exec JSONL remains
-usage-only. Unknown event types, fields, schedule tags, and auth-mode strings
-continue to pass through without dynamic atom creation.
-
-## Documentation Menu
-
-- `README.md` - installation, quick start, and runtime boundaries
-- `guides/01-getting-started.md` - first threads, turns, and sessions
-- `guides/02-architecture.md` - transport layering and ownership boundaries
-- `guides/03-api-guide.md` - public modules and common call patterns
-- `guides/05-app-server-transport.md` - direct app-server requests and host controls
-- `guides/11-typed-plugin-api.md` - typed plugin params, responses, and migration notes
-- `guides/12-operational-workflows.md` - marketplace add, MCP runtime helpers, memory controls, and filesystem watches
-- `guides/13-plugin-authoring.md` - local manifest writes, scaffold helpers, and scope rules
-- `guides/14-plugin-marketplaces.md` - local marketplace modeling, merge behavior, and verification workflows
-- `guides/15-atom-safety.md` - wire-data atom policy and automated guardrails
-- `guides/16-env-and-secrets.md` - runtime env boundaries, Inspect redaction, and repository secret policy
-- `guides/provider_behavior_manifest.md` - evidence for Codex-native feature
-  translation
-- `guides/07-models-and-reasoning.md` - shared catalog projections and reasoning controls
-- `guides/08-configuration-defaults.md` - config precedence and default resolution
+- [Getting started](guides/01-getting-started.md)
+- [API guide](guides/03-api-guide.md)
+- [App-server transport](guides/05-app-server-transport.md)
+- [Examples](guides/04-examples.md)
+- [Models and reasoning](guides/07-models-and-reasoning.md)
+- [Configuration](guides/08-configuration-defaults.md)
+- [Accounts and authentication](guides/09-oauth-and-login.md)
+- [Realtime and voice](guides/06-realtime-and-voice.md)
+- [Operational workflows](guides/12-operational-workflows.md)
 
 ## Features
 
@@ -57,7 +33,7 @@ continue to pass through without dynamic atom creation.
 - **Multi-Transport Support**: Default `:exec` compatibility selector for the core-backed exec JSONL lane (`codex exec --json`) plus stateful app-server JSON-RPC via managed local stdio children or managed remote websockets.
 - **CLI Passthrough and PTY Sessions**: `Codex.CLI` can launch root `codex`, `cloud`, `completion`, `features`, `marketplace`, `mcp`, `sandbox`, `resume`, `fork`, `app-server`, and other command-surface workflows directly, including remote-root and websocket-auth app-server flags.
 - **Native OAuth**: `Codex.OAuth` provides SDK-managed browser/device login, refresh, status, and logout with upstream-compatible `auth.json` persistence or memory-only sessions.
-- **Upstream Compatibility**: Mirrors Codex CLI flags (profile/OSS/full-auto/color/search/config overrides/review/resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
+- **Upstream Compatibility**: Mirrors Codex CLI flags (profile, OSS, color, search, config overrides, review, and resume) and handles app-server protocol drift (e.g. MCP list method rename fallbacks).
 - **Streaming & Structured Output**: Real-time events, per-thread output schemas, reasoning summary/content preservation, and typed app-server deltas.
 - **File & Attachment Pipeline**: Secure temp file registry and change events.
 - **Approval Hooks & Sandbox Policies**: Dynamic or static approval flows with registry-backed persistence.
@@ -97,7 +73,7 @@ npm install -g @openai/codex
 brew install codex
 ```
 
-The SDK does not vendor `codex-rs`; it shells out to the `codex` executable on your system. Path
+The Hex package uses the `codex` executable on your system. Path
 resolution follows this order:
 
 1. `codex_path_override` supplied in `Codex.Options.new/1`
@@ -578,12 +554,6 @@ mix run examples/promotion_path/sdk_direct_codex.exs \
   --prompt "Reply with exactly: codex sdk direct ok"
 ```
 
-Provider-native feature evidence is tracked in
-`guides/provider_behavior_manifest.md`. Add or update that manifest before
-translating any new Codex-specific exec flag, app-server payload, dynamic-tool
-shape, MCP flow, approval flow, sandbox policy, realtime behavior, or voice
-behavior.
-
 ```elixir
 {:ok, codex_opts} = Codex.Options.new(%{})
 
@@ -928,7 +898,7 @@ turn_options = %{output_schema: my_json_schema, personality: :friendly, service_
 
 {:ok, result} = Codex.Thread.run(thread, "Your prompt", turn_options)
 
-# Exec controls: inject env, set cancellation token/timeout/idle timeout (forwarded to codex exec)
+# Exec controls: inject child environment variables and set SDK cancellation and timeouts
 turn_options = %{
   env: %{"CODEX_DEMO_ENV" => "from-sdk"},
   cancellation_token: "demo-token-123",
@@ -961,7 +931,6 @@ That includes:
 - `sandbox`
 - `sandbox_policy`
 - `ask_for_approval`
-- `full_auto`
 - `dangerously_bypass_approvals_and_sandbox`
 
 If you are coming from a higher-level runner or orchestration layer, keep the
@@ -1070,8 +1039,6 @@ These settings are related but distinct:
   - approval policy for thread execution
 - `sandbox`
   - filesystem and environment sandbox mode
-- `full_auto`
-  - Codex convenience flag for a more autonomous mode
 - `dangerously_bypass_approvals_and_sandbox`
   - explicit bypass of both approval prompts and sandbox restrictions
 
@@ -1422,7 +1389,7 @@ log_user_prompt = false
 endpoint = "https://otel.example.com:4317"
 ```
 
-See `codex/docs/config.md` for the full upstream reference. To point Codex at an isolated config
+See the [Codex configuration guide](guides/08-configuration-defaults.md) for SDK configuration. To point Codex at an isolated config
 directory from the SDK, pass `env: %{"CODEX_HOME" => "/path/to/codex_home"}` in turn options for
 exec transport, or `Codex.AppServer.connect(codex_opts, process_env: %{"CODEX_HOME" => ...})`
 for a managed app-server child.
@@ -1573,9 +1540,8 @@ mix run examples/live_cli_demo.exs "What is the capital of France?"
 
 ## Documentation
 
-- **API Reference**: Generated docs available via `mix docs` or on [HexDocs](https://hexdocs.pm/codex_sdk)
+- Browse the user guides on [HexDocs](https://hexdocs.pm/codex_sdk) or generate them with `mix docs`.
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) summarises release history
-- **Repo Appendix**: `sentience/` contains optional repo folklore documents
 
 ## License
 
@@ -1614,5 +1580,3 @@ orchestration layers infer them from ad hoc behavior.
 The intended recovery posture is to prefer exact thread resumption when a concrete provider session
 id is available, and only fall back to looser “latest session” continuation when the caller
 explicitly chooses that behavior.
-
-Release preparation and Hex lock handoff: [2026-09-29 release train](guides/release-train-2026-09-29.md).

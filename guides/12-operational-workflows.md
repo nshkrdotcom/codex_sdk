@@ -178,7 +178,7 @@ end
 Use stable watch ids that your host can correlate back to the subscribed
 workflow.
 
-### Scoped MCP operations (0.172.0)
+### Scoped MCP operations
 
 `AppServer.Mcp.list_servers/2` accepts `thread_id`, `server_name` and
 `environment_id`. Resource reads accept a fifth options argument (environment,

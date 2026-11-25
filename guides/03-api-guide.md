@@ -489,7 +489,9 @@ Manages individual conversation threads and turn execution. Threads maintain sta
 
 #### `run/3`
 
-Executes a multi-turn run and returns the complete result (blocking mode). Internally uses the agent runner and will follow continuation tokens until completion or `max_turns` is reached.
+Runs through the SDK agent runner and returns the result in blocking mode.
+Codex CLI 0.172.0 rejects legacy continuation-token flags. Use the returned
+thread for a subsequent prompt.
 
 **Signature**:
 ```elixir
@@ -623,7 +625,7 @@ commands =
 
 #### `run_auto/3`
 
-Executes an auto-run loop, retrying turn execution while the Codex engine exposes a continuation token.
+Runs the SDK’s continuation loop for backends that emit and accept continuation tokens. Codex CLI 0.172.0 does not accept the continuation-token flag.
 
 **Signature**:
 ```elixir
@@ -687,7 +689,7 @@ The runtime-owned mailbox tag stays below this API; callers consume projected
 Additional exec helpers:
 
 - `Codex.Exec.review/2` and `Codex.Exec.review_stream/2` run `codex exec review` with a review target (uncommitted, base branch, commit, or custom prompt).
-- Thread/turn options like `profile`, `oss`, `local_provider`, `full_auto`, `dangerously_bypass_approvals_and_sandbox`, `output_last_message`, and `color` are forwarded as CLI flags.
+- Thread/turn options like `profile`, `oss`, `local_provider`, `dangerously_bypass_approvals_and_sandbox`, `output_last_message`, and `color` are forwarded as CLI flags.
 - `config_overrides` maps to `-c key=value` overrides (TOML parsing on the codex side), with runtime validation for TOML-compatible values.
 - `Codex.resume_thread(:last)` maps to `codex exec resume --last`.
 - Common CLI process ownership and JSONL parsing are delegated to
@@ -1721,7 +1723,7 @@ Thread-specific configuration.
 - `file_search`: Default file search config (`vector_store_ids`, `filters`, `ranking_options`, `include_search_results`) merged with per-run overrides
 - `profile`: Config profile name (`--profile`)
 - `oss` / `local_provider`: OSS provider flags (`--oss`, `--local-provider`)
-- `full_auto` / `dangerously_bypass_approvals_and_sandbox`: Execution-mode shortcuts (mutually exclusive)
+- `dangerously_bypass_approvals_and_sandbox`: Bypass approval prompts and sandbox restrictions. The legacy `full_auto` option is rejected by Codex CLI 0.172.0.
 - `output_last_message`: File path for `--output-last-message`
 - `color`: Output color mode (`--color`)
 - `config_overrides`: Generic `-c key=value` overrides (strings, `{key, value}` pairs, or nested maps that are auto-flattened to dotted paths)

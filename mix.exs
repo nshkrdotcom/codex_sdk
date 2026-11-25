@@ -84,8 +84,8 @@ defmodule CodexSdk.MixProject do
 
   defp description do
     """
-    Idiomatic Elixir SDK for OpenAI's Codex agent. Provides a complete, production-ready
-    interface with streaming support, comprehensive event handling, and robust testing utilities.
+    Elixir SDK for OpenAI's Codex agent with streaming turns, session resumption,
+    and app-server support.
     """
   end
 
@@ -96,10 +96,12 @@ defmodule CodexSdk.MixProject do
       source_ref: "v#{@version}",
       source_url: @source_url,
       homepage_url: @docs_url,
-      assets: %{"assets" => "assets", "docs/20261125" => "."},
+      assets: %{"assets" => "assets"},
+      api_reference: false,
+      filter_modules: fn _, _ -> false end,
+      skip_code_autolink_to: &String.starts_with?(&1, ["Codex", "Mix.Tasks.Codex"]),
       logo: "assets/codex_sdk.svg",
       extras: [
-        "docs/20261125/parity-audit.md",
         "README.md": [title: "Overview"],
         "guides/01-getting-started.md": [title: "Getting Started"],
         "guides/02-architecture.md": [title: "Architecture"],
@@ -118,8 +120,6 @@ defmodule CodexSdk.MixProject do
         "guides/15-atom-safety.md": [title: "Atom Safety"],
         "guides/16-env-and-secrets.md": [title: "Environment And Secrets"],
         "guides/17-migrating-to-0.19.md": [title: "Migrating to 0.19"],
-        "guides/provider_behavior_manifest.md": [title: "Provider Behavior Manifest"],
-        "guides/release-train-2026-09-29.md": [title: "2026-09-29 Release Train"],
         "CHANGELOG.md": [title: "Changelog"],
         LICENSE: [title: "License"]
       ],
@@ -141,8 +141,7 @@ defmodule CodexSdk.MixProject do
           "guides/14-plugin-marketplaces.md",
           "guides/15-atom-safety.md",
           "guides/16-env-and-secrets.md",
-          "guides/17-migrating-to-0.19.md",
-          "guides/provider_behavior_manifest.md"
+          "guides/17-migrating-to-0.19.md"
         ],
         "Models & Configuration": [
           "guides/07-models-and-reasoning.md",
@@ -150,119 +149,6 @@ defmodule CodexSdk.MixProject do
           "guides/09-oauth-and-login.md"
         ],
         Reference: ["CHANGELOG.md", "LICENSE"]
-      ],
-      groups_for_modules: [
-        "Public API": [
-          Codex,
-          Codex.AppServer,
-          Codex.AppServer.Account,
-          Codex.CLI,
-          Codex.CLI.Session,
-          Codex.OAuth,
-          Codex.OAuth.LoginResult,
-          Codex.OAuth.Status,
-          Codex.Plugins,
-          Codex.Plugins.Manifest,
-          Codex.Plugins.Marketplace,
-          Codex.Subagents,
-          Codex.Thread,
-          Codex.Thread.Options,
-          Codex.Options,
-          Codex.Models,
-          Codex.Turn.Result
-        ],
-        Configuration: [
-          Codex.Config.Defaults,
-          Codex.Config.BaseURL,
-          Codex.Config.Overrides,
-          Codex.Config.OptionNormalizers
-        ],
-        Execution: [
-          Codex.Exec,
-          Codex.Events,
-          Codex.Items,
-          Codex.Protocol.CollabAgentRef,
-          Codex.Protocol.CollabAgentState,
-          Codex.Protocol.CollabAgentStatusEntry,
-          Codex.Protocol.SessionSource,
-          Codex.Protocol.SubAgentSource,
-          Codex.Telemetry
-        ],
-        Files: [
-          Codex.Files,
-          Codex.Files.Registry,
-          Codex.OutputSchemaFile
-        ],
-        Approvals: [
-          Codex.Approvals,
-          Codex.Approvals.Registry,
-          Codex.Approvals.Hook,
-          Codex.Approvals.StaticPolicy,
-          Codex.ApprovalError
-        ],
-        Tooling: [
-          Codex.Tool,
-          Codex.Tools,
-          Codex.Tools.Registry,
-          Codex.MCP.Client,
-          Codex.MCP.Config,
-          Codex.MCP.OAuth,
-          Codex.MCP.Transport.Stdio,
-          Codex.MCP.Transport.StreamableHTTP,
-          Codex.Prompts,
-          Codex.Skills
-        ],
-        Errors: [
-          Codex.Error,
-          Codex.TransportError
-        ],
-        Realtime: [
-          Codex.Realtime,
-          Codex.Realtime.Agent,
-          Codex.Realtime.Diagnostics,
-          Codex.Realtime.Audio,
-          Codex.Realtime.Config,
-          Codex.Realtime.Config.GuardrailsSettings,
-          Codex.Realtime.Config.ModelConfig,
-          Codex.Realtime.Config.NoiseReductionConfig,
-          Codex.Realtime.Config.RunConfig,
-          Codex.Realtime.Config.SessionModelSettings,
-          Codex.Realtime.Config.TracingConfig,
-          Codex.Realtime.Config.TranscriptionConfig,
-          Codex.Realtime.Config.TurnDetectionConfig,
-          Codex.Realtime.Events,
-          Codex.Realtime.Items,
-          Codex.Realtime.Model,
-          Codex.Realtime.ModelEvents,
-          Codex.Realtime.ModelInputs,
-          Codex.Realtime.OpenAIWebSocket,
-          Codex.Realtime.PlaybackTracker,
-          Codex.Realtime.Runner,
-          Codex.Realtime.Session
-        ],
-        Voice: [
-          Codex.Voice,
-          Codex.Voice.AgentWorkflow,
-          Codex.Voice.Config,
-          Codex.Voice.Config.STTSettings,
-          Codex.Voice.Config.TTSSettings,
-          Codex.Voice.Events,
-          Codex.Voice.Input,
-          Codex.Voice.Input.AudioInput,
-          Codex.Voice.Input.StreamedAudioInput,
-          Codex.Voice.Model,
-          Codex.Voice.Models.OpenAIProvider,
-          Codex.Voice.Models.OpenAISTT,
-          Codex.Voice.Models.OpenAITTS,
-          Codex.Voice.Pipeline,
-          Codex.Voice.Result,
-          Codex.Voice.SimpleWorkflow,
-          Codex.Voice.Workflow
-        ],
-        Tasks: [
-          Mix.Tasks.Codex.Parity,
-          Mix.Tasks.Codex.Verify
-        ]
       ]
     ]
   end
@@ -278,8 +164,7 @@ defmodule CodexSdk.MixProject do
       name: "codex_sdk",
       description: description(),
       readme: "README.md",
-      files:
-        ~w(lib config assets guides examples docs/20261125 mix.exs README.md CHANGELOG.md LICENSE VERSION),
+      files: ~w(lib config assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
@@ -299,6 +184,8 @@ defmodule CodexSdk.MixProject do
         "**/*.plt.hash",
         "priv/plts/**",
         "examples/_output/**",
+        "examples/LIVE_EXAMPLES_PROMPT.md",
+        "guides/provider_behavior_manifest.md",
         ".DS_Store"
       ]
     ]

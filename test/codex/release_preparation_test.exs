@@ -10,13 +10,23 @@ defmodule Codex.ReleasePreparationTest do
     assert project[:version] == "0.22.0"
     assert project[:docs][:source_ref] == "v0.22.0"
     assert project[:docs][:homepage_url] == "https://hexdocs.pm/codex_sdk"
-    assert project[:docs][:assets] == %{"assets" => "assets", "docs/20261125" => "."}
+    assert project[:docs][:assets] == %{"assets" => "assets"}
     assert project[:docs][:logo] == "assets/codex_sdk.svg"
 
     for required <-
-          ~w(lib assets guides examples docs/20261125 mix.exs README.md LICENSE CHANGELOG.md VERSION) do
+          ~w(lib assets guides examples mix.exs README.md LICENSE CHANGELOG.md VERSION) do
       assert required in package_files
     end
+
+    extras = Enum.map(project[:docs][:extras], fn {path, _opts} -> to_string(path) end)
+
+    assert Enum.sort(extras -- ~w(README.md CHANGELOG.md LICENSE)) ==
+             Enum.sort(Path.wildcard("guides/[0-9]*.md"))
+
+    assert ~w(README.md CHANGELOG.md LICENSE) -- extras == []
+    assert project[:docs][:api_reference] == false
+    refute project[:docs][:filter_modules].(Codex, %{})
+    refute Enum.any?(package_files, &(&1 == "docs" or String.starts_with?(&1, "docs/")))
 
     refute "build_support" in package_files
 
@@ -33,7 +43,7 @@ defmodule Codex.ReleasePreparationTest do
     assert header =~ ~s(src="assets/codex_sdk.svg")
     assert header =~ ~s(width="200")
     assert header =~ ~s(href="https://github.com/nshkrdotcom/codex_sdk")
-    assert header =~ ~s(href="LICENSE")
+    assert header =~ ~s(href="https://github.com/nshkrdotcom/codex_sdk/blob/main/LICENSE")
     assert length(String.split(header, "img.shields.io")) - 1 == 2
   end
 end

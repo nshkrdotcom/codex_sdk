@@ -273,7 +273,7 @@ as `dynamicTools` on `thread/resume`. Hosts should provide the same current
 tool registry when rebuilding a resumed thread; do not rely on app-server
 process-local state retaining the registry across host restarts.
 
-`examples/live_app_server_dynamic_tools.exs` is the live-only end-to-end proof.
+`examples/live_app_server_dynamic_tools.exs` demonstrates dynamic tools against a running app-server.
 It advertises an `echo_json` tool, handles
 `DynamicToolCallRequested`, responds through `Codex.AppServer.respond/3`, and
 fails if no dynamic tool call is observed.
@@ -527,11 +527,8 @@ normally `nil` on this lane.
 
 Use `Codex.Events.turn_duration_ms/1` to prefer an explicit duration and fall
 back to the start/completion timestamps. Every field is absence-tolerant.
-Authenticated `codex-cli 0.144.1` app-server capture already emitted
-`startedAt`, `completedAt`, and `durationMs`; its exec JSONL completion remained
-usage-only. A failed app-server completion carries failure detail in `error`,
-whereas current exec JSONL reports failure through its separate `TurnFailed`
-event.
+A failed app-server completion carries failure detail in `error`. Exec JSONL
+reports failures through a separate `TurnFailed` event.
 
 ### Request user input
 
@@ -731,18 +728,18 @@ mix run examples/live_app_server_approvals.exs
 mix run examples/live_app_server_mcp.exs
 ```
 
-## Stable 0.172.0 additions
+## Model providers
 
-Use the existing CLI with `experimental_api: true` when calling experimental
-history/search or Bedrock methods. Provider selection is Codex-native and
-changes user configuration: `AppServer.model_provider_list(conn)`,
+Provider selection changes server configuration. Use: `AppServer.model_provider_list(conn)`,
 `AppServer.model_provider_default_set(conn, provider_id)`, and
 `AppServer.model_provider_config_write(conn, settings)` (custom gateway
 settings patch, `type: "customGateway"`, `providerId`, `baseUrl`, including
 explicit null to clear). Use disposable config for writes; provider IDs come
 from the server, not the SDK's model catalog.
 
-For a persisted thread with the server's `goals` feature enabled:
+## Thread goals
+
+Use a persisted thread with the server's `goals` feature enabled:
 
 ```elixir
 AppServer.thread_goal_set(conn, id,
@@ -753,10 +750,13 @@ AppServer.thread_goal_set(conn, id, token_budget: nil, origin: :user)
 AppServer.thread_goal_clear(conn, id, origin: :user)
 ```
 
-Omit `token_budget` to preserve it; `nil` clears it. Omit `origin` unless
-needed; `:user` signifies explicit user authorization. Active goal updates
-may initiate work. Goal updated/cleared events preserve the raw parameters.
-These RPCs do not implement Python's logical multi-turn goal orchestration.
+Omit `token_budget` to preserve it. Pass `nil` to clear it or reset it to the
+configured maximum when the server enforces a cap. Use `origin: :user` for
+explicitly authorized user actions. Active goal updates may initiate work.
+
+## Thread search
+
+Connect with `experimental_api: true` to use thread search.
 
 Thread lists accept `current_account_only`, `included_thread_ids`,
 `excluded_thread_ids`, `originators`, and `section_id` (omitted vs null).
@@ -778,7 +778,6 @@ end)
 Task.await(task, 40_000)
 ```
 
-Use a fresh nonsecret ID each time. Partial batches are provisional; a cancel
-acknowledgment is not the terminal search result. The stdio Core facade does
-not yet expose caller-assigned IDs. Ordinary `thread_search/3` remains available.
-Live behavior is pending verification; see the November parity inventory.
+Use a fresh nonsecret ID for each request for the lifetime of the connection.
+Treat partial batches as provisional and await the original task after
+requesting cancellation. For a stdio connection, use `thread_search/3`.

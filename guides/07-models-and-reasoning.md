@@ -1,7 +1,6 @@
 # Models and Reasoning Configuration
 
-The SDK reads model metadata from `CliSubprocessCore.ModelRegistry`; it does
-not maintain a second catalog. Version 0.21 requires CLI Core 0.9.
+The SDK reads model metadata from the shared `CliSubprocessCore.ModelRegistry` catalog.
 
 ## Quick Reference
 
@@ -24,9 +23,7 @@ A CLI catalog refresh does not change those separate API surfaces.
 
 ## Available Models
 
-Authenticated `codex-cli 0.170.0` `model/list` with `includeHidden: true`
-was captured on 2026-11-17. The shared Core fixture
-`test/fixtures/codex_model_list_20261117.json` records the response.
+These are the models in the bundled SDK picker. Availability depends on your account and provider.
 
 | Picker model | Default effort | Allowed CLI efforts |
 | --- | --- | --- |
@@ -42,8 +39,7 @@ was captured on 2026-11-17. The shared Core fixture
 | `gpt-5.6-luna` | `medium` | low, medium, high, xhigh, max |
 
 `gpt-reserve` and `codex-auto-review` are internal and omitted from the
-picker. GPT-5.5, GPT-5.4 Mini, GPT-5.4, and Spark were absent from this live response and are no longer
-bundled entries; explicit unknown-model passthrough remains available.
+picker. Explicit unknown-model passthrough remains available.
 The SDK convenience aliases `astra` and `gpt-6` resolve to `gpt-6-astra`;
 they are not claims about provider API aliases.
 
@@ -53,32 +49,10 @@ Codex.Models.list_visible(:api) |> Enum.map(& &1.id)
 #  "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
 ```
 
-The authenticated CLI lists reasoning through `ultra` for both GPT-6.2
-models. API model specifications and pricing are documented separately.
+For API model specifications and pricing, see the OpenAI model pages.
 [GPT-6.2 Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol),
 [GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra),
 [GPT-6.2 system card](https://deploymentsafety.openai.com/gpt-6-2-astra-sol).
-
-### Dependency And Release Ordering
-
-Committed dependencies are ordinary Hex requirements. Operator-managed local
-development uses the MWO bootstrap and Portfolio Registry source coordinates.
-Publish from ordinary standalone Hex mode in this order:
-
-1. Publish `execution_plane 0.3.2`, then `execution_plane_process 0.3.3`,
-   `execution_plane_jsonrpc 0.2.2` and `execution_plane_http 0.2.1`. Existing GroundPlane releases remain prerequisites.
-2. Refresh Core's Hex lock and publish `cli_subprocess_core 0.9.6`.
-3. Refresh this SDK's Hex lock, rerun QC, and publish `codex_sdk 0.21.5`.
-4. Refresh ASM's Hex lock and publish `agent_session_manager 0.17.5`.
-
-Tag the 0.21.5 release commit `v0.21.5` after verifying the Hex release.
-The vendored upstream source is historical protocol evidence; this model
-refresh does not assert full parity with every CLI 0.170.0 feature.
-
-SDK 0.21.6 retains the same Core dependency and model catalog.
-
-SDK 0.22.0 requires Core 0.10.3, published on November 25, 2026.
-The SDK lock resolves that release from Hex.
 
 ### Models Newer Than The Bundled Registry
 

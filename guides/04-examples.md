@@ -25,7 +25,7 @@ materialized auth from the owning control plane.
 8. [Configuration](#configuration)
 9. [Advanced Patterns](#advanced-patterns)
 10. [Production Patterns](#production-patterns)
-11. [Live Usage & Compaction](#live-usage--compaction)
+11. [Live Usage and Compaction](#live-usage-and-compaction)
 12. [Live Exec Controls](#live-exec-controls)
 13. [Live Telemetry Stream](#live-telemetry-stream)
 14. [Local Plugin Authoring](#local-plugin-authoring)
@@ -483,7 +483,8 @@ end
 
 ### Agent Runner Loop
 
-Automatically follow continuation tokens with the multi-turn runner.
+Run a prompt through the SDK agent runner. Codex CLI 0.172.0 does not accept
+legacy continuation tokens. For a follow-up prompt, use the returned thread.
 
 ```elixir
 defmodule AgentRunnerExample do
@@ -813,7 +814,7 @@ end
 
 Configure based on environment.
 
-The SDK default model is derived from the shared `CliSubprocessCore.ModelRegistry` catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the shared catalog selected for this SDK, that currently resolves to `gpt-5.6-sol`. Model data is owned by the selected `cli_subprocess_core` dependency; this SDK does not ship a second catalog copy. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
+The SDK default model is derived from the shared `CliSubprocessCore.ModelRegistry` catalog after applying auth-mode filtering and environment overrides (`CODEX_MODEL`, `OPENAI_DEFAULT_MODEL`, then `CODEX_MODEL_DEFAULT`). With the shared catalog selected for this SDK, the bundled default is `gpt-6.2-sol` at medium effort. Model data is owned by the selected `cli_subprocess_core` dependency; this SDK does not ship a second catalog copy. Config layering still applies across system `/etc/codex/config.toml`, user `$CODEX_HOME/config.toml`, repo `.codex/config.toml`, and cwd `config.toml` project layers, with trust-aware enablement and configurable project-root markers.
 
 For provider parity, layered config also honors `openai_base_url` and user-defined
 `[model_providers.<id>]` entries. See `examples/live_config_overrides.exs` and
@@ -1360,7 +1361,7 @@ end
 
 ---
 
-## Live Usage & Compaction
+## Live Usage and Compaction
 
 `examples/live_usage_and_compaction.exs` runs against the live Codex backend (requires `CODEX_API_KEY` or a CLI login) and mirrors the latest defaults:
 
@@ -1379,9 +1380,9 @@ Note: `examples/run_all.sh` no longer exports a default `CODEX_MODEL`. Most live
 
 ## Live Exec Controls
 
-`examples/live_exec_controls.exs` streams against the live Codex CLI while forwarding per-turn env,
-cancellation tokens, and custom timeouts to `codex exec`. Use it to validate env injection for
-tooling or to wire cancellation tokens from upstream request lifecycles.
+`examples/live_exec_controls.exs` streams a turn from the Codex CLI and
+demonstrates per-turn child environment variables, SDK cancellation tokens,
+and timeouts.
 
 ```bash
 mix run examples/live_exec_controls.exs \
@@ -1402,8 +1403,8 @@ mix run examples/live_exec_controls.exs \
   --cancel demo-token-123
 ```
 
-If your Codex CLI is older and does not yet support `--cancellation-token`, rerun without
-`--cancel` or upgrade via `npm install -g @openai/codex`.
+The SDK keeps the cancellation token in its own registry. Call
+`Codex.Exec.cancel/1` from the same BEAM node with the same token.
 
 ## Live Telemetry Stream
 
@@ -1812,4 +1813,4 @@ These examples demonstrate the flexibility and power of the Elixir Codex SDK. Ke
 - **Realtime voice** for bidirectional audio interactions
 - **Voice pipeline** for STT -> Workflow -> TTS processing
 
-Refer to the [API Guide](03-api-guide.md) for complete documentation of all functions and types.
+Refer to the [API Guide](03-api-guide.md) for public SDK types and common call patterns.

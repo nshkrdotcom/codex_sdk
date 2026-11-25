@@ -221,16 +221,18 @@ an explicit `base_instructions` override remains untouched.
 | `project_root_markers/0` | `[".git"]` | — |
 | `default_transport/0` | `:exec` (compatibility selector) | `:default_transport` |
 
-### Remote noninteractive exec (0.172.0)
+### Remote noninteractive exec
 
-Set `remote: "ws://127.0.0.1:4500"` (or an authorized `wss://` or `unix://`
-address) and optionally `remote_auth_token_env: "REMOTE_TOKEN"` in thread
-options. Use TLS or loopback WebSocket when supplying a token. Pass the token
-in the turn's `env` under the named variable. Set `clear_env?: true` on the turn
+Set `remote:` in the thread options. Use a WebSocket address with an explicit
+port, such as `ws://127.0.0.1:4500` or `wss://app-server.example:443`, or a Unix
+socket address such as `unix:///path/to/socket`. For authenticated WebSocket
+connections, use TLS or loopback and set `remote_auth_token_env: "REMOTE_TOKEN"`.
+Pass the token in the turn's `env` under that name. Set `clear_env?: true` on the turn
 to clear the ambient process environment while preserving explicit child
 overrides.
-These options apply to the exec transport only, not the SDK's WebSocket
-app-server connection or its SSH execution placement. Resume by the returned
+
+These options apply to the exec transport. For direct JSON-RPC access, see the
+[app-server guide](05-app-server-transport.md). Resume by the returned
 thread ID. Stable remote exec rejects local workspace, model, permissions,
 config, attachments, structured output and review overrides; local SDK model
 and reasoning defaults are deliberately not projected. The remote server owns
