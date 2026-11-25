@@ -111,8 +111,8 @@ The vendored stable tag resolves to the pinned revision above.
   were redacted. Core 0.9.6 still logs raw child stderr in its OTP crash report.
   `ProtocolSession.channel_exit_stop_reason/1` uses the raw process exit as an
   abnormal termination reason. Its JSON-RPC facade has no stderr redaction hook
-  before that report. This blocks release validation of real Bedrock access keys
-  over stdio and needs a Core fix.
+  before that report. This blocked release validation of real Bedrock access keys
+  over stdio with Core 0.9.6. See the Core 0.10.3 follow-up below.
 - Remote deployment, gateway writes, AWS mutations, hosted MCP OAuth and
   environment selectors, SSH, and main-only behavior require
   operator-provided endpoints, credentials, or builds.
@@ -120,6 +120,26 @@ The vendored stable tag resolves to the pinned revision above.
   reviewer enforcement, and resume restoration are CLI responsibilities.
   Python logical goal orchestration and full realtime, approval, subagent,
   structured input, and typed error coverage remain open.
+
+### Core release follow-up
+
+Core 0.10.3 handles nonzero child exits as structured shutdowns. Pending
+protocol requests still receive the process exit and stderr. Monitors receive
+the exit status without stderr. The SDK unwraps that shutdown and uses its
+redacted stderr buffer for disconnect diagnostics. The Core regression and
+the SDK Bedrock fixture check that synthetic credentials stay out of captured
+logs. The SDK requires Core 0.10.3 and its final Hex lock refresh follows Core
+publication. Core's lock was already current. The SDK refreshed available
+compatible dependencies, including Zoi 0.20.0, ExDoc 0.40.5, and
+OpenTelemetry API 1.5.1. The existing `grpcbox` requirement keeps `gproc`
+at 1.2.0. The provisional Core lock entry is 0.10.2 until Hex can resolve
+the declared minimum of 0.10.3.
+
+Core `mix ci` passed 413 tests, with four excluded. The SDK's MWO run
+against local Core 0.10.3 passed 1,577 tests with four skipped and 16
+excluded, in both default and seed-0 runs. Strict Credo passed and the
+coverage run reported 67.1% in that workspace. The seed-0 trace also passed
+with only Core sourced locally and its dependencies resolved from Hex.
 
 ### Verification commands
 

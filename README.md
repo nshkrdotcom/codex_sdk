@@ -80,7 +80,7 @@ def deps do
 end
 ```
 
-The 0.21 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.9.6`
+The 0.22 line requires Elixir 1.19 and uses `cli_subprocess_core ~> 0.10.3`
 as its sole internal runtime dependency. The SDK continues to expose
 Codex-native APIs and core facades; callers do not need to depend directly on
 the underlying execution substrate.

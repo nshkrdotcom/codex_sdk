@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scoped MCP status, resource, tool and OAuth requests, and prompt-cache-write usage.
 - Source parity inventory, targeted fixtures and opt-in live scenarios.
 
+### Changed
+
+- Update Zoi to 0.20 and refresh the Hex dependency lock.
+
 ### Fixed
 
 - Retain explicit null and empty inclusion filters, terminal `willRetry: false`,
@@ -33,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings. Forward `clear_env?` to the child launch.
 - Keep explicit search IDs unique for a WebSocket connection, drop late search
   partials, and retain buffered host requests for matching subscribers.
-- Redact submitted Bedrock access keys from SDK disconnect diagnostics.
+- Redact submitted Bedrock access keys from SDK disconnect diagnostics. Require
+  Core 0.10.3 to keep child stderr out of OTP crash reports.
 
 See the parity audit for stable CLI smoke results and remaining authenticated
 verification.

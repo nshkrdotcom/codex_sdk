@@ -56,7 +56,7 @@ defmodule CodexSdk.MixProject do
     [
       cli_subprocess_core_dep(),
       {:jason, "~> 1.4.5"},
-      {:zoi, "~> 0.19.0"},
+      {:zoi, "~> 0.20.0"},
       {:typed_struct, "~> 0.3.0"},
       {:telemetry, "~> 1.4.3"},
       {:opentelemetry, "~> 1.7.0"},
@@ -70,7 +70,7 @@ defmodule CodexSdk.MixProject do
       {:supertester, "~> 0.6.0", only: :test},
       {:mox, "~> 1.3.2", only: :test},
       {:stream_data, "~> 1.4.0", only: :test},
-      {:ex_doc, "~> 0.40.4", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.40.5", only: :dev, runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.9", only: [:dev], runtime: false},
       {:excoveralls, "~> 0.18.5", only: :test},
@@ -79,7 +79,7 @@ defmodule CodexSdk.MixProject do
   end
 
   defp cli_subprocess_core_dep do
-    workspace_dep({:cli_subprocess_core, "~> 0.9.6"})
+    workspace_dep({:cli_subprocess_core, "~> 0.10.3"})
   end
 
   defp description do

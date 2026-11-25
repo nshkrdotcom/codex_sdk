@@ -77,6 +77,11 @@ refresh does not assert full parity with every CLI 0.170.0 feature.
 
 SDK 0.21.6 retains the same Core dependency and model catalog.
 
+For SDK 0.22.0, publish `cli_subprocess_core 0.10.3` first. Once Hex lists
+that release, update this repository's Core lock entry with
+`mix deps.update cli_subprocess_core` in standalone Hex mode. Then rerun the
+SDK release checks and build the 0.22.0 package.
+
 ### Models Newer Than The Bundled Registry
 
 The bundled catalog is a vendored snapshot - it lags real upstream releases

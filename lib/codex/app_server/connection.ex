@@ -773,6 +773,8 @@ defmodule Codex.AppServer.Connection do
   end
 
   defp app_server_down_failure(%State{} = state, reason) do
+    reason = unwrap_session_error(reason)
+
     details =
       %{reason: reason |> failure_reason() |> Sanitizer.term(state.redaction_values)}
       |> maybe_put_detail(:stderr, failure_stderr(state, reason))

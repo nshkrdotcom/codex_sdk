@@ -242,7 +242,7 @@ defmodule Codex.AppServer.AccountBedrockTest do
       log |> String.split("\n") |> Enum.find(&String.contains?(&1, "codex app-server exited:"))
 
     assert sdk_diagnostic =~ "[REDACTED]"
-    for value <- Map.values(credentials), do: refute(sdk_diagnostic =~ value)
+    for value <- Map.values(credentials), do: refute(log =~ value)
   end
 
   @tag :tmp_dir

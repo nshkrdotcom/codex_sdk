@@ -16,7 +16,7 @@ defmodule Codex.DependencyBoundaryTest do
   end
 
   test "the standalone and publishable fallback uses the released CLI core" do
-    assert {:cli_subprocess_core, "~> 0.9.6"} =
+    assert {:cli_subprocess_core, "~> 0.10.3"} =
              List.keyfind(standalone_deps(), :cli_subprocess_core, 0)
   end
 
