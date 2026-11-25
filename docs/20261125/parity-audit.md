@@ -128,18 +128,27 @@ protocol requests still receive the process exit and stderr. Monitors receive
 the exit status without stderr. The SDK unwraps that shutdown and uses its
 redacted stderr buffer for disconnect diagnostics. The Core regression and
 the SDK Bedrock fixture check that synthetic credentials stay out of captured
-logs. The SDK requires Core 0.10.3 and its final Hex lock refresh follows Core
-publication. Core's lock was already current. The SDK refreshed available
+logs. The SDK resolves Core 0.10.3 from Hex. The downloaded archive matches
+the published SHA-256
+`7b21739b338af7d91d3c6ed16abd9980ded2abebd5544d9f6a45632f5685d613`
+and the Core release tag points at `33d4f40`. Core's lock was already current.
+The SDK refreshed available
 compatible dependencies, including Zoi 0.20.0, ExDoc 0.40.5, and
 OpenTelemetry API 1.5.1. The existing `grpcbox` requirement keeps `gproc`
-at 1.2.0. The provisional Core lock entry is 0.10.2 until Hex can resolve
-the declared minimum of 0.10.3.
+at 1.2.0.
 
 Core `mix ci` passed 413 tests, with four excluded. The SDK's MWO run
 against local Core 0.10.3 passed 1,577 tests with four skipped and 16
 excluded, in both default and seed-0 runs. Strict Credo passed and the
 coverage run reported 67.1% in that workspace. The seed-0 trace also passed
 with only Core sourced locally and its dependencies resolved from Hex.
+
+After Core publication, standalone Hex resolution passed
+`mix deps.get --check-locked`. Both default and seed-0 trace test runs with
+the published Core reported 1,581 tests, zero failures, four skipped, and
+16 excluded. Warnings-as-errors compilation, strict Credo, Dialyzer, docs,
+and the shell and repository guards passed with Elixir and Mix 1.19.5
+and OTP 28.3.1. Standalone Hex coverage was 66.7%.
 
 ### Verification commands
 
