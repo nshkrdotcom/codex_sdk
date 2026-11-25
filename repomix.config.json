@@ -1,0 +1,28 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "include": [
+    "lib/**/*.ex",
+    "config/**/*.exs",
+    "test/**/*.ex",
+    "test/**/*.exs",
+    "test/fixtures/**/*.json",
+    "test/fixtures/**/*.jsonl",
+    "test/support/fixtures/**/*.json",
+    "test/support/fixtures/**/*.jsonl",
+    "docs/**/*.md",
+    "guides/**/*.md",
+    "mix.exs",
+    "mix.lock",
+    ".formatter.exs",
+    ".credo.exs",
+    ".tool-versions",
+    "AGENTS.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "VERSION"
+  ],
+  "ignore": {
+    "useDefaultPatterns": false
+  }
+}

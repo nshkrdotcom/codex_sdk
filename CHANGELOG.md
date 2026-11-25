@@ -1,11 +1,5 @@
 # Changelog
 
-[0.21.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.21.1...v0.21.2
-
-[0.21.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.21.0...v0.21.1
-[0.21.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.20.0...v0.21.0
-[0.20.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.19.0...v0.20.0
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -39,9 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partials, and retain buffered host requests for matching subscribers.
 - Redact submitted Bedrock access keys from SDK disconnect diagnostics. Require
   Core 0.10.3 to keep child stderr out of OTP crash reports.
-
-See the parity audit for stable CLI smoke results and remaining authenticated
-verification.
 
 ## [0.21.6] - 2026-11-17
 
@@ -1204,6 +1195,10 @@ verification.
 
 Initial design release.
 
+[0.21.2]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.21.1...v0.21.2
+[0.21.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.21.0...v0.21.1
+[0.21.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.20.0...v0.21.0
+[0.20.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/nshkrdotcom/codex_sdk/compare/v0.17.0...v0.18.0
