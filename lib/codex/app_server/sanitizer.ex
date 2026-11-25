@@ -139,6 +139,20 @@ defmodule Codex.AppServer.Sanitizer do
     }
   end
 
+  @spec request_values(Values.t(), String.t(), term()) :: Values.t()
+  def request_values(
+        %Values{} = current,
+        "account/login/start",
+        %{
+          "type" => "amazonBedrockAccessKeys"
+        } = params
+      ) do
+    credentials = Map.take(params, ["accessKeyId", "secretAccessKey", "sessionToken"])
+    values([credentials | current.exact])
+  end
+
+  def request_values(%Values{} = current, _method, _params), do: current
+
   @spec empty_values() :: Values.t()
   def empty_values, do: %Values{exact: [], substrings: [], count: 0, total_bytes: 0}
 

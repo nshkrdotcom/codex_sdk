@@ -161,6 +161,8 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
     assert_receive {:remote_socket_received, ^socket_pid, %{"method" => "initialized"}}, 1_000
 
+    assert :ok = AppServer.subscribe(conn, request_id: "search-before-host")
+    refute_receive {:codex_request, 91, _, _}, 0
     assert :ok = AppServer.subscribe(conn)
 
     assert_receive {:codex_notification, "thread/started", %{"threadId" => "thr_buffered"}}, 1_000
@@ -433,6 +435,8 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert {:error, :duplicate_request_id} =
              AppServer.thread_search_stream(conn, "search-a", "duplicate")
 
+    send(socket_pid, {:push_json, %{"method" => "thread/search/partial", "params" => []}})
+
     partial_b = %{"requestId" => "search-b", "data" => [%{"marker" => "b"}]}
     partial_a = %{"requestId" => "search-a", "data" => [%{"marker" => "a"}]}
     send(socket_pid, {:push_json, %{"method" => "thread/search/partial", "params" => partial_b}})
@@ -466,6 +470,29 @@ defmodule Codex.AppServer.RemoteConnectionTest do
 
     assert {:error, _} = Task.await(b, 1_000)
     assert {:ok, %{"data" => [], "nextCursor" => nil}} = Task.await(a, 1_000)
+    assert :ok = AppServer.disconnect(conn)
+  end
+
+  test "timed out search IDs cannot be reused and late frames are ignored", %{url: url} do
+    assert {:ok, conn} = AppServer.connect_remote(url, init_timeout_ms: 500)
+    assert_receive {:remote_socket_connected, socket_pid}, 1_000
+    assert :ok = AppServer.subscribe(conn, request_id: "stale")
+
+    assert {:error, {:timeout, "thread/search/stream", 20}} =
+             AppServer.thread_search_stream(conn, "stale", "alpha", timeout_ms: 20)
+
+    assert {:error, :duplicate_request_id} =
+             AppServer.thread_search_stream(conn, "stale", "beta")
+
+    send(socket_pid, {:push_json, %{"id" => "stale", "result" => %{"data" => []}}})
+
+    send(
+      socket_pid,
+      {:push_json, %{"method" => "thread/search/partial", "params" => %{"requestId" => "stale"}}}
+    )
+
+    refute_receive {:codex_notification, "thread/search/partial", _}
+    assert :ok = AppServer.unsubscribe(conn)
     assert :ok = AppServer.disconnect(conn)
   end
 end

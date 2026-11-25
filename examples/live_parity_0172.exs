@@ -60,7 +60,12 @@ defmodule CodexExamples.LiveParity0172 do
         })
       )
 
-    {:ok, result} = Thread.run(thread, "Reply exactly OK. Marker: #{marker}", %{timeout_ms: 120_000})
+    result =
+      case Thread.run(thread, "Reply exactly OK. Marker: #{marker}", %{timeout_ms: 120_000}) do
+        {:ok, result} -> result
+        {:error, _reason} -> Mix.raise("Unable to complete the disposable history turn")
+      end
+
     id = result.thread.thread_id
 
     try do
@@ -76,7 +81,7 @@ defmodule CodexExamples.LiveParity0172 do
         IO.puts("SKIPPED: goals (CODEX_PARITY_GOALS=1 and server goals feature)")
       end
     after
-      {:ok, _} = AppServer.thread_archive(conn, id)
+      :ok = AppServer.thread_archive(conn, id)
     end
   end
 

@@ -1463,14 +1463,62 @@ defmodule Codex.ThreadTest do
     capture_path = Path.join(dir, "argv.txt")
     script = FixtureScripts.capture_args("thread_basic.jsonl", capture_path)
     on_exit(fn -> File.rm(script) end)
-    {:ok, opts} = Codex.Options.new(%{api_key: "test", codex_path_override: script})
-    {:ok, thread} = Codex.start_thread(opts, %{remote: "ws://127.0.0.1:4500"})
-    assert {:ok, _result} = Codex.Thread.run(thread, "ok")
+    [shebang, body] = String.split(File.read!(script), "\n", parts: 2)
+
+    checks = """
+    [[ "$PARITY_FIXTURE_TOKEN" == "fixture-token" ]] || exit 60
+    [[ "${CODEX_API_KEY:-}" != "fixture-local-key" ]] || exit 61
+    [[ "${OPENAI_API_KEY:-}" != "fixture-local-key" ]] || exit 62
+    [[ "${OPENAI_BASE_URL:-}" != "https://local-provider.test/v1" ]] || exit 63
+    if [[ "${PARITY_FIXTURE_AMBIENT:-}" == "ambient-fixture" ]]; then
+      printf 'inherited\\n' > "#{capture_path}.ambient"
+    else
+      printf 'absent\\n' > "#{capture_path}.ambient"
+    fi
+    """
+
+    File.write!(script, [shebang, "\n", checks, body])
+
+    {:ok, opts} =
+      Codex.Options.new(%{
+        api_key: "fixture-local-key",
+        base_url: "https://local-provider.test/v1",
+        codex_path_override: script
+      })
+
+    {:ok, thread} =
+      Codex.start_thread(opts, %{
+        remote: "ws://127.0.0.1:4500",
+        remote_auth_token_env: "PARITY_FIXTURE_TOKEN"
+      })
+
+    assert {:ok, _result} =
+             Codex.Thread.run(thread, "ok", %{env: %{"PARITY_FIXTURE_TOKEN" => "fixture-token"}})
+
     args = File.read!(capture_path)
     assert args =~ "--remote ws://127.0.0.1:4500"
     refute args =~ "--model"
     refute args =~ "--config"
     refute args =~ "--sandbox"
     refute args =~ "--cd"
+
+    expected_ambient =
+      if System.get_env("PARITY_FIXTURE_AMBIENT") == "ambient-fixture",
+        do: "inherited\n",
+        else: "absent\n"
+
+    assert File.read!(capture_path <> ".ambient") == expected_ambient
+
+    id = "00000000-0000-4000-8000-000000000001"
+    resumed = %{thread | thread_id: id}
+
+    assert {:ok, _result} =
+             Codex.Thread.run(resumed, "ok", %{
+               clear_env?: true,
+               env: %{"PARITY_FIXTURE_TOKEN" => "fixture-token"}
+             })
+
+    assert File.read!(capture_path) =~ "--remote-auth-token-env PARITY_FIXTURE_TOKEN resume #{id}"
+    assert File.read!(capture_path <> ".ambient") == "absent\n"
   end
 end

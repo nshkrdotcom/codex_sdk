@@ -20,6 +20,7 @@ defmodule Codex.AppServer.RemoteConnection do
       :phase,
       :next_id,
       :pending,
+      :used_request_ids,
       :ready_waiters,
       :subscribers,
       :subscriber_refs,
@@ -128,6 +129,7 @@ defmodule Codex.AppServer.RemoteConnection do
              timer_ref: timer_ref
            }
          },
+         used_request_ids: MapSet.new(),
          ready_waiters: [],
          subscribers: %{},
          subscriber_refs: %{},
@@ -164,17 +166,8 @@ defmodule Codex.AppServer.RemoteConnection do
         subscriber_refs: Map.put(state.subscriber_refs, ref, pid)
     }
 
-    state =
-      case state.buffered_events do
-        [] ->
-          state
-
-        events ->
-          send_buffered_events(pid, events, filters)
-          %State{state | buffered_events: []}
-      end
-
-    {:reply, :ok, state}
+    remaining = send_buffered_events(pid, state.buffered_events, filters)
+    {:reply, :ok, %State{state | buffered_events: remaining}}
   end
 
   def handle_call({:unsubscribe, pid}, _from, %State{} = state) do
@@ -231,14 +224,18 @@ defmodule Codex.AppServer.RemoteConnection do
 
   def handle_call({:request_with_id, id, method, params, timeout_ms}, from, %State{} = state)
       when is_binary(id) and id != "" do
-    if Map.has_key?(state.pending, id) do
+    if MapSet.member?(state.used_request_ids, id) do
       {:reply, {:error, :duplicate_request_id}, state}
     else
+      state = %State{state | used_request_ids: MapSet.put(state.used_request_ids, id)}
       send_request(state, id, method, params, timeout_ms, from, state.next_id)
     end
   end
 
-  defp send_request(state, id, method, params, timeout_ms, from, next_id) do
+  defp send_request(%State{} = state, id, method, params, timeout_ms, from, next_id) do
+    values = Sanitizer.request_values(state.redaction_values, method, params)
+    state = %State{state | redaction_values: values}
+
     timer_ref = Process.send_after(self(), {:request_timeout, id}, timeout_ms)
 
     pending =
@@ -255,7 +252,7 @@ defmodule Codex.AppServer.RemoteConnection do
 
       {:error, reason} ->
         _ = Process.cancel_timer(timer_ref)
-        {:reply, {:error, reason}, %State{state | pending: state.pending}}
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -470,7 +467,21 @@ defmodule Codex.AppServer.RemoteConnection do
   defp handle_incoming_result({:ok, %State{} = state}), do: {:noreply, state}
   defp handle_incoming_result({:stop, reason, %State{} = state}), do: {:stop, reason, state}
 
-  defp broadcast_notification(%State{} = state, method, params) do
+  defp broadcast_notification(%State{} = state, "thread/search/partial" = method, params)
+       when is_map(params) do
+    id = Map.get(params, "requestId")
+
+    if Map.has_key?(state.pending, id),
+      do: deliver_notification(state, method, params),
+      else: state
+  end
+
+  defp broadcast_notification(%State{} = state, "thread/search/partial", _params), do: state
+
+  defp broadcast_notification(%State{} = state, method, params),
+    do: deliver_notification(state, method, params)
+
+  defp deliver_notification(state, method, params) do
     Enum.each(state.subscribers, fn {pid, filters} ->
       if subscriber_match?(filters, method, params) do
         send(pid, {:codex_notification, method, params})
@@ -491,17 +502,22 @@ defmodule Codex.AppServer.RemoteConnection do
   end
 
   defp send_buffered_events(pid, events, filters) when is_pid(pid) do
-    Enum.each(events, fn
-      {:notification, method, params} ->
-        if subscriber_match?(filters, method, params) do
-          send(pid, {:codex_notification, method, params})
-        end
+    Enum.reject(events, &send_buffered_event(pid, &1, filters))
+  end
 
-      {:request, id, method, params} ->
-        if subscriber_match?(filters, method, params) do
-          send(pid, {:codex_request, id, method, params})
-        end
-    end)
+  defp send_buffered_event(pid, {:notification, method, params}, filters) do
+    subscriber_match?(filters, method, params) and
+      deliver_buffered_event(pid, {:codex_notification, method, params})
+  end
+
+  defp send_buffered_event(pid, {:request, id, method, params}, filters) do
+    subscriber_match?(filters, method, params) and
+      deliver_buffered_event(pid, {:codex_request, id, method, params})
+  end
+
+  defp deliver_buffered_event(pid, message) do
+    send(pid, message)
+    true
   end
 
   defp subscriber_match?(filters, method, params) do

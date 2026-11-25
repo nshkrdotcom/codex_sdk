@@ -29,8 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer fall back to a different registration. Keep SDK cancellation tokens
   internal instead of sending an unsupported CLI flag.
 
-Source-audited against 0.172.0 and pinned main; local Elixir QC and authenticated
-live verification remain release prerequisites.
+- Reject unsafe authenticated exec URLs and explicit incompatible remote
+  settings. Forward `clear_env?` to the child launch.
+- Keep explicit search IDs unique for a WebSocket connection, drop late search
+  partials, and retain buffered host requests for matching subscribers.
+- Redact submitted Bedrock access keys from SDK disconnect diagnostics.
+
+See the parity audit for stable CLI smoke results and remaining authenticated
+verification.
 
 ## [0.21.6] - 2026-11-17
 

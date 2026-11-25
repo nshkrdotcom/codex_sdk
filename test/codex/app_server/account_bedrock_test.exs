@@ -5,6 +5,7 @@ defmodule Codex.AppServer.AccountBedrockTest do
   alias Codex.AppServer.Connection
   alias Codex.AppServer.NotificationAdapter
   alias Codex.AppServer.Protocol
+  alias Codex.AppServer.Sanitizer
   alias Codex.Auth.Store
   alias Codex.Events
   alias Codex.Options
@@ -194,6 +195,56 @@ defmodule Codex.AppServer.AccountBedrockTest do
     assert {:error, :invalid_bedrock_source} = Account.bedrock_setup(conn, :unknown, "us-east-1")
   end
 
+  test "raw Bedrock access-key login redacts replies and SDK disconnect diagnostics", %{
+    conn: conn
+  } do
+    credentials = %{
+      "accessKeyId" => "fixture-access-id",
+      "secretAccessKey" => "fixture-access-secret",
+      "sessionToken" => "fixture-aws-session"
+    }
+
+    params =
+      Map.merge(credentials, %{"type" => "amazonBedrockAccessKeys", "region" => "us-east-1"})
+
+    echoed = credentials |> Map.values() |> Enum.join(" ")
+
+    login = fn ->
+      task = Task.async(fn -> Account.login_start(conn, params) end)
+      assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+      assert %{"id" => id, "params" => ^params} = Jason.decode!(line)
+      {task, id}
+    end
+
+    {task, id} = login.()
+    :ok = AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{"echo" => echoed}))
+    assert {:ok, %{"echo" => "[REDACTED] [REDACTED] [REDACTED]"}} = Task.await(task, 500)
+
+    {task, id} = login.()
+    :ok = AppServerSubprocess.send_stdout(Protocol.encode_error(id, -32_000, echoed))
+    assert {:error, %{"message" => "[REDACTED] [REDACTED] [REDACTED]"}} = Task.await(task, 500)
+
+    {task, _id} = login.()
+    Process.unlink(conn)
+    monitor = Process.monitor(conn)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        :ok = AppServerSubprocess.send_stderr(echoed)
+        :ok = AppServerSubprocess.exit(1)
+        assert {:error, failure} = Task.await(task, 1_000)
+        assert inspect(failure) =~ "[REDACTED]"
+        refute inspect(failure) =~ echoed
+        assert_receive {:DOWN, ^monitor, :process, ^conn, {:shutdown, _}}, 1_000
+      end)
+
+    sdk_diagnostic =
+      log |> String.split("\n") |> Enum.find(&String.contains?(&1, "codex app-server exited:"))
+
+    assert sdk_diagnostic =~ "[REDACTED]"
+    for value <- Map.values(credentials), do: refute(sdk_diagnostic =~ value)
+  end
+
   @tag :tmp_dir
   test "managed Bedrock access keys round-trip and redact", %{tmp_dir: home} do
     keys = %{
@@ -217,8 +268,8 @@ defmodule Codex.AppServer.AccountBedrockTest do
     for value <- Map.values(keys) do
       refute inspect(record) =~ value
       refute inspect(record.bedrock_access_keys) =~ value
-      refute inspect(Codex.AppServer.Sanitizer.term(keys)) =~ value
-      refute Codex.AppServer.Sanitizer.text(Jason.encode!(keys)) =~ value
+      refute inspect(Sanitizer.term(keys)) =~ value
+      refute Sanitizer.text(Jason.encode!(keys)) =~ value
     end
   end
 

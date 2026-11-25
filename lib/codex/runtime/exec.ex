@@ -498,40 +498,104 @@ defmodule Codex.Runtime.Exec do
   defp validate_exec_controls(exec_opts, command_args) do
     remote = exec_opt(exec_opts, :remote)
     token_env = exec_opt(exec_opts, :remote_auth_token_env)
-    cyber = cyber_program(exec_opts)
 
+    with :ok <- validate_remote_endpoint(remote, token_env),
+         :ok <- validate_cyber_program(cyber_program(exec_opts), command_args) do
+      if remote_exec?(exec_opts) do
+        validate_remote_exec(exec_opts, command_args || command_args_for_run(exec_opts))
+      else
+        :ok
+      end
+    end
+  end
+
+  defp validate_remote_endpoint(remote, token_env) do
+    with :ok <- validate_remote_address(remote),
+         :ok <- validate_remote_token_name(token_env) do
+      validate_remote_token_transport(remote, token_env)
+    end
+  end
+
+  defp validate_remote_address(nil), do: :ok
+
+  defp validate_remote_address(address),
+    do: if(valid_remote_address?(address), do: :ok, else: {:error, :invalid_remote_address})
+
+  defp validate_remote_token_name(nil), do: :ok
+
+  defp validate_remote_token_name(name),
+    do: if(valid_token_env?(name), do: :ok, else: {:error, :invalid_remote_auth_token_env})
+
+  defp validate_remote_token_transport(_remote, nil), do: :ok
+
+  defp validate_remote_token_transport(nil, _name),
+    do: {:error, :remote_auth_token_env_requires_remote}
+
+  defp validate_remote_token_transport(remote, _name) do
+    if remote_auth_transport?(remote), do: :ok, else: {:error, :invalid_remote_auth_transport}
+  end
+
+  defp validate_cyber_program(cyber, command_args) do
     cond do
-      not is_nil(remote) and not valid_remote_address?(remote) ->
-        {:error, :invalid_remote_address}
-
-      not is_nil(token_env) and not valid_token_env?(token_env) ->
-        {:error, :invalid_remote_auth_token_env}
-
-      is_nil(remote) and not is_nil(token_env) ->
-        {:error, :remote_auth_token_env_requires_remote}
-
       cyber not in [nil, "standard", "daybreak_blue", "daybreak_red"] ->
         {:error, :invalid_cyber_access_program}
 
       not is_nil(cyber) and match?(["review" | _], command_args) ->
         {:error, :cyber_access_program_unsupported_for_review}
 
-      remote_exec?(exec_opts) ->
-        validate_remote_exec(exec_opts, command_args || command_args_for_run(exec_opts))
-
       true ->
         :ok
     end
   end
 
-  defp valid_remote_address?(address) when is_binary(address) and address != "" do
-    uri = URI.parse(address)
+  defp valid_remote_address?("unix://" <> path), do: not String.contains?(path, <<0>>)
 
-    uri.scheme in ["ws", "wss", "unix"] and is_nil(uri.userinfo) and
-      is_nil(uri.query) and is_nil(uri.fragment)
+  defp valid_remote_address?(address) when is_binary(address) do
+    case URI.new(address) do
+      {:ok,
+       %URI{
+         scheme: scheme,
+         host: host,
+         port: port,
+         path: path,
+         userinfo: nil,
+         query: nil,
+         fragment: nil
+       }}
+      when scheme in ["ws", "wss"] and is_binary(host) and host != "" and
+             port in 1..65_535 and path in [nil, "/"] ->
+        explicit_remote_port?(address, port) and
+          not String.contains?(address, ["\\", "%"])
+
+      _ ->
+        false
+    end
   end
 
   defp valid_remote_address?(_address), do: false
+
+  defp explicit_remote_port?(address, port) do
+    address
+    |> String.trim_trailing("/")
+    |> String.ends_with?(":" <> Integer.to_string(port))
+  end
+
+  defp remote_auth_transport?(address) do
+    case URI.parse(address) do
+      %URI{scheme: "wss"} -> true
+      %URI{scheme: "ws", host: host} -> loopback_host?(host)
+      _ -> false
+    end
+  end
+
+  defp loopback_host?(host) do
+    String.downcase(host) == "localhost" or
+      case :inet.parse_strict_address(String.to_charlist(host)) do
+        {:ok, {127, _, _, _}} -> true
+        {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+        _ -> false
+      end
+  end
 
   defp valid_token_env?(<<first, rest::binary>>)
        when first in ?A..?Z or first in ?a..?z or first == ?_ do
@@ -558,7 +622,7 @@ defmodule Codex.Runtime.Exec do
       permission_profile: fetch_thread_opt(exec_opts.thread, :permission_profile),
       working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
       additional_directories: fetch_thread_opt(exec_opts.thread, :additional_directories),
-      thread_source: thread_source_for_run(exec_opts, command_args),
+      thread_source: exec_opt(exec_opts, :thread_source),
       cyber_access_program: cyber_program(exec_opts),
       profile: exec_opt(exec_opts, :profile),
       oss: payload_oss?(exec_opts),
@@ -566,11 +630,11 @@ defmodule Codex.Runtime.Exec do
       full_auto: exec_opt(exec_opts, :full_auto),
       dangerously_bypass_approvals_and_sandbox:
         exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
-      ephemeral: fetch_thread_opt(exec_opts.thread, :ephemeral),
+      ephemeral: exec_opt(exec_opts, :ephemeral),
       ignore_user_config: fetch_thread_opt(exec_opts.thread, :ignore_user_config),
       ignore_rules: fetch_thread_opt(exec_opts.thread, :ignore_rules),
       ask_for_approval: fetch_thread_opt(exec_opts.thread, :ask_for_approval),
-      network_access_enabled: fetch_thread_opt(exec_opts.thread, :network_access_enabled),
+      network_access_enabled: exec_opt(exec_opts, :network_access_enabled),
       web_search_mode: fetch_thread_opt(exec_opts.thread, :web_search_mode_explicit),
       images: exec_opts.attachments,
       output_schema: exec_opts.output_schema_path,
@@ -585,7 +649,8 @@ defmodule Codex.Runtime.Exec do
       turn_model: fetch_turn_opt(exec_opts.turn_opts, :model),
       turn_reasoning_effort: fetch_turn_opt(exec_opts.turn_opts, :reasoning_effort),
       turn_sandbox: fetch_turn_opt(exec_opts.turn_opts, :sandbox),
-      turn_working_directory: fetch_turn_opt(exec_opts.turn_opts, :working_directory)
+      turn_working_directory: fetch_turn_opt(exec_opts.turn_opts, :working_directory),
+      derived_config: remote_derived_config(exec_opts)
     ]
 
     case Enum.find(unsupported, fn {key, value} -> remote_control_set?(key, value) end) do
@@ -594,7 +659,22 @@ defmodule Codex.Runtime.Exec do
     end
   end
 
-  defp remote_control_set?(:network_access_enabled, value), do: not is_nil(value)
+  defp remote_derived_config(exec_opts) do
+    Enum.reject(derived_config_overrides(exec_opts), fn
+      {key, false} when key in ["hide_agent_reasoning", "show_raw_agent_reasoning"] ->
+        true
+
+      {"web_search", "cached"} ->
+        not fetch_thread_opt(exec_opts.thread, :web_search_mode_explicit)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp remote_control_set?(key, value) when key in [:network_access_enabled, :ephemeral],
+    do: not is_nil(value)
+
   defp remote_control_set?(_key, value), do: value not in [nil, false, [], %{}]
 
   defp validate_remote_command([]), do: :ok

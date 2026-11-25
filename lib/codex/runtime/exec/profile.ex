@@ -19,7 +19,8 @@ defmodule Codex.Runtime.Exec.Profile do
       {:ok,
        Shared.command(command_spec, render_args(opts),
          cwd: Keyword.get(opts, :cwd),
-         env: normalize_env(Keyword.get(opts, :env, %{}))
+         env: normalize_env(Keyword.get(opts, :env, %{})),
+         clear_env?: Keyword.get(opts, :clear_env?) == true
        )}
     end
   end

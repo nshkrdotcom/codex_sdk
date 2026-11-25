@@ -717,11 +717,12 @@ defmodule Codex.AppServer do
   @doc """
   Performs experimental incremental search on a remote app-server connection.
 
-  Use a fresh, non-secret string request ID per search. Subscribe from a separate
+  Use a fresh, non-secret string ID for the lifetime of the connection. The
+  connection rejects reused IDs, including after timeout. Subscribe from a separate
   process with `methods: ["thread/search/partial"], request_id: request_id` before
   calling this function. Partial batches are provisional; the final result is
   authoritative. Cancel with `thread_search_stream_cancel/2` on the same connection.
-  The stdio Core facade does not currently expose caller-assigned request IDs.
+  The Core stdio JSON-RPC facade does not expose caller-assigned request IDs.
   """
   @spec thread_search_stream(connection(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -732,7 +733,9 @@ defmodule Codex.AppServer do
       conn,
       request_id,
       "thread/search/stream",
-      thread_search_params(search_term, opts), timeout_ms: Keyword.get(opts, :timeout_ms, 30_000))
+      thread_search_params(search_term, opts),
+      timeout_ms: Keyword.get(opts, :timeout_ms, 30_000)
+    )
   end
 
   @doc """

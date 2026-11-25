@@ -96,7 +96,7 @@ defmodule CodexSdk.MixProject do
       source_ref: "v#{@version}",
       source_url: @source_url,
       homepage_url: @docs_url,
-      assets: %{"assets" => "assets"},
+      assets: %{"assets" => "assets", "docs/20261125" => "."},
       logo: "assets/codex_sdk.svg",
       extras: [
         "docs/20261125/parity-audit.md",
@@ -278,7 +278,8 @@ defmodule CodexSdk.MixProject do
       name: "codex_sdk",
       description: description(),
       readme: "README.md",
-      files: ~w(lib config assets guides examples mix.exs README.md CHANGELOG.md LICENSE VERSION),
+      files:
+        ~w(lib config assets guides examples docs/20261125 mix.exs README.md CHANGELOG.md LICENSE VERSION),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,

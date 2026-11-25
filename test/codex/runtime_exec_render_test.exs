@@ -108,6 +108,20 @@ defmodule Codex.RuntimeExecRenderTest do
     resumed = %{exec_opts | thread: %{thread | thread_id: thread_id}}
     assert {:ok, resumed_render} = Runtime.Exec.render_for_test(exec_opts: resumed, input: "next")
     assert resumed_render.args == render.args ++ ["resume", thread_id]
+
+    sourced = %{
+      resumed
+      | thread: %{resumed.thread | thread_opts: %{thread_opts | thread_source: :user}}
+    }
+
+    assert {:error, {:remote_exec_unsupported_option, :thread_source}} =
+             Runtime.Exec.render_for_test(exec_opts: sourced)
+
+    assert {:error, {:remote_exec_unsupported_option, :ephemeral}} =
+             Runtime.Exec.render_for_test(
+               exec_opts: %{exec_opts | turn_opts: %{ephemeral: false}}
+             )
+
     invalid = %{exec_opts | thread: %{thread | resume: :last}}
 
     assert {:error, :remote_exec_requires_new_or_resume_by_id} =
@@ -117,6 +131,36 @@ defmodule Codex.RuntimeExecRenderTest do
 
     assert {:error, {:remote_exec_unsupported_option, :output_schema}} =
              Runtime.Exec.render_for_test(exec_opts: invalid)
+  end
+
+  test "remote exec rejects malformed addresses, unsafe authentication, and local controls" do
+    {:ok, opts} = Options.new(%{})
+
+    cases = [
+      {%{remote: "https://example.test:443"}, :invalid_remote_address},
+      {%{remote: "ws://:4500"}, :invalid_remote_address},
+      {%{remote: "wss://example.test"}, :invalid_remote_address},
+      {%{remote: "wss://user:synthetic@example.test:443"}, :invalid_remote_address},
+      {%{remote: "ws://example.test:4500", remote_auth_token_env: "REMOTE_TOKEN"},
+       :invalid_remote_auth_transport},
+      {%{remote: "unix:///tmp/fixture.sock", remote_auth_token_env: "REMOTE_TOKEN"},
+       :invalid_remote_auth_transport},
+      {%{remote: "ws://localhost:4500", remote_auth_token_env: "BAD-NAME"},
+       :invalid_remote_auth_token_env},
+      {%{remote: "ws://localhost:4500", ephemeral: false},
+       {:remote_exec_unsupported_option, :ephemeral}},
+      {%{remote: "ws://localhost:4500", skills_enabled: false},
+       {:remote_exec_unsupported_option, :derived_config}}
+    ]
+
+    for {attrs, reason} <- cases do
+      {:ok, thread_opts} = Thread.Options.new(attrs)
+
+      {:ok, exec_opts} =
+        Exec.Options.new(%{codex_opts: opts, thread: Thread.build(opts, thread_opts)})
+
+      assert {:error, ^reason} = Runtime.Exec.render_for_test(exec_opts: exec_opts)
+    end
   end
 
   test "local exec forwards source on new thread and explicit cyber program on resume" do

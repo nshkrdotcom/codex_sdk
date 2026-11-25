@@ -225,7 +225,10 @@ an explicit `base_instructions` override remains untouched.
 
 Set `remote: "ws://127.0.0.1:4500"` (or an authorized `wss://` or `unix://`
 address) and optionally `remote_auth_token_env: "REMOTE_TOKEN"` in thread
-options. Pass the token in the caller-supplied child environment if required.
+options. Use TLS or loopback WebSocket when supplying a token. Pass the token
+in the turn's `env` under the named variable. Set `clear_env?: true` on the turn
+to clear the ambient process environment while preserving explicit child
+overrides.
 These options apply to the exec transport only, not the SDK's WebSocket
 app-server connection or its SSH execution placement. Resume by the returned
 thread ID. Stable remote exec rejects local workspace, model, permissions,

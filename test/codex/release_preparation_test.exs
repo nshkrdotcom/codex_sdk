@@ -7,14 +7,14 @@ defmodule Codex.ReleasePreparationTest do
     project = Mix.Project.config()
     package_files = project[:package][:files]
 
-    assert project[:version] == "0.21.6"
-    assert project[:docs][:source_ref] == "v0.21.6"
+    assert project[:version] == "0.22.0"
+    assert project[:docs][:source_ref] == "v0.22.0"
     assert project[:docs][:homepage_url] == "https://hexdocs.pm/codex_sdk"
-    assert project[:docs][:assets] == %{"assets" => "assets"}
+    assert project[:docs][:assets] == %{"assets" => "assets", "docs/20261125" => "."}
     assert project[:docs][:logo] == "assets/codex_sdk.svg"
 
     for required <-
-          ~w(lib assets guides examples mix.exs README.md LICENSE CHANGELOG.md VERSION) do
+          ~w(lib assets guides examples docs/20261125 mix.exs README.md LICENSE CHANGELOG.md VERSION) do
       assert required in package_files
     end
 

@@ -249,6 +249,9 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_call({:request, method, params, timeout_ms}, from, %State{} = state) do
+    values = Sanitizer.request_values(state.redaction_values, method, params)
+    state = %State{state | redaction_values: values}
+
     case start_request_task(state, from, method, params, timeout_ms) do
       {:ok, next_state} ->
         {:noreply, next_state}

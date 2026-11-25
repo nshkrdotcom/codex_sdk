@@ -23,13 +23,7 @@ defmodule Codex.SessionTest do
     {:ok, thread_opts} = ThreadOptions.new(%{})
     thread = Thread.build(codex_opts, thread_opts)
 
-    {:ok, session_pid} = Memory.start_link()
-
-    on_exit(fn ->
-      if Process.alive?(session_pid) do
-        Agent.stop(session_pid)
-      end
-    end)
+    session_pid = start_supervised!(%{id: Memory, start: {Memory, :start_link, [[]]}})
 
     callback = fn input, history ->
       send(self(), {:session_callback, input, history})

@@ -7,6 +7,7 @@ defmodule Codex.ErrorTest do
   test "non-zero codex exit normalizes into Codex.Error" do
     script_body = """
     #!/usr/bin/env bash
+    cat > /dev/null
     exit 21
     """
 
