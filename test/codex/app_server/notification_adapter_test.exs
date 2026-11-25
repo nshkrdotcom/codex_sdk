@@ -32,6 +32,7 @@ defmodule Codex.AppServer.NotificationAdapterTest do
             "totalTokens" => 21,
             "inputTokens" => 12,
             "cachedInputTokens" => 0,
+            "cacheWriteInputTokens" => 4,
             "outputTokens" => 9,
             "reasoningOutputTokens" => 0
           },
@@ -55,6 +56,7 @@ defmodule Codex.AppServer.NotificationAdapterTest do
               }} = NotificationAdapter.to_event("thread/tokenUsage/updated", params)
 
       assert usage["total_tokens"] == 21
+      assert usage["cache_write_input_tokens"] == 4
       assert delta["output_tokens"] == 9
     end
 
@@ -580,5 +582,44 @@ defmodule Codex.AppServer.NotificationAdapterTest do
       assert {:ok, %Events.AppServerNotification{method: "future/notification", params: ^params}} =
                NotificationAdapter.to_event("future/notification", params)
     end
+  end
+
+  test "0.172 goal and search events preserve new fields through event maps" do
+    cases = [
+      {"thread/goal/updated",
+       %{
+         "threadId" => "thr_1",
+         "turnId" => nil,
+         "goal" => %{"status" => "future_status", "tokensUsed" => 5},
+         "future" => true
+       }, Events.ThreadGoalUpdated},
+      {"thread/goal/cleared", %{"threadId" => "thr_1", "future" => true},
+       Events.ThreadGoalCleared},
+      {"thread/search/partial", %{"requestId" => "search-a", "data" => [%{"unknown" => 1}]},
+       Events.ThreadSearchPartial}
+    ]
+
+    for {method, params, module} <- cases do
+      assert {:ok, event} = NotificationAdapter.to_event(method, params)
+      assert event.__struct__ == module
+      assert event.params == params
+      assert Events.parse!(Events.to_map(event)) == event
+    end
+
+    assert {:ok, %Events.Error{will_retry: false}} =
+             NotificationAdapter.to_event("error", %{
+               "error" => %{"message" => "terminal"},
+               "willRetry" => false
+             })
+
+    assert {:ok,
+            %Events.AccountUpdated{auth_mode: :bedrock_access_keys, reason: "futureReason"} =
+              event} =
+             NotificationAdapter.to_event("account/updated", %{
+               "authMode" => "bedrockAccessKeys",
+               "reason" => "futureReason"
+             })
+
+    assert Events.parse!(Events.to_map(event)) == event
   end
 end

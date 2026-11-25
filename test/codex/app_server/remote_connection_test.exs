@@ -401,4 +401,71 @@ defmodule Codex.AppServer.RemoteConnectionTest do
     assert Process.alive?(conn)
     assert :ok = AppServer.disconnect(conn)
   end
+
+  test "concurrent search partials are filtered by explicit request ID", %{url: url} do
+    assert {:ok, conn} =
+             AppServer.connect_remote(url, init_timeout_ms: 500, experimental_api: true)
+
+    assert_receive {:remote_socket_connected, socket_pid}, 1_000
+
+    assert :ok =
+             AppServer.subscribe(conn, methods: ["thread/search/partial"], request_id: "search-a")
+
+    a = Task.async(fn -> AppServer.thread_search_stream(conn, "search-a", "alpha") end)
+    b = Task.async(fn -> AppServer.thread_search_stream(conn, "search-b", "beta") end)
+
+    assert_receive {:remote_socket_received, ^socket_pid,
+                    %{
+                      "id" => "search-a",
+                      "method" => "thread/search/stream",
+                      "params" => %{"searchTerm" => "alpha"}
+                    }},
+                   1_000
+
+    assert_receive {:remote_socket_received, ^socket_pid,
+                    %{
+                      "id" => "search-b",
+                      "method" => "thread/search/stream",
+                      "params" => %{"searchTerm" => "beta"}
+                    }},
+                   1_000
+
+    assert {:error, :duplicate_request_id} =
+             AppServer.thread_search_stream(conn, "search-a", "duplicate")
+
+    partial_b = %{"requestId" => "search-b", "data" => [%{"marker" => "b"}]}
+    partial_a = %{"requestId" => "search-a", "data" => [%{"marker" => "a"}]}
+    send(socket_pid, {:push_json, %{"method" => "thread/search/partial", "params" => partial_b}})
+    send(socket_pid, {:push_json, %{"method" => "thread/search/partial", "params" => partial_a}})
+    assert_receive {:codex_notification, "thread/search/partial", ^partial_a}, 1_000
+    refute_receive {:codex_notification, "thread/search/partial", ^partial_b}
+
+    cancel = Task.async(fn -> AppServer.thread_search_stream_cancel(conn, "search-b") end)
+
+    assert_receive {:remote_socket_received, ^socket_pid,
+                    %{
+                      "id" => cancel_id,
+                      "method" => "thread/search/stream/cancel",
+                      "params" => %{"requestId" => "search-b"}
+                    }},
+                   1_000
+
+    send(socket_pid, {:push_json, %{"id" => cancel_id, "result" => %{}}})
+    assert {:ok, %{}} = Task.await(cancel, 1_000)
+
+    send(
+      socket_pid,
+      {:push_json,
+       %{"id" => "search-b", "error" => %{"code" => -32_000, "message" => "cancelled"}}}
+    )
+
+    send(
+      socket_pid,
+      {:push_json, %{"id" => "search-a", "result" => %{"data" => [], "nextCursor" => nil}}}
+    )
+
+    assert {:error, _} = Task.await(b, 1_000)
+    assert {:ok, %{"data" => [], "nextCursor" => nil}} = Task.await(a, 1_000)
+    assert :ok = AppServer.disconnect(conn)
+  end
 end

@@ -5,7 +5,10 @@ defmodule Codex.AppServer.NotificationAdapter do
   alias Codex.Events
   alias Codex.Protocol.RateLimit.Snapshot, as: RateLimitSnapshot
 
-  @auth_mode_map %{"bedrockApiKey" => :bedrock_api_key}
+  @auth_mode_map %{
+    "bedrockApiKey" => :bedrock_api_key,
+    "bedrockAccessKeys" => :bedrock_access_keys
+  }
 
   @spec to_event(String.t(), map() | nil) :: {:ok, Events.t()}
   def to_event("error", %{} = params) do
@@ -17,7 +20,7 @@ defmodule Codex.AppServer.NotificationAdapter do
        additional_details:
          Map.get(error, "additionalDetails") || Map.get(error, "additional_details"),
        codex_error_info: Map.get(error, "codexErrorInfo") || Map.get(error, "codex_error_info"),
-       will_retry: Map.get(params, "willRetry") || Map.get(params, "will_retry"),
+       will_retry: Map.get(params, "willRetry", Map.get(params, "will_retry")),
        thread_id: fetch(params, "threadId", "thread_id"),
        turn_id: fetch(params, "turnId", "turn_id")
      }}
@@ -57,6 +60,30 @@ defmodule Codex.AppServer.NotificationAdapter do
 
   def to_event("skills/changed", %{} = _params) do
     {:ok, %Events.SkillsChanged{}}
+  end
+
+  def to_event("thread/goal/updated", %{} = params) do
+    {:ok,
+     %Events.ThreadGoalUpdated{
+       thread_id: fetch(params, "threadId", "thread_id"),
+       turn_id: fetch(params, "turnId", "turn_id"),
+       goal: Map.get(params, "goal"),
+       params: params
+     }}
+  end
+
+  def to_event("thread/goal/cleared", %{} = params) do
+    {:ok,
+     %Events.ThreadGoalCleared{thread_id: fetch(params, "threadId", "thread_id"), params: params}}
+  end
+
+  def to_event("thread/search/partial", %{} = params) do
+    {:ok,
+     %Events.ThreadSearchPartial{
+       request_id: fetch(params, "requestId", "request_id"),
+       data: Map.get(params, "data", []),
+       params: params
+     }}
   end
 
   def to_event("thread/name/updated", %{} = params) do
@@ -347,7 +374,9 @@ defmodule Codex.AppServer.NotificationAdapter do
          params
          |> fetch("authMode", "auth_mode")
          |> normalize_auth_mode(),
-       plan_type: normalize_plan_type(Map.get(params, "planType") || Map.get(params, "plan_type"))
+       plan_type:
+         normalize_plan_type(Map.get(params, "planType") || Map.get(params, "plan_type")),
+       reason: Map.get(params, "reason")
      }}
   end
 
@@ -577,6 +606,7 @@ defmodule Codex.AppServer.NotificationAdapter do
     |> put_int("total_tokens", Map.get(breakdown, "totalTokens"))
     |> put_int("input_tokens", Map.get(breakdown, "inputTokens"))
     |> put_int("cached_input_tokens", Map.get(breakdown, "cachedInputTokens"))
+    |> put_int("cache_write_input_tokens", Map.get(breakdown, "cacheWriteInputTokens"))
     |> put_int("output_tokens", Map.get(breakdown, "outputTokens"))
     |> put_int("reasoning_output_tokens", Map.get(breakdown, "reasoningOutputTokens"))
   end

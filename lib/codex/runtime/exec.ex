@@ -178,6 +178,7 @@ defmodule Codex.Runtime.Exec do
          {:ok, command_spec} <-
            Options.codex_command_spec(exec_opts.codex_opts, exec_opts.execution_surface),
          {:ok, config_values} <- config_values(exec_opts),
+         :ok <- validate_exec_controls(exec_opts, command_args),
          :ok <- validate_governed_runtime(exec_opts, config_values),
          {:ok, core_authority} <- cli_core_authority(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
@@ -221,6 +222,7 @@ defmodule Codex.Runtime.Exec do
 
     with %ExecOptions{} = exec_opts <- exec_opts,
          {:ok, config_values} <- config_values(exec_opts),
+         :ok <- validate_exec_controls(exec_opts, command_args),
          :ok <- validate_governed_runtime(exec_opts, config_values),
          {:ok, core_authority} <- cli_core_authority(exec_opts) do
       subcommand_args = command_args || command_args_for_run(exec_opts)
@@ -270,6 +272,10 @@ defmodule Codex.Runtime.Exec do
       provider: :codex,
       profile: Codex.Runtime.Exec.Profile,
       metadata: session_metadata(opts, exec_opts, core_authority),
+      remote: exec_opt(exec_opts, :remote),
+      remote_auth_token_env: exec_opt(exec_opts, :remote_auth_token_env),
+      thread_source: thread_source_for_run(exec_opts, subcommand_args),
+      cyber_access_program: cyber_program(exec_opts),
       cli_profile: exec_opt(exec_opts, :profile),
       oss: payload_oss?(exec_opts),
       local_provider: payload_local_provider(exec_opts),
@@ -305,8 +311,25 @@ defmodule Codex.Runtime.Exec do
     ]
 
     base
+    |> remote_session_options(exec_opts)
     |> governed_session_options(core_authority)
     |> Kernel.++(Options.execution_surface_options(exec_opts.execution_surface))
+  end
+
+  # Remote exec in 0.172.0 is server-configured: even the SDK's inferred model
+  # and reasoning defaults would be rejected by the CLI. Never forward them.
+  defp remote_session_options(options, exec_opts) do
+    if remote_exec?(exec_opts) do
+      Keyword.merge(options,
+        model: nil,
+        model_payload: nil,
+        config_values: [],
+        skip_git_repo_check: false,
+        cancellation_token: nil
+      )
+    else
+      options
+    end
   end
 
   defp governed_session_options(options, %CoreGovernedAuthority{} = authority) do
@@ -356,11 +379,13 @@ defmodule Codex.Runtime.Exec do
 
   defp session_metadata(
          opts,
-         %ExecOptions{codex_opts: %Options{} = codex_opts},
+         %ExecOptions{codex_opts: %Options{} = codex_opts} = exec_opts,
          core_authority
        ) do
-    model = normalize_option_string(codex_opts.model)
-    reasoning_effort = normalize_reasoning_value(codex_opts.reasoning_effort)
+    model = unless remote_exec?(exec_opts), do: normalize_option_string(codex_opts.model)
+
+    reasoning_effort =
+      unless remote_exec?(exec_opts), do: normalize_reasoning_value(codex_opts.reasoning_effort)
 
     opts
     |> Keyword.get(:metadata, %{})
@@ -389,7 +414,10 @@ defmodule Codex.Runtime.Exec do
       :drop
   end
 
-  defp codex_options(%{exec_opts: %ExecOptions{codex_opts: %Options{} = opts}}), do: opts
+  defp codex_options(%{exec_opts: %ExecOptions{codex_opts: %Options{} = opts} = exec_opts}) do
+    unless remote_exec?(exec_opts), do: opts
+  end
+
   defp codex_options(%{exec_opts: %Options{} = opts}), do: opts
   defp codex_options(%{codex_opts: %Options{} = opts}), do: opts
   defp codex_options(_state), do: nil
@@ -450,11 +478,138 @@ defmodule Codex.Runtime.Exec do
     end
   end
 
+  defp remote_exec?(exec_opts), do: is_binary(exec_opt(exec_opts, :remote))
+
+  defp thread_source_for_run(exec_opts, []) do
+    fetch_thread_opt(exec_opts.thread, :thread_source)
+  end
+
+  defp thread_source_for_run(_exec_opts, _subcommand_args), do: nil
+
+  defp cyber_program(exec_opts) do
+    case exec_opt(exec_opts, :cyber_access_program) do
+      value when value in [:daybreak_blue, "daybreakBlue"] -> "daybreak_blue"
+      value when value in [:daybreak_red, "daybreakRed"] -> "daybreak_red"
+      :standard -> "standard"
+      value -> value
+    end
+  end
+
+  defp validate_exec_controls(exec_opts, command_args) do
+    remote = exec_opt(exec_opts, :remote)
+    token_env = exec_opt(exec_opts, :remote_auth_token_env)
+    cyber = cyber_program(exec_opts)
+
+    cond do
+      not is_nil(remote) and not valid_remote_address?(remote) ->
+        {:error, :invalid_remote_address}
+
+      not is_nil(token_env) and not valid_token_env?(token_env) ->
+        {:error, :invalid_remote_auth_token_env}
+
+      is_nil(remote) and not is_nil(token_env) ->
+        {:error, :remote_auth_token_env_requires_remote}
+
+      cyber not in [nil, "standard", "daybreak_blue", "daybreak_red"] ->
+        {:error, :invalid_cyber_access_program}
+
+      not is_nil(cyber) and match?(["review" | _], command_args) ->
+        {:error, :cyber_access_program_unsupported_for_review}
+
+      remote_exec?(exec_opts) ->
+        validate_remote_exec(exec_opts, command_args || command_args_for_run(exec_opts))
+
+      true ->
+        :ok
+    end
+  end
+
+  defp valid_remote_address?(address) when is_binary(address) and address != "" do
+    uri = URI.parse(address)
+
+    uri.scheme in ["ws", "wss", "unix"] and is_nil(uri.userinfo) and
+      is_nil(uri.query) and is_nil(uri.fragment)
+  end
+
+  defp valid_remote_address?(_address), do: false
+
+  defp valid_token_env?(<<first, rest::binary>>)
+       when first in ?A..?Z or first in ?a..?z or first == ?_ do
+    Enum.all?(:binary.bin_to_list(rest), fn char ->
+      char in ?A..?Z or char in ?a..?z or char in ?0..?9 or char == ?_
+    end)
+  end
+
+  defp valid_token_env?(_value), do: false
+
+  defp validate_remote_exec(%ExecOptions{} = exec_opts, command_args) do
+    # Do not silently change a caller's sandbox, placement, or output contract.
+    # Global model/reasoning defaults are intentionally server-owned on this lane.
+    unsupported = [
+      governed_authority: exec_opts.codex_opts.governed_authority,
+      config_overrides: exec_opts.codex_opts.config_overrides,
+      thread_config_overrides: fetch_thread_opt(exec_opts.thread, :config_overrides),
+      turn_config_overrides: fetch_turn_opt(exec_opts.turn_opts, :config_overrides),
+      thread_config: fetch_thread_opt(exec_opts.thread, :config),
+      model: fetch_thread_opt(exec_opts.thread, :model),
+      model_provider: fetch_thread_opt(exec_opts.thread, :model_provider),
+      sandbox: sandbox_mode(fetch_thread_opt(exec_opts.thread, :sandbox)),
+      sandbox_policy: fetch_thread_opt(exec_opts.thread, :sandbox_policy),
+      permission_profile: fetch_thread_opt(exec_opts.thread, :permission_profile),
+      working_directory: fetch_thread_opt(exec_opts.thread, :working_directory),
+      additional_directories: fetch_thread_opt(exec_opts.thread, :additional_directories),
+      thread_source: thread_source_for_run(exec_opts, command_args),
+      cyber_access_program: cyber_program(exec_opts),
+      profile: exec_opt(exec_opts, :profile),
+      oss: payload_oss?(exec_opts),
+      local_provider: payload_local_provider(exec_opts),
+      full_auto: exec_opt(exec_opts, :full_auto),
+      dangerously_bypass_approvals_and_sandbox:
+        exec_opt(exec_opts, :dangerously_bypass_approvals_and_sandbox),
+      ephemeral: fetch_thread_opt(exec_opts.thread, :ephemeral),
+      ignore_user_config: fetch_thread_opt(exec_opts.thread, :ignore_user_config),
+      ignore_rules: fetch_thread_opt(exec_opts.thread, :ignore_rules),
+      ask_for_approval: fetch_thread_opt(exec_opts.thread, :ask_for_approval),
+      network_access_enabled: fetch_thread_opt(exec_opts.thread, :network_access_enabled),
+      web_search_mode: fetch_thread_opt(exec_opts.thread, :web_search_mode_explicit),
+      images: exec_opts.attachments,
+      output_schema: exec_opts.output_schema_path,
+      continuation_token: exec_opts.continuation_token,
+      personality: fetch_thread_opt(exec_opts.thread, :personality),
+      approvals_reviewer: fetch_thread_opt(exec_opts.thread, :approvals_reviewer),
+      service_tier: fetch_thread_opt(exec_opts.thread, :service_tier),
+      environments: fetch_thread_opt(exec_opts.thread, :environments),
+      dynamic_tools: fetch_thread_opt(exec_opts.thread, :dynamic_tools),
+      base_instructions: fetch_thread_opt(exec_opts.thread, :base_instructions),
+      developer_instructions: fetch_thread_opt(exec_opts.thread, :developer_instructions),
+      turn_model: fetch_turn_opt(exec_opts.turn_opts, :model),
+      turn_reasoning_effort: fetch_turn_opt(exec_opts.turn_opts, :reasoning_effort),
+      turn_sandbox: fetch_turn_opt(exec_opts.turn_opts, :sandbox),
+      turn_working_directory: fetch_turn_opt(exec_opts.turn_opts, :working_directory)
+    ]
+
+    case Enum.find(unsupported, fn {key, value} -> remote_control_set?(key, value) end) do
+      {key, _value} -> {:error, {:remote_exec_unsupported_option, key}}
+      nil -> validate_remote_command(command_args)
+    end
+  end
+
+  defp remote_control_set?(:network_access_enabled, value), do: not is_nil(value)
+  defp remote_control_set?(_key, value), do: value not in [nil, false, [], %{}]
+
+  defp validate_remote_command([]), do: :ok
+  defp validate_remote_command(["resume", id]) when is_binary(id) and id != "--last", do: :ok
+  defp validate_remote_command(_args), do: {:error, :remote_exec_requires_new_or_resume_by_id}
+
   defp command_args_for_run(%ExecOptions{} = exec_opts) do
     resume_args(exec_opts.thread)
   end
 
   defp config_values(%ExecOptions{} = exec_opts) do
+    if remote_exec?(exec_opts), do: {:ok, []}, else: local_config_values(exec_opts)
+  end
+
+  defp local_config_values(%ExecOptions{} = exec_opts) do
     with {:ok, approval_values} <- approval_config_values(exec_opts.thread),
          {:ok, override_values} <- override_config_values(exec_opts) do
       {:ok,
@@ -582,10 +737,14 @@ defmodule Codex.Runtime.Exec do
        }),
        do: GovernedAuthority.child_env(authority)
 
-  defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env}) do
-    RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
-    |> Map.merge(payload_env_overrides(opts), fn _key, _base, payload -> payload end)
-    |> Map.merge(env, fn _key, _base, custom -> custom end)
+  defp build_env(%ExecOptions{codex_opts: %Options{} = opts, env: env} = exec_opts) do
+    if remote_exec?(exec_opts) do
+      RuntimeEnv.base_overrides(nil, nil) |> Map.merge(env)
+    else
+      RuntimeEnv.base_overrides(opts.api_key, opts.base_url)
+      |> Map.merge(payload_env_overrides(opts), fn _key, _base, payload -> payload end)
+      |> Map.merge(env, fn _key, _base, custom -> custom end)
+    end
   end
 
   defp validate_governed_runtime(
@@ -721,6 +880,7 @@ defmodule Codex.Runtime.Exec do
 
   defp fetch_thread_opt(_thread, _key), do: nil
 
+  defp normalize_option_string(nil), do: nil
   defp normalize_option_string(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_option_string(value) when is_binary(value) and value != "", do: value
   defp normalize_option_string(_value), do: nil

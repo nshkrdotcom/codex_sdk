@@ -3,7 +3,8 @@ defmodule Codex.Auth.Store do
 
   alias Codex.Config.LayerStack
 
-  @type auth_mode :: :api_key | :bedrock_api_key | :chatgpt | :chatgpt_auth_tokens
+  @type auth_mode ::
+          :api_key | :bedrock_api_key | :bedrock_access_keys | :chatgpt | :chatgpt_auth_tokens
   @type credentials_store_mode :: :file | :keyring | :auto
   @api_auth_modes ~w(apikey apiKey api_key api)
   @bedrock_auth_modes ~w(bedrockApiKey bedrock_api_key)
@@ -48,14 +49,29 @@ defmodule Codex.Auth.Store do
     @type t :: %__MODULE__{api_key: String.t(), region: String.t()}
   end
 
+  defmodule BedrockAccessKeys do
+    @moduledoc false
+
+    @derive {Inspect, except: [:access_key_id, :secret_access_key, :session_token]}
+    @enforce_keys [:access_key_id, :secret_access_key]
+    defstruct [:access_key_id, :secret_access_key, :session_token]
+
+    @type t :: %__MODULE__{
+            access_key_id: String.t(),
+            secret_access_key: String.t(),
+            session_token: String.t() | nil
+          }
+  end
+
   defmodule Record do
     @moduledoc false
 
-    @derive {Inspect, except: [:openai_api_key, :bedrock_api_key, :tokens]}
+    @derive {Inspect, except: [:openai_api_key, :bedrock_api_key, :bedrock_access_keys, :tokens]}
     @enforce_keys []
     defstruct auth_mode: nil,
               openai_api_key: nil,
               bedrock_api_key: nil,
+              bedrock_access_keys: nil,
               tokens: nil,
               last_refresh: nil,
               path: nil
@@ -64,6 +80,7 @@ defmodule Codex.Auth.Store do
             auth_mode: Codex.Auth.Store.auth_mode(),
             openai_api_key: String.t() | nil,
             bedrock_api_key: Codex.Auth.Store.BedrockCredentials.t() | nil,
+            bedrock_access_keys: Codex.Auth.Store.BedrockAccessKeys.t() | nil,
             tokens: Codex.Auth.Store.Tokens.t() | nil,
             last_refresh: DateTime.t() | nil,
             path: String.t() | nil
@@ -163,6 +180,7 @@ defmodule Codex.Auth.Store do
   @spec infer_auth_mode(Record.t() | nil) :: :api | :chatgpt
   def infer_auth_mode(%Record{auth_mode: :api_key}), do: :api
   def infer_auth_mode(%Record{auth_mode: :bedrock_api_key}), do: :api
+  def infer_auth_mode(%Record{auth_mode: :bedrock_access_keys}), do: :api
   def infer_auth_mode(%Record{}), do: :chatgpt
   def infer_auth_mode(nil), do: :chatgpt
 
@@ -174,6 +192,7 @@ defmodule Codex.Auth.Store do
       auth_mode: Keyword.get(opts, :auth_mode, resolve_auth_mode(nil, openai_api_key)),
       openai_api_key: openai_api_key,
       bedrock_api_key: decode_bedrock_credentials(Keyword.get(opts, :bedrock_api_key)),
+      bedrock_access_keys: decode_access_keys(Keyword.get(opts, :bedrock_access_keys)),
       tokens:
         decode_tokens(
           %{}
@@ -214,6 +233,7 @@ defmodule Codex.Auth.Store do
       auth_mode: resolve_auth_mode(Map.get(decoded, "auth_mode"), openai_api_key),
       openai_api_key: openai_api_key,
       bedrock_api_key: decode_bedrock_credentials(Map.get(decoded, "bedrock_api_key")),
+      bedrock_access_keys: decode_access_keys(Map.get(decoded, "bedrock_access_keys")),
       tokens: tokens,
       last_refresh: decode_datetime(Map.get(decoded, "last_refresh")),
       path: path
@@ -247,6 +267,7 @@ defmodule Codex.Auth.Store do
     |> put_optional("auth_mode", encode_auth_mode(record.auth_mode))
     |> put_optional("OPENAI_API_KEY", normalize_string(record.openai_api_key))
     |> put_optional("bedrock_api_key", encode_bedrock_credentials(record.bedrock_api_key))
+    |> put_optional("bedrock_access_keys", encode_access_keys(record.bedrock_access_keys))
     |> put_optional("tokens", encode_tokens(record.tokens))
     |> put_optional("last_refresh", encode_datetime(record.last_refresh))
   end
@@ -279,6 +300,30 @@ defmodule Codex.Auth.Store do
   end
 
   defp encode_bedrock_credentials(_), do: nil
+
+  defp decode_access_keys(%BedrockAccessKeys{} = keys), do: keys
+
+  defp decode_access_keys(%{} = keys) do
+    id = normalize_string(Map.get(keys, "access_key_id") || Map.get(keys, :access_key_id))
+
+    secret =
+      normalize_string(Map.get(keys, "secret_access_key") || Map.get(keys, :secret_access_key))
+
+    token = normalize_string(Map.get(keys, "session_token") || Map.get(keys, :session_token))
+
+    if id && secret do
+      %BedrockAccessKeys{access_key_id: id, secret_access_key: secret, session_token: token}
+    end
+  end
+
+  defp decode_access_keys(_), do: nil
+
+  defp encode_access_keys(%BedrockAccessKeys{} = keys) do
+    %{"access_key_id" => keys.access_key_id, "secret_access_key" => keys.secret_access_key}
+    |> put_optional("session_token", keys.session_token)
+  end
+
+  defp encode_access_keys(_), do: nil
 
   defp write_atomic_json(tmp_path, path, payload) do
     encoded = Jason.encode_to_iodata!(payload)
@@ -315,6 +360,9 @@ defmodule Codex.Auth.Store do
       normalized_auth_mode in @bedrock_auth_modes ->
         :bedrock_api_key
 
+      normalized_auth_mode == "bedrockAccessKeys" ->
+        :bedrock_access_keys
+
       normalized_auth_mode in @chatgpt_auth_modes ->
         :chatgpt
 
@@ -331,6 +379,7 @@ defmodule Codex.Auth.Store do
 
   defp encode_auth_mode(:api_key), do: "apikey"
   defp encode_auth_mode(:bedrock_api_key), do: "bedrockApiKey"
+  defp encode_auth_mode(:bedrock_access_keys), do: "bedrockAccessKeys"
   defp encode_auth_mode(:chatgpt), do: "chatgpt"
   defp encode_auth_mode(:chatgpt_auth_tokens), do: "chatgptAuthTokens"
   defp encode_auth_mode(_), do: nil

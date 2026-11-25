@@ -3,6 +3,7 @@ defmodule Codex.AppServer.Account do
 
   alias Codex.AppServer.Connection
   alias Codex.AppServer.Params
+  alias Codex.AppServer.Sanitizer
   alias Codex.Auth
   alias Codex.Config.LayerStack
   alias Codex.GovernedAuthority
@@ -16,13 +17,15 @@ defmodule Codex.AppServer.Account do
     "apiKey" => :api_key,
     "api_key" => :api_key,
     "api" => :api_key,
-    "amazonBedrock" => :bedrock_api_key
+    "amazonBedrock" => :bedrock_api_key,
+    "amazonBedrockAccessKeys" => :bedrock_access_keys
   }
 
   @type login_method ::
           :chatgpt
           | {:api_key, String.t()}
           | {:amazon_bedrock, String.t(), String.t()}
+          | {:amazon_bedrock_access_keys, String.t(), String.t(), String.t()}
           | map()
 
   @spec login_start(connection(), login_method()) ::
@@ -44,6 +47,10 @@ defmodule Codex.AppServer.Account do
     login_start(conn, {:amazon_bedrock, api_key, region}, [])
   end
 
+  def login_start(conn, {:amazon_bedrock_access_keys, id, secret, region}) do
+    login_start(conn, {:amazon_bedrock_access_keys, id, secret, region}, [])
+  end
+
   def login_start(conn, %{} = params) when is_pid(conn) do
     login_start(conn, params, [])
   end
@@ -55,8 +62,9 @@ defmodule Codex.AppServer.Account do
   `:use_hosted_login_success_page`.
 
   Amazon Bedrock login is an unstable upstream app-server API. Its connection must
-  have been initialized with `experimental_api: true`. The current upstream server
-  publishes the request schema but returns an unimplemented error when it is used.
+  have been initialized with `experimental_api: true`. Codex 0.172.0 implements
+  this login, including persistent provider and credential configuration. Use an
+  isolated Codex home for testing. `:provider_id` optionally selects Mantle or Runtime.
   """
   @spec login_start(connection(), login_method(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -95,12 +103,34 @@ defmodule Codex.AppServer.Account do
 
   def login_start(conn, {:amazon_bedrock, api_key, region}, opts)
       when is_pid(conn) and is_binary(api_key) and is_binary(region) and is_list(opts) do
-    params = %{"type" => "amazonBedrock", "apiKey" => api_key, "region" => region}
+    params =
+      %{"type" => "amazonBedrock", "apiKey" => api_key, "region" => region}
+      |> Params.put_optional("providerId", Keyword.get(opts, :provider_id))
 
     with :ok <- reject_governed_login(opts),
          :ok <- validate_amazon_bedrock_login(api_key, region),
          :ok <- enforce_login_constraints(:bedrock_api_key, params, opts) do
       Connection.request(conn, "account/login/start", params, timeout_ms: 30_000)
+    end
+  end
+
+  def login_start(conn, {:amazon_bedrock_access_keys, id, secret, region}, opts)
+      when is_pid(conn) and is_binary(id) and is_binary(secret) and is_binary(region) and
+             is_list(opts) do
+    params =
+      %{
+        "type" => "amazonBedrockAccessKeys",
+        "accessKeyId" => id,
+        "secretAccessKey" => secret,
+        "region" => region
+      }
+      |> Params.put_optional("sessionToken", Keyword.get(opts, :session_token))
+      |> Params.put_optional("providerId", Keyword.get(opts, :provider_id))
+
+    with :ok <- reject_governed_login(opts),
+         :ok <- validate_access_keys(id, secret, region),
+         :ok <- enforce_login_constraints(:bedrock_access_keys, params, opts) do
+      request_access_key_login(conn, params)
     end
   end
 
@@ -110,8 +140,40 @@ defmodule Codex.AppServer.Account do
     with :ok <- reject_governed_login(opts),
          {:ok, login_type} <- infer_login_type(normalized),
          :ok <- enforce_login_constraints(login_type, normalized, opts) do
-      Connection.request(conn, "account/login/start", normalized, timeout_ms: 30_000)
+      if login_type == :bedrock_access_keys do
+        request_access_key_login(conn, normalized)
+      else
+        Connection.request(conn, "account/login/start", normalized, timeout_ms: 30_000)
+      end
     end
+  end
+
+  @doc "Discovers AWS profiles and credential kinds without returning credential values. Experimental."
+  @spec bedrock_discover(connection()) :: {:ok, map()} | {:error, term()}
+  def bedrock_discover(conn) when is_pid(conn) do
+    Connection.request(conn, "account/bedrock/discover", %{})
+  end
+
+  @doc """
+  Configures Bedrock using a profile or environment credentials already available
+  to the server. Requires experimental API initialization and changes user config.
+  """
+  @spec bedrock_setup(connection(), :environment | {:profile, String.t()}, String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def bedrock_setup(conn, source, region, opts \\ [])
+      when is_pid(conn) and is_binary(region) and is_list(opts) do
+    with :ok <- reject_governed_login(opts),
+         {:ok, params} <- bedrock_setup_params(source, region),
+         :ok <- enforce_login_constraints(:bedrock_api_key, params, opts) do
+      params = Params.put_optional(params, "providerId", Keyword.get(opts, :provider_id))
+      Connection.request(conn, "account/bedrock/setup", params)
+    end
+  end
+
+  @doc "Runs the experimental advisory check for the active Bedrock GovCloud configuration."
+  @spec bedrock_check_gov_cloud_requirements(connection()) :: {:ok, map()} | {:error, term()}
+  def bedrock_check_gov_cloud_requirements(conn) when is_pid(conn) do
+    Connection.request(conn, "account/bedrock/checkGovCloudRequirements", %{})
   end
 
   @spec login_cancel(connection(), String.t()) :: {:ok, map()} | {:error, term()}
@@ -185,6 +247,30 @@ defmodule Codex.AppServer.Account do
     )
   end
 
+  defp request_access_key_login(conn, params) do
+    values =
+      Sanitizer.values(Map.take(params, ["accessKeyId", "secretAccessKey", "sessionToken"]))
+
+    case Connection.request(conn, "account/login/start", params, timeout_ms: 30_000) do
+      {:ok, result} -> {:ok, Sanitizer.term(result, values)}
+      {:error, error} -> {:error, Sanitizer.term(error, values)}
+    end
+  end
+
+  defp bedrock_setup_params(:environment, region),
+    do: {:ok, %{"type" => "environment", "region" => region}}
+
+  defp bedrock_setup_params({:profile, profile}, region) when is_binary(profile),
+    do: {:ok, %{"type" => "profile", "profile" => profile, "region" => region}}
+
+  defp bedrock_setup_params(_source, _region), do: {:error, :invalid_bedrock_source}
+
+  defp validate_access_keys(id, secret, region) do
+    if Enum.any?([id, secret, region], &(String.trim(&1) == "")),
+      do: {:error, :invalid_bedrock_access_keys},
+      else: :ok
+  end
+
   defp enforce_login_constraints(login_type, params, opts) do
     with {:ok, %{forced_login_method: forced_method, forced_chatgpt_workspace_id: workspace_id}} <-
            load_forced_login_config(opts),
@@ -197,6 +283,7 @@ defmodule Codex.AppServer.Account do
   defp enforce_forced_login_method("chatgpt", :chatgpt), do: :ok
   defp enforce_forced_login_method("api", :api_key), do: :ok
   defp enforce_forced_login_method("api", :bedrock_api_key), do: :ok
+  defp enforce_forced_login_method("api", :bedrock_access_keys), do: :ok
 
   defp enforce_forced_login_method(forced, login_type) do
     {:error, {:forced_login_method, forced, login_type}}
@@ -206,6 +293,7 @@ defmodule Codex.AppServer.Account do
 
   defp enforce_forced_workspace_id(_workspace_id, :api_key, _params), do: :ok
   defp enforce_forced_workspace_id(_workspace_id, :bedrock_api_key, _params), do: :ok
+  defp enforce_forced_workspace_id(_workspace_id, :bedrock_access_keys, _params), do: :ok
 
   defp enforce_forced_workspace_id(workspace_id, :chatgpt, params) do
     case fetch_workspace_id(params) do

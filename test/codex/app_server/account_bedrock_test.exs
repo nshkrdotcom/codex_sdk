@@ -146,4 +146,97 @@ defmodule Codex.AppServer.AccountBedrockTest do
     assert encoded["auth_mode"] == "bedrockApiKey"
     assert encoded["bedrock_api_key"] == %{"api_key" => api_key, "region" => "us-east-2"}
   end
+
+  test "stable Bedrock access-key login and setup use exact wire keys", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        Account.login_start(
+          conn,
+          {:amazon_bedrock_access_keys, "fake-id", "fake-secret", "us-east-1"},
+          session_token: "fake-session",
+          provider_id: "amazon-bedrock-runtime"
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "account/login/start",
+             "params" => %{
+               "type" => "amazonBedrockAccessKeys",
+               "accessKeyId" => "fake-id",
+               "secretAccessKey" => "fake-secret",
+               "sessionToken" => "fake-session",
+               "region" => "us-east-1",
+               "providerId" => "amazon-bedrock-runtime"
+             }
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{}))
+    assert {:ok, %{}} = Task.await(task, 500)
+
+    task = Task.async(fn -> Account.bedrock_setup(conn, {:profile, "example"}, "us-east-1") end)
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "account/bedrock/setup",
+             "params" => %{
+               "type" => "profile",
+               "profile" => "example",
+               "region" => "us-east-1"
+             }
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{}))
+    assert {:ok, %{}} = Task.await(task, 500)
+    assert {:error, :invalid_bedrock_source} = Account.bedrock_setup(conn, :unknown, "us-east-1")
+  end
+
+  @tag :tmp_dir
+  test "managed Bedrock access keys round-trip and redact", %{tmp_dir: home} do
+    keys = %{
+      "access_key_id" => "fake-key-id",
+      "secret_access_key" => "fake-secret-value",
+      "session_token" => "fake-session-value"
+    }
+
+    path = Store.primary_path(home)
+
+    File.write!(
+      path,
+      Jason.encode!(%{"auth_mode" => "bedrockAccessKeys", "bedrock_access_keys" => keys})
+    )
+
+    assert {:ok, %Store.Record{auth_mode: :bedrock_access_keys} = record} = Store.load_path(path)
+    assert Store.infer_auth_mode(record) == :api
+    assert :ok = Store.write(record, codex_home: home)
+    assert Jason.decode!(File.read!(path))["bedrock_access_keys"] == keys
+
+    for value <- Map.values(keys) do
+      refute inspect(record) =~ value
+      refute inspect(record.bedrock_access_keys) =~ value
+      refute inspect(Codex.AppServer.Sanitizer.term(keys)) =~ value
+      refute Codex.AppServer.Sanitizer.text(Jason.encode!(keys)) =~ value
+    end
+  end
+
+  test "Bedrock discovery and GovCloud advisory requests have no credential payload", %{
+    conn: conn
+  } do
+    for {method, callback, result} <- [
+          {"account/bedrock/discover", &Account.bedrock_discover/1,
+           %{"profiles" => [], "environmentCredentials" => []}},
+          {"account/bedrock/checkGovCloudRequirements",
+           &Account.bedrock_check_gov_cloud_requirements/1,
+           %{"isGovCloud" => false, "shouldWarn" => false}}
+        ] do
+      task = Task.async(fn -> callback.(conn) end)
+      assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+      assert %{"id" => id, "method" => ^method, "params" => %{}} = Jason.decode!(line)
+      AppServerSubprocess.send_stdout(Protocol.encode_response(id, result))
+      assert {:ok, ^result} = Task.await(task, 500)
+    end
+  end
 end

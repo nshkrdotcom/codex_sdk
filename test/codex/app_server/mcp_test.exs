@@ -252,4 +252,101 @@ defmodule Codex.AppServer.McpTest do
     |> Jason.encode_to_iodata!()
     |> then(&[&1, "\n"])
   end
+
+  test "scoped status never falls back to an unscoped inventory", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        Mcp.list_servers(conn, thread_id: "thr", server_name: "echo", environment_id: "env")
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "mcpServerStatus/list",
+             "params" => %{
+               "threadId" => "thr",
+               "serverName" => "echo",
+               "environmentId" => "env"
+             }
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(encode_error(id, -32_601))
+    assert {:error, _} = Task.await(task, 500)
+    refute_receive {:app_server_subprocess_send, ^conn, _}, 50
+  end
+
+  test "MCP environment scope, hosted target, and OAuth strategy reach the wire", %{conn: conn} do
+    target = %{"connectorId" => "app", "linkId" => nil}
+
+    task =
+      Task.async(fn ->
+        Mcp.resource_read(conn, nil, "echo", "test://resource",
+          environment_id: "env",
+          origin_call_id: "origin",
+          target: target,
+          meta: %{"custom" => true}
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "mcpServer/resource/read",
+             "params" => %{
+               "environmentId" => "env",
+               "originCallId" => "origin",
+               "target" => ^target,
+               "_meta" => %{"custom" => true}
+             }
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{"contents" => []}))
+    assert {:ok, %{"contents" => []}} = Task.await(task, 500)
+
+    task = Task.async(fn -> Mcp.tool_call(conn, "thr", "echo", "ping", environment_id: "env") end)
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "mcpServer/tool/call",
+             "params" => %{"environmentId" => "env"}
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{"content" => []}))
+    assert {:ok, %{"content" => []}} = Task.await(task, 500)
+
+    task =
+      Task.async(fn ->
+        Mcp.oauth_login(conn,
+          name: "echo",
+          thread_id: "thr",
+          environment_id: "env",
+          client_registration: :dcr
+        )
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+
+    assert %{
+             "id" => id,
+             "method" => "mcpServer/oauth/login",
+             "params" => %{
+               "name" => "echo",
+               "threadId" => "thr",
+               "environmentId" => "env",
+               "clientRegistration" => "dcr"
+             }
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(
+      Protocol.encode_response(id, %{
+        "authorizationUrl" => "https://example.invalid",
+        "loginId" => "login"
+      })
+    )
+
+    assert {:ok, %{"loginId" => "login"}} = Task.await(task, 500)
+  end
 end

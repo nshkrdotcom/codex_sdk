@@ -177,3 +177,15 @@ end
 
 Use stable watch ids that your host can correlate back to the subscribed
 workflow.
+
+### Scoped MCP operations (0.172.0)
+
+`AppServer.Mcp.list_servers/2` accepts `thread_id`, `server_name` and
+`environment_id`. Resource reads accept a fifth options argument (environment,
+origin, target, connector and meta); `tool_call/5` accepts `environment_id`.
+OAuth login supports thread/environment scope and client registration strategy.
+Use IDs and registration settings returned by the selected server. Scoped
+inventory failures remain failures rather than silently querying another
+registration. Optional stdio MCP lazy startup, cached tools, and connected-app
+reviewer policy execution are inherited from the installed CLI; SDK code does
+not launch or cache MCP servers independently. Live validation remains pending.

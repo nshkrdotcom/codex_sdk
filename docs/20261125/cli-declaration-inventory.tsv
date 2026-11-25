@@ -1,0 +1,254 @@
+stable_source	line	declaration	clap_attribute	sdk_status
+codex-rs/cli/src/app_cmd.rs	8	pub path: PathBuf,	"#[arg(value_name = ""PATH"", default_value = ""."")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/app_cmd.rs	12	pub download_url_override: Option<String>,	"#[arg(long = ""download-url"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	22	codex_home: Option<PathBuf>,	"#[arg(long, env = ""CODEX_HOME"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	26	db: Option<PathBuf>,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	30	level: Option<LogLevelThreshold>,	#[arg(long, value_enum, ignore_case = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	34	from: Option<String>,	"#[arg(long, value_name = ""RFC3339|UNIX"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	38	to: Option<String>,	"#[arg(long, value_name = ""RFC3339|UNIX"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	42	module: Vec<String>,	"#[arg(long = ""module"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	46	file: Vec<String>,	"#[arg(long = ""file"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	50	thread_id: Vec<String>,	"#[arg(long = ""thread-id"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	54	search: Option<String>,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	58	threadless: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	62	backfill: usize,	#[arg(long, default_value_t = 200)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	66	poll_ms: u64,	#[arg(long, default_value_t = 500)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/bin/logs_client.rs	70	compact: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	165	probe_filesystem_path: Option<PathBuf>,	#[arg(long, hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	169	json: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	173	network_only: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	177	feedback: bool,	#[arg(long, hide = true, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	181	summary: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	185	all: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	189	no_color: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/doctor.rs	193	ascii: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/git_credential.rs	26	pub config_overrides: CliConfigOverrides,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/git_credential.rs	28	operation: Operation,	#[arg(value_enum)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	39	pub sandbox_state_json: Option<String>,	"#[arg( long = ""sandbox-state-json"", value_name = ""JSON"", conflicts_with_all = [""permissions_profile"", ""cwd"", ""include_managed_config""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	47	pub sandbox_state_readable_root: Vec<AbsolutePathBuf>,	"#[arg( long, requires = ""sandbox_state_json"", value_parser = parse_absolute_path )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	51	pub sandbox_state_disable_network: bool,	"#[arg(long, requires = ""sandbox_state_json"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	59	pub sandbox_state: SandboxStateArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	68	pub permissions_profile: Option<String>,	"#[arg( long = ""permission-profile"", alias = ""permissions-profile"", short = 'P', value_name = ""NAME"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	72	pub config_profile: Option<ProfileV2Name>,	"#[arg(long = ""profile"", short = 'p')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	81	pub cwd: Option<PathBuf>,	"#[arg( short = 'C', long = ""cd"", value_name = ""DIR"", requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	89	pub include_managed_config: bool,	"#[arg( long = ""include-managed-config"", default_value_t = false, requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	93	pub allow_unix_sockets: Vec<AbsolutePathBuf>,	"#[arg(long = ""allow-unix-socket"", value_parser = parse_absolute_path)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	97	pub log_denials: bool,	"#[arg(long = ""log-denials"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	100	pub config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	104	pub command: Vec<String>,	#[arg(trailing_var_arg = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	116	pub transparent_tcp: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	119	pub sandbox_state: SandboxStateArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	128	pub permissions_profile: Option<String>,	"#[arg( long = ""permission-profile"", alias = ""permissions-profile"", short = 'P', value_name = ""NAME"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	132	pub config_profile: Option<ProfileV2Name>,	"#[arg(long = ""profile"", short = 'p')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	141	pub cwd: Option<PathBuf>,	"#[arg( short = 'C', long = ""cd"", value_name = ""DIR"", requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	149	pub include_managed_config: bool,	"#[arg( long = ""include-managed-config"", default_value_t = false, requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	152	pub config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	156	pub command: Vec<String>,	#[arg(trailing_var_arg = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	162	pub sandbox_state: SandboxStateArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	171	pub permissions_profile: Option<String>,	"#[arg( long = ""permission-profile"", alias = ""permissions-profile"", short = 'P', value_name = ""NAME"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	175	pub config_profile: Option<ProfileV2Name>,	"#[arg(long = ""profile"", short = 'p')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	184	pub cwd: Option<PathBuf>,	"#[arg( short = 'C', long = ""cd"", value_name = ""DIR"", requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	192	pub include_managed_config: bool,	"#[arg( long = ""include-managed-config"", default_value_t = false, requires = ""permissions_profile"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	195	pub config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/lib.rs	199	pub command: Vec<String>,	#[arg(trailing_var_arg = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	132	pub config_overrides: CliConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	135	pub feature_toggles: FeatureToggles,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	138	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	141	interactive: TuiCli,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	144	subcommand: Option<Subcommand>,	#[clap(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	154	TcpTunnel(codex_tcp_tunnel::Args),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	158	Exec(ExecCli),	"#[clap(visible_alias = ""e"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	168	GitCredential(codex_cli::GitCredentialArgs),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	206	Execpolicy(ExecpolicyCommand),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	210	Apply(ApplyCommand),	"#[clap(visible_alias = ""a"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	238	Cloud(CloudTasksCli),	"#[clap(name = ""cloud"", alias = ""cloud-tasks"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	242	ResponsesApiProxy(ResponsesApiProxyArgs),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	255	shell: Shell,	#[clap(value_enum, default_value_t = Shell::Bash)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	261	subcommand: DebugSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	277	TraceReduce(DebugTraceReduceCommand),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	281	ClearMemories,	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	287	subcommand: DebugAppServerSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	299	user_message: String,	"#[arg(value_name = ""USER_MESSAGE"", required = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	306	prompt: Option<String>,	"#[arg(value_name = ""PROMPT"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	310	images: Vec<PathBuf>,	"#[arg(long = ""image"", short = 'i', value_name = ""FILE"", value_delimiter = ',', num_args = 1..)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	317	bundled: bool,	"#[arg(long = ""bundled"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	324	strict_config: bool,	"#[arg(long = ""strict-config"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	329	trust: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	332	args: ReviewArgs,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	339	trace_bundle: PathBuf,	"#[arg(value_name = ""TRACE_BUNDLE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	343	output: Option<PathBuf>,	"#[arg(long = ""output"", short = 'o', value_name = ""FILE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	350	no_daemon: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	352	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	356	cwd: Option<PathBuf>,	"#[arg(long = ""cd"", short = 'C', value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	360	no_alt_screen: bool,	"#[arg(long = ""no-alt-screen"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	368	session_id: Option<String>,	"#[arg(value_name = ""SESSION_ID"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	372	last: bool,	"#[arg(long = ""last"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	376	all: bool,	"#[arg(long = ""all"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	380	include_non_interactive: bool,	"#[arg(long = ""include-non-interactive"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	383	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	386	config_overrides: SessionTuiCli,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	393	target: String,	"#[arg(value_name = ""SESSION"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	396	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	399	config_overrides: SessionArchiveConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	405	shared: SharedCliOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	409	strict_config: bool,	"#[arg(long = ""strict-config"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	412	config_overrides: CliConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	418	session: SessionArchiveCommand,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	422	force: bool,	#[arg(long, default_value_t = false)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	430	session_id: Option<String>,	"#[arg(value_name = ""SESSION_ID"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	434	last: bool,	"#[arg(long = ""last"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	438	all: bool,	"#[arg(long = ""all"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	441	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	444	config_overrides: SessionTuiCli,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	476	host: HostSandboxArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	479	subcommand: Option<SandboxSubcommand>,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	502	pub config_profile: Option<ProfileV2Name>,	"#[arg(long = ""profile"", short = 'p')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	505	pub config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	509	pub command: Vec<String>,	#[arg(trailing_var_arg = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	515	sub: ExecpolicySubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	522	Check(ExecPolicyCheckCommand),	"#[clap(name = ""check"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	528	config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	534	with_api_key: bool,	"#[arg( long = ""with-api-key"", help = ""Read the API key from stdin (e.g. `printenv OPENAI_API_KEY | codex login --with-api-key`)"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	540	with_access_token: bool,	"#[arg( long = ""with-access-token"", help = ""Read the access token from stdin (e.g. `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token`)"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	550	api_key: Option<String>,	"#[arg( long = ""api-key"", num_args = 0..=1, default_missing_value = """", value_name = ""API_KEY"", help = ""(deprecated) Previously accepted the API key directly; now exits with guidance to use --with-api-key"", hide = true )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	553	use_device_code: bool,	"#[arg(long = ""device-auth"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	558	issuer_base_url: Option<String>,	"#[arg(long = ""experimental_issuer"", value_name = ""URL"", hide = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	562	client_id: Option<String>,	"#[arg(long = ""experimental_client-id"", value_name = ""CLIENT_ID"", hide = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	565	action: Option<LoginSubcommand>,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	577	config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	583	startup_config: codex_app_server::StartupConfigArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	587	cloud_skills_snapshot: Option<PathBuf>,	"#[arg(long, value_name = ""PATH"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	590	subcommand: Option<AppServerSubcommand>,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	593	code_mode_host: codex_app_server::AppServerCodeModeHostArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	597	strict_config: bool,	"#[arg(long = ""strict-config"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	606	listen: codex_app_server::AppServerTransport,	"#[arg( long = ""listen"", value_name = ""URL"", default_value = codex_app_server::AppServerTransport::DEFAULT_LISTEN_URL )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	610	stdio: bool,	"#[arg(long = ""stdio"", conflicts_with = ""listen"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	614	remote_control: bool,	"#[arg(long = ""remote-control"", hide = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	618	managed_daemon: bool,	#[arg(long, hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	621	plugin_mcp_launch: codex_app_server::PluginMcpLaunchArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	639	analytics_default_enabled: bool,	"#[arg(long = ""analytics-default-enabled"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	642	auth: codex_websocket_auth::WebsocketAuthArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	662	GenerateInternalJsonSchema(GenerateInternalJsonSchemaCommand),	#[clap(hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	668	subcommand: AppServerDaemonSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	686	from_cli: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	689	yes: bool,	"#[arg(short = 'y', long, requires = ""from_cli"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	709	check_package_ownership: bool,	#[arg(long, hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	712	restore_release: Option<String>,	#[arg(long, hide = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	720	socket_path: Option<AbsolutePathBuf>,	"#[arg(long = ""sock"", value_name = ""SOCKET_PATH"", value_parser = parse_socket_path)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	727	remote_control: bool,	"#[arg(long = ""remote-control"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	734	out_dir: PathBuf,	"#[arg(short = 'o', long = ""out"", value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	738	prettier: Option<PathBuf>,	"#[arg(short = 'p', long = ""prettier"", value_name = ""PRETTIER_BIN"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	742	experimental: bool,	"#[arg(long = ""experimental"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	749	out_dir: PathBuf,	"#[arg(short = 'o', long = ""out"", value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	753	experimental: bool,	"#[arg(long = ""experimental"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	760	out_dir: PathBuf,	"#[arg(short = 'o', long = ""out"", value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	970	enable: Vec<String>,	"#[arg(long = ""enable"", value_name = ""FEATURE"", action = clap::ArgAction::Append, global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	974	disable: Vec<String>,	"#[arg(long = ""disable"", value_name = ""FEATURE"", action = clap::ArgAction::Append, global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	983	remote: Option<String>,	"#[arg(long = ""remote"", value_name = ""ADDR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	988	remote_auth_token_env: Option<String>,	"#[arg(long = ""remote-auth-token-env"", value_name = ""ENV_VAR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/main.rs	1017	sub: FeaturesSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	37	pub config_overrides: CliConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	40	subcommand: MarketplaceSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	68	source: String,	"#[arg(value_name = ""SOURCE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	72	ref_name: Option<String>,	"#[arg(long = ""ref"", value_name = ""REF"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	80	sparse_paths: Vec<String>,	"#[arg( long = ""sparse"", value_name = ""PATH"", action = clap::ArgAction::Append )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	84	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	92	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	103	marketplace_name: Option<String>,	"#[arg(value_name = ""MARKETPLACE_NAME"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	107	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	118	marketplace_name: String,	"#[arg(value_name = ""MARKETPLACE_NAME"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/marketplace_cmd.rs	122	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	68	pub config_overrides: CliConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	71	pub subcommand: McpSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	88	pub json: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	98	pub json: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	108	pub transport_args: AddMcpTransportArgs,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	122	pub stdio: Option<AddMcpStdioArgs>,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	125	pub streamable_http: Option<AddMcpStreamableHttpArgs>,	#[command(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	136	pub command: Vec<String>,	#[arg( trailing_var_arg = true, num_args = 0.., )]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	145	pub env: Vec<(String, String)>,	"#[arg( long, value_parser = parse_env_pair, value_name = ""KEY=VALUE"", )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	152	pub url: String,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	161	pub bearer_token_env_var: Option<String>,	"#[arg( long = ""bearer-token-env-var"", value_name = ""ENV_VAR"", requires = ""url"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	165	pub oauth_client_id: Option<String>,	"#[arg(long = ""oauth-client-id"", value_name = ""CLIENT_ID"", requires = ""url"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	174	pub oauth_client_secret: Option<RedactedString>,	"#[arg( long = ""oauth-client-secret"", value_name = ""CLIENT_SECRET"", value_parser = clap::builder::StringValueParser::new().map(RedactedString::from), requires_all = [""url"", ""oauth_client_id""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	183	pub oauth_client_registration: Option<McpOAuthClientRegistrationArg>,	"#[arg( long = ""oauth-client-registration"", value_enum, value_name = ""AUTO|CIMD|DCR"", requires = ""url"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	187	pub oauth_resource: Option<String>,	"#[arg(long = ""oauth-resource"", value_name = ""RESOURCE"", requires = ""url"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	220	pub no_browser: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	224	pub scopes: Vec<String>,	"#[arg(long, value_delimiter = ',', value_name = ""SCOPE,SCOPE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/mcp_cmd.rs	232	pub oauth_client_registration: Option<McpOAuthClientRegistrationArg>,	"#[arg( long = ""oauth-client-registration"", value_enum, value_name = ""AUTO|CIMD|DCR"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_nfs_db.rs	20	pub(crate) struct MigrateNfsDbCommand {	"#[command( after_help = ""Stop SQLite clients on every host and keep them stopped through cutover.\nThe NFS mount must support cross-client POSIX locks (no nolock/local_lock=all).\nThis command replaces configured databases in place and retains their WAL backups."" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_nfs_db.rs	24	staging_dir: PathBuf,	#[arg(long, default_value_os_t = std::env::temp_dir())]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_rollouts.rs	25	apply: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_rollouts.rs	29	thread: Vec<ThreadId>,	"#[arg(long, value_name = ""THREAD_ID"", value_parser = ThreadId::from_string)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_rollouts.rs	37	max_mib_per_second: Option<u64>,	"#[arg( long, value_name = ""MIB"", value_parser = clap::value_parser!(u64).range(1..) )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_rollouts.rs	41	json: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/migrate_rollouts.rs	45	verbose: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	56	pub config_overrides: CliConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	59	pub subcommand: PluginSubcommand,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	91	plugin: String,	"#[arg(value_name = ""PLUGIN[@MARKETPLACE]"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	95	marketplace_name: Option<String>,	"#[arg(long = ""marketplace"", short = 'm', value_name = ""MARKETPLACE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	99	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	110	marketplace_name: Option<String>,	"#[arg(long = ""marketplace"", short = 'm', value_name = ""MARKETPLACE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	114	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	118	available: bool,	"#[arg(long = ""available"", requires = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	129	plugin: String,	"#[arg(value_name = ""PLUGIN[@MARKETPLACE]"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	133	marketplace_name: Option<String>,	"#[arg(long = ""marketplace"", short = 'm', value_name = ""MARKETPLACE"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/plugin_cmd.rs	137	json: bool,	"#[arg(long = ""json"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	20	pub(crate) struct QueueCommand {	#[command(defer(configure_help))]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	23	thread: String,	"#[arg(long, value_name = ""THREAD"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	27	message: String,	"#[arg(long, value_name = ""TEXT"", value_parser = NonEmptyStringValueParser::new())]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	32	resume: bool,	#[arg(long)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	35	remote: InteractiveRemoteOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/queue_cmd.rs	38	pub(crate) config_overrides: SessionArchiveConfigOverrides,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/remote_control_cmd.rs	37	json: bool,	"#[arg(long = ""json"", global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/remote_control_cmd.rs	41	pub(super) no_daemon: bool,	"#[arg(long = ""no-daemon"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/remote_control_cmd.rs	44	pub(super) subcommand: Option<RemoteControlSubcommand>,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_setup.rs	19	pub(crate) struct SandboxSetupCommand {	"#[command(group( ArgGroup::new(""sandbox_user"") .required(true) .args([""user"", ""current_user""]) ))]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_setup.rs	22	elevated_sandbox_level: bool,	"#[arg(long = ""elevated"", action = ArgAction::SetTrue)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_setup.rs	31	user: Option<String>,	"#[arg( long = ""user"", value_name = ""USER"", conflicts_with = ""current_user"", requires = ""codex_home"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_setup.rs	39	current_user: bool,	"#[arg( long = ""current-user"", default_value_t = false, conflicts_with = ""user"" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_setup.rs	43	codex_home: Option<PathBuf>,	"#[arg(long = ""codex-home"", value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/cli/src/sandbox_uninstall.rs	10	pub(crate) struct SandboxUninstallCommand {}	"#[command( about = ""Remove the legacy Windows sandbox's machine-wide accounts and network rules"", after_help = ""Run as administrator after stopping apps using the legacy sandbox and its provisioning service, if installed.\nPreserves Codex home, including sandbox directories and filesystem permissions."" )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	18	pub command: Option<Command>,	#[command(subcommand)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	27	pub remote: Option<String>,	"#[arg( id = ""exec_remote"", long = ""remote"", value_name = ""ADDR"", global = true )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	36	pub remote_auth_token_env: Option<String>,	"#[arg( id = ""exec_remote_auth_token_env"", long = ""remote-auth-token-env"", value_name = ""ENV_VAR"", global = true )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	40	pub strict_config: bool,	"#[arg(long = ""strict-config"", global = true, default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	43	pub shared: ExecSharedCliOptions,	#[clap(flatten)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	47	pub thread_source: Option<ThreadSource>,	"#[arg(long = ""thread-source"", value_name = ""SOURCE"", global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	52	pub cyber_access_program: Option<CyberAccessProgramCliArg>,	"#[arg(long, value_enum, value_name = ""PROGRAM"", global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	56	pub skip_git_repo_check: bool,	"#[arg(long = ""skip-git-repo-check"", global = true, default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	61	pub trust: bool,	#[arg(long, global = true)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	65	pub ephemeral: bool,	"#[arg(long = ""ephemeral"", global = true, default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	69	pub ignore_user_config: bool,	"#[arg(long = ""ignore-user-config"", global = true, default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	73	pub ignore_rules: bool,	"#[arg(long = ""ignore-rules"", global = true, default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	77	pub output_schema: Option<PathBuf>,	"#[arg(long = ""output-schema"", value_name = ""FILE"", global = true)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	80	pub config_overrides: CliConfigOverrides,	#[clap(skip)]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	84	pub color: Color,	"#[arg(long = ""color"", value_enum, default_value_t = Color::Auto)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	93	pub json: bool,	"#[arg( long = ""json"", alias = ""experimental-json"", default_value_t = false, global = true )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	102	pub last_message_file: Option<PathBuf>,	"#[arg( long = ""output-last-message"", short = 'o', value_name = ""FILE"", global = true )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	108	pub prompt: Option<String>,	"#[arg(value_name = ""PROMPT"", value_hint = clap::ValueHint::Other)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	211	pub session_id: String,	"#[arg(value_name = ""SESSION_ID"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	221	pub images: Vec<PathBuf>,	"#[arg( long = ""image"", short = 'i', value_name = ""FILE"", value_delimiter = ',', num_args = 1 )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	225	pub prompt: Option<String>,	"#[arg(value_name = ""PROMPT"", value_hint = clap::ValueHint::Other)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	235	session_id: Option<String>,	"#[arg(value_name = ""SESSION_ID"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	239	last: bool,	"#[arg(long = ""last"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	243	all: bool,	"#[arg(long = ""all"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	253	images: Vec<PathBuf>,	"#[arg( long = ""image"", short = 'i', value_name = ""FILE"", value_delimiter = ',', num_args = 1 )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	257	prompt: Option<String>,	"#[arg(value_name = ""PROMPT"", value_hint = clap::ValueHint::Other)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	327	pub uncommitted: bool,	"#[arg( long = ""uncommitted"", default_value_t = false, conflicts_with_all = [""base"", ""commit"", ""prompt""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	335	pub base: Option<String>,	"#[arg( long = ""base"", value_name = ""BRANCH"", conflicts_with_all = [""uncommitted"", ""commit"", ""prompt""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	343	pub commit: Option<String>,	"#[arg( long = ""commit"", value_name = ""SHA"", conflicts_with_all = [""uncommitted"", ""base"", ""prompt""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	347	pub commit_title: Option<String>,	"#[arg(long = ""title"", value_name = ""TITLE"", requires = ""commit"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/exec/src/cli.rs	351	pub prompt: Option<String>,	"#[arg(value_name = ""PROMPT"", value_hint = clap::ValueHint::Other)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	19	pub images: Vec<PathBuf>,	"#[arg( long = ""image"", short = 'i', value_name = ""FILE"", value_delimiter = ',', num_args = 1.. )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	23	pub model: Option<String>,	#[arg(long, short = 'm')]	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	27	pub oss: bool,	"#[arg(long = ""oss"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	32	pub oss_provider: Option<String>,	"#[arg(long = ""local-provider"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	36	pub config_profile_v2: Option<ProfileV2Name>,	"#[arg(long = ""profile"", short = 'p')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	41	pub sandbox_mode: Option<SandboxModeCliArg>,	"#[arg(long = ""sandbox"", short = 's')]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	50	pub auto_review: bool,	"#[arg( long = ""approve-for-me"", alias = ""not-so-yolo"", default_value_t = false, conflicts_with_all = [""sandbox_mode"", ""dangerously_bypass_approvals_and_sandbox""] )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	59	pub dangerously_bypass_approvals_and_sandbox: bool,	"#[arg( long = ""dangerously-bypass-approvals-and-sandbox"", alias = ""yolo"", default_value_t = false )]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	64	pub bypass_hook_trust: bool,	"#[arg(long = ""dangerously-bypass-hook-trust"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	68	pub cwd: Option<PathBuf>,	"#[clap(long = ""cd"", short = 'C', value_name = ""DIR"")]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	72	pub worktree: bool,	"#[arg(long = ""worktree"", default_value_t = false)]"	clap declaration inventory; raw CLI or typed coverage requires trace
+codex-rs/utils/cli/src/shared_options.rs	76	pub add_dir: Vec<PathBuf>,	"#[arg(long = ""add-dir"", value_name = ""DIR"", value_hint = clap::ValueHint::DirPath)]"	clap declaration inventory; raw CLI or typed coverage requires trace

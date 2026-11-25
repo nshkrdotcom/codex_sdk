@@ -3182,4 +3182,147 @@ defmodule Codex.AppServer.ApiTest do
       assert {:ok, %{"voices" => []}} = Task.await(voices_task, 200)
     end
   end
+
+  test "0.172 provider and goal methods preserve wire omission and explicit null", %{conn: conn} do
+    assert_rpc(conn, "modelProvider/list", %{}, %{"data" => []}, fn ->
+      AppServer.model_provider_list(conn)
+    end)
+
+    assert_rpc(conn, "modelProvider/default/set", %{"providerId" => "openai"}, %{}, fn ->
+      AppServer.model_provider_default_set(conn, "openai")
+    end)
+
+    assert_rpc(
+      conn,
+      "modelProvider/config/write",
+      %{"settings" => %{"type" => "customGateway", "providerId" => "example", "baseUrl" => nil}},
+      %{},
+      fn ->
+        AppServer.model_provider_config_write(conn, %{
+          "type" => "customGateway",
+          "providerId" => "example",
+          "baseUrl" => nil
+        })
+      end
+    )
+
+    assert_rpc(
+      conn,
+      "thread/goal/set",
+      %{"threadId" => "thr_1", "objective" => "ok", "origin" => "user", "status" => "paused"},
+      %{"goal" => %{"status" => "paused"}},
+      fn ->
+        AppServer.thread_goal_set(conn, "thr_1", objective: "ok", origin: :user, status: :paused)
+      end
+    )
+
+    assert_rpc(
+      conn,
+      "thread/goal/set",
+      %{"threadId" => "thr_1", "tokenBudget" => nil},
+      %{"goal" => %{}},
+      fn ->
+        AppServer.thread_goal_set(conn, "thr_1", token_budget: nil)
+      end
+    )
+
+    assert_rpc(conn, "thread/goal/get", %{"threadId" => "thr_1"}, %{"goal" => nil}, fn ->
+      AppServer.thread_goal_get(conn, "thr_1")
+    end)
+
+    assert_rpc(
+      conn,
+      "thread/goal/clear",
+      %{"threadId" => "thr_1", "origin" => "automatic"},
+      %{"cleared" => false},
+      fn ->
+        AppServer.thread_goal_clear(conn, "thr_1", origin: :automatic)
+      end
+    )
+  end
+
+  test "0.172 search and list preserve filters and occurrence cursors", %{conn: conn} do
+    assert_rpc(
+      conn,
+      "thread/list",
+      %{
+        "includedThreadIds" => [],
+        "sectionId" => nil,
+        "currentAccountOnly" => false,
+        "excludedThreadIds" => ["thr_x"]
+      },
+      %{"data" => []},
+      fn ->
+        AppServer.thread_list(conn,
+          included_thread_ids: [],
+          section_id: nil,
+          current_account_only: false,
+          excluded_thread_ids: ["thr_x"]
+        )
+      end
+    )
+
+    assert_rpc(
+      conn,
+      "thread/search",
+      %{
+        "searchTerm" => "sample",
+        "includeAttachedThreads" => true,
+        "currentAccountOnly" => false,
+        "sortKey" => "recency_at"
+      },
+      %{"data" => []},
+      fn ->
+        AppServer.thread_search(conn, "sample",
+          include_attached_threads: true,
+          current_account_only: false,
+          sort_key: :recency_at
+        )
+      end
+    )
+
+    result = %{
+      "data" => [%{"snippet" => "x", "range" => %{"start" => 0, "end" => 1}}],
+      "nextCursor" => "opaque"
+    }
+
+    assert_rpc(
+      conn,
+      "thread/searchOccurrences",
+      %{"threadId" => "thr_1", "searchTerm" => "sample", "cursor" => "previous", "limit" => 1},
+      result,
+      fn ->
+        AppServer.thread_search_occurrences(conn, "thr_1", "sample", cursor: "previous", limit: 1)
+      end
+    )
+
+    assert {:error, :explicit_request_id_requires_remote_connection} =
+             AppServer.thread_search_stream(conn, "search-a", "sample")
+  end
+
+  test "turn start forwards the caller's cyber program", %{conn: conn} do
+    task =
+      Task.async(fn ->
+        AppServer.turn_start(conn, "thr_1", "ok", cyber_access_program: :standard)
+      end)
+
+    assert_receive {:app_server_subprocess_send, ^conn, line}
+
+    assert %{
+             "id" => id,
+             "method" => "turn/start",
+             "params" => %{"cyberAccessProgram" => "standard"}
+           } = Jason.decode!(line)
+
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, %{}))
+    assert {:ok, %{}} = Task.await(task, 500)
+  end
+
+  defp assert_rpc(conn, method, params, response, callback) do
+    task = Task.async(callback)
+    assert_receive {:app_server_subprocess_send, ^conn, line}, 500
+    assert %{"id" => id, "method" => ^method, "params" => ^params} = Jason.decode!(line)
+    AppServerSubprocess.send_stdout(Protocol.encode_response(id, response))
+    assert {:ok, ^response} = Task.await(task, 500)
+  end
 end

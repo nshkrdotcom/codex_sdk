@@ -28,6 +28,10 @@ defmodule Codex.Runtime.Exec.Profile do
   @spec render_args(keyword()) :: [String.t()]
   def render_args(opts) when is_list(opts) do
     ["exec", "--json"]
+    |> Shared.maybe_add_pair("--remote", Keyword.get(opts, :remote))
+    |> Shared.maybe_add_pair("--remote-auth-token-env", Keyword.get(opts, :remote_auth_token_env))
+    |> Shared.maybe_add_pair("--thread-source", Keyword.get(opts, :thread_source))
+    |> Shared.maybe_add_pair("--cyber-access-program", Keyword.get(opts, :cyber_access_program))
     |> Shared.maybe_add_pair("--profile", Keyword.get(opts, :cli_profile))
     |> Shared.maybe_add_flag("--full-auto", Keyword.get(opts, :full_auto))
     |> Shared.maybe_add_flag(
@@ -47,7 +51,6 @@ defmodule Codex.Runtime.Exec.Profile do
     |> Shared.maybe_add_repeat("--config", config_values(opts))
     |> Kernel.++(normalize_string_list(Keyword.get(opts, :subcommand_args, [])))
     |> Shared.maybe_add_pair("--continuation-token", Keyword.get(opts, :continuation_token))
-    |> Shared.maybe_add_pair("--cancellation-token", Keyword.get(opts, :cancellation_token))
     |> Shared.maybe_add_repeat("--image", Keyword.get(opts, :images, []))
     |> maybe_add_output_schema(Keyword.get(opts, :output_schema))
   end
@@ -88,7 +91,7 @@ defmodule Codex.Runtime.Exec.Profile do
   defp normalize_string_list(_values), do: []
 
   defp model_value(opts) do
-    if local_provider_value(opts) do
+    if Keyword.get(opts, :remote) || local_provider_value(opts) do
       nil
     else
       opts

@@ -37,7 +37,7 @@ defmodule Codex.AppServer.Sanitizer do
   # `item/tool/requestUserInput` question flag `isSecret` (a boolean telling a
   # client to mask the answer it collects, not a secret itself).
   @safe_keys ~w(
-    cached_input_tokens input_tokens output_tokens reasoning_output_tokens total_tokens
+    cached_input_tokens cache_write_input_tokens input_tokens output_tokens reasoning_output_tokens total_tokens
     is_secret
   )
 
@@ -52,6 +52,8 @@ defmodule Codex.AppServer.Sanitizer do
 
   @json_secret_key_parts [
     ~w(access key),
+    ~w(access key id),
+    ~w(secret access key),
     ~w(access token),
     ~w(api key),
     ~w(authorization),
@@ -84,7 +86,7 @@ defmodule Codex.AppServer.Sanitizer do
 
   @assignment_keys ~w(
     codex_api_key openai_api_key access_token refresh_token client_secret password
-    private_key session_token
+    private_key session_token access_key_id secret_access_key aws_access_key_id aws_secret_access_key
   )
 
   @authorization_keyword "authorization"
@@ -257,11 +259,12 @@ defmodule Codex.AppServer.Sanitizer do
   defp secret_key?(key) do
     normalized = key |> to_string() |> Macro.underscore() |> String.downcase()
 
-    normalized not in @safe_keys and
-      not String.ends_with?(normalized, ["_ref", "_refs", "_id", "_ids"]) and
-      Enum.any?(@secret_names, fn name ->
-        normalized == name or String.ends_with?(normalized, "_" <> name)
-      end)
+    normalized in ["access_key_id", "aws_access_key_id"] or
+      (normalized not in @safe_keys and
+         not String.ends_with?(normalized, ["_ref", "_refs", "_id", "_ids"]) and
+         Enum.any?(@secret_names, fn name ->
+           normalized == name or String.ends_with?(normalized, "_" <> name)
+         end))
   end
 
   # Left-to-right, non-overlapping scan: the earliest anchored position where

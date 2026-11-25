@@ -31,6 +31,8 @@ defmodule Codex.Thread.Options do
             sandbox_policy: nil,
             permission_profile: nil,
             working_directory: nil,
+            remote: nil,
+            remote_auth_token_env: nil,
             additional_directories: [],
             skip_git_repo_check: false,
             network_access_enabled: nil,
@@ -169,6 +171,8 @@ defmodule Codex.Thread.Options do
     ignore_rules: :invalid_ignore_rules,
     auto_run: :invalid_auto_run,
     working_directory: :invalid_working_directory,
+    remote: :invalid_remote,
+    remote_auth_token_env: :invalid_remote_auth_token_env,
     skip_git_repo_check: :invalid_skip_git_repo_check,
     network_access_enabled: :invalid_network_access_enabled,
     web_search_enabled: :invalid_web_search_enabled,
@@ -232,6 +236,8 @@ defmodule Codex.Thread.Options do
           sandbox_policy: sandbox_policy() | sandbox_policy_type() | nil,
           permission_profile: permission_profile() | nil,
           working_directory: String.t() | nil,
+          remote: String.t() | nil,
+          remote_auth_token_env: String.t() | nil,
           additional_directories: [String.t()],
           skip_git_repo_check: boolean(),
           network_access_enabled: boolean() | nil,
@@ -344,6 +350,11 @@ defmodule Codex.Thread.Options do
 
     working_directory =
       Map.get(attrs, :working_directory, Map.get(attrs, "working_directory", Map.get(attrs, :cd)))
+
+    remote = Map.get(attrs, :remote, Map.get(attrs, "remote"))
+
+    remote_auth_token_env =
+      Map.get(attrs, :remote_auth_token_env, Map.get(attrs, "remote_auth_token_env"))
 
     additional_directories =
       Map.get(attrs, :additional_directories, Map.get(attrs, "additional_directories", []))
@@ -666,6 +677,9 @@ defmodule Codex.Thread.Options do
          :ok <- validate_boolean(ignore_user_config, :ignore_user_config),
          :ok <- validate_boolean(ignore_rules, :ignore_rules),
          :ok <- validate_optional_string(working_directory, :working_directory),
+         :ok <- validate_optional_string(remote, :remote),
+         :ok <- validate_optional_string(remote_auth_token_env, :remote_auth_token_env),
+         :ok <- validate_remote_transport(transport, remote, remote_auth_token_env),
          {:ok, additional_directories} <-
            normalize_string_list(additional_directories, :additional_directories),
          :ok <- validate_boolean(skip_git_repo_check, :skip_git_repo_check),
@@ -785,6 +799,8 @@ defmodule Codex.Thread.Options do
          sandbox_policy: sandbox_policy,
          permission_profile: permission_profile,
          working_directory: working_directory,
+         remote: remote,
+         remote_auth_token_env: remote_auth_token_env,
          additional_directories: additional_directories,
          skip_git_repo_check: skip_git_repo_check,
          network_access_enabled: network_access_enabled,
@@ -951,6 +967,12 @@ defmodule Codex.Thread.Options do
   end
 
   defp normalize_optional_string_list(value, field), do: {:error, {:invalid_list, field, value}}
+
+  defp validate_remote_transport(:exec, _remote, _token_env), do: :ok
+  defp validate_remote_transport({:app_server, _pid}, nil, nil), do: :ok
+
+  defp validate_remote_transport(_transport, _remote, _token_env),
+    do: {:error, :remote_exec_options_require_exec_transport}
 
   defp normalize_transport(nil) do
     {:ok, Defaults.default_transport()}

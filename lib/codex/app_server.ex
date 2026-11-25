@@ -191,6 +191,7 @@ defmodule Codex.AppServer do
   @spec alive?(connection()) :: boolean()
   def alive?(conn) when is_pid(conn), do: Process.alive?(conn)
 
+  @doc "Subscribes the caller to raw server messages; filter by methods, thread_id, or request_id."
   @spec subscribe(connection(), keyword()) :: :ok | {:error, term()}
   def subscribe(conn, opts \\ []) when is_pid(conn) do
     Connection.subscribe(conn, opts)
@@ -485,6 +486,11 @@ defmodule Codex.AppServer do
         "sortDirection",
         Params.sort_direction(Keyword.get(opts, :sort_direction))
       )
+      |> Params.put_optional("currentAccountOnly", Keyword.get(opts, :current_account_only))
+      |> put_present_option("includedThreadIds", opts, :included_thread_ids)
+      |> Params.put_optional("excludedThreadIds", Keyword.get(opts, :excluded_thread_ids))
+      |> Params.put_optional("originators", Keyword.get(opts, :originators))
+      |> put_present_option("sectionId", opts, :section_id)
       |> Params.put_optional("modelProviders", Keyword.get(opts, :model_providers))
       |> Params.put_optional(
         "sourceKinds",
@@ -683,25 +689,123 @@ defmodule Codex.AppServer do
   end
 
   defp do_thread_search(conn, search_term, opts) do
-    timeout_ms = Keyword.get(opts, :timeout_ms, 30_000)
+    Connection.request(conn, "thread/search", thread_search_params(search_term, opts),
+      timeout_ms: Keyword.get(opts, :timeout_ms, 30_000)
+    )
+  end
 
+  @doc """
+  Searches a thread's visible messages. Requires `experimental_api: true`.
+
+  Match offsets are UTF-16 code units, not Elixir byte or grapheme offsets.
+  Pass the returned cursor with the same thread and search term.
+  """
+  @spec thread_search_occurrences(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_search_occurrences(conn, thread_id, search_term, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_binary(search_term) and is_list(opts) do
     params =
-      %{}
-      |> Params.put_optional("searchTerm", search_term)
+      %{"threadId" => thread_id, "searchTerm" => search_term}
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
-      |> Params.put_optional("sortKey", Params.thread_sort_key(Keyword.get(opts, :sort_key)))
-      |> Params.put_optional(
-        "sortDirection",
-        Params.sort_direction(Keyword.get(opts, :sort_direction))
-      )
-      |> Params.put_optional(
-        "sourceKinds",
-        normalize_thread_source_kinds(Keyword.get(opts, :source_kinds))
-      )
-      |> Params.put_optional("archived", Keyword.get(opts, :archived))
 
-    Connection.request(conn, "thread/search", params, timeout_ms: timeout_ms)
+    Connection.request(conn, "thread/searchOccurrences", params,
+      timeout_ms: Keyword.get(opts, :timeout_ms, 30_000)
+    )
+  end
+
+  @doc """
+  Performs experimental incremental search on a remote app-server connection.
+
+  Use a fresh, non-secret string request ID per search. Subscribe from a separate
+  process with `methods: ["thread/search/partial"], request_id: request_id` before
+  calling this function. Partial batches are provisional; the final result is
+  authoritative. Cancel with `thread_search_stream_cancel/2` on the same connection.
+  The stdio Core facade does not currently expose caller-assigned request IDs.
+  """
+  @spec thread_search_stream(connection(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def thread_search_stream(conn, request_id, search_term, opts \\ [])
+      when is_pid(conn) and is_binary(request_id) and request_id != "" and
+             is_binary(search_term) and is_list(opts) do
+    Connection.request_with_id(
+      conn,
+      request_id,
+      "thread/search/stream",
+      thread_search_params(search_term, opts), timeout_ms: Keyword.get(opts, :timeout_ms, 30_000))
+  end
+
+  @doc """
+  Cancels a streaming search by its original request ID on the same connection.
+  A successful cancellation acknowledgement is not the search's terminal result.
+  """
+  @spec thread_search_stream_cancel(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def thread_search_stream_cancel(conn, request_id) when is_pid(conn) and is_binary(request_id) do
+    Connection.request(conn, "thread/search/stream/cancel", %{"requestId" => request_id})
+  end
+
+  defp thread_search_params(search_term, opts) do
+    %{}
+    |> Params.put_optional("includeAttachedThreads", Keyword.get(opts, :include_attached_threads))
+    |> Params.put_optional("currentAccountOnly", Keyword.get(opts, :current_account_only))
+    |> Params.put_optional("searchTerm", search_term)
+    |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
+    |> Params.put_optional("limit", Keyword.get(opts, :limit))
+    |> Params.put_optional("sortKey", Params.thread_search_sort_key(Keyword.get(opts, :sort_key)))
+    |> Params.put_optional(
+      "sortDirection",
+      Params.sort_direction(Keyword.get(opts, :sort_direction))
+    )
+    |> Params.put_optional(
+      "sourceKinds",
+      normalize_thread_source_kinds(Keyword.get(opts, :source_kinds))
+    )
+    |> Params.put_optional("archived", Keyword.get(opts, :archived))
+  end
+
+  # Some wire fields distinguish absence from explicit JSON null.
+  defp put_present_option(params, wire_key, opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> Map.put(params, wire_key, value)
+      :error -> params
+    end
+  end
+
+  @doc """
+  Sets or updates a persisted thread goal (requires the server's `goals` feature).
+
+  Omitting `:token_budget` preserves it; explicitly passing `nil` clears it.
+  Set `:origin` to `:user` only for an explicit user-authorized action. Setting
+  an active goal can immediately start or inject work on the server.
+  """
+  @spec thread_goal_set(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_goal_set(conn, thread_id, opts)
+      when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("objective", Keyword.get(opts, :objective))
+      |> Params.put_optional("origin", Params.goal_origin(Keyword.get(opts, :origin)))
+      |> Params.put_optional("status", Params.goal_status(Keyword.get(opts, :status)))
+      |> put_present_option("tokenBudget", opts, :token_budget)
+
+    Connection.request(conn, "thread/goal/set", params)
+  end
+
+  @doc "Reads the persisted thread goal; the response's `goal` may be null."
+  @spec thread_goal_get(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def thread_goal_get(conn, thread_id) when is_pid(conn) and is_binary(thread_id) do
+    Connection.request(conn, "thread/goal/get", %{"threadId" => thread_id})
+  end
+
+  @doc "Clears a persisted goal; returns the server's `cleared` boolean."
+  @spec thread_goal_clear(connection(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def thread_goal_clear(conn, thread_id, opts \\ [])
+      when is_pid(conn) and is_binary(thread_id) and is_list(opts) do
+    params =
+      %{"threadId" => thread_id}
+      |> Params.put_optional("origin", Params.goal_origin(Keyword.get(opts, :origin)))
+
+    Connection.request(conn, "thread/goal/clear", params)
   end
 
   @spec thread_inject_items(connection(), String.t(), [map()]) :: {:ok, map()} | {:error, term()}
@@ -922,6 +1026,10 @@ defmodule Codex.AppServer do
           ])
         )
         |> Params.put_optional("environments", Keyword.get(opts, :environments))
+        |> Params.put_optional(
+          "cyberAccessProgram",
+          Params.cyber_access_program(Keyword.get(opts, :cyber_access_program))
+        )
         |> put_service_tier(opts_map)
 
       Connection.request(conn, "turn/start", wire_params, timeout_ms: 300_000)
@@ -1148,6 +1256,33 @@ defmodule Codex.AppServer do
       |> Params.put_optional("cwd", fetch_any(opts_map, [:cwd, "cwd"]))
 
     Connection.request(conn, "permissionProfile/list", params, timeout_ms: 30_000)
+  end
+
+  @doc "Lists configured model providers using the server's safe summaries."
+  @spec model_provider_list(connection()) :: {:ok, map()} | {:error, term()}
+  def model_provider_list(conn) when is_pid(conn) do
+    Connection.request(conn, "modelProvider/list", %{})
+  end
+
+  @doc """
+  Persists a configured provider as the default for new threads and unscoped model lists.
+
+  This mutates the server's user configuration; it does not switch an existing thread.
+  The server validates the provider ID and writable configuration layer.
+  """
+  @spec model_provider_default_set(connection(), String.t()) :: {:ok, map()} | {:error, term()}
+  def model_provider_default_set(conn, provider_id)
+      when is_pid(conn) and is_binary(provider_id) and provider_id != "" do
+    Connection.request(conn, "modelProvider/default/set", %{"providerId" => provider_id})
+  end
+
+  @doc """
+  Writes a provider settings patch using upstream wire keys. Omitted fields preserve
+  values; explicit null clears nullable fields. This mutates user configuration.
+  """
+  @spec model_provider_config_write(connection(), map()) :: {:ok, map()} | {:error, term()}
+  def model_provider_config_write(conn, %{} = settings) when is_pid(conn) do
+    Connection.request(conn, "modelProvider/config/write", %{"settings" => settings})
   end
 
   @doc """

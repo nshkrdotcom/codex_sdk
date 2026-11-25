@@ -150,6 +150,11 @@ defmodule Codex.AppServer.RemoteConnection do
   end
 
   def handle_call({:subscribe, pid, opts}, _from, %State{} = state) do
+    {old_refs, subscriber_refs} =
+      Enum.split_with(state.subscriber_refs, fn {_ref, subscriber} -> subscriber == pid end)
+
+    Enum.each(old_refs, fn {ref, _pid} -> Process.demonitor(ref, [:flush]) end)
+    state = %State{state | subscriber_refs: Map.new(subscriber_refs)}
     ref = Process.monitor(pid)
     filters = normalize_subscriber_filters(opts)
 
@@ -165,7 +170,7 @@ defmodule Codex.AppServer.RemoteConnection do
           state
 
         events ->
-          send_buffered_events(pid, events)
+          send_buffered_events(pid, events, filters)
           %State{state | buffered_events: []}
       end
 
@@ -212,6 +217,28 @@ defmodule Codex.AppServer.RemoteConnection do
 
   def handle_call({:request, method, params, timeout_ms}, from, %State{} = state) do
     id = state.next_id
+    send_request(state, id, method, params, timeout_ms, from, id + 1)
+  end
+
+  def handle_call(
+        {:request_with_id, _id, _method, _params, _timeout_ms},
+        _from,
+        %State{phase: phase} = state
+      )
+      when phase != :ready do
+    {:reply, {:error, :not_ready}, state}
+  end
+
+  def handle_call({:request_with_id, id, method, params, timeout_ms}, from, %State{} = state)
+      when is_binary(id) and id != "" do
+    if Map.has_key?(state.pending, id) do
+      {:reply, {:error, :duplicate_request_id}, state}
+    else
+      send_request(state, id, method, params, timeout_ms, from, state.next_id)
+    end
+  end
+
+  defp send_request(state, id, method, params, timeout_ms, from, next_id) do
     timer_ref = Process.send_after(self(), {:request_timeout, id}, timeout_ms)
 
     pending =
@@ -224,7 +251,7 @@ defmodule Codex.AppServer.RemoteConnection do
 
     case send_text_frame(state.websocket_pid, Protocol.encode_request(id, method, params)) do
       :ok ->
-        {:noreply, %State{state | next_id: id + 1, pending: pending}}
+        {:noreply, %State{state | next_id: next_id, pending: pending}}
 
       {:error, reason} ->
         _ = Process.cancel_timer(timer_ref)
@@ -463,21 +490,32 @@ defmodule Codex.AppServer.RemoteConnection do
     state
   end
 
-  defp send_buffered_events(pid, events) when is_pid(pid) do
+  defp send_buffered_events(pid, events, filters) when is_pid(pid) do
     Enum.each(events, fn
       {:notification, method, params} ->
-        send(pid, {:codex_notification, method, params})
+        if subscriber_match?(filters, method, params) do
+          send(pid, {:codex_notification, method, params})
+        end
 
       {:request, id, method, params} ->
-        send(pid, {:codex_request, id, method, params})
+        if subscriber_match?(filters, method, params) do
+          send(pid, {:codex_request, id, method, params})
+        end
     end)
   end
 
-  defp subscriber_match?(%{methods: nil, thread_id: nil}, _method, _params), do: true
-
   defp subscriber_match?(filters, method, params) do
-    method_matches?(filters.methods, method) and thread_matches?(filters.thread_id, params)
+    method_matches?(filters.methods, method) and thread_matches?(filters.thread_id, params) and
+      request_matches?(filters.request_id, params)
   end
+
+  defp request_matches?(nil, _params), do: true
+
+  defp request_matches?(id, params) when is_map(params) and (is_binary(id) or is_integer(id)) do
+    Map.get(params, "requestId", Map.get(params, "request_id")) == id
+  end
+
+  defp request_matches?(_id, _params), do: false
 
   defp method_matches?(nil, _method), do: true
   defp method_matches?(methods, method) when is_list(methods), do: method in methods
@@ -510,7 +548,7 @@ defmodule Codex.AppServer.RemoteConnection do
         _ -> :invalid
       end
 
-    %{methods: methods, thread_id: thread_id}
+    %{methods: methods, thread_id: thread_id, request_id: Keyword.get(opts, :request_id)}
   end
 
   defp normalize_methods(list) do

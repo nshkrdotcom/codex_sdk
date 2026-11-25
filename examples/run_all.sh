@@ -236,6 +236,8 @@ ssh_requires_cwd_cli_examples=(
 )
 
 local_only_cli_examples=(
+  "examples/live_parity_0172.exs"
+  "examples/live_remote_parity_0172.exs"
   "examples/structured_output.exs"
   "examples/live_app_server_plugins.exs"
   "examples/live_marketplace_management.exs"

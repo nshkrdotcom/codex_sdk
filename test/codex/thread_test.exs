@@ -1457,4 +1457,20 @@ defmodule Codex.ThreadTest do
       refute_receive :tool_invoked
     end
   end
+
+  @tag :tmp_dir
+  test "Thread.run sends remote flags to the subprocess without local defaults", %{tmp_dir: dir} do
+    capture_path = Path.join(dir, "argv.txt")
+    script = FixtureScripts.capture_args("thread_basic.jsonl", capture_path)
+    on_exit(fn -> File.rm(script) end)
+    {:ok, opts} = Codex.Options.new(%{api_key: "test", codex_path_override: script})
+    {:ok, thread} = Codex.start_thread(opts, %{remote: "ws://127.0.0.1:4500"})
+    assert {:ok, _result} = Codex.Thread.run(thread, "ok")
+    args = File.read!(capture_path)
+    assert args =~ "--remote ws://127.0.0.1:4500"
+    refute args =~ "--model"
+    refute args =~ "--config"
+    refute args =~ "--sandbox"
+    refute args =~ "--cd"
+  end
 end

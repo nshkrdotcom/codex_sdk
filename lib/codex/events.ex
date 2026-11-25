@@ -78,6 +78,36 @@ defmodule Codex.Events do
     @type t :: %__MODULE__{}
   end
 
+  defmodule ThreadGoalUpdated do
+    @moduledoc "A persisted thread goal changed; the goal map retains upstream fields."
+    defstruct thread_id: nil, turn_id: nil, goal: nil, params: %{}
+
+    @type t :: %__MODULE__{
+            thread_id: String.t() | nil,
+            turn_id: String.t() | nil,
+            goal: map() | nil,
+            params: map()
+          }
+  end
+
+  defmodule ThreadGoalCleared do
+    @moduledoc "A persisted thread goal was cleared."
+    defstruct thread_id: nil, params: %{}
+
+    @type t :: %__MODULE__{thread_id: String.t() | nil, params: map()}
+  end
+
+  defmodule ThreadSearchPartial do
+    @moduledoc "Provisional search results, correlated by the connection-local request ID."
+    defstruct request_id: nil, data: [], params: %{}
+
+    @type t :: %__MODULE__{
+            request_id: String.t() | integer() | nil,
+            data: [map()],
+            params: map()
+          }
+  end
+
   defmodule ThreadNameUpdated do
     @moduledoc """
     Event emitted when the thread display name changes.
@@ -394,11 +424,12 @@ defmodule Codex.Events do
     Event emitted when account authentication state changes.
     """
 
-    defstruct auth_mode: nil, plan_type: nil
+    defstruct auth_mode: nil, plan_type: nil, reason: nil
 
     @type t :: %__MODULE__{
             auth_mode: atom() | String.t() | nil,
-            plan_type: atom() | String.t() | nil
+            plan_type: atom() | String.t() | nil,
+            reason: String.t() | nil
           }
   end
 
@@ -1533,6 +1564,9 @@ defmodule Codex.Events do
     ThreadStatusChanged,
     SkillsChanged,
     ThreadNameUpdated,
+    ThreadGoalUpdated,
+    ThreadGoalCleared,
+    ThreadSearchPartial,
     ThreadStarted,
     TurnCompleted,
     ThreadTokenUsageUpdated,
@@ -1623,6 +1657,9 @@ defmodule Codex.Events do
           | ThreadUnarchived.t()
           | SkillsChanged.t()
           | ThreadNameUpdated.t()
+          | ThreadGoalUpdated.t()
+          | ThreadGoalCleared.t()
+          | ThreadSearchPartial.t()
           | TurnStarted.t()
           | TurnContinuation.t()
           | TurnCompleted.t()
@@ -1723,6 +1760,27 @@ defmodule Codex.Events do
     %ThreadStarted{
       thread_id: Map.get(map, "thread_id"),
       metadata: Map.get(map, "metadata", %{})
+    }
+  end
+
+  def parse!(%{"type" => "thread/goal/updated"} = map) do
+    %ThreadGoalUpdated{
+      thread_id: Map.get(map, "thread_id"),
+      turn_id: Map.get(map, "turn_id"),
+      goal: Map.get(map, "goal"),
+      params: Map.get(map, "params", %{})
+    }
+  end
+
+  def parse!(%{"type" => "thread/goal/cleared"} = map) do
+    %ThreadGoalCleared{thread_id: Map.get(map, "thread_id"), params: Map.get(map, "params", %{})}
+  end
+
+  def parse!(%{"type" => "thread/search/partial"} = map) do
+    %ThreadSearchPartial{
+      request_id: Map.get(map, "request_id"),
+      data: Map.get(map, "data", []),
+      params: Map.get(map, "params", %{})
     }
   end
 
@@ -2372,7 +2430,8 @@ defmodule Codex.Events do
           nil -> Map.get(map, "planType")
           value -> value
         end
-        |> normalize_plan_type()
+        |> normalize_plan_type(),
+      reason: Map.get(map, "reason")
     }
   end
 
@@ -2425,7 +2484,7 @@ defmodule Codex.Events do
       turn_id: Map.get(map, "turn_id"),
       additional_details: Map.get(map, "additional_details") || Map.get(map, "additionalDetails"),
       codex_error_info: Map.get(map, "codex_error_info") || Map.get(map, "codexErrorInfo"),
-      will_retry: Map.get(map, "will_retry") || Map.get(map, "willRetry")
+      will_retry: Map.get(map, "will_retry", Map.get(map, "willRetry"))
     }
   end
 
@@ -2519,6 +2578,29 @@ defmodule Codex.Events do
 
   def to_map(%SkillsChanged{}) do
     %{"type" => "skills/changed"}
+  end
+
+  def to_map(%ThreadGoalUpdated{} = event) do
+    %{
+      "type" => "thread/goal/updated",
+      "thread_id" => event.thread_id,
+      "turn_id" => event.turn_id,
+      "goal" => event.goal,
+      "params" => event.params
+    }
+  end
+
+  def to_map(%ThreadGoalCleared{} = event) do
+    %{"type" => "thread/goal/cleared", "thread_id" => event.thread_id, "params" => event.params}
+  end
+
+  def to_map(%ThreadSearchPartial{} = event) do
+    %{
+      "type" => "thread/search/partial",
+      "request_id" => event.request_id,
+      "data" => event.data,
+      "params" => event.params
+    }
   end
 
   def to_map(%ThreadNameUpdated{} = event) do
@@ -2755,6 +2837,7 @@ defmodule Codex.Events do
     }
     |> put_optional("auth_mode", encode_auth_mode(event.auth_mode))
     |> put_optional("plan_type", encode_plan_type(event.plan_type))
+    |> put_optional("reason", event.reason)
   end
 
   def to_map(%AccountRateLimitsUpdated{} = event) do
@@ -3801,6 +3884,7 @@ defmodule Codex.Events do
   defp normalize_plan_type(type), do: type
 
   defp normalize_auth_mode("bedrockApiKey"), do: :bedrock_api_key
+  defp normalize_auth_mode("bedrockAccessKeys"), do: :bedrock_access_keys
   defp normalize_auth_mode(mode), do: mode
 
   defp encode_plan_type(nil), do: nil
@@ -3808,6 +3892,7 @@ defmodule Codex.Events do
   defp encode_plan_type(type), do: type
 
   defp encode_auth_mode(:bedrock_api_key), do: "bedrockApiKey"
+  defp encode_auth_mode(:bedrock_access_keys), do: "bedrockAccessKeys"
   defp encode_auth_mode(mode), do: mode
 
   defp normalize_model_reroute_reason(nil), do: nil

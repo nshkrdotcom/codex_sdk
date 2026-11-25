@@ -290,3 +290,29 @@ For the emergency hardening lane, the most relevant examples are:
 
 Those examples exercise the same persisted-thread surfaces that now back the standardized
 `list_provider_sessions/1` runtime projection used by upper orchestration layers.
+
+### Stable 0.172.0 parity checks
+
+Use an already-installed `codex` 0.172.0 and the existing secrets wrapper.
+Both scripts are included in the local-only `run_all.sh` group. They never
+install or manage the CLI. Run mutation cases only against disposable state.
+
+```sh
+~/scripts/with_bash_secrets mix run examples/live_parity_0172.exs
+CODEX_PARITY_HISTORY=1 CODEX_PARITY_GOALS=1 \
+  ~/scripts/with_bash_secrets mix run examples/live_parity_0172.exs
+CODEX_PARITY_BEDROCK_DISCOVERY=1 \
+  ~/scripts/with_bash_secrets mix run examples/live_parity_0172.exs
+CODEX_PARITY_REMOTE_ADDR=ws://127.0.0.1:4500 \
+  ~/scripts/with_bash_secrets mix run examples/live_remote_parity_0172.exs
+```
+
+The history case creates and archives a disposable thread; goals require the
+server's `goals` feature. Bedrock discovery is read-only and does not print
+credential values. Remote exec requires an existing authorized remote server;
+its configuration owns models, workspaces and permissions. For authenticated
+remote connections set `CODEX_PARITY_REMOTE_TOKEN_ENV` to the name of the
+secret environment variable, not its value. Use secure WebSockets for nonlocal
+authenticated endpoints; the example also accepts Unix remote exec addresses
+but skips WebSocket search on them. A search may return zero partial batches;
+its final result is authoritative. An explicit opt-in failure is not a pass.

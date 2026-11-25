@@ -288,6 +288,7 @@ defmodule Codex.Transport.AppServer do
       :permission_profile,
       select_turn_opt(turn_opts, :permission_profile, thread.thread_opts.permission_profile)
     )
+    |> maybe_put_kw(:cyber_access_program, fetch_opt(turn_opts, :cyber_access_program))
     |> maybe_put_kw(:effort, fetch_opt(turn_opts, :effort))
     |> maybe_put_kw(:summary, fetch_opt(turn_opts, :summary))
     |> maybe_put_kw(:additional_context, fetch_opt(turn_opts, :additional_context))

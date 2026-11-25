@@ -219,7 +219,7 @@ defmodule Codex.ExecTest do
              RuntimeExec.render_for_test(exec_opts: exec_opts, input: "expired")
   end
 
-  test "forwards cancellation token flag to codex exec" do
+  test "keeps SDK cancellation token out of stable CLI argv" do
     capture_path =
       Path.join(System.tmp_dir!(), "codex_exec_args_#{System.unique_integer([:positive])}")
 
@@ -240,9 +240,8 @@ defmodule Codex.ExecTest do
 
     args = read_captured_args(capture_path)
 
-    idx = Enum.find_index(args, &(&1 == "--cancellation-token"))
-    assert idx
-    assert Enum.at(args, idx + 1) == "cancel-me"
+    refute "--cancellation-token" in args
+    refute "cancel-me" in args
   end
 
   test "governed exec unregisters cancellation state after exact materialization exits" do

@@ -730,3 +730,55 @@ mix run examples/live_app_server_dynamic_tools.exs
 mix run examples/live_app_server_approvals.exs
 mix run examples/live_app_server_mcp.exs
 ```
+
+## Stable 0.172.0 additions
+
+Use the existing CLI with `experimental_api: true` when calling experimental
+history/search or Bedrock methods. Provider selection is Codex-native and
+changes user configuration: `AppServer.model_provider_list(conn)`,
+`AppServer.model_provider_default_set(conn, provider_id)`, and
+`AppServer.model_provider_config_write(conn, settings)` (custom gateway
+settings patch, `type: "customGateway"`, `providerId`, `baseUrl`, including
+explicit null to clear). Use disposable config for writes; provider IDs come
+from the server, not the SDK's model catalog.
+
+For a persisted thread with the server's `goals` feature enabled:
+
+```elixir
+AppServer.thread_goal_set(conn, id,
+  objective: "Review the disposable project", status: :paused,
+  token_budget: 1000, origin: :user)
+AppServer.thread_goal_get(conn, id)
+AppServer.thread_goal_set(conn, id, token_budget: nil, origin: :user)
+AppServer.thread_goal_clear(conn, id, origin: :user)
+```
+
+Omit `token_budget` to preserve it; `nil` clears it. Omit `origin` unless
+needed; `:user` signifies explicit user authorization. Active goal updates
+may initiate work. Goal updated/cleared events preserve the raw parameters.
+These RPCs do not implement Python's logical multi-turn goal orchestration.
+
+Thread lists accept `current_account_only`, `included_thread_ids`,
+`excluded_thread_ids`, `originators`, and `section_id` (omitted vs null).
+`thread_search/3` accepts `sort_key: :recency_at` and account/attachment
+filters. `thread_search_occurrences/4` returns server ranges in UTF-16 code
+units; follow its cursor without changing search term or thread.
+
+Incremental search is currently WebSocket-only for caller-assigned request
+IDs. From the subscriber process:
+
+```elixir
+:ok = AppServer.subscribe(conn,
+  methods: ["thread/search/partial"], request_id: "search-unique-1")
+task = Task.async(fn ->
+  AppServer.thread_search_stream(conn, "search-unique-1", "marker")
+end)
+# Receive {:codex_notification, "thread/search/partial", params} in this process.
+# Optionally cancel on the same connection with thread_search_stream_cancel/2.
+Task.await(task, 40_000)
+```
+
+Use a fresh nonsecret ID each time. Partial batches are provisional; a cancel
+acknowledgment is not the terminal search result. The stdio Core facade does
+not yet expose caller-assigned IDs. Ordinary `thread_search/3` remains available.
+Live behavior is pending verification; see the November parity inventory.

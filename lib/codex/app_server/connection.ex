@@ -94,6 +94,22 @@ defmodule Codex.AppServer.Connection do
     end
   end
 
+  @doc false
+  @spec request_with_id(connection(), String.t(), String.t(), map(), keyword()) ::
+          {:ok, term()} | {:error, term()}
+  def request_with_id(conn, id, method, params, opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_request_timeout_ms)
+
+    case safe_connection_call(
+           conn,
+           {:request_with_id, id, method, params, timeout_ms},
+           timeout_ms + 1_000
+         ) do
+      {:ok, reply} -> reply
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @spec respond(connection(), request_id(), map()) :: :ok | {:error, term()}
   def respond(conn, id, result) when is_pid(conn) and is_map(result) do
     case safe_connection_call(conn, {:respond, id, result}, @default_call_timeout_ms) do
@@ -191,6 +207,11 @@ defmodule Codex.AppServer.Connection do
   end
 
   def handle_call({:subscribe, pid, opts}, _from, %State{} = state) do
+    {old_refs, subscriber_refs} =
+      Enum.split_with(state.subscriber_refs, fn {_ref, subscriber} -> subscriber == pid end)
+
+    Enum.each(old_refs, fn {ref, _pid} -> Process.demonitor(ref, [:flush]) end)
+    state = %State{state | subscriber_refs: Map.new(subscriber_refs)}
     ref = Process.monitor(pid)
     filters = normalize_subscriber_filters(opts)
 
@@ -216,6 +237,10 @@ defmodule Codex.AppServer.Connection do
        | subscribers: Map.delete(state.subscribers, pid),
          subscriber_refs: subscriber_refs
      }}
+  end
+
+  def handle_call({:request_with_id, _id, _method, _params, _timeout_ms}, _from, state) do
+    {:reply, {:error, :explicit_request_id_requires_remote_connection}, state}
   end
 
   def handle_call({:request, _method, _params, _timeout_ms}, _from, %State{phase: phase} = state)
@@ -458,11 +483,18 @@ defmodule Codex.AppServer.Connection do
     state
   end
 
-  defp subscriber_match?(%{methods: nil, thread_id: nil}, _method, _params), do: true
-
   defp subscriber_match?(filters, method, params) do
-    method_matches?(filters.methods, method) and thread_matches?(filters.thread_id, params)
+    method_matches?(filters.methods, method) and thread_matches?(filters.thread_id, params) and
+      request_matches?(filters.request_id, params)
   end
+
+  defp request_matches?(nil, _params), do: true
+
+  defp request_matches?(id, params) when is_map(params) and (is_binary(id) or is_integer(id)) do
+    Map.get(params, "requestId", Map.get(params, "request_id")) == id
+  end
+
+  defp request_matches?(_id, _params), do: false
 
   defp method_matches?(nil, _method), do: true
   defp method_matches?(methods, method) when is_list(methods), do: method in methods
@@ -495,7 +527,7 @@ defmodule Codex.AppServer.Connection do
         _ -> :invalid
       end
 
-    %{methods: methods, thread_id: thread_id}
+    %{methods: methods, thread_id: thread_id, request_id: Keyword.get(opts, :request_id)}
   end
 
   defp normalize_methods(list) do

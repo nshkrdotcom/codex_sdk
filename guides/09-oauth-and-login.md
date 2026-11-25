@@ -241,3 +241,20 @@ For browser login, the example uses the upstream-compatible callback
 `http://localhost:1455/auth/callback` by default. If that port is already in
 use on your machine, pass `--callback-port=<port>` and open the printed URL in
 your browser.
+
+### Stable 0.172.0 experimental Bedrock setup
+
+Initialize with `experimental_api: true`. `AppServer.Account.bedrock_discover/1`
+returns server-side profile/credential discovery, without credential values;
+`bedrock_setup(conn, :environment, region, provider_id: provider)` or
+`bedrock_setup(conn, {:profile, name}, region, provider_id: provider)` changes
+server config using existing AWS credentials. `bedrock_check_gov_cloud_requirements/1`
+is advisory. Existing bearer login accepts an optional provider ID; managed AWS
+keys use `login_start(conn, {:amazon_bedrock_access_keys, id, secret, region},
+opts)` with optional `session_token` and `provider_id`. Never print those
+options, login responses, or auth files. The persisted access-key shape has
+redacted Inspect output and is classified as API authentication; the region
+belongs to config. These are source-confirmed stable handlers, not a claim of
+successful AWS authentication; perform live checks only in isolated config
+with entitled credentials and an approved region. Older 0.144.1 schema-only
+evidence is historical.

@@ -152,6 +152,33 @@ defmodule Codex.AppServer.Params do
   def thread_sort_key(value) when is_binary(value), do: value
   def thread_sort_key(_), do: nil
 
+  @doc false
+  def thread_search_sort_key(value) when value in [:recency_at, "recencyAt"], do: "recency_at"
+  def thread_search_sort_key(value), do: thread_sort_key(value)
+
+  @doc false
+  def goal_origin(nil), do: nil
+  def goal_origin(value) when is_atom(value), do: Atom.to_string(value)
+  def goal_origin(value), do: value
+
+  @doc false
+  def goal_status(:usage_limited), do: "usageLimited"
+  def goal_status(:budget_limited), do: "budgetLimited"
+  def goal_status(nil), do: nil
+  def goal_status(value) when is_atom(value), do: Atom.to_string(value)
+  def goal_status(value), do: value
+
+  @doc false
+  def cyber_access_program(value) when value in [:daybreak_blue, "daybreak_blue"],
+    do: "daybreakBlue"
+
+  def cyber_access_program(value) when value in [:daybreak_red, "daybreak_red"],
+    do: "daybreakRed"
+
+  def cyber_access_program(nil), do: nil
+  def cyber_access_program(value) when is_atom(value), do: Atom.to_string(value)
+  def cyber_access_program(value), do: value
+
   @spec sort_direction(atom() | String.t() | nil) :: String.t() | nil
   def sort_direction(nil), do: nil
   def sort_direction(:asc), do: "asc"

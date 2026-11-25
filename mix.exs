@@ -3,7 +3,7 @@ if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_f
 defmodule CodexSdk.MixProject do
   use Mix.Project
 
-  @version "0.21.6"
+  @version "0.22.0"
   @source_url "https://github.com/nshkrdotcom/codex_sdk"
   @homepage_url "https://hex.pm/packages/codex_sdk"
   @docs_url "https://hexdocs.pm/codex_sdk"
@@ -99,6 +99,7 @@ defmodule CodexSdk.MixProject do
       assets: %{"assets" => "assets"},
       logo: "assets/codex_sdk.svg",
       extras: [
+        "docs/20261125/parity-audit.md",
         "README.md": [title: "Overview"],
         "guides/01-getting-started.md": [title: "Getting Started"],
         "guides/02-architecture.md": [title: "Architecture"],

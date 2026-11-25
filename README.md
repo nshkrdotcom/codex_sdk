@@ -13,6 +13,15 @@ An idiomatic Elixir SDK for embedding OpenAI's Codex agent in your workflows and
 
 ## Upstream Parity Snapshot
 
+Version 0.22.0 adds source-audited SDK support for installed Codex CLI
+0.172.0: provider selection, thread goals, history search, scoped MCP,
+Bedrock setup, remote exec, and additional wire fields. See the
+[November parity inventory](docs/20261125/parity-audit.md) for exact source
+revisions, gates, and remaining gaps. These changes have offline fixtures but
+still require Elixir and live endpoint validation; main-only behavior is not
+claimed as stable. The SDK never installs or manages the CLI.
+
+
 The 0.21 line implements the protocol catch-up through upstream
 `openai/codex` commit `5c19155cbd` and was re-swept through current
 `origin/main` `54b8f112a3` on 2026-07-11; the extra commit added no protocol
@@ -69,7 +78,7 @@ Add `codex_sdk` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:codex_sdk, "~> 0.21.6"}
+    {:codex_sdk, "~> 0.22.0"}
   ]
 end
 ```

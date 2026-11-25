@@ -220,3 +220,18 @@ an explicit `base_instructions` override remains untouched.
 | `system_config_path/0` | `/etc/codex/config.toml` | — |
 | `project_root_markers/0` | `[".git"]` | — |
 | `default_transport/0` | `:exec` (compatibility selector) | `:default_transport` |
+
+### Remote noninteractive exec (0.172.0)
+
+Set `remote: "ws://127.0.0.1:4500"` (or an authorized `wss://` or `unix://`
+address) and optionally `remote_auth_token_env: "REMOTE_TOKEN"` in thread
+options. Pass the token in the caller-supplied child environment if required.
+These options apply to the exec transport only, not the SDK's WebSocket
+app-server connection or its SSH execution placement. Resume by the returned
+thread ID. Stable remote exec rejects local workspace, model, permissions,
+config, attachments, structured output and review overrides; local SDK model
+and reasoning defaults are deliberately not projected. The remote server owns
+these settings. Do not reuse a local thread ID against a different server.
+For local exec, `thread_source` is forwarded on fresh runs and an explicit
+turn `cyber_access_program` is forwarded on eligible runs. Cyber access
+program entitlement is server-enforced; it is not granted by this SDK.

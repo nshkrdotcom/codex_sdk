@@ -11,6 +11,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-11-25
+
+### Added
+
+- Stable 0.172.0 app-server provider selection and settings patches, thread goals,
+  history filters and occurrence search; experimental correlated remote search.
+- Remote structured exec, new-thread source and per-turn Cyber program forwarding.
+- Experimental Bedrock discovery, setup, GovCloud advisory and managed AWS key login/store shapes.
+- Scoped MCP status, resource, tool and OAuth requests, and prompt-cache-write usage.
+- Source parity inventory, targeted fixtures and opt-in live scenarios.
+
+### Fixed
+
+- Retain explicit null and empty inclusion filters, terminal `willRetry: false`,
+  account update reasons, and redacted AWS key IDs. Scope-aware MCP errors no
+  longer fall back to a different registration. Keep SDK cancellation tokens
+  internal instead of sending an unsupported CLI flag.
+
+Source-audited against 0.172.0 and pinned main; local Elixir QC and authenticated
+live verification remain release prerequisites.
+
 ## [0.21.6] - 2026-11-17
 
 ### Fixed

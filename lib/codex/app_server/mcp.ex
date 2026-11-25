@@ -18,14 +18,15 @@ defmodule Codex.AppServer.Mcp do
   @doc """
   Lists configured MCP servers with their tools, resources, and auth status.
 
-  Supports cursor-based pagination via `:cursor` and `:limit` options.
+  Supports cursor-based pagination via `:cursor` and `:limit` options,
+  plus `:thread_id`, `:server_name`, and `:environment_id` scoping.
 
   ## Compatibility
 
   This function tries the new `mcpServerStatus/list` method first. If the server
   returns a "method not found" (`-32601`) or "unknown variant" (`-32600`) error
   (older servers), it falls back to the legacy `mcpServers/list` method
-  automatically.
+  automatically for unscoped calls only. Scoped requests never drop their scope.
   """
   @spec list_servers(connection(), keyword()) :: {:ok, map()} | {:error, term()}
   def list_servers(conn, opts \\ []) when is_pid(conn) and is_list(opts) do
@@ -33,6 +34,9 @@ defmodule Codex.AppServer.Mcp do
       %{}
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
+      |> Params.put_optional("threadId", Keyword.get(opts, :thread_id))
+      |> Params.put_optional("serverName", Keyword.get(opts, :server_name))
+      |> Params.put_optional("environmentId", Keyword.get(opts, :environment_id))
       |> Params.put_optional(
         "detail",
         opts
@@ -45,9 +49,14 @@ defmodule Codex.AppServer.Mcp do
       |> Params.put_optional("cursor", Keyword.get(opts, :cursor))
       |> Params.put_optional("limit", Keyword.get(opts, :limit))
 
+    scoped? = Enum.any?(["threadId", "serverName", "environmentId"], &Map.has_key?(params, &1))
+
     case Connection.request(conn, "mcpServerStatus/list", params,
            timeout_ms: Defaults.mcp_server_request_timeout_ms()
          ) do
+      {:error, _reason} = error when scoped? ->
+        error
+
       {:error, %{"code" => -32_601}} ->
         Connection.request(conn, "mcpServers/list", legacy_params,
           timeout_ms: Defaults.mcp_server_request_timeout_ms()
@@ -81,14 +90,24 @@ defmodule Codex.AppServer.Mcp do
   @doc """
   Reads an MCP resource within the context of a thread.
   """
-  @spec resource_read(connection(), String.t(), String.t(), String.t()) ::
+  @spec resource_read(connection(), String.t() | nil, String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  def resource_read(conn, thread_id, server, uri)
-      when is_pid(conn) and is_binary(thread_id) and is_binary(server) and is_binary(uri) do
+  def resource_read(conn, thread_id, server, uri, opts \\ [])
+      when is_pid(conn) and (is_binary(thread_id) or is_nil(thread_id)) and is_binary(server) and
+             is_binary(uri) and is_list(opts) do
+    params =
+      %{"server" => server, "uri" => uri}
+      |> Params.put_optional("threadId", thread_id)
+      |> Params.put_optional("environmentId", Keyword.get(opts, :environment_id))
+      |> Params.put_optional("originCallId", Keyword.get(opts, :origin_call_id))
+      |> Params.put_optional("connectorId", Keyword.get(opts, :connector_id))
+      |> Params.put_optional("target", Keyword.get(opts, :target))
+      |> Params.put_optional("_meta", Keyword.get(opts, :meta))
+
     Connection.request(
       conn,
       "mcpServer/resource/read",
-      %{"threadId" => thread_id, "server" => server, "uri" => uri},
+      params,
       timeout_ms: Defaults.mcp_server_request_timeout_ms()
     )
   end
@@ -103,6 +122,7 @@ defmodule Codex.AppServer.Mcp do
              is_list(opts) do
     params =
       %{"threadId" => thread_id, "server" => server, "tool" => tool}
+      |> Params.put_optional("environmentId", Keyword.get(opts, :environment_id))
       |> Params.put_optional("arguments", normalize_json_value(Keyword.get(opts, :arguments)))
       |> Params.put_optional("_meta", normalize_json_value(Keyword.get(opts, :meta)))
 
@@ -123,6 +143,12 @@ defmodule Codex.AppServer.Mcp do
 
     params =
       %{"name" => name}
+      |> Params.put_optional("threadId", Keyword.get(opts, :thread_id))
+      |> Params.put_optional("environmentId", Keyword.get(opts, :environment_id))
+      |> Params.put_optional(
+        "clientRegistration",
+        client_registration(Keyword.get(opts, :client_registration))
+      )
       |> Params.put_optional("scopes", Keyword.get(opts, :scopes))
       |> Params.put_optional("timeoutSecs", Keyword.get(opts, :timeout_secs))
 
@@ -205,6 +231,10 @@ defmodule Codex.AppServer.Mcp do
   defp fetch_server_url(%{} = server) do
     Map.get(server, "url") || Map.get(server, :url)
   end
+
+  defp client_registration(nil), do: nil
+  defp client_registration(value) when is_atom(value), do: Atom.to_string(value)
+  defp client_registration(value), do: value
 
   defp normalize_json_value(value) when is_list(value) do
     if Keyword.keyword?(value), do: Map.new(value), else: value
