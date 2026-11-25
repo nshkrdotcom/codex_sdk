@@ -1,211 +1,207 @@
-<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
   <defs>
-    <path id="hexPath" d="M 100 7.7 L 180.4 51.6 L 180.4 139.6 L 100 183.5 L 19.6 139.6 L 19.6 51.6 Z"/>
+    
+    <clipPath id="hex-clip">
+      <polygon points="100,5 182.27,52.5 182.27,147.5 100,195 17.73,147.5 17.73,52.5" />
+    </clipPath>
 
-    <linearGradient id="hexFill" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0a1324"/>
-      <stop offset="50%" stop-color="#101f36"/>
-      <stop offset="100%" stop-color="#0a1220"/>
-    </linearGradient>
-
-    <linearGradient id="hexStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#6fe7d5"/>
-      <stop offset="50%" stop-color="#6aa6ff"/>
-      <stop offset="100%" stop-color="#f2c176"/>
-    </linearGradient>
-
-    <radialGradient id="hexGlow" cx="50%" cy="42%" r="70%">
-      <stop offset="0%" stop-color="#223656" stop-opacity="0.85"/>
-      <stop offset="60%" stop-color="#0c1629" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#070d19" stop-opacity="0.15"/>
-    </radialGradient>
-
-    <linearGradient id="innerStroke" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#5de7d2" stop-opacity="0.7"/>
-      <stop offset="100%" stop-color="#f0c07a" stop-opacity="0.5"/>
-    </linearGradient>
-
-    <linearGradient id="bandFill" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#14243b" stop-opacity="0.95"/>
-      <stop offset="50%" stop-color="#1b2f4d" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#14243b" stop-opacity="0.95"/>
-    </linearGradient>
-
-    <linearGradient id="bandStroke" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#3a567a" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#22354f" stop-opacity="0.8"/>
-    </linearGradient>
-
-    <linearGradient id="letterStroke" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#e6fbff"/>
-      <stop offset="50%" stop-color="#bfe8ff"/>
-      <stop offset="100%" stop-color="#f6d19a"/>
-    </linearGradient>
-
-    <linearGradient id="letterHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#7cead6"/>
-      <stop offset="50%" stop-color="#9bd2ff"/>
-      <stop offset="100%" stop-color="#ffd29a"/>
-    </linearGradient>
-
-    <linearGradient id="letterDetail" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#9edfff"/>
-      <stop offset="100%" stop-color="#6fd9c8"/>
-    </linearGradient>
-
-    <linearGradient id="letterE" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f5e0d0"/>
-      <stop offset="50%" stop-color="#e8c8b0"/>
-      <stop offset="100%" stop-color="#d4a88a"/>
-    </linearGradient>
-
-    <filter id="eGlow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <radialGradient id="nodeFill" cx="50%" cy="50%" r="60%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="70%" stop-color="#9ce6ff" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#4fc8b6" stop-opacity="0.2"/>
-    </radialGradient>
-
-    <pattern id="microGrid" width="15.4" height="15.4" patternUnits="userSpaceOnUse" patternTransform="rotate(20)">
-      <path d="M 0 0 L 15.4 0" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.12"/>
-      <path d="M 0 7.7 L 15.4 7.7" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.08"/>
-      <path d="M 0 15.4 L 15.4 15.4" stroke="#8fd4ff" stroke-width="0.66" stroke-opacity="0.12"/>
-      <path d="M 0 0 L 0 15.4" stroke="#7ad6c8" stroke-width="0.66" stroke-opacity="0.08"/>
-      <circle cx="7.7" cy="7.7" r="1.76" fill="#9fe1ff" fill-opacity="0.18"/>
+    
+    <pattern id="diag-grid" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
+      <line x1="0" y1="0" x2="16" y2="0" stroke="#7A94AD" stroke-opacity="0.06" stroke-width="0.6" />
+      <line x1="0" y1="0" x2="0" y2="16" stroke="#7A94AD" stroke-opacity="0.06" stroke-width="0.6" />
+      <circle cx="0" cy="0" r="1.15" fill="#89A4BC" fill-opacity="0.14" />
     </pattern>
 
-    <filter id="hexShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="11" stdDeviation="8.8" flood-color="#050a14" flood-opacity="0.85"/>
-    </filter>
+    
+    <linearGradient id="bg-base" x1="20" y1="8" x2="180" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#19222E" />
+      <stop offset="50%" stop-color="#111720" />
+      <stop offset="100%" stop-color="#0B0F16" />
+    </linearGradient>
 
-    <filter id="letterGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="1.3" result="blur"/>
+    
+    <radialGradient id="ambient-cool" cx="28%" cy="46%" r="54%">
+      <stop offset="0%" stop-color="#4A7A82" stop-opacity="0.20" />
+      <stop offset="60%" stop-color="#294652" stop-opacity="0.07" />
+      <stop offset="100%" stop-color="#0B0F16" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="ambient-warm" cx="76%" cy="54%" r="52%">
+      <stop offset="0%" stop-color="#B08156" stop-opacity="0.16" />
+      <stop offset="60%" stop-color="#6B4D35" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#0B0F16" stop-opacity="0" />
+    </radialGradient>
+
+    
+    <linearGradient id="hex-border" x1="18" y1="60" x2="182" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6FA1A6" stop-opacity="0.9" />
+      <stop offset="32%" stop-color="#5B7A96" stop-opacity="0.82" />
+      <stop offset="68%" stop-color="#8A8B8C" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#C89B6E" stop-opacity="0.9" />
+    </linearGradient>
+
+    
+    <linearGradient id="hex-inner" x1="24" y1="54" x2="176" y2="146" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#76A6AB" stop-opacity="0.28" />
+      <stop offset="50%" stop-color="#4C647A" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#C99D71" stop-opacity="0.28" />
+    </linearGradient>
+
+    
+    <linearGradient id="panel-bg" x1="26" y1="62" x2="174" y2="138" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#141C27" stop-opacity="0.84" />
+      <stop offset="50%" stop-color="#101720" stop-opacity="0.90" />
+      <stop offset="100%" stop-color="#151B22" stop-opacity="0.84" />
+    </linearGradient>
+
+    <linearGradient id="panel-rim" x1="26" y1="100" x2="174" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#69989E" stop-opacity="0.34" />
+      <stop offset="50%" stop-color="#536B82" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#BA8E64" stop-opacity="0.34" />
+    </linearGradient>
+
+    
+    <linearGradient id="glyph-c" x1="40" y1="74" x2="56" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A8CFD1" />
+      <stop offset="52%" stop-color="#73A3A8" />
+      <stop offset="100%" stop-color="#C89C72" />
+    </linearGradient>
+
+    <linearGradient id="glyph-o" x1="60" y1="74" x2="84" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B0CFD4" />
+      <stop offset="48%" stop-color="#7B9EB0" />
+      <stop offset="100%" stop-color="#CFA47A" />
+    </linearGradient>
+
+    <linearGradient id="glyph-d" x1="88" y1="74" x2="105" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9BC0CC" />
+      <stop offset="52%" stop-color="#879BA8" />
+      <stop offset="100%" stop-color="#CCA076" />
+    </linearGradient>
+
+    <linearGradient id="glyph-e" x1="112" y1="74" x2="132" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C9B29B" />
+      <stop offset="50%" stop-color="#B8906D" />
+      <stop offset="100%" stop-color="#9A785E" />
+    </linearGradient>
+
+    <linearGradient id="glyph-x1" x1="138" y1="76" x2="159" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A5C9CE" />
+      <stop offset="55%" stop-color="#7E9EAD" />
+      <stop offset="100%" stop-color="#CFA47A" />
+    </linearGradient>
+
+    <linearGradient id="glyph-x2" x1="159" y1="76" x2="138" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#BBD0D6" />
+      <stop offset="52%" stop-color="#79A3AA" />
+      <stop offset="100%" stop-color="#94B7BE" />
+    </linearGradient>
+
+    
+    <filter id="soft-glow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="1.35" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.42 0" result="softBlur" />
       <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="softBlur" />
+        <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
-
-    <clipPath id="hexClip">
-      <use href="#hexPath"/>
-    </clipPath>
   </defs>
 
-  <g filter="url(#hexShadow)">
-    <use href="#hexPath" fill="url(#hexFill)" stroke="url(#hexStroke)" stroke-width="4.4" stroke-linejoin="round"/>
-  </g>
+  
+  <g clip-path="url(#hex-clip)">
+    
+    <polygon points="100,5 182.27,52.5 182.27,147.5 100,195 17.73,147.5 17.73,52.5" fill="url(#bg-base)" />
+    <polygon points="100,5 182.27,52.5 182.27,147.5 100,195 17.73,147.5 17.73,52.5" fill="url(#ambient-cool)" />
+    <polygon points="100,5 182.27,52.5 182.27,147.5 100,195 17.73,147.5 17.73,52.5" fill="url(#ambient-warm)" />
 
-  <g clip-path="url(#hexClip)">
-    <use href="#hexPath" fill="url(#hexGlow)"/>
-    <rect x="12.1" y="18.7" width="175.8" height="175.8" fill="url(#microGrid)" opacity="0.35"/>
+    
+    <rect x="0" y="0" width="200" height="200" fill="url(#diag-grid)" />
 
-    <rect x="27.5" y="60.4" width="145.1" height="70.3" rx="11" fill="url(#bandFill)" stroke="url(#bandStroke)" stroke-width="1.3" opacity="0.95"/>
+    
+    <polygon points="100,12 176.21,56 176.21,144 100,188 23.79,144 23.79,56" stroke="url(#hex-inner)" stroke-width="1" stroke-linejoin="round" />
 
-    <g opacity="0.25" stroke="#8acbff" stroke-width="1.1" stroke-linecap="round">
-      <path d="M 34.1 95.6 H 166" stroke-dasharray="5.5 6.6"/>
-      <path d="M 38.5 78 H 161.5" stroke-dasharray="3.3 8.8"/>
-      <path d="M 38.5 113.2 H 161.5" stroke-dasharray="3.3 8.8"/>
+    
+    <rect x="27" y="63" width="146" height="74" rx="13" fill="url(#panel-bg)" stroke="url(#panel-rim)" stroke-width="1.1" />
+
+    
+    <g stroke="#6D8CA3" stroke-opacity="0.22" stroke-width="0.9" stroke-dasharray="4 5" stroke-linecap="round">
+      <line x1="36" y1="81" x2="164" y2="81" />
+      <line x1="34" y1="100" x2="166" y2="100" />
+      <line x1="36" y1="119" x2="164" y2="119" />
     </g>
 
-    <g id="letters" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#letterGlow)">
-      <g id="letter-base" stroke="url(#letterStroke)" stroke-width="6.6">
-        <path d="M 54.9 73.6 A 9.9 22 0 0 0 54.9 117.6"/>
-        <ellipse cx="73.6" cy="95.6" rx="9.9" ry="22"/>
-        <path d="M 92.3 73.6 L 92.3 117.6"/>
-        <path d="M 92.3 73.6 L 96.7 73.6"/>
-        <path d="M 92.3 117.6 L 96.7 117.6"/>
-        <path d="M 96.7 73.6 A 7.7 22 0 0 1 96.7 117.6"/>
-        <path d="M 138.5 73.6 L 158.2 117.6"/>
-        <path d="M 158.2 73.6 L 138.5 117.6"/>
+    
+    <g transform="translate(1, 0)" filter="url(#soft-glow)">
+      
+      <path d="M 54 76.5 C 39.5 78.5, 39.5 121.5, 54 123.5" stroke="url(#glyph-c)" stroke-width="5.2" stroke-linecap="round" />
+      <path d="M 53.5 81.5 C 44 83.5, 44 116.5, 53.5 118.5" stroke="#8DBBC0" stroke-opacity="0.32" stroke-width="1.2" stroke-linecap="round" />
+      
+      <circle cx="54" cy="76.5" r="1.7" fill="#E6EFEF" />
+      <circle cx="54" cy="123.5" r="1.7" fill="#EBD8C3" />
+
+      
+      <ellipse cx="72" cy="100" rx="11.2" ry="23.5" stroke="url(#glyph-o)" stroke-width="5.2" />
+      <path d="M 72 82 A 6.6 18 0 0 0 72 118" stroke="#7CB0B5" stroke-opacity="0.45" stroke-width="1.5" stroke-linecap="round" />
+      
+      <circle cx="72" cy="76.5" r="1.6" fill="#E4EFEF" />
+      <circle cx="72" cy="123.5" r="1.6" fill="#EBD8C3" />
+      <circle cx="60.8" cy="100" r="1.3" fill="#B8D5D9" />
+      <circle cx="83.2" cy="100" r="1.3" fill="#DEC1A2" />
+
+      
+      <path d="M 90 76.5 C 104.5 78.5, 104.5 121.5, 90 123.5" stroke="url(#glyph-d)" stroke-width="5.2" stroke-linecap="round" />
+      <path d="M 91.5 82.5 C 98.5 85.5, 98.5 114.5, 91.5 117.5" stroke="#7BAEB4" stroke-opacity="0.52" stroke-width="1.5" stroke-linecap="round" />
+      
+      <circle cx="90" cy="76.5" r="1.7" fill="#DCE9EC" />
+      <circle cx="90" cy="123.5" r="1.7" fill="#EBD8C3" />
+      <circle cx="94" cy="100" r="1.8" fill="#D5E4E8" />
+      <circle cx="100.8" cy="100" r="1.3" fill="#E0C3A4" />
+
+      
+      <g stroke="url(#glyph-e)" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="129,76.5 113,76.5 113,123.5 129,123.5" stroke-width="2.4" />
+        <line x1="113" y1="100" x2="126.5" y2="100" stroke-width="2.4" />
+      </g>
+      
+      <g stroke="#C69A71" stroke-opacity="0.52" stroke-width="1.2" stroke-dasharray="3 3" stroke-linecap="round">
+        <line x1="117" y1="88" x2="126" y2="88" />
+        <line x1="117" y1="112" x2="126" y2="112" />
+      </g>
+      
+      <g fill="#EFE0CF" stroke="#BA8E64" stroke-width="0.9">
+        <circle cx="113" cy="76.5" r="2.1" />
+        <circle cx="129" cy="76.5" r="2.1" />
+        <circle cx="113" cy="100" r="2.1" />
+        <circle cx="126.5" cy="100" r="2.1" />
+        <circle cx="113" cy="123.5" r="2.1" />
+        <circle cx="129" cy="123.5" r="2.1" />
       </g>
 
-      <g id="letter-E" stroke="url(#letterE)" stroke-width="6.6" filter="url(#eGlow)">
-        <path d="M 113.2 73.6 L 113.2 117.6"/>
-        <path d="M 113.2 73.6 L 129.7 73.6"/>
-        <path d="M 113.2 95.6 L 126.4 95.6"/>
-        <path d="M 113.2 117.6 L 129.7 117.6"/>
-      </g>
-
-      <g id="letter-highlight" stroke="url(#letterHighlight)" stroke-width="2.4" opacity="0.85">
-        <path d="M 51.6 78 A 6.6 17.6 0 0 0 51.6 113.2"/>
-        <ellipse cx="73.6" cy="95.6" rx="6" ry="14.3"/>
-        <path d="M 95.6 80.2 A 4.9 15.4 0 0 1 95.6 111"/>
-        <path d="M 140.7 78 L 156 113.2"/>
-        <path d="M 156 78 L 140.7 113.2"/>
-      </g>
-
-      <g id="letter-E-highlight" stroke="#f5d6c6" stroke-width="2.2" opacity="0.6">
-        <path d="M 113.2 73.6 L 113.2 117.6"/>
-        <path d="M 113.2 73.6 L 129.7 73.6"/>
-        <path d="M 113.2 95.6 L 126.4 95.6"/>
-        <path d="M 113.2 117.6 L 129.7 117.6"/>
-      </g>
-
-      <g id="letter-detail" stroke="url(#letterDetail)" stroke-width="1.1" opacity="0.65">
-        <path d="M 40.7 84.6 L 47.3 84.6"/>
-        <path d="M 40.7 106.6 L 47.3 106.6"/>
-        <path d="M 44 89 L 44 102.2" stroke-dasharray="2.2 3.3"/>
-        <path d="M 73.6 80.2 L 73.6 111"/>
-        <path d="M 67 95.6 L 80.2 95.6"/>
-        <path d="M 92.3 95.6 L 101.1 95.6"/>
-        <path d="M 98.9 82.4 L 98.9 108.8" stroke-dasharray="2.2 4.4"/>
-        <path d="M 144 86.8 L 152.7 95.6 L 144 104.4"/>
-        <path d="M 152.7 86.8 L 144 95.6 L 152.7 104.4"/>
-      </g>
-
-      <g id="letter-E-detail" stroke="#d4a88a" stroke-width="1.1" opacity="0.5">
-        <path d="M 117.6 84.6 L 126.4 84.6" stroke-dasharray="3.3 3.3"/>
-        <path d="M 117.6 106.6 L 126.4 106.6" stroke-dasharray="3.3 3.3"/>
-        <path d="M 115.4 82.4 L 115.4 108.8" stroke-dasharray="2.2 3.3"/>
-      </g>
-
-      <g id="letter-nodes" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.66" opacity="0.9">
-        <circle cx="54.9" cy="73.6" r="2.2"/>
-        <circle cx="54.9" cy="117.6" r="2.2"/>
-        <circle cx="73.6" cy="73.6" r="2.2"/>
-        <circle cx="73.6" cy="117.6" r="2.2"/>
-        <circle cx="63.7" cy="95.6" r="2"/>
-        <circle cx="83.5" cy="95.6" r="2"/>
-        <circle cx="92.3" cy="73.6" r="2.1"/>
-        <circle cx="92.3" cy="117.6" r="2.1"/>
-        <circle cx="104.4" cy="95.6" r="2.1"/>
-        <circle cx="96.7" cy="95.6" r="1.76"/>
-        <circle cx="138.5" cy="73.6" r="2.1"/>
-        <circle cx="158.2" cy="117.6" r="2.1"/>
-        <circle cx="158.2" cy="73.6" r="2.1"/>
-        <circle cx="138.5" cy="117.6" r="2.1"/>
-        <circle cx="148.4" cy="95.6" r="2"/>
-        <rect x="145.6" y="92.9" width="5.5" height="5.5" transform="rotate(45 148.4 95.6)" fill="url(#nodeFill)" stroke="#d7f6ff" stroke-width="0.66"/>
-      </g>
-
-      <g id="letter-E-nodes" fill="url(#nodeFill)" stroke="#e8c4a8" stroke-width="0.88" opacity="0.95">
-        <circle cx="113.2" cy="73.6" r="2.2"/>
-        <circle cx="129.7" cy="73.6" r="2.2"/>
-        <circle cx="113.2" cy="95.6" r="2"/>
-        <circle cx="126.4" cy="95.6" r="2"/>
-        <circle cx="113.2" cy="117.6" r="2.2"/>
-        <circle cx="129.7" cy="117.6" r="2.2"/>
-      </g>
+      
+      <line x1="139" y1="76.5" x2="158" y2="123.5" stroke="url(#glyph-x1)" stroke-width="5" stroke-linecap="round" />
+      <line x1="158" y1="76.5" x2="139" y2="123.5" stroke="url(#glyph-x2)" stroke-width="5" stroke-linecap="round" />
+      
+      <circle cx="139" cy="76.5" r="1.7" fill="#E4EFEF" />
+      <circle cx="158" cy="76.5" r="1.7" fill="#E4EFEF" />
+      <circle cx="139" cy="123.5" r="1.7" fill="#D5E7E9" />
+      <circle cx="158" cy="123.5" r="1.7" fill="#EBD8C3" />
+      
+      <circle cx="148.5" cy="100" r="3" fill="#17242D" stroke="#A6CFD3" stroke-width="1.2" />
+      <circle cx="148.5" cy="100" r="1.4" fill="#EAF4F5" />
     </g>
 
-    <use href="#hexPath" fill="none" stroke="url(#innerStroke)" stroke-width="1.54" opacity="0.6"/>
+    
+    <circle cx="21.5" cy="100" r="2.2" fill="#B58E65" fill-opacity="0.72" />
+    <circle cx="178.5" cy="100" r="2.2" fill="#6FA1A6" fill-opacity="0.72" />
   </g>
 
-  <g opacity="0.55">
-    <path d="M 100 7.7 L 180.4 51.6" fill="none" stroke="#f5f9ff" stroke-width="1.54" stroke-linecap="round"/>
-    <path d="M 19.6 51.6 L 100 7.7" fill="none" stroke="#f5f9ff" stroke-width="1.54" stroke-linecap="round"/>
-  </g>
+  
+  <polygon points="100,5 182.27,52.5 182.27,147.5 100,195 17.73,147.5 17.73,52.5" stroke="url(#hex-border)" stroke-width="2.4" stroke-linejoin="round" />
 
-  <g opacity="0.5">
-    <circle cx="100" cy="7.7" r="3.3" fill="#f8fbff"/>
-    <circle cx="180.4" cy="95.6" r="2.6" fill="#77e7d6"/>
-    <circle cx="19.6" cy="95.6" r="2.6" fill="#f0c07a"/>
-  </g>
+  
+  <polyline points="86,13.1 100,5 114,13.1" stroke="#C7DCE3" stroke-opacity="0.58" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
 </svg>
